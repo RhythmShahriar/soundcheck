@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
@@ -41,7 +42,10 @@ type Options struct {
 	Insecure  bool
 	Browser   browser.Options
 	Modules   []check.Module
-	Hooks     Hooks
+	// Login logs the test account in within a private session; nil when no
+	// credentials are set. See check.Context.Login.
+	Login func(ctx context.Context, sess *rod.Browser) error
+	Hooks Hooks
 }
 
 // Hooks report progress. Calls are serialized.
@@ -63,7 +67,8 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	run := &model.Run{
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: base.String(),
 		Name: opts.Name, Started: start.UTC(),
-		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules, Limit: cfg.Pages.Limit},
+		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
+			Limit: cfg.Pages.Limit, LoggedIn: opts.Login != nil},
 	}
 	var mu sync.Mutex // serializes hooks
 	emit := func(fn func()) {
@@ -119,6 +124,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	cc := &check.Context{
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Browser: sess, NewSession: b.Session, Save: store.Saver(opts.Dir),
+		Login: opts.Login,
 	}
 
 	// Visit pages in parallel tabs; links found while rendering are added
