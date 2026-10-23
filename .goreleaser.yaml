@@ -1,0 +1,58 @@
+# Release config. The archive and checksum names are a contract with
+# rhythm/kit/update and the install script: <binary>_<os>_<arch>.tar.gz
+# (.zip on Windows) plus checksums.txt.
+version: 2
+project_name: rhythm-soundcheck
+
+builds:
+  - main: ./cmd/rhythm-soundcheck
+    binary: rhythm-soundcheck
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [README.md, LICENSE*]
+
+checksum:
+  name_template: checksums.txt
+
+# A tag like v0.4.0-rc1 is published as a prerelease, which GitHub never
+# reports as "latest", so rhythm update and the installers don't offer it.
+release:
+  prerelease: auto
+
+# Keyless Sigstore signature over checksums.txt. Verify with:
+#   cosign verify-blob --bundle checksums.txt.sigstore.json \
+#     --certificate-identity https://github.com/RhythmShahriar/.github/.github/workflows/release-go.yml@refs/heads/master \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: [sign-blob, "--bundle=${signature}", "${artifact}", --yes]
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
+  filters:
+    exclude: ['^(docs|test|ci|chore|style)(\(.+\))?!?:']

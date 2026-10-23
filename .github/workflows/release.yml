@@ -1,0 +1,10 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  release:
+    uses: RhythmShahriar/.github/.github/workflows/release-go.yml@master
+    permissions:
+      contents: write
+      id-token: write

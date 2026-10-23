@@ -1,0 +1,139 @@
+# Soundcheck as a GitHub Action. See the wiki page Soundcheck-CI for
+# examples: https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI
+name: Rhythm Soundcheck
+description: Did your change break anything? Compare a whole site before and after a deploy, in a real browser.
+author: Rhythm Shahriar
+branding:
+  icon: activity
+  color: orange
+
+inputs:
+  url:
+    description: The site to check, e.g. https://staging.example.com
+    required: true
+  against:
+    description: Compare with this site now (e.g. production), instead of a snapshot.
+    required: false
+    default: ""
+  mode:
+    description: >
+      What to do: "against" (needs the against input), "snapshot" (record the site, for a later
+      compare step in the same job), "compare" (with the latest snapshot), or "run" (check once).
+      Default: against when the against input is set, otherwise run.
+    required: false
+    default: ""
+  name:
+    description: Snapshot name for mode snapshot.
+    required: false
+    default: ci
+  fail-on:
+    description: >
+      Fail the job on changes at or above broke, new, changed or slower (comparisons), or issues at
+      or above error, warning or notice (run, snapshot). Empty never fails.
+    required: false
+    default: broke
+  args:
+    description: Extra flags, e.g. "--limit 100 --skip speed -k".
+    required: false
+    default: ""
+  version:
+    description: Soundcheck version to install, e.g. 1.0.0. Default the latest release.
+    required: false
+    default: latest
+  upload:
+    description: Upload the HTML and JUnit reports as a workflow artifact.
+    required: false
+    default: "true"
+
+outputs:
+  exit-code:
+    description: Soundcheck's exit code (0 ok, 1 --fail-on hit, 2 usage error, 3 couldn't check).
+    value: ${{ steps.check.outputs.exit-code }}
+  report:
+    description: Path of the standalone HTML report.
+    value: ${{ steps.check.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Soundcheck
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "unsupported CPU $(uname -m)"; exit 1 ;; esac
+        os=$(uname -s | tr '[:upper:]' '[:lower:]')
+        if [ "$VERSION" = latest ]; then
+          base=https://github.com/RhythmShahriar/soundcheck/releases/latest/download
+        else
+          base=https://github.com/RhythmShahriar/soundcheck/releases/download/v${VERSION#v}
+        fi
+        dir="$RUNNER_TEMP/soundcheck-bin"
+        mkdir -p "$dir" && cd "$dir"
+        archive="rhythm-soundcheck_${os}_${arch}.tar.gz"
+        curl -fsSLO "$base/$archive"
+        curl -fsSLO "$base/checksums.txt"
+        grep " $archive\$" checksums.txt | sha256sum -c -
+        tar -xzf "$archive" rhythm-soundcheck
+        echo "$dir" >> "$GITHUB_PATH"
+        ./rhythm-soundcheck --version
+
+    - name: Run Soundcheck
+      id: check
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        AGAINST: ${{ inputs.against }}
+        MODE: ${{ inputs.mode }}
+        NAME: ${{ inputs.name }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        set -uo pipefail
+        mode=$MODE
+        [ -n "$mode" ] || { [ -n "$AGAINST" ] && mode=against || mode=run; }
+        fail=()
+        [ -z "$FAIL_ON" ] || fail=(--fail-on "$FAIL_ON")
+        # shellcheck disable=SC2206 # ARGS is a flag string to split
+        extra=($ARGS)
+        case "$mode" in
+          against)  [ -n "$AGAINST" ] || { echo "::error::mode against needs the against input"; exit 2; }
+                    cmd=(rhythm-soundcheck "$URL" --against "$AGAINST") ;;
+          snapshot) cmd=(rhythm-soundcheck snapshot "$URL" --name "$NAME") ;;
+          compare)  cmd=(rhythm-soundcheck compare "$URL") ;;
+          run)      cmd=(rhythm-soundcheck run "$URL") ;;
+          *) echo "::error::unknown mode $mode"; exit 2 ;;
+        esac
+        "${cmd[@]}" "${fail[@]}" "${extra[@]}" --plain
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        [ "$code" -ge 2 ] && exit "$code"
+
+        # Reports: the job summary, JUnit and the standalone HTML.
+        which=()
+        [ "$mode" = snapshot ] && which=("$NAME")
+        out="$RUNNER_TEMP/soundcheck-report"
+        mkdir -p "$out"
+        rhythm-soundcheck report "${which[@]}" --md >> "$GITHUB_STEP_SUMMARY" || true
+        rhythm-soundcheck report "${which[@]}" "${fail[@]}" --junit -o "$out/soundcheck-junit.xml" -q || true
+        rhythm-soundcheck report "${which[@]}" --html -o "$out/soundcheck-report.html" -q || true
+        echo "report=$out/soundcheck-report.html" >> "$GITHUB_OUTPUT"
+        exit 0
+
+    - name: Upload reports
+      if: always() && inputs.upload == 'true' && steps.check.outputs.report != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: soundcheck-report
+        path: ${{ runner.temp }}/soundcheck-report/
+        if-no-files-found: ignore
+
+    - name: Fail on changes
+      if: steps.check.outputs.exit-code == '1'
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error::Soundcheck found changes at or above --fail-on $FAIL_ON. See the job summary and the soundcheck-report artifact."
+        exit 1

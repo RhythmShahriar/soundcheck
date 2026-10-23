@@ -1,0 +1,10 @@
+name: ci
+on:
+  push:
+    branches: [master]
+  pull_request:
+jobs:
+  go:
+    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@master
+  commitlint:
+    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@master
