@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -120,4 +121,35 @@ func (b *Browser) Close() {
 	_ = b.Browser.Close()
 	b.launcher.Kill()
 	b.launcher.Cleanup()
+}
+
+// Prune deletes downloaded Chromium revisions other than the one this
+// version of Soundcheck uses, and returns what it removed.
+func Prune() ([]string, error) {
+	dir, err := DownloadDir()
+	if err != nil {
+		return nil, err
+	}
+	b := launcher.NewBrowser()
+	b.RootDir = dir
+	keep := filepath.Base(b.Dir())
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var removed []string
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == keep {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			return removed, err
+		}
+		removed = append(removed, p)
+	}
+	return removed, nil
 }
