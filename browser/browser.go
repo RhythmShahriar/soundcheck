@@ -169,13 +169,14 @@ func Prune(all bool) ([]string, error) {
 	return removed, nil
 }
 
-// NewTab opens a blank tab in sess that renders as if it were in front.
-// Headless Chrome only draws frames for the front tab: in the others
-// requestAnimationFrame never fires, so animations stand still, scrolling
-// helpers wait forever and input stalls. Focus emulation lifts that, and
-// pages checked in parallel tabs behave like the one a visitor sees.
+// NewTab opens a blank page in sess, in its own window, that renders as if
+// it were in front. Headless Chrome treats every tab but the front one as
+// hidden: they don't paint (no FCP, LCP or long tasks), requestAnimation-
+// Frame never fires, so animations stand still, and input stalls. Its own
+// window plus focus emulation lifts that, so pages checked in parallel
+// behave like the one a visitor sees.
 func NewTab(sess *rod.Browser) (*rod.Page, error) {
-	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank", NewWindow: true})
 	if err != nil {
 		return nil, err
 	}
