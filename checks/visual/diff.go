@@ -28,6 +28,10 @@ type DiffOptions struct {
 	// CountAA counts anti-aliased pixels as changed. Off by default, so a
 	// glyph that renders a subpixel differently isn't a change.
 	CountAA bool
+	// Window is the browser window's height. A screenshot exactly that
+	// tall that ends in one-color rows is of a page shorter than the
+	// window: those rows are filler, not content.
+	Window int
 }
 
 // Pixel classes recorded per after-image pixel.
@@ -53,6 +57,10 @@ type Diff struct {
 	// Padding is blank space added at the end of the page (negative when
 	// removed): the document grew without content.
 	Padding int
+	// Content and ContentBefore are where each image's content ends:
+	// rows below are one color (filler of a page shorter than the window,
+	// or a plain page end).
+	Content, ContentBefore int
 
 	after  *raster
 	before *raster
@@ -110,15 +118,17 @@ func Compare(before, after image.Image, opts DiffOptions) *Diff {
 	ignoreA := maskOf(opts.IgnoreAfter, w, a.h)
 	rows, blocks, padding := alignRows(b, a, w, ignoreB, opts)
 	d := compareRows(b, a, w, rows, ignoreB, ignoreA, opts, 0)
-	d.Blocks, d.Padding = blocks, padding
-	if len(blocks) == 0 {
+	d.Blocks, d.Padding, d.Content, d.ContentBefore = blocks, padding, blankTail(a, w), blankTail(b, w)
+	inserts := slices.ContainsFunc(blocks, func(b Band) bool { return b.H > 0 })
+	removes := slices.ContainsFunc(blocks, func(b Band) bool { return b.H < 0 })
+	if !inserts || !removes {
 		return d
 	}
 	// Moving rows around can also "explain" a change in place (a red box
-	// where text was, as text removed and a box inserted). Keep the
-	// alignment only when it explains the page with fewer changed pixels
-	// than lining up the tops, counting rows without a counterpart as
-	// changed on both sides.
+	// where text was, as text removed and a box inserted). When blocks
+	// went both ways, keep the alignment only when it explains the page
+	// with fewer changed pixels than lining up the tops, counting rows
+	// without a counterpart as changed on both sides.
 	cost := d.Changed
 	for _, bl := range blocks {
 		cost += max(bl.H, -bl.H) * w
@@ -128,6 +138,7 @@ func Compare(before, after image.Image, opts DiffOptions) *Diff {
 		return d // lining up the tops can't do better
 	}
 	if top := compareRows(b, a, w, topRows(a.h, b.h), ignoreB, ignoreA, opts, cost-extra); top.Changed+extra < cost {
+		top.Content, top.ContentBefore = d.Content, d.ContentBefore
 		return top
 	}
 	return d
@@ -143,7 +154,7 @@ func alignRows(b, a *raster, w int, ignoreB mask, opts DiffOptions) ([]int, []Ba
 	hb := rowHashes(b, w, ignoreB, seed)
 	align := func(extra []model.Rect) ([]int, []Band, int) {
 		ignore := maskOf(append(slices.Clone(opts.IgnoreAfter), extra...), w, a.h)
-		return plan(b, a, w, matchRows(hb, rowHashes(a, w, ignore, seed)))
+		return plan(b, a, w, matchRows(hb, rowHashes(a, w, ignore, seed)), opts.Window)
 	}
 	rows, blocks, padding := align(opts.IgnoreBefore)
 	if len(opts.IgnoreBefore) == 0 || len(blocks) == 0 {

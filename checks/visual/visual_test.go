@@ -402,3 +402,96 @@ func keys(m map[string]model.Change) []string {
 	}
 	return out
 }
+
+// shortPage is a page shorter than the window, screenshotted window-tall:
+// a header, some text, a gray footer, then white filler.
+func shortPage(content int, footerExtra func(*image.NRGBA, int)) *image.NRGBA {
+	img := canvas(800, 900)
+	fill(img, image.Rect(0, 0, 800, 60), ink)
+	text(img, 40, 100, (content-200)/18, 30)
+	footer := content - 100
+	fill(img, image.Rect(0, footer, 800, content), color.NRGBA{236, 236, 236, 255})
+	text(img, 40, float64(footer+40), 1, 20)
+	if footerExtra != nil {
+		footerExtra(img, footer)
+	}
+	return img
+}
+
+// Pages shorter than the window: a banner at the top and a warning at
+// the top of the footer push content into the filler. Each block is one
+// change, however long each page is, and the filler isn't a change.
+func TestCompareShortPages(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	gray := color.NRGBA{236, 236, 236, 255}
+	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
+		content := 420 + i*120 // the last page grows past the window
+		b := shortPage(content, nil)
+		warned := insertRows(b, content-100, 48, gray) // the warning, inside the footer
+		text(warned, 40, float64(content-100+10), 1, 25)
+		a := windowTall(insertRows(warned, 0, 48, color.NRGBA{255, 124, 82, 255}), content+96) // and the banner
+		addShot(t, before, beforeDir, path, "desktop", b)
+		addShot(t, after, afterDir, path, "desktop", a)
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	cs := Module{}.Compare(context.Background(), cc)
+	got := byTitle(cs)
+	for _, title := range []string{"New block at the top of 4 pages (desktop)", "New block near the bottom of 4 pages (desktop)"} {
+		if c, ok := got[title]; !ok || len(c.Pages) != 4 {
+			t.Errorf("%s: %+v", title, c)
+		}
+	}
+	if len(cs) != 2 {
+		for _, c := range cs {
+			t.Logf("%s %v %s", c.Title, c.Pages, c.Detail)
+		}
+		t.Errorf("%d changes, want 2", len(cs))
+	}
+}
+
+// windowTall crops or pads (with white filler) img to what a capture of
+// a page with this much content gives: at least the 900 px window.
+func windowTall(img *image.NRGBA, content int) *image.NRGBA {
+	h := max(content, 900)
+	out := canvas(800, h)
+	draw.Draw(out, image.Rect(0, 0, 800, min(content, img.Bounds().Dy())), img, image.Point{}, draw.Src)
+	return out
+}
+
+// The same footer change sits lower on longer pages; it's one change.
+// A second, different footer change on other pages shares its line, and
+// the height the footers gained is told with it, not on its own.
+func TestCompareFooterAtDifferentHeights(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/1/", "/2/", "/3/", "/4/", "/5/"} {
+		h := 1500 + i*137
+		b := page(800, h)
+		text(b, 40, 600, 10+i*3, 30)
+		// The footer is redrawn 25 px taller, gray instead of dark…
+		a := canvas(800, h+25)
+		draw.Draw(a, image.Rect(0, 0, 800, h-80), b, image.Point{}, draw.Src)
+		fill(a, image.Rect(0, h-80, 800, h+25), color.NRGBA{236, 236, 236, 255})
+		if i < 3 {
+			text(a, 40, float64(h-60), 2, 20) // …with a notice
+		} else {
+			fill(a, image.Rect(300, h-60, 500, h-20), red) // …or a badge
+		}
+		addShot(t, before, beforeDir, path, "desktop", b)
+		addShot(t, after, afterDir, path, "desktop", a)
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	cs := Module{}.Compare(context.Background(), cc)
+	if len(cs) != 1 {
+		for _, c := range cs {
+			t.Logf("%s %v %s", c.Title, c.Pages, c.Detail)
+		}
+		t.Fatalf("%d changes, want 1", len(cs))
+	}
+	c := cs[0]
+	if c.Title != "Footer changed on 5 pages (desktop)" || !strings.Contains(c.Detail, "2 different changes") ||
+		!strings.Contains(c.Detail, "The pages are 25 px taller.") {
+		t.Errorf("footer = %+v", c)
+	}
+}

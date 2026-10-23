@@ -216,7 +216,7 @@ func backtrack(trace [][]int, b0, a0, x, y int) []pair {
 // band is mostly extra rows, those rows are a block of their own. The
 // last value is blank space added at the end of the page (negative when
 // removed), which isn't a block.
-func plan(b, a *raster, w int, pairs []pair) ([]int, []Band, int) {
+func plan(b, a *raster, w int, pairs []pair, window int) ([]int, []Band, int) {
 	rows := make([]int, a.h)
 	for i := range rows {
 		rows[i] = -1
@@ -227,16 +227,23 @@ func plan(b, a *raster, w int, pairs []pair) ([]int, []Band, int) {
 	// rows that run to the end of the page are cut from a block that has
 	// content before them, and counted as padding.
 	padding := 0
+	// A page shorter than the window is screenshotted window-tall, so its
+	// last rows are filler, and content pushed down eats into it. Filler
+	// rows (a window-tall shot, or both pages ending in the same color)
+	// are always padding; other one-color rows at the end only when
+	// content is left in the block.
 	tailA, tailB := blankTail(a, w), blankTail(b, w)
+	sameEnd := tailA < a.h && tailB < b.h && bytes.Equal(a.row(a.h-1, w), b.row(b.h-1, w))
+	fillA, fillB := sameEnd || (a.h == window && tailA < a.h), sameEnd || (b.h == window && tailB < b.h)
 	hunk := func(b0, b1, a0, a1 int) {
 		if a1 >= tailA && a1-a0 > b1-b0 {
-			if end := max(tailA, a0); end-a0-(b1-b0) >= minResize {
+			if end := max(tailA, a0); fillA || end-a0-(b1-b0) >= minResize {
 				padding += a1 - end
 				a1 = end
 			}
 		}
 		if b1 >= tailB && b1-b0 > a1-a0 {
-			if end := max(tailB, b0); end-b0-(a1-a0) >= minResize {
+			if end := max(tailB, b0); fillB || end-b0-(a1-a0) >= minResize {
 				padding -= b1 - end
 				b1 = end
 			}

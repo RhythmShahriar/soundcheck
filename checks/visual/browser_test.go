@@ -53,7 +53,7 @@ main{padding:20px} .box{width:300px;height:150px} .slides{width:300px;height:100
 			return
 		}
 		render(w, "Home", `<div class="slides" id="s"></div>
-<script>const s = document.getElementById('s'); const tick = () => { s.style.background = 'hsl(' + Math.floor(Math.random()*360) + ',70%,50%)'; }; tick(); setInterval(tick, 150);</script>`)
+<script>const s = document.getElementById('s'); const tick = () => { s.style.background = 'hsl(' + Math.floor(Date.now() / 10 % 360) + ',70%,50%)'; }; tick(); setInterval(tick, 150);</script>`)
 	})
 	mux.HandleFunc("/about/", func(w http.ResponseWriter, r *http.Request) {
 		extra := ""
@@ -79,7 +79,7 @@ func TestSnapshotAndCompareInChrome(t *testing.T) {
 	var changed atomic.Bool
 	srv := site(t, &changed)
 	cfg := config.Default()
-	cfg.Rate, cfg.Tabs = 0, 1 // one tab: a background tab may not repaint between the two shots
+	cfg.Rate, cfg.Tabs = 0, 3
 	cfg.Modules = []string{"visual"}
 	modules := []check.Module{visual.Module{}}
 	st := store.Store{Root: t.TempDir()}
@@ -251,5 +251,79 @@ func TestBannerOnEveryPageInChrome(t *testing.T) {
 	}
 	if len(titles) != 4 { // one per block per viewport; the size change is told with them
 		t.Errorf("%d changes: %v", len(titles), titles)
+	}
+}
+
+// Short pages (shorter than the window) get a banner at the top and a
+// PHP warning in the footer: the screenshots stay window-tall, the
+// content just eats into the blank filler below it. Each block is one
+// change per viewport.
+func TestShortPagesInChrome(t *testing.T) {
+	needBrowser(t)
+	var broken atomic.Bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		words := map[string]int{"/": 20, "/a/": 45, "/b/": 70, "/c/": 30}[r.URL.Path]
+		if words == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		banner, warning := "", ""
+		if broken.Load() {
+			banner = `<div style="height:48px;background:#ff7c52;color:#fff;line-height:48px;text-align:center">Free shipping on orders over $50!</div>`
+			warning = `<br /><b>Warning</b>:  Undefined array key "layout" in <b>/var/www/html/wp-content/themes/acme/footer.php</b> on line <b>42</b><br />`
+		}
+		fmt.Fprintf(w, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>%[1]s</title>
+<style>body{margin:0;font:16px/1.5 serif} header{background:#111;padding:16px} header a{color:#fff;margin-right:12px} main{padding:20px 32px} footer{background:#ececec;padding:40px 32px}</style></head>
+<body>%[2]s<header><a href="/">Home</a><a href="/a/">A</a><a href="/b/">B</a><a href="/c/">C</a></header>
+<main><h1>Page %[1]s</h1><p>%[3]s</p></main><footer>%[4]s<p>&copy; 2026 Acme Studio</p></footer></body></html>`,
+			r.URL.Path, banner, strings.Repeat("words that wrap ", words), warning)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Rate, cfg.Tabs = 0, 3
+	cfg.Modules = []string{"visual"}
+	modules := []check.Module{visual.Module{}}
+	st := store.Store{Root: t.TempDir()}
+	ctx := context.Background()
+	snapDir, _ := st.NewDir("snapshots", "before")
+	before, err := runner.Run(ctx, runner.Options{Config: cfg, Target: srv.URL, Snapshot: true, Dir: snapDir, Version: "test",
+		Modules: modules, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, p := range before.Pages {
+		paths = append(paths, p.Path)
+		if h := p.Shots["desktop"].Height; h != 900 {
+			t.Errorf("%s: desktop shot is %d px tall; the fixture should be shorter than the window", p.Path, h)
+		}
+	}
+	broken.Store(true)
+	runDir, _ := st.NewDir("runs", "now")
+	after, err := runner.Run(ctx, runner.Options{Config: cfg, Target: srv.URL, Paths: paths, Dir: runDir, Version: "test",
+		Modules: modules, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmp := compare.Compare(ctx, &check.CompareContext{Config: cfg, Before: before, After: after, BeforeDir: snapDir, AfterDir: runDir},
+		modules, "test")
+	var titles []string
+	for _, c := range cmp.Changes {
+		t.Logf("%s %v %.2f %s", c.Title, c.Pages, c.Score, c.Detail)
+		titles = append(titles, c.Title)
+	}
+	for _, want := range []string{
+		"New block at the top of 4 pages (desktop)", "New block at the top of 4 pages (mobile)",
+		"New block near the bottom of 4 pages (desktop)", "New block near the bottom of 4 pages (mobile)",
+	} {
+		if !slices.Contains(titles, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if len(titles) != 4 {
+		t.Errorf("%d changes, want 4: %v", len(titles), titles)
 	}
 }
