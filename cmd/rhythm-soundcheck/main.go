@@ -120,7 +120,7 @@ What to check:
 
 Requests and browser:
       --rate <n>             page loads per second per site (default 5)
-      --tabs <n>             pages checked at once (default 4)
+      --tabs <n>             pages checked at once (default 8)
       --timeout <d>          per page (default 30s)
   -A, --user-agent <ua>      User-Agent header
   -H, --header <h>           extra header, "Name: value" (repeatable)

@@ -82,7 +82,7 @@ func Default() Config {
 		Flows:        filepath.Join(Dir, "flows"),
 		Speed:        Speed{Slower: 25},
 		Rate:         5,
-		Tabs:         4,
+		Tabs:         8,
 		Timeout:      30,
 	}
 }

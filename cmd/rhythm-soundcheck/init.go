@@ -56,7 +56,7 @@ speed:
   slower: 25            # % slower before a page is reported SLOWER
 
 rate: 5                 # page loads per second per site
-tabs: 4                 # pages checked at once
+tabs: 8                 # pages checked at once; politeness comes from rate
 timeout: 30             # seconds per page
 `
 
