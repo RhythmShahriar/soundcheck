@@ -60,9 +60,9 @@ section.group { margin-top: 34px; }
 .group h2 { display: flex; align-items: baseline; gap: 10px; font-size: 13px; letter-spacing: .1em; margin: 0 0 4px; color: var(--c); }
 .group h2 .count { color: var(--muted); font-weight: 500; letter-spacing: 0; }
 .group .blurb { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
-.item { --c: var(--muted); background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+.item { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--muted)); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
 .item .head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
-.badge { flex: none; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--c); border-radius: 6px; padding: 2px 7px; margin-right: 8px; vertical-align: 2px; }
+.badge { flex: none; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--c, var(--muted)); border-radius: 6px; padding: 2px 7px; margin-right: 8px; vertical-align: 2px; }
 .item h3 { margin: 0; font-size: 16px; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
 .where { flex: none; color: var(--muted); font: 12px/1.6 var(--mono); max-width: 40%; text-align: right; overflow-wrap: anywhere; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
@@ -83,6 +83,7 @@ details.pages ul { margin: 8px 0 0; padding-left: 18px; columns: 2 260px; }
 .modes button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
 .frame { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: auto; max-height: 72vh; background: var(--soft); touch-action: pan-y; cursor: ew-resize; user-select: none; }
 .frame img { display: block; width: 100%; height: auto; }
+.frame.phone { max-width: 390px; }
 .frame .before { position: absolute; inset: 0 auto auto 0; width: 100%; }
 .frame .before img { clip-path: inset(0 calc(100% - var(--x, 50%)) 0 0); }
 .frame .handle { position: absolute; top: 0; bottom: 0; left: var(--x, 50%); width: 2px; background: var(--dot); pointer-events: none; }
@@ -157,7 +158,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
         <div class="modes" role="group" aria-label="Screenshot view">
           <button type="button" data-mode="slide" aria-pressed="true">Slider</button><button type="button" data-mode="before" aria-pressed="false">Before</button><button type="button" data-mode="after" aria-pressed="false">After</button>{{if .Diff}}<button type="button" data-mode="diff" aria-pressed="false">Diff</button>{{end}}
         </div>
-        <div class="frame">
+        <div class="frame{{if .Phone}} phone{{end}}">
           <span class="tag">BEFORE</span><span class="tag right">AFTER</span>
           <img class="after" alt="After" src="{{.After}}" data-after="{{.After}}"{{if .Diff}} data-diff="{{.Diff}}"{{end}}>
           <div class="before"><img alt="Before" src="{{.Before}}"></div>

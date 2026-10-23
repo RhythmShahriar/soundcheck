@@ -66,6 +66,7 @@ type htmlItem struct {
 
 type htmlShots struct {
 	Before, After, Diff template.URL
+	Phone               bool // a mobile capture, shown at phone width
 }
 
 type htmlPage struct {
@@ -104,12 +105,14 @@ func HTML(w io.Writer, r Result) error {
 			}
 			g := htmlGroup{Key: class, Label: info.Label, Glyph: info.Glyph, Blurb: capitalize(info.Blurb)}
 			for _, ch := range groups[class] {
-				it := htmlItem{Key: class, Label: info.Label, Title: ch.Title, Check: ch.Check, Where: pagesLabel(ch.Pages, 1),
+				it := htmlItem{Key: class, Label: info.Label, Title: ch.Title, Check: ch.Check, Where: where(ch.Pages),
 					Pages: ch.Pages, BeforeAfter: beforeAfter(ch), Source: ch.Source, Detail: ch.Detail}
 				if class != model.Fixed {
 					it.Fix = ch.Fix
 				}
-				if ch.Score > 0 {
+				// Score is a percentage for visual and speed changes; for
+				// issue changes it only ranks by page count.
+				if ch.Score > 0 && (class == model.Changed || class == model.Slower) {
 					it.Score = fmt.Sprintf("%.1f%%", ch.Score)
 				}
 				if len(ch.Files) > 0 {
@@ -149,7 +152,7 @@ func HTML(w io.Writer, r Result) error {
 			for _, i := range issues {
 				if i.Level == level {
 					g.Items = append(g.Items, htmlItem{Key: string(level), Label: strings.ToUpper(string(level)), Title: i.Title,
-						Check: i.Check, Where: pagesLabel(i.Pages, 1), Pages: i.Pages, Source: i.Source, Detail: i.Detail, Fix: i.Fix})
+						Check: i.Check, Where: where(i.Pages), Pages: i.Pages, Source: i.Source, Detail: i.Detail, Fix: i.Fix})
 				}
 			}
 			if len(g.Items) > 0 {
@@ -188,7 +191,8 @@ func (r Result) shots(files map[string]string) *htmlShots {
 		}
 		return u
 	}
-	s := &htmlShots{Before: load("before"), After: load("after"), Diff: load("diff")}
+	s := &htmlShots{Before: load("before"), After: load("after"), Diff: load("diff"),
+		Phone: strings.Contains(files["after"], "-mobile")}
 	if s.Before == "" || s.After == "" {
 		return nil
 	}
@@ -224,6 +228,14 @@ func embedImage(path string) (template.URL, error) {
 		return "", err
 	}
 	return template.URL("data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())), nil //nolint:gosec // our own encoded image
+}
+
+// where is one page's path, or how many pages.
+func where(pages []string) string {
+	if len(pages) == 1 {
+		return pages[0]
+	}
+	return countLabel(pages)
 }
 
 func ms(v float64) string {
