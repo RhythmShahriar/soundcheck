@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 
@@ -92,6 +93,10 @@ func cmdFlows(args []string, stdout, stderr io.Writer) int {
 	cfg, err := config.Load(filepath.Join(config.Dir, "config.yaml"))
 	if err != nil {
 		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		return exitUsage
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Flows, "example.yaml")); err == nil {
+		fmt.Fprintf(stderr, "rhythm soundcheck: %s already exists\n", filepath.Join(cfg.Flows, "example.yaml"))
 		return exitUsage
 	}
 	path, err := flow.Init(cfg.Flows)

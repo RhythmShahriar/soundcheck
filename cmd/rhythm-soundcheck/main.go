@@ -114,7 +114,8 @@ What to check:
       --level <list>         interactions: inspect, click, submit, flows
                              (default inspect,click; submit sends test data)
       --viewport <list>      desktop, mobile (default both)
-      --no-login             don't log in even if SOUNDCHECK_USER is set
+      --no-login             skip the login (leak test, login flows) even if
+                             SOUNDCHECK_USER is set
       --lighthouse           also run Unlighthouse (needs Node.js and npx)
 
 Requests and browser:
@@ -135,10 +136,11 @@ CI:
                              broke, new, changed or slower; for run and
                              snapshot: issues at or above error, warning, notice
 
-Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to check pages as a
-logged-in user and test that caches don't leak them. Credentials are read only
-from the environment and never written to reports. Uses /wp-login.php, or the
-login flow in .soundcheck/config.yaml.
+Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
+test that caches don't leak logged-in pages to visitors, and to run flows that
+set login: true. Pages themselves are checked as a visitor. Credentials are
+read only from the environment and never written to reports. Uses
+/wp-login.php, or the login flow in .soundcheck/config.yaml.
 
 Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check · 130 interrupted

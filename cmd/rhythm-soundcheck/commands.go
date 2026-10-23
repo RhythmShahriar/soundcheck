@@ -123,7 +123,8 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log},
 	}
 	run, err := runner.Run(s.ctx, opts)
-	if run != nil && s.o.lighthouse && s.ctx.Err() == nil {
+	// A snapshot runs Lighthouse once it's saved under its own name.
+	if run != nil && s.o.lighthouse && !snapshot && s.ctx.Err() == nil {
 		s.lighthouse(run.Target, dir)
 	}
 	return run, err
@@ -230,7 +231,11 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
+	_ = os.Remove(filepath.Dir(dir)) //nolint:gosec // our own .incoming folder, removed only when empty
 	s.st.ExcludeFromGit()
+	if s.o.lighthouse && s.ctx.Err() == nil {
+		s.lighthouse(run.Target, final)
+	}
 	return s.finish(report.Result{Run: run, Dir: final},
 		"next: make your change (update a plugin, deploy…), then run: rhythm soundcheck compare")
 }
@@ -361,7 +366,9 @@ func cmdReport(s *session) int {
 	var err error
 	switch {
 	case len(s.args) == 0:
-		dir, err = s.st.LatestRun()
+		if dir, err = s.st.LatestRun(); err != nil {
+			err = cli.UsageError{Msg: err.Error()}
+		}
 	default:
 		if fi, statErr := os.Stat(s.args[0]); statErr == nil && fi.IsDir() { //nolint:gosec // the user names a run folder to show
 			dir = s.args[0]
@@ -462,18 +469,18 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
 		return exitError
 	}
-	if !downloaded {
-		fmt.Fprintln(stdout, "Browser: installed Chrome at", bin, "(updated with your system)")
-		return exitOK
-	}
-	removed, err := browser.Prune()
+	removed, err := browser.Prune(!downloaded)
 	for _, r := range removed {
-		fmt.Fprintln(stdout, "Removed older Chromium", r)
+		fmt.Fprintln(stdout, "Removed unused Chromium", r)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
 	}
-	fmt.Fprintln(stdout, "Browser: Chromium at", bin)
+	if !downloaded {
+		fmt.Fprintln(stdout, "Browser: installed Chrome at", bin, "(updated with your system)")
+	} else {
+		fmt.Fprintln(stdout, "Browser: Chromium at", bin)
+	}
 	return exitOK
 }
 
