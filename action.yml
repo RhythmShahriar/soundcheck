@@ -28,10 +28,11 @@ inputs:
     default: ci
   fail-on:
     description: >
-      Fail the job on changes at or above broke, new, changed or slower (comparisons), or issues at
-      or above error, warning or notice (run, snapshot). Empty never fails.
+      Fail the job on changes at or above broke, new, changed or slower (modes against and compare),
+      or on issues at or above error, warning or notice (modes run and snapshot). Default: broke when
+      comparing, error otherwise. "none" never fails.
     required: false
-    default: broke
+    default: ""
   args:
     description: Extra flags, e.g. "--limit 100 --skip speed -k".
     required: false
@@ -93,8 +94,12 @@ runs:
         set -uo pipefail
         mode=$MODE
         [ -n "$mode" ] || { [ -n "$AGAINST" ] && mode=against || mode=run; }
+        level=$FAIL_ON
+        if [ -z "$level" ]; then
+          case "$mode" in against|compare) level=broke ;; *) level=error ;; esac
+        fi
         fail=()
-        [ -z "$FAIL_ON" ] || fail=(--fail-on "$FAIL_ON")
+        [ "$level" = none ] || fail=(--fail-on "$level")
         # shellcheck disable=SC2206 # ARGS is a flag string to split
         extra=($ARGS)
         case "$mode" in
@@ -135,5 +140,5 @@ runs:
       env:
         FAIL_ON: ${{ inputs.fail-on }}
       run: |
-        echo "::error::Soundcheck found changes at or above --fail-on $FAIL_ON. See the job summary and the soundcheck-report artifact."
+        echo "::error::Soundcheck found changes or issues at or above --fail-on ${FAIL_ON:-its default}. See the job summary and the soundcheck-report artifact."
         exit 1
