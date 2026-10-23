@@ -84,7 +84,7 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	case frameworkErr.MatchString(text) || strings.Contains(strings.ToLower(p.Title), "whoops"):
 		check.Page(p, model.Issue{Check: "health/error-page", Level: model.Error, Title: "Application error page",
 			Fix: "Read the exception shown; turn APP_DEBUG/display_errors off in production."})
-	case p.Status == 200 && p.TextLength == 0 && len(p.Resources) == 0:
+	case p.Status == 200 && p.TextLength == 0 && !loadsContent(p):
 		check.Page(p, model.Issue{Check: "health/white-screen", Level: model.Error, Title: "Blank page (white screen)",
 			Fix: "A PHP fatal error with display_errors off usually causes this; check the error log."})
 	}
@@ -335,4 +335,18 @@ func orDefault(s, d string) string {
 		return d
 	}
 	return s
+}
+
+// loadsContent reports whether an empty-text page still loaded something
+// that could show content (styles, scripts, images). The browser's own
+// favicon fetch doesn't count: WordPress redirects /favicon.ico to its
+// logo, so a blank WordPress page always "loads" one image.
+func loadsContent(p *model.Page) bool {
+	for _, r := range p.Resources {
+		if r.Type == "Other" || strings.Contains(r.URL, "favicon") || strings.Contains(r.URL, "/wp-includes/images/w-logo") {
+			continue
+		}
+		return true
+	}
+	return false
 }

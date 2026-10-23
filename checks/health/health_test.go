@@ -155,3 +155,20 @@ func TestInlineScriptErrorsGroup(t *testing.T) {
 		t.Errorf("the same inline error on two pages must share a key: %v", keys)
 	}
 }
+
+func TestWhiteScreenIgnoresFavicon(t *testing.T) {
+	p := &model.Page{URL: "http://x.test/a/", Path: "/a/", Status: 200, Resources: []model.Resource{
+		{URL: "http://x.test/wp-includes/images/w-logo-blue-white-bg.png", Type: "Image", Status: 200},
+	}}
+	Module{}.CheckPage(&check.Context{}, p)
+	if len(p.Issues) == 0 || p.Issues[0].Check != "health/white-screen" {
+		t.Errorf("a blank WordPress page must be a white screen: %+v", p.Issues)
+	}
+	p = &model.Page{URL: "http://x.test/g/", Path: "/g/", Status: 200, Resources: []model.Resource{{URL: "http://x.test/photo.jpg", Type: "Image", Status: 200}}}
+	Module{}.CheckPage(&check.Context{}, p)
+	for _, i := range p.Issues {
+		if i.Check == "health/white-screen" {
+			t.Error("a page showing an image isn't blank")
+		}
+	}
+}
