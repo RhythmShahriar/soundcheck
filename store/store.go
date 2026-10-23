@@ -201,6 +201,10 @@ func (s Store) ExcludeFromGit() {
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return
 	}
+	// Already ignored (e.g. inside a build or work folder): nothing to add.
+	if exec.Command("git", "check-ignore", "-q", abs).Run() == nil { //nolint:gosec // our own store path
+		return
+	}
 	base := "/" + filepath.ToSlash(rel) + "/"
 	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/"}
 	existing, _ := os.ReadFile(path) //nolint:gosec // the repository's own exclude file

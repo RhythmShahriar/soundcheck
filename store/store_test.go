@@ -119,3 +119,21 @@ func TestExcludeFromGit(t *testing.T) {
 		t.Error("config.yaml must stay visible to git")
 	}
 }
+
+func TestExcludeFromGitSkipsIgnoredFolders(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatal(string(out))
+	}
+	_ = os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("/work/\n"), 0o600)
+	_ = os.MkdirAll(filepath.Join(repo, "work", "s01"), 0o750)
+	t.Chdir(filepath.Join(repo, "work", "s01"))
+	Store{Root: ".soundcheck"}.ExcludeFromGit()
+	data, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	if strings.Contains(string(data), "soundcheck") {
+		t.Errorf("an ignored folder mustn't add exclude lines:\n%s", data)
+	}
+}
