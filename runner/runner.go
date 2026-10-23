@@ -86,7 +86,10 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	// Pages: the given paths, or discovered from sitemaps and links.
 	copts := crawl.Options{Limit: cfg.Pages.Limit, PerGroup: cfg.Pages.PerGroup, Include: cfg.Pages.Include,
 		Exclude: cfg.Pages.Exclude, IgnoreRobots: cfg.Pages.IgnoreRobots, UserAgent: opts.UserAgent,
-		Rate: cfg.Rate, HTTP: client}
+		Rate: cfg.Rate, HTTP: client,
+		// The browser reports each page's rendered links, which the visit
+		// loop below adds; crawling the HTML too would load every page twice.
+		NoFollow: true}
 	discover := len(opts.Paths) == 0
 	var frontier *crawl.Frontier
 	if discover {
