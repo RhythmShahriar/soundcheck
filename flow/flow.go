@@ -14,6 +14,10 @@
 //	  - wait: {selector: .sent}
 //	  - expect: {text: Thank you}
 //
+// On URLs listed under production in the config, click and submit steps
+// are refused unless the flow sets `production: true`; read-only steps
+// (goto, fill, select, check, wait, expect, screenshot) always run.
+//
 // Values may use ${env:NAME} (read from the environment, never stored or
 // printed) and ${fake:kind} (test data such as email, name, phone, url,
 // message; see Fake.Value).
@@ -39,9 +43,12 @@ type Flow struct {
 	Start string `yaml:"start"` // path or URL opened first; empty starts on the site's home page
 	// Login runs the flow as the test user (SOUNDCHECK_USER and
 	// SOUNDCHECK_PASSWORD); without credentials the flow is skipped.
-	Login bool   `yaml:"login"`
-	Steps []Step `yaml:"steps"`
-	File  string `yaml:"-"` // where it was loaded from
+	Login bool `yaml:"login"`
+	// Production lets the flow click and submit on URLs listed under
+	// production in the config. Without it those steps are refused there.
+	Production bool   `yaml:"production"`
+	Steps      []Step `yaml:"steps"`
+	File       string `yaml:"-"` // where it was loaded from
 }
 
 // Step is one action. Exactly one field is set.
@@ -314,8 +321,19 @@ func ReadFile(path string) (Flow, error) {
 	return f, nil
 }
 
+// FileError is a flow file that couldn't be read or parsed.
+type FileError struct {
+	File string
+	Err  error
+}
+
+func (e *FileError) Error() string { return e.File + ": " + e.Err.Error() }
+func (e *FileError) Unwrap() error { return e.Err }
+
 // Load reads every .yaml/.yml flow in dir, in name order. A missing
-// folder means no flows.
+// folder means no flows. A file that can't be read or parsed doesn't stop
+// the others: it's returned as a *FileError, joined in err, next to the
+// flows that loaded.
 func Load(dir string) ([]Flow, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -324,7 +342,6 @@ func Load(dir string) ([]Flow, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []Flow
 	var names []string
 	for _, e := range entries {
 		ext := strings.ToLower(filepath.Ext(e.Name()))
@@ -334,14 +351,22 @@ func Load(dir string) ([]Flow, error) {
 		names = append(names, e.Name())
 	}
 	slices.Sort(names)
+	var out []Flow
+	var errs []error
 	for _, n := range names {
-		f, err := ReadFile(filepath.Join(dir, n))
-		if err != nil {
-			return nil, err
+		path := filepath.Join(dir, n)
+		data, err := os.ReadFile(path) //nolint:gosec // the user's own flow file
+		if err == nil {
+			var f Flow
+			if f, err = Parse(data); err == nil {
+				f.File = path
+				out = append(out, f)
+				continue
+			}
 		}
-		out = append(out, f)
+		errs = append(errs, &FileError{File: path, Err: err})
 	}
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 // Example is the flow `flows init` writes.
@@ -353,7 +378,8 @@ const Example = `# A Soundcheck flow: a scripted journey checked on every run wh
 # ${fake:email}, ${fake:name}, ${fake:phone}, ${fake:message}, ...
 name: Contact form sends
 start: /contact/
-# login: true   # run as SOUNDCHECK_USER / SOUNDCHECK_PASSWORD
+# login: true        # run as SOUNDCHECK_USER / SOUNDCHECK_PASSWORD
+# production: true   # allow clicks and submits on production URLs (config: production)
 steps:
   - fill: {selector: "input[type=email]", value: "${fake:email}"}
   - fill: {selector: textarea, value: "${fake:message}"}

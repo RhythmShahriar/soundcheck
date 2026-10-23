@@ -21,14 +21,21 @@ type Options struct {
 	Fake    Fake
 	Env     func(string) string                  // default os.Getenv
 	Save    func(name string, data []byte) error // stores screenshots; nil skips them
+	// Production reports URLs that are live sites. Click and submit steps
+	// there are refused (ErrProduction) unless the flow sets production.
+	Production func(url string) bool
 }
+
+// ErrProduction is a click or submit refused on a production URL.
+var ErrProduction = errors.New("refused on a production URL (set production: true in the flow to allow it)")
 
 // Failure is a step that didn't work. Step is 1-based; 0 is the start
 // page.
 type Failure struct {
-	Step int
-	Desc string // the step, from its definition
-	Err  error  // what went wrong, with secrets masked
+	Step    int
+	Desc    string // the step, from its definition
+	Err     error  // what went wrong, with secrets masked
+	Refused bool   // a write step refused by the production guard
 }
 
 func (f Failure) Error() string {
@@ -50,7 +57,8 @@ func Run(ctx context.Context, page *rod.Page, f Flow, o Options) []Failure {
 	defer stop()
 	var out []Failure
 	fail := func(step int, desc string, err error) {
-		out = append(out, Failure{Step: step, Desc: desc, Err: errors.New(Mask(err.Error(), r.secrets...))})
+		out = append(out, Failure{Step: step, Desc: desc, Err: errors.New(Mask(err.Error(), r.secrets...)),
+			Refused: errors.Is(err, ErrProduction)})
 	}
 	start := f.Start
 	if start == "" {
@@ -63,6 +71,10 @@ func Run(ctx context.Context, page *rod.Page, f Flow, o Options) []Failure {
 	for i, s := range f.Steps {
 		if ctx.Err() != nil {
 			fail(i+1, s.String(), ctx.Err())
+			return out
+		}
+		if (s.Click != nil || s.Submit != nil) && !f.Production && r.onProduction() {
+			fail(i+1, s.String(), ErrProduction)
 			return out
 		}
 		if err := r.step(i+1, s); err != nil {
@@ -95,6 +107,15 @@ func (r *runner) watch() func() {
 	})
 	go wait()
 	return cancel
+}
+
+// onProduction reports whether the current page is on a production URL.
+func (r *runner) onProduction() bool {
+	if r.o.Production == nil {
+		return false
+	}
+	info, err := r.page.Timeout(5 * time.Second).Info()
+	return err != nil || r.o.Production(info.URL) // unknown counts as production
 }
 
 func (r *runner) t() *rod.Page { return r.page.Timeout(r.o.Timeout) }
