@@ -84,6 +84,10 @@ func Start(ctx context.Context, page *rod.Page, opts Options) (*Recorder, error)
 	r := &Recorder{page: page, reqs: map[proto.NetworkRequestID]*req{}}
 	for _, call := range []func() error{
 		func() error { return proto.NetworkEnable{}.Call(page) },
+		// Every page loads cold, like a first visit: with the tabs sharing
+		// one HTTP cache, pages after the first would weigh almost nothing
+		// and their timings would depend on visit order.
+		func() error { return proto.NetworkSetCacheDisabled{CacheDisabled: true}.Call(page) },
 		func() error { return proto.RuntimeEnable{}.Call(page) },
 		func() error { return proto.LogEnable{}.Call(page) },
 		func() error { _, err := page.EvalOnNewDocument(metricsJS); return err },
