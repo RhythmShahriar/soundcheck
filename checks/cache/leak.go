@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -163,7 +164,10 @@ func maskValue(s string) string {
 // anonymously and looks for the user's details and logged-in markers.
 func leak(ctx context.Context, cc *check.Context, results []*result) {
 	if cc.Login == nil || cc.NewSession == nil {
-		cc.Warn("cache: skipped the cache leak test; set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to run it")
+		// With credentials set, the runner already said the login failed.
+		if os.Getenv("SOUNDCHECK_USER") == "" || os.Getenv("SOUNDCHECK_PASSWORD") == "" {
+			cc.Warn("cache: skipped the cache leak test; set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to run it")
+		}
 		return
 	}
 	if cc.Config.IsProduction(cc.Base.String()) {

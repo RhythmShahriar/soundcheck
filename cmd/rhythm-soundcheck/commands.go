@@ -113,7 +113,7 @@ func (s *session) start(target string) {
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
 	login, who := loginFunc(s.cfg, s.o.noLogin)
 	if who != "" {
-		s.view.Step("Login", "as "+who+" (from SOUNDCHECK_USER)")
+		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
 	}
 	opts := runner.Options{
 		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,

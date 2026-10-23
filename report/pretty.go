@@ -114,7 +114,9 @@ func (p *Pretty) Step(label, value string) {
 
 // Discovered reports how many pages will be checked.
 func (p *Pretty) Discovered(pages int, skipped map[string]int) {
-	line := plural(pages, "page", "pages")
+	// Links found in rendered pages are added as the run goes, so this is
+	// where it starts; the summary has the final count.
+	line := plural(pages, "page", "pages") + " to start"
 	if n := total(skipped); n > 0 {
 		var why []string
 		for _, k := range sortedKeys(skipped) {
@@ -203,7 +205,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 	c := r.Comparison
 	groups := byClass(c.Changes)
 	if p.o.Plain {
-		fmt.Fprintln(p.w)
+		if len(c.Changes) > 0 {
+			fmt.Fprintln(p.w)
+		}
 		for _, class := range model.Classes {
 			for _, ch := range groups[class] {
 				fmt.Fprintf(p.w, "[%s] %s - %s\n", classes[class].Label, ch.Title, pagesLabel(ch.Pages, 3))
@@ -274,7 +278,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 func (p *Pretty) run(r Result, hint string) {
 	issues := Issues(r.Run)
 	if p.o.Plain {
-		fmt.Fprintln(p.w)
+		if len(issues) > 0 {
+			fmt.Fprintln(p.w)
+		}
 		for _, i := range issues {
 			fmt.Fprintf(p.w, "[%s] %s - %s\n", strings.ToUpper(string(i.Level)), i.Title, pagesLabel(i.Pages, 3))
 			if i.Source != "" {

@@ -152,10 +152,9 @@ func verb(n int, one, many string) string {
 	return many
 }
 
+// onPages counts the pages a grouped suggestion applies to: each has at
+// least one of the files listed, not necessarily all of them.
 func onPages(n, of int) string {
-	if n == of && n > 1 {
-		return fmt.Sprintf("every page (%d)", n)
-	}
 	return fmt.Sprintf("%d of %d pages", n, of)
 }
 
