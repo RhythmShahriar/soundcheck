@@ -3,7 +3,7 @@
 *.exe
 *.test
 *.out
-coverage.*
+/coverage.*
 .DS_Store
 .idea/
 .vscode/
