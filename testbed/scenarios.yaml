@@ -1,0 +1,257 @@
+# Soundcheck testbed scenarios: the benchmark's manifest.
+#
+# Each scenario breaks one thing on the testbed sites. Switch it with
+# ./toggle.sh <id> good|broken (it creates or removes state/<id>).
+#
+# Fields:
+#   site      wp (WordPress, http://localhost:18800) or php (plain PHP, http://localhost:18810)
+#   path      the page to start from; the benchmark runs `snapshot <site><path>`
+#   include   pages the run is limited to (pages.include globs), so each
+#             scenario is checked on its own pages only
+#   module    the Soundcheck module that should catch it
+#   levels    interaction levels the run needs (--level), when not the default
+#   login     the run needs SOUNDCHECK_USER / SOUNDCHECK_PASSWORD (see README)
+#   toggle    what the broken state changes, and where it's implemented
+#   expect    one or more matchers; the scenario is caught when the
+#             comparison has a change with that class whose check starts
+#             with `check` and whose title contains `title` (case-insensitive)
+#   tools     third-party tools in the benchmark that could catch it
+#
+# Checks for modules that aren't merged yet (visual, interact, cache, speed)
+# are matched by module prefix only, e.g. "interact/".
+
+sites:
+  wp: http://localhost:18800
+  php: http://localhost:18810
+
+scenarios:
+  - id: s01
+    name: PHP fatal error on one inner page
+    site: wp
+    path: /s01-fatal/
+    include: ["/s01-fatal*"]
+    module: health
+    toggle: "Pricing Tables 2.0 calls a function it no longer defines (wp/plugins/testbed-pricing)"
+    expect:
+      - {class: broke, check: health/wp-critical, title: critical error}
+    tools: [unlighthouse]
+
+  - id: s02
+    name: PHP warning with file and line in the footer of every page
+    site: wp
+    path: /s02-warning/
+    include: ["/s02-warning*"]
+    module: health
+    toggle: "the theme footer reads a missing setting with display_errors on (wp/themes/testbed/footer.php)"
+    expect:
+      - {class: new, check: health/php-error, title: "PHP Warning: Undefined array key"}
+    tools: [backstop]
+
+  - id: s03
+    name: Deprecated notice after a PHP upgrade (plain PHP)
+    site: php
+    path: /report.php
+    include: ["/report.php*"]
+    module: health
+    toggle: "the legacy strlen(null) line PHP 8.1+ deprecates runs (php/report.php)"
+    expect:
+      - {class: new, check: health/php-error, title: "PHP Deprecated: strlen()"}
+    tools: [backstop]
+
+  - id: s04
+    name: White screen (empty 200) on one page
+    site: wp
+    path: /s04-blank/
+    include: ["/s04-blank*"]
+    module: health
+    toggle: "the page answers 200 with an empty body (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: broke, check: health/white-screen, title: white screen}
+    tools: [backstop, unlighthouse]
+
+  - id: s05
+    name: JS error on load from a plugin script
+    site: wp
+    path: /s05-js-error/
+    include: ["/s05-js-error*"]
+    module: health
+    toggle: "Store Locator 2.0 throws while starting up (wp/plugins/testbed-widgets/js/locator-2.0.js)"
+    expect:
+      - {class: new, check: health/js-error, title: "Uncaught TypeError"}
+      - {class: broke, check: health/js-error, title: "Uncaught TypeError"}
+    tools: [backstop, unlighthouse]
+
+  - id: s06
+    name: jQuery deregistered while inline code still uses it
+    site: wp
+    path: /s06-jquery/
+    include: ["/s06-jquery*"]
+    module: health
+    toggle: "a setting deregisters jquery; the footer's inline jQuery() throws (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: new, check: health/js-error, title: "jQuery is not defined"}
+    tools: [unlighthouse]
+
+  - id: s07
+    name: admin-ajax endpoint returns 500
+    site: wp
+    path: /s07-ajax/
+    include: ["/s07-ajax*"]
+    module: health
+    toggle: "the stock checker's wp_ajax handler answers 500 (wp/plugins/testbed-widgets)"
+    expect:
+      - {class: broke, check: health/failed-request, title: "admin-ajax.php returned 500"}
+    tools: [unlighthouse]
+
+  - id: s08
+    name: REST endpoint used by a widget returns 404
+    site: wp
+    path: /s08-rest/
+    include: ["/s08-rest*"]
+    module: health
+    toggle: "a plugin update renames the REST route the reviews widget calls (wp/plugins/testbed-widgets)"
+    expect:
+      - {class: new, check: health/failed-request, title: "/wp-json/testbed/v1/reviews returned 404"}
+    tools: [unlighthouse]
+
+  - id: s09
+    name: Deleted page that other pages still link to
+    site: wp
+    path: /s09-links/
+    include: ["/s09-links*"]
+    module: health
+    toggle: "the Spring offer page is gone and answers 404 (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: broke, check: health/status, title: "Page not found (404)"}
+      - {class: new, check: health/broken-link, title: "spring-offer"}
+    tools: [lychee]
+
+  - id: s10
+    name: Broken image
+    site: wp
+    path: /s10-image/
+    include: ["/s10-image*"]
+    module: health
+    toggle: "the content points at a resized image that doesn't exist (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: new, check: health/broken-asset, title: "team-1024x683.svg"}
+    tools: [lychee, backstop, unlighthouse]
+
+  - id: s11
+    name: Contact form stops sending
+    site: wp
+    path: /s11-form/
+    include: ["/s11-form*"]
+    module: interact
+    levels: [inspect, click, submit]
+    toggle: "the form handler fails to send and shows an error (wp/plugins/testbed-forms)"
+    expect:
+      - {class: broke, check: interact/}
+    tools: []
+
+  - id: s12
+    name: Menu toggle button becomes dead
+    site: wp
+    path: /s12-menu/
+    include: ["/s12-menu*"]
+    module: interact
+    levels: [inspect, click]
+    toggle: "menu.js 2.0 binds to a class the header doesn't render (wp/themes/testbed/js/menu-2.0.js)"
+    expect:
+      - {class: broke, check: interact/, title: dead}
+      - {class: new, check: interact/, title: dead}
+    tools: []
+
+  - id: s13
+    name: Button throws a JS error on click
+    site: wp
+    path: /s13-button/
+    include: ["/s13-button*"]
+    module: interact
+    levels: [inspect, click]
+    toggle: "wishlist 2.0 calls an undefined WishlistStore on click (wp/themes/testbed/js/wishlist-2.0.js)"
+    expect:
+      - {class: broke, check: interact/, title: WishlistStore}
+      - {class: new, check: interact/, title: WishlistStore}
+    tools: []
+
+  - id: s14
+    name: "Layout change: hero disappears, header flips"
+    site: wp
+    path: /s14-layout/
+    include: ["/s14-layout*"]
+    module: visual
+    toggle: "a body class from the 2.0 layout hides the hero and reverses the header (wp/mu-plugins/testbed-scenarios.php, style.css)"
+    expect:
+      - {class: changed, check: visual/}
+    tools: [backstop]
+
+  - id: s15
+    name: Fixed-width element breaks the mobile layout
+    site: wp
+    path: /s15-mobile/
+    include: ["/s15-mobile*"]
+    module: visual
+    toggle: "the promo strip gets a fixed 1200px width (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: changed, check: visual/}
+      - {class: new, check: health/not-responsive}
+    tools: [backstop, unlighthouse]
+
+  - id: s16
+    name: noindex switched on by an SEO setting
+    site: wp
+    path: /s16-noindex/
+    include: ["/s16-noindex*"]
+    module: health
+    toggle: "blog_public is 0 (\"Discourage search engines\"), so WordPress adds noindex (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: new, check: health/noindex, title: noindex}
+    tools: [unlighthouse]
+
+  - id: s17
+    name: Page title lost
+    site: wp
+    path: /s17-title/
+    include: ["/s17-title*"]
+    module: health
+    toggle: "the theme's title-tag support is removed, so pages have no <title> (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: changed, check: health/title, title: title changed}
+    tools: [unlighthouse]
+
+  - id: s18
+    name: Page cache caches the cart
+    site: wp
+    path: /cart/
+    include: ["/cart*", "/shop*"]
+    module: cache
+    toggle: "the page cache stops bypassing /cart/ (wp/mu-plugins/testbed-cache.php)"
+    expect:
+      - {class: broke, check: cache/}
+      - {class: new, check: cache/}
+    tools: []
+
+  - id: s19
+    name: "Cache leak: a logged-in page served to visitors"
+    site: wp
+    path: /s19-account/
+    include: ["/s19-account*"]
+    module: cache
+    login: true
+    toggle: "the page cache stores pages rendered for logged-in users, admin bar and name included (wp/mu-plugins/testbed-cache.php)"
+    expect:
+      - {class: broke, check: cache/}
+      - {class: new, check: cache/}
+    tools: []
+
+  - id: s20
+    name: "Heavy plugin added: 2 MB image and a render-blocking script"
+    site: wp
+    path: /s20-heavy/
+    include: ["/s20-heavy*"]
+    module: speed
+    toggle: "Heavy Slider adds a 2 MB image and a slow script in <head> (wp/plugins/testbed-heavy)"
+    expect:
+      - {class: slower, check: speed/}
+    tools: [unlighthouse]

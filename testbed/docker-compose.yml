@@ -1,0 +1,93 @@
+# Soundcheck "broken sites" testbed: one WordPress site that hosts the
+# WordPress scenarios as separate pages, and a plain-PHP site. Each
+# scenario is broken while testbed/state/<id> exists (see toggle.sh), so
+# switching never rebuilds or restarts anything.
+#
+# Everything is thrown away on `make down`: the database lives in tmpfs
+# and WordPress in a volume removed with -v, so `make up` always starts
+# from the same seeded site.
+name: soundcheck-testbed
+
+x-db-env: &db-env
+  WORDPRESS_DB_HOST: db
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_PASSWORD: wordpress
+  WORDPRESS_DB_NAME: wordpress
+
+x-wp-mounts: &wp-mounts
+  - wp:/var/www/html
+  - ./wp/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+  - ./wp/themes/testbed:/var/www/html/wp-content/themes/testbed:ro
+  - ./wp/plugins/testbed-pricing:/var/www/html/wp-content/plugins/testbed-pricing:ro
+  - ./wp/plugins/testbed-widgets:/var/www/html/wp-content/plugins/testbed-widgets:ro
+  - ./wp/plugins/testbed-shop:/var/www/html/wp-content/plugins/testbed-shop:ro
+  - ./wp/plugins/testbed-forms:/var/www/html/wp-content/plugins/testbed-forms:ro
+  - ./wp/plugins/testbed-heavy:/var/www/html/wp-content/plugins/testbed-heavy:ro
+  - ./state:/var/www/html/wp-content/testbed-state:ro
+
+services:
+  db:
+    image: mariadb:11.4.8
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  wp:
+    image: wordpress:6.8.3-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${TESTBED_WP_PORT:-18800}:80"
+    environment:
+      <<: *db-env
+      WORDPRESS_CONFIG_EXTRA: |
+        define('DISABLE_WP_CRON', true);
+        define('AUTOMATIC_UPDATER_DISABLED', true);
+        define('WP_ENVIRONMENT_TYPE', 'local');
+    volumes: *wp-mounts
+
+  # Seeds the site (pages, posts, menu, users). Run by `make up`:
+  # docker compose run --rm cli
+  cli:
+    image: wordpress:cli-2.12.0-php8.3
+    profiles: [tools]
+    user: "33:33" # www-data in the apache image, so files stay writable by WordPress
+    depends_on:
+      - wp
+    environment:
+      <<: *db-env
+      HOME: /tmp
+      TESTBED_URL: http://localhost:${TESTBED_WP_PORT:-18800}
+    volumes:
+      - wp:/var/www/html
+      - ./wp/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./wp/themes/testbed:/var/www/html/wp-content/themes/testbed:ro
+      - ./wp/plugins/testbed-pricing:/var/www/html/wp-content/plugins/testbed-pricing:ro
+      - ./wp/plugins/testbed-widgets:/var/www/html/wp-content/plugins/testbed-widgets:ro
+      - ./wp/plugins/testbed-shop:/var/www/html/wp-content/plugins/testbed-shop:ro
+      - ./wp/plugins/testbed-forms:/var/www/html/wp-content/plugins/testbed-forms:ro
+      - ./wp/plugins/testbed-heavy:/var/www/html/wp-content/plugins/testbed-heavy:ro
+      - ./state:/var/www/html/wp-content/testbed-state:ro
+      - ./wp/seed.sh:/seed.sh:ro
+    entrypoint: ["sh", "/seed.sh"]
+
+  php:
+    image: php:8.3.27-apache
+    ports:
+      - "127.0.0.1:${TESTBED_PHP_PORT:-18810}:80"
+    volumes:
+      - ./php:/var/www/html:ro
+      - ./state:/var/www/state:ro
+
+volumes:
+  wp: {}

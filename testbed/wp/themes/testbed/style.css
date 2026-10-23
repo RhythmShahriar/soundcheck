@@ -1,0 +1,38 @@
+/*
+Theme Name: Testbed
+Description: The Soundcheck testbed's theme: a small classic theme for a coffee roaster, with a header menu toggle, a hero and a footer. Some of its scenarios (s02, s12, s13) are switched in functions.php and footer.php.
+Version: 1.0.0
+License: MIT
+*/
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font: 17px/1.6 Georgia, "Times New Roman", serif; color: #2b211b; background: #fbf7f2; }
+a { color: #8a3b12; }
+.site-header { display: flex; align-items: center; gap: 24px; padding: 16px 32px; background: #2b211b; color: #fbf7f2; flex-wrap: wrap; }
+.site-header a { color: #fbf7f2; text-decoration: none; }
+.brand { font-size: 24px; font-weight: bold; letter-spacing: .5px; }
+.primary-nav ul { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; margin: 0; padding: 0; }
+.menu-toggle { margin-left: auto; background: #c96b2c; color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.browse-panel { background: #f1e6da; padding: 16px 32px; border-bottom: 1px solid #e0cfbd; }
+.browse-panel ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; flex-wrap: wrap; }
+.site-main { max-width: 960px; margin: 0 auto; padding: 32px; min-height: 60vh; }
+.hero { background: linear-gradient(135deg, #8a3b12, #c96b2c); color: #fff; padding: 64px 32px; border-radius: 8px; margin-bottom: 32px; }
+.hero h2 { font-size: 40px; margin: 0 0 8px; }
+.entry-title { font-size: 34px; margin-top: 0; }
+.post-list article { border-bottom: 1px solid #e0cfbd; padding: 16px 0; }
+.promo-strip { background: #2b211b; color: #fff; padding: 12px 16px; border-radius: 4px; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border-bottom: 1px solid #e0cfbd; padding: 8px; text-align: left; }
+form.tb-contact label { display: block; margin-top: 12px; }
+form.tb-contact input, form.tb-contact textarea { width: 100%; max-width: 480px; padding: 8px; font: inherit; }
+form.tb-contact button, .tb-wishlist { margin-top: 16px; background: #8a3b12; color: #fff; border: 0; border-radius: 4px; padding: 10px 20px; font: inherit; cursor: pointer; }
+.form-message { padding: 12px 16px; border-radius: 4px; margin: 16px 0; }
+.form-success { background: #e3f3e5; }
+.form-error { background: #f8e1df; }
+.site-footer { background: #2b211b; color: #e9dccd; padding: 24px 32px; }
+.site-footer a { color: #e9dccd; }
+img { max-width: 100%; height: auto; }
+
+/* s14 (broken): the "2.0" layout drops the hero and puts the logo on the right. */
+.tb-layout-v2 .hero { display: none; }
+.tb-layout-v2 .site-header { flex-direction: row-reverse; }
+.tb-layout-v2 .menu-toggle { margin-left: 0; margin-right: auto; }
