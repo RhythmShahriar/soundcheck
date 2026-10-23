@@ -42,9 +42,10 @@ type Options struct {
 	Insecure  bool
 	Browser   browser.Options
 	Modules   []check.Module
-	// Login logs the test account in within a private session; nil when no
-	// credentials are set. See check.Context.Login.
-	Login func(ctx context.Context, sess *rod.Browser) error
+	// Login returns how to log the test account in on the resolved site;
+	// nil (or a nil result) when no credentials are set. See
+	// check.Context.Login.
+	Login func(base *url.URL) func(ctx context.Context, sess *rod.Browser) error
 	Hooks Hooks
 }
 
@@ -68,7 +69,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: base.String(),
 		Name: opts.Name, Started: start.UTC(),
 		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
-			Limit: cfg.Pages.Limit, LoggedIn: opts.Login != nil},
+			Limit: cfg.Pages.Limit},
 	}
 	var mu sync.Mutex // serializes hooks
 	emit := func(fn func()) {
@@ -124,8 +125,11 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	cc := &check.Context{
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Browser: sess, NewSession: b.Session, Save: store.Saver(opts.Dir),
-		Login: opts.Login,
 	}
+	if opts.Login != nil {
+		cc.Login = opts.Login(base)
+	}
+	run.Options.LoggedIn = cc.Login != nil
 
 	// Visit pages in parallel tabs; links found while rendering are added
 	// to the queue when discovering.
