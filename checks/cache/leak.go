@@ -193,7 +193,7 @@ func leak(ctx context.Context, cc *check.Context, results []*result) {
 		cc.Warn("cache: leak test: couldn't log in: " + err.Error())
 		return
 	}
-	id, err := identify(ctx, sess, cc.Base.String())
+	id, err := identify(ctx, sess, cc.SiteRoot().String())
 	if err != nil {
 		cc.Warn("cache: leak test: " + err.Error())
 		return

@@ -140,7 +140,7 @@ type site struct {
 func (s *site) tzOffset(ctx context.Context) (time.Duration, bool) {
 	s.once.Do(func() {
 		for _, p := range []string{"wp-json/", "?rest_route=/"} {
-			f := fetchJSON(ctx, s.cc, join(s.cc.Base, p))
+			f := fetchJSON(ctx, s.cc, join(s.cc.SiteRoot(), p))
 			if f == nil {
 				continue
 			}
@@ -323,7 +323,7 @@ func (m Module) CheckSite(ctx context.Context, cc *check.Context) {
 		}
 	}
 	if wp {
-		login := join(cc.Base, "wp-login.php")
+		login := join(cc.SiteRoot(), "wp-login.php")
 		if u, err := url.Parse(login); err == nil && !visited[u.RequestURI()] {
 			extra = append(extra, target{-1, login, u.RequestURI()})
 		}

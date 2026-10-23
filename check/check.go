@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/go-rod/rod"
@@ -151,4 +152,32 @@ func (c *CompareContext) Pairs() [][2]*model.Page {
 func Page(p *model.Page, i model.Issue) {
 	i.Identify()
 	p.Issues = append(p.Issues, i)
+}
+
+// SiteRoot is where the site is installed, for endpoints like
+// wp-login.php and wp-json/: Base may be a page (a run started at
+// /shop/), so the root comes from the WordPress assets the pages loaded
+// (everything before /wp-content/ or /wp-includes/), else the host's root.
+func (c *Context) SiteRoot() *url.URL {
+	root := &url.URL{Scheme: c.Base.Scheme, Host: c.Base.Host, Path: "/"}
+	c.Lock()
+	defer c.Unlock()
+	if c.Run == nil {
+		return root
+	}
+	for _, p := range c.Run.Pages {
+		for _, r := range p.Resources {
+			u, err := url.Parse(r.URL)
+			if err != nil || !strings.EqualFold(u.Host, c.Base.Host) {
+				continue
+			}
+			for _, dir := range []string{"/wp-content/", "/wp-includes/"} {
+				if i := strings.Index(u.Path, dir); i >= 0 {
+					root.Path = u.Path[:i+1]
+					return root
+				}
+			}
+		}
+	}
+	return root
 }
