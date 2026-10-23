@@ -1,0 +1,333 @@
+// Package health checks that every page loads and renders without errors:
+// HTTP status, redirects, PHP errors printed into the page, the WordPress
+// "critical error" screen, white screens, framework error pages, JS
+// errors, failed requests, broken links, mixed content and indexing.
+package health
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"path"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/model"
+)
+
+// Module is the health check module.
+type Module struct{}
+
+func (Module) Name() string { return "health" }
+
+var (
+	// PHP errors printed into the page: "Warning: Undefined array key "id"
+	// in /var/www/html/wp-content/themes/x/functions.php on line 212".
+	phpError     = regexp.MustCompile(`(?i)\b(Fatal error|Parse error|Recoverable fatal error|Warning|Notice|Deprecated|Strict Standards)\s*:\s+(.{3,300}?)\s+in\s+(/?[^\s<>"']+\.(?:php|inc|phtml))(?:\(\d+\))?\s+on\s+line\s+(\d+)`)
+	wpCritical   = regexp.MustCompile(`(?i)There has been a critical error on (this|your) website`)
+	frameworkErr = regexp.MustCompile(`(?i)Whoops, looks like something went wrong|Symfony\\Component\\ErrorHandler|Ignition|Stack trace:\s*#0|Uncaught (Error|Exception|TypeError|ArgumentCountError)`)
+	dbError      = regexp.MustCompile(`(?i)Error establishing a database connection|SQLSTATE\[[0-9A-Z]+\]`)
+	scriptLoc    = regexp.MustCompile(`\((https?://[^)\s]+?):(\d+)\)$`)
+	digits       = regexp.MustCompile(`\b\d{2,}\b`)
+)
+
+// CheckPage runs the per-page checks.
+func (Module) CheckPage(cc *check.Context, p *model.Page) {
+	if p.Error != "" {
+		check.Page(p, model.Issue{Check: "health/unreachable", Level: model.Error, Title: "Page didn't load: " + p.Error,
+			Fix: "Check the server and the URL; the page must answer before anything else can be checked."})
+		return
+	}
+	switch {
+	case p.Status >= 500:
+		check.Page(p, model.Issue{Check: "health/status", Level: model.Error, Title: fmt.Sprintf("Server error %d", p.Status),
+			Fix: "Look at the PHP and web server error logs for this URL."})
+	case p.Status == 404 || p.Status == 410:
+		check.Page(p, model.Issue{Check: "health/status", Level: model.Error, Title: fmt.Sprintf("Page not found (%d)", p.Status),
+			Fix: "Restore the page, or redirect it and update links to it."})
+	case p.Status >= 400:
+		check.Page(p, model.Issue{Check: "health/status", Level: model.Error, Title: fmt.Sprintf("Page blocked (%d)", p.Status)})
+	}
+	if len(p.Redirects) > 2 {
+		check.Page(p, model.Issue{Check: "health/redirect-chain", Level: model.Notice,
+			Title: fmt.Sprintf("Redirects %d times before loading", len(p.Redirects)), Detail: strings.Join(p.Redirects, " → "),
+			Fix: "Link to the final URL, and collapse the chain into one redirect."})
+	}
+	text := p.Text
+
+	for _, m := range phpError.FindAllStringSubmatch(text, 20) {
+		kind := strings.ToLower(m[1])
+		level := model.Warning
+		switch {
+		case strings.Contains(kind, "fatal") || strings.Contains(kind, "parse"):
+			level = model.Error
+		case kind == "notice" || kind == "deprecated" || kind == "strict standards":
+			level = model.Notice
+		}
+		check.Page(p, model.Issue{Check: "health/php-error", Level: level,
+			Title:  "PHP " + titleCase(m[1]) + ": " + trimMessage(m[2]),
+			Source: shortPath(m[3]) + ":" + m[4],
+			Fix:    "Fix the code at the source line, and turn display_errors off in production so visitors never see these."})
+	}
+	switch {
+	case wpCritical.MatchString(text):
+		check.Page(p, model.Issue{Check: "health/wp-critical", Level: model.Error, Title: "WordPress \"critical error\" screen",
+			Fix: "A plugin or theme threw a fatal error. Check the admin email WordPress sent, or wp-content/debug.log with WP_DEBUG_LOG on."})
+	case dbError.MatchString(text):
+		check.Page(p, model.Issue{Check: "health/database", Level: model.Error, Title: "Database error on the page",
+			Fix: "Check the database server and the credentials in wp-config.php or .env."})
+	case frameworkErr.MatchString(text) || strings.Contains(strings.ToLower(p.Title), "whoops"):
+		check.Page(p, model.Issue{Check: "health/error-page", Level: model.Error, Title: "Application error page",
+			Fix: "Read the exception shown; turn APP_DEBUG/display_errors off in production."})
+	case p.Status == 200 && p.TextLength == 0 && len(p.Resources) == 0:
+		check.Page(p, model.Issue{Check: "health/white-screen", Level: model.Error, Title: "Blank page (white screen)",
+			Fix: "A PHP fatal error with display_errors off usually causes this; check the error log."})
+	}
+
+	for _, c := range p.Console {
+		msg, src := c, ""
+		if m := scriptLoc.FindStringSubmatch(c); m != nil {
+			msg = strings.TrimSpace(strings.TrimSuffix(c, m[0]))
+			src = stripQuery(m[1]) + ":" + m[2]
+		}
+		check.Page(p, model.Issue{Check: "health/js-error", Level: model.Warning, Title: "JS error: " + normalize(msg), Source: src,
+			Fix: "Open the browser console on this page to see the full stack."})
+	}
+
+	for _, r := range p.Failed {
+		target := shortURL(cc.Base, r.URL)
+		switch {
+		case strings.HasSuffix(r.URL, "/favicon.ico"):
+			check.Page(p, model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: target})
+		case r.Error != "":
+			check.Page(p, model.Issue{Check: "health/failed-request", Level: model.Warning,
+				Title: fmt.Sprintf("Request failed (%s): %s", strings.TrimPrefix(r.Error, "net::"), target)})
+		case r.Type == "XHR" || r.Type == "Fetch" || strings.Contains(r.URL, "admin-ajax.php") || strings.Contains(r.URL, "/wp-json/"):
+			check.Page(p, model.Issue{Check: "health/failed-request", Level: levelFor(r.Status),
+				Title: fmt.Sprintf("%s %s returned %d", orDefault(r.Method, "GET"), target, r.Status),
+				Fix:   "The page's own code calls this endpoint; check its server log at the time of the request."})
+		default:
+			check.Page(p, model.Issue{Check: "health/broken-asset", Level: model.Warning,
+				Title: fmt.Sprintf("Broken %s: %s (%d)", strings.ToLower(orDefault(r.Type, "asset")), target, r.Status),
+				Fix:   "Restore the file or remove the reference to it."})
+		}
+	}
+
+	if strings.HasPrefix(p.FinalURL, "https://") {
+		for _, r := range p.Resources {
+			if strings.HasPrefix(r.URL, "http://") {
+				check.Page(p, model.Issue{Check: "health/mixed-content", Level: model.Warning,
+					Title: "Insecure (http://) resource on an https page", Source: shortURL(cc.Base, r.URL),
+					Fix: "Load it over https, e.g. by updating the URL in the database (wp search-replace)."})
+			}
+		}
+	}
+
+	if p.Status == 200 {
+		if p.Title == "" {
+			check.Page(p, model.Issue{Check: "health/no-title", Level: model.Notice, Title: "Page has no <title>"})
+		}
+		if r := strings.ToLower(p.Robots); strings.Contains(r, "noindex") {
+			check.Page(p, model.Issue{Check: "health/noindex", Level: model.Notice, Title: "Page is set to noindex",
+				Detail: p.Robots, Fix: "If this page should be in search results, remove the noindex (WordPress: Settings → Reading, or your SEO plugin)."})
+		}
+		if m, ok := p.Shots["mobile"]; ok && m.Width > 500 {
+			check.Page(p, model.Issue{Check: "health/not-responsive", Level: model.Notice,
+				Title: fmt.Sprintf("Page renders %d px wide on a phone", m.Width),
+				Fix:   `Add <meta name="viewport" content="width=device-width, initial-scale=1"> and responsive CSS.`})
+		}
+	}
+}
+
+// CheckSite tests links on visited pages that point at pages the run
+// didn't visit (HEAD, falling back to GET), and reports broken ones once
+// with every page that links to them.
+func (Module) CheckSite(ctx context.Context, cc *check.Context) {
+	cc.Lock()
+	visited := map[string]int{}
+	from := map[string][]string{}
+	for _, p := range cc.Run.Pages {
+		visited[strip(p.URL)] = p.Status
+		if p.FinalURL != "" {
+			visited[strip(p.FinalURL)] = p.Status
+		}
+	}
+	for _, p := range cc.Run.Pages {
+		for _, l := range p.Links {
+			k := strip(l)
+			if !slices.Contains(from[k], p.Path) {
+				from[k] = append(from[k], p.Path)
+			}
+		}
+	}
+	cc.Unlock()
+
+	var todo []string
+	for l := range from {
+		if _, ok := visited[l]; !ok && isPage(l) {
+			todo = append(todo, l)
+		}
+	}
+	slices.Sort(todo)
+	todo = todo[:min(len(todo), 300)] // a bounded sample keeps big sites fast
+	status := map[string]int{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for _, l := range todo {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			code := probe(ctx, cc, l)
+			mu.Lock()
+			status[l] = code
+			mu.Unlock()
+		})
+	}
+	wg.Wait()
+	for l, code := range visited {
+		status[l] = code
+	}
+	for l, pages := range from {
+		code := status[l]
+		if code == 404 || code == 410 || code >= 500 {
+			slices.Sort(pages)
+			cc.AddIssue(model.Issue{Check: "health/broken-link", Level: model.Warning,
+				Title: fmt.Sprintf("Broken link to %s (%d)", shortURL(cc.Base, l), code), Pages: pages,
+				Fix: "Update or remove the link, or redirect the old URL."})
+		}
+	}
+}
+
+func probe(ctx context.Context, cc *check.Context, raw string) int {
+	for _, m := range []string{http.MethodHead, http.MethodGet} {
+		resp, err := cc.Get(ctx, m, raw)
+		if err != nil {
+			return 0
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed && resp.StatusCode != http.StatusNotImplemented {
+			return resp.StatusCode
+		}
+	}
+	return 0
+}
+
+// Compare reports pages whose title changed, that gained or lost a
+// redirect, or that lost most of their content.
+func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Change {
+	var out []model.Change
+	for _, pair := range cmp.Pairs() {
+		b, a := pair[0], pair[1]
+		if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
+			continue // status problems are reported as issues
+		}
+		if b.Title != "" && a.Title != b.Title {
+			out = append(out, model.Change{Class: model.Changed, Check: "health/title", Title: "Page title changed",
+				Pages: []string{a.Path}, Before: b.Title, After: orDefault(a.Title, "(none)")})
+		}
+		if b.TextLength > 400 && a.TextLength < b.TextLength/2 {
+			out = append(out, model.Change{Class: model.Changed, Check: "health/content-lost", Title: "Page lost most of its text",
+				Pages: []string{a.Path}, Before: strconv.Itoa(b.TextLength) + " characters", After: strconv.Itoa(a.TextLength) + " characters",
+				Score: float64(b.TextLength-a.TextLength) * 100 / float64(b.TextLength)})
+		}
+		if bf, af := finalPath(b), finalPath(a); bf != af {
+			out = append(out, model.Change{Class: model.Changed, Check: "health/redirect", Title: "Page now ends somewhere else",
+				Pages: []string{a.Path}, Before: bf, After: af})
+		}
+	}
+	return out
+}
+
+func finalPath(p *model.Page) string {
+	if u, err := url.Parse(p.FinalURL); err == nil && p.FinalURL != "" {
+		return u.RequestURI()
+	}
+	return p.Path
+}
+
+func levelFor(status int) model.Level {
+	if status >= 500 || status == 403 {
+		return model.Error
+	}
+	return model.Warning
+}
+
+// shortPath trims a server path to the part people recognize:
+// /var/www/html/wp-content/themes/x/functions.php → themes/x/functions.php
+func shortPath(p string) string {
+	for _, marker := range []string{"/wp-content/", "/wp-includes/", "/wp-admin/", "/app/", "/vendor/", "/public/", "/src/"} {
+		if i := strings.LastIndex(p, marker); i >= 0 {
+			if marker == "/wp-content/" {
+				return p[i+len(marker):]
+			}
+			return p[i+1:]
+		}
+	}
+	return path.Base(p)
+}
+
+// trimMessage keeps PHP messages short and stable across runs.
+func trimMessage(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 140 {
+		s = string(r[:139]) + "…"
+	}
+	return s
+}
+
+// normalize removes numbers (timestamps, IDs) from a JS error so the same
+// error groups across pages and runs.
+func normalize(s string) string {
+	s = trimMessage(s)
+	return digits.ReplaceAllString(s, "N")
+}
+
+func titleCase(s string) string {
+	words := strings.Fields(strings.ToLower(s))
+	for i, w := range words {
+		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+func shortURL(base *url.URL, raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || base == nil {
+		return raw
+	}
+	if strings.EqualFold(strings.TrimPrefix(u.Hostname(), "www."), strings.TrimPrefix(base.Hostname(), "www.")) {
+		return stripQuery(u.RequestURI())
+	}
+	return stripQuery(raw)
+}
+
+func stripQuery(s string) string {
+	s, _, _ = strings.Cut(s, "?")
+	return s
+}
+
+func strip(raw string) string {
+	raw, _, _ = strings.Cut(raw, "#")
+	return strings.TrimSuffix(raw, "/")
+}
+
+var nonPage = regexp.MustCompile(`(?i)\.(jpe?g|png|gif|webp|svg|pdf|zip|mp[34]|css|js|xml|txt)$`)
+
+func isPage(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && !nonPage.MatchString(u.Path) &&
+		!strings.Contains(u.Path, "/wp-admin") && !strings.Contains(u.RawQuery, "action=logout")
+}
+
+func orDefault(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
