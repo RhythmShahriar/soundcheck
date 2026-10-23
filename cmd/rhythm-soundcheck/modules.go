@@ -11,13 +11,19 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
+	"github.com/RhythmShahriar/soundcheck/checks/speed"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/lighthouse"
 )
+
+// speedModule keeps per-run state between its hooks; one per process.
+var speedModule = speed.New()
 
 // modules returns the enabled modules in config.Modules order.
 func modules(cfg config.Config) []check.Module {
 	all := map[string]check.Module{
 		"health": health.Module{},
+		"speed":  speedModule,
 	}
 	var out []check.Module
 	for _, name := range config.Modules {
@@ -37,8 +43,20 @@ func loginFunc(_ config.Config, off bool) (func(context.Context, *rod.Browser) e
 	return nil, ""
 }
 
-func (s *session) lighthouse(string, string) {
-	fmt.Fprintln(s.stderr, "rhythm soundcheck: --lighthouse isn't available in this build")
+// lighthouse hands the site to Unlighthouse for full Lighthouse audits,
+// next to the run's own files.
+func (s *session) lighthouse(site, dir string) {
+	if !lighthouse.Available() {
+		fmt.Fprintln(s.stderr, "rhythm soundcheck: --lighthouse needs npx; install Node.js from https://nodejs.org")
+		return
+	}
+	out := filepath.Join(dir, "lighthouse")
+	s.view.Step("Lighthouse", "running Unlighthouse (this takes a while)…")
+	if err := lighthouse.Run(s.ctx, site, out); err != nil {
+		fmt.Fprintln(s.stderr, "rhythm soundcheck: lighthouse:", err)
+		return
+	}
+	s.view.Step("Lighthouse", "results in "+rel(filepath.Join(out, lighthouse.Result)))
 }
 
 // cmdFlows handles `flows init`.
