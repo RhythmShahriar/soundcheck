@@ -10,9 +10,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/utils"
 
 	"github.com/RhythmShahriar/rhythm/kit/config"
 )
@@ -66,6 +68,12 @@ func Find(opts Options) (bin string, downloaded bool, err error) {
 	}
 	b := launcher.NewBrowser()
 	b.RootDir = dir
+	// rod logs download progress to stdout, where it would mix with --json.
+	b.Logger = utils.Log(func(msg ...any) {
+		if opts.Log != nil {
+			opts.Log(strings.TrimSpace(fmt.Sprint(msg...)))
+		}
+	})
 	if _, err := os.Stat(b.BinPath()); err == nil {
 		return b.BinPath(), true, nil
 	}
@@ -129,8 +137,9 @@ func (b *Browser) Close() {
 }
 
 // Prune deletes downloaded Chromium revisions other than the one this
-// version of Soundcheck uses, and returns what it removed.
-func Prune() ([]string, error) {
+// version of Soundcheck uses (all of them with all set, when an installed
+// Chrome is used instead), and returns what it removed.
+func Prune(all bool) ([]string, error) {
 	dir, err := DownloadDir()
 	if err != nil {
 		return nil, err
@@ -147,7 +156,7 @@ func Prune() ([]string, error) {
 	}
 	var removed []string
 	for _, e := range entries {
-		if !e.IsDir() || e.Name() == keep {
+		if !e.IsDir() || (e.Name() == keep && !all) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
