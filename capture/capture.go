@@ -390,14 +390,12 @@ func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Opti
 		_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &masked)
 	}
 	take := func() ([]byte, error) {
-		req := &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng}
-		if height > maxShotHeight {
-			vp := Viewports[viewport]
-			req.Clip = &proto.PageViewport{X: 0, Y: 0, Width: float64(vp.Width), Height: maxShotHeight, Scale: 1}
-			req.CaptureBeyondViewport = true
-			return page.Screenshot(false, req)
-		}
-		return page.Screenshot(true, req)
+		// Clip the page at its height instead of resizing the viewport to
+		// it, which would stretch 100vh layouts and push footers out.
+		vp := Viewports[viewport]
+		req := &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng, CaptureBeyondViewport: true,
+			Clip: &proto.PageViewport{Width: float64(vp.Width), Height: float64(min(max(height, vp.Height), maxShotHeight)), Scale: 1}}
+		return page.Screenshot(false, req)
 	}
 	img, err := take()
 	if err != nil {
