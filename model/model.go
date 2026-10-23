@@ -157,6 +157,9 @@ type Run struct {
 	Issues   []Issue        `json:"issues,omitempty"`  // site-level issues
 	Skipped  map[string]int `json:"skipped,omitempty"` // discovery: URLs left out, by reason
 	Warnings []string       `json:"warnings,omitempty"`
+	// Cache is the cache module's site summary (hit rate, layers, cached
+	// and uncached TTFB); see checks/cache for the keys.
+	Cache map[string]string `json:"cache,omitempty"`
 }
 
 // Options records what a run did, so a comparison can warn when two runs
