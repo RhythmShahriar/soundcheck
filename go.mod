@@ -3,7 +3,7 @@ module github.com/RhythmShahriar/soundcheck
 go 1.27.3
 
 require (
-	github.com/RhythmShahriar/rhythm v0.2.0
+	github.com/RhythmShahriar/rhythm v0.2.1
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.2
