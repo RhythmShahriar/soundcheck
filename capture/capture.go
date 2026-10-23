@@ -301,6 +301,11 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 	if err := page.SetViewport(ptr(Viewports["mobile"])); err != nil {
 		return err
 	}
+	// Only errors from the mobile load count: modules' clicks at desktop
+	// size (Live) report their own errors, and mustn't show up twice.
+	r.mu.Lock()
+	r.console = nil
+	r.mu.Unlock()
 	if err := page.Navigate(rawURL); err != nil {
 		return nil // the desktop visit already recorded what it could
 	}
