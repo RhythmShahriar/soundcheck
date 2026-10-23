@@ -1,0 +1,47 @@
+#!/bin/sh
+# Checks the commit message follows Conventional Commits:
+#   https://www.conventionalcommits.org/en/v1.0.0/
+# Enable locally with `make hooks` (git config core.hooksPath .githooks).
+# CI runs this same script on every commit and the title of each pull request.
+set -eu
+
+# Drop the comment lines git puts in the editor template.
+msg=$(grep -v '^#' "$1" || true)
+header=$(printf '%s\n' "$msg" | sed -n '1p')
+second=$(printf '%s\n' "$msg" | sed -n '2p')
+
+case $header in
+"Merge "* | "Revert \""* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+types='feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert'
+
+fail() {
+	printf '\n✖ commit message: %s\n\n    %s\n\n' "$1" "$header" >&2
+	cat >&2 <<'EOF'
+  Use:  type(scope): subject
+
+    types   feat fix perf refactor docs test build ci chore style revert
+    scope   optional, lowercase, e.g. engine, checks, cli
+    !       before the colon marks a breaking change: feat(cli)!: ...
+
+  e.g.  feat(checks): add Laravel Telescope exposure check
+        fix(engine): retry on 503 with Retry-After
+
+EOF
+	exit 1
+}
+
+printf '%s' "$header" | grep -Eq "^($types)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ]" ||
+	fail "header must be 'type(scope): subject'"
+
+len=$(printf '%s' "$header" | wc -m | tr -d ' ')
+[ "$len" -le 72 ] || fail "header is $len characters; keep it to 72"
+
+case $header in *.) fail "drop the period at the end of the header" ;; esac
+
+subject=${header#*: }
+printf '%s' "$subject" | grep -Eq '^[A-Z][a-z]' && fail "start the subject in lowercase"
+
+[ -z "$second" ] || fail "leave a blank line between the header and the body"
+exit 0

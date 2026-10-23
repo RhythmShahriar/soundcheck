@@ -1,0 +1,24 @@
+version: "2"
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions: # terminal output; nothing useful to do if stdout is gone
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    misspell:
+      locale: US
+      ignore-rules: [authorised] # user-facing copy uses British English
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec]
+formatters:
+  enable: [gofmt]
