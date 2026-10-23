@@ -90,7 +90,12 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	l := launcher.New().Context(ctx).Bin(bin).Headless(!opts.Visible).Leakless(false).
 		Set("disable-gpu").Set("hide-scrollbars").Set("mute-audio").
 		Set("disable-features", "Translate,MediaRouter,OptimizationHints").
-		Set("disable-background-networking").Set("no-first-run").Set("no-default-browser-check")
+		Set("disable-background-networking").Set("no-first-run").Set("no-default-browser-check").
+		// Pages are checked in parallel tabs, and all but one are in the
+		// background: without these Chrome throttles their timers and
+		// rendering, and the tabs end up taking turns.
+		Set("disable-background-timer-throttling").Set("disable-backgrounding-occluded-windows").
+		Set("disable-renderer-backgrounding").Set("disable-ipc-flooding-protection")
 	if os.Geteuid() == 0 {
 		l = l.NoSandbox(true) // Chrome refuses to run as root with its sandbox (containers, CI)
 	}
