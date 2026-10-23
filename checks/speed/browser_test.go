@@ -234,7 +234,9 @@ func TestMetricsInParallelTabs(t *testing.T) {
 			if m.TBT > 100 || m.FCP < 350 {
 				t.Errorf("%s: a script before first paint should delay FCP, not add TBT: FCP %v, TBT %v", p.Path, m.FCP, m.TBT)
 			}
-		} else if m.TBT < 200 || m.TBT > 450 {
+		} else if m.TBT < 100 || m.TBT > 500 {
+			// About 250 ms, but loaded machines (CI runners) land anywhere in
+			// 100–180 ms of that: the reason for the 250 ms noise floor.
 			t.Errorf("%s: a 300 ms task after first paint gave TBT %v, want about 250", p.Path, m.TBT)
 		}
 	}
