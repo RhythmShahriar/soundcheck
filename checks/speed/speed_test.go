@@ -133,8 +133,8 @@ func TestRegressionNoiseFloors(t *testing.T) {
 		{"LCP +29%", model.Metrics{TTFB: 100, LCP: 1290, CLS: 0.01, TBT: 50, Bytes: 500 << 10, Requests: 20}, ""},
 		{"TTFB doubled but under +200ms", model.Metrics{TTFB: 290, LCP: 1000, CLS: 0.01, TBT: 50, Bytes: 500 << 10, Requests: 20}, ""},
 		{"TTFB +200ms", model.Metrics{TTFB: 300, LCP: 1000, CLS: 0.01, TBT: 50, Bytes: 500 << 10, Requests: 20}, "speed/ttfb slower"},
-		{"TBT +90ms", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.01, TBT: 140, Bytes: 500 << 10, Requests: 20}, ""},
-		{"TBT +100ms", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.01, TBT: 150, Bytes: 500 << 10, Requests: 20}, "speed/tbt slower"},
+		{"TBT tripled but only +240ms", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.01, TBT: 290, Bytes: 500 << 10, Requests: 20}, ""},
+		{"TBT +250ms", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.01, TBT: 300, Bytes: 500 << 10, Requests: 20}, "speed/tbt slower"},
 		{"CLS +0.04", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.05, TBT: 50, Bytes: 500 << 10, Requests: 20}, ""},
 		{"CLS +0.06", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.07, TBT: 50, Bytes: 500 << 10, Requests: 20}, "speed/cls slower"},
 		{"weight +99KB", model.Metrics{TTFB: 100, LCP: 1000, CLS: 0.01, TBT: 50, Bytes: 599 << 10, Requests: 20}, ""},
@@ -153,8 +153,8 @@ func TestRegressionNoiseFloors(t *testing.T) {
 	}
 
 	// TBT from 0: there's no percentage, the floor decides.
-	got := compareRuns(25, pr("/", "/", model.Metrics{TBT: 0, Requests: 1}, model.Metrics{TBT: 150, Requests: 1}))
-	if len(got) != 1 || got[0].Title != "Total Blocking Time up from 0" || got[0].Before != "0 ms" || got[0].After != "150 ms" {
+	got := compareRuns(25, pr("/", "/", model.Metrics{TBT: 0, Requests: 1}, model.Metrics{TBT: 260, Requests: 1}))
+	if len(got) != 1 || got[0].Title != "Total Blocking Time up from 0" || got[0].Before != "0 ms" || got[0].After != "260 ms" {
 		t.Errorf("from zero: %+v", got)
 	}
 

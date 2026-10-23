@@ -31,7 +31,11 @@ var metrics = []metric{
 		get: func(m model.Metrics) float64 { return m.LCP }, format: ms,
 		measured: func(m model.Metrics) bool { return m.LCP > 0 },
 		fix:      "Find what grew the largest element's load: a bigger hero image, new render-blocking CSS/JS, or a slower server response."},
-	{key: "tbt", name: "Total Blocking Time", worse: "higher", better: "lower", floor: 100,
+	// TBT's floor is high because it's CPU time: with four tabs loading
+	// at once, and the machine doing other work, the same 250 ms of
+	// script measured 190–390 ms. A real regression from a new plugin
+	// script is usually bigger than that.
+	{key: "tbt", name: "Total Blocking Time", worse: "higher", better: "lower", floor: 250,
 		get: func(m model.Metrics) float64 { return m.TBT }, format: ms,
 		measured: func(model.Metrics) bool { return true },
 		fix:      "New or updated JavaScript runs longer tasks; check which plugin or theme scripts changed (see the per-plugin cost suggestions)."},

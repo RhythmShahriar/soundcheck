@@ -179,3 +179,63 @@ func TestSpeedInBrowser(t *testing.T) {
 		t.Errorf("ttfb change = %+v (all %+v)", ttfb, cmp.Changes)
 	}
 }
+
+// TestMetricsInParallelTabs loads pages in four tabs at once, the way a
+// real run does. Every page must report paint metrics (Chrome doesn't
+// paint hidden tabs), the main document must count toward weight, and
+// TBT must follow Lighthouse: long tasks after first paint count, a script
+// that blocks before it delays FCP instead.
+func TestMetricsInParallelTabs(t *testing.T) {
+	needBrowser(t)
+	const busy = `function busy(ms) { var t = Date.now(); while (Date.now() - t < ms) {} }`
+	page := func(head, body string) string {
+		return `<!doctype html><html><head><title>Page</title><script>` + busy + `</script>` + head + `</head><body><h1>Coffee</h1>
+<p>` + strings.Repeat("Fresh beans roasted daily. ", 40) + `</p>` + body + `</body></html>`
+	}
+	afterPaint := `<script>requestAnimationFrame(function () { setTimeout(function () { busy(300); }, 0); });</script>`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/{$}", func(w http.ResponseWriter, _ *http.Request) {
+		links := ""
+		for i := range 6 {
+			links += fmt.Sprintf(`<a href="/p%d/">Page %d</a> `, i, i)
+		}
+		fmt.Fprint(w, page("", links+`<a href="/blocking/">Blocking</a>`+afterPaint))
+	})
+	mux.HandleFunc("/{page}/", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, page("", afterPaint)) })
+	mux.HandleFunc("/blocking/", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, page("<script>busy(400);</script>", ""))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Rate, cfg.Tabs = 0, 4
+	cfg.Viewports = []string{"desktop"}
+	cfg.Modules = []string{"speed"}
+	cfg.Pages.PerGroup = -1
+	run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Modules: []check.Module{New()}, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(run.Pages) != 8 {
+		t.Fatalf("visited %d pages", len(run.Pages))
+	}
+	for _, p := range run.Pages {
+		m := p.Metrics
+		t.Logf("%s %+v", p.Path, m)
+		if m.FCP <= 0 || m.LCP <= 0 {
+			t.Errorf("%s: no paint metrics (FCP %v, LCP %v): was the tab hidden?", p.Path, m.FCP, m.LCP)
+		}
+		if m.Requests < 1 || m.Bytes < 1000 {
+			t.Errorf("%s: the HTML isn't counted: %d bytes in %d requests", p.Path, m.Bytes, m.Requests)
+		}
+		if p.Path == "/blocking/" {
+			if m.TBT > 100 || m.FCP < 350 {
+				t.Errorf("%s: a script before first paint should delay FCP, not add TBT: FCP %v, TBT %v", p.Path, m.FCP, m.TBT)
+			}
+		} else if m.TBT < 200 || m.TBT > 450 {
+			t.Errorf("%s: a 300 ms task after first paint gave TBT %v, want about 250", p.Path, m.TBT)
+		}
+	}
+}
