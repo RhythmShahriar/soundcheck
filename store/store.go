@@ -19,6 +19,10 @@ import (
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
+// Incoming holds a snapshot while it's being taken, so a failed or
+// canceled snapshot never replaces a good one with the same name.
+const Incoming = ".incoming"
+
 // Store is a .soundcheck folder.
 type Store struct{ Root string }
 
@@ -40,7 +44,7 @@ func (s Store) NewDir(kind, name string) (string, error) {
 	if err := os.RemoveAll(dir); err != nil {
 		return "", err
 	}
-	return dir, os.MkdirAll(dir, 0o755)
+	return dir, os.MkdirAll(dir, 0o750)
 }
 
 // Saver returns a function that writes files into dir.
@@ -88,6 +92,22 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 	return &c, nil
 }
 
+// Promote moves a finished snapshot from Incoming into snapshots/name,
+// replacing an older snapshot with that name, and returns its new folder.
+func (s Store) Promote(dir, name string) (string, error) {
+	if !ValidName(name) {
+		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
+	}
+	final := filepath.Join(s.Root, "snapshots", name)
+	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
+		return "", err
+	}
+	if err := os.RemoveAll(final); err != nil {
+		return "", err
+	}
+	return final, os.Rename(dir, final)
+}
+
 // SetLatest records name as the snapshot compare uses by default.
 func (s Store) SetLatest(name string) error {
 	return cache.WriteFile(filepath.Join(s.Root, "snapshots", "LATEST"), []byte(name+"\n"))
@@ -107,7 +127,7 @@ func (s Store) Snapshot(name string) (string, error) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
 	}
 	dir := filepath.Join(s.Root, "snapshots", name)
-	if _, err := os.Stat(filepath.Join(dir, "run.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "run.json")); err != nil { //nolint:gosec // name passed ValidName above
 		return "", fmt.Errorf("no snapshot named %q; see rhythm soundcheck snapshots", name)
 	}
 	return dir, nil
@@ -158,10 +178,11 @@ func (s Store) Prune(keep int) error {
 	return nil
 }
 
-// ExcludeFromGit adds the store to the repository's local exclude list
-// (.git/info/exclude), so snapshots never get committed by accident and
-// the project's .gitignore stays untouched. It does nothing outside a
-// git repository.
+// ExcludeFromGit adds the store's snapshots and runs to the repository's
+// local exclude list (.git/info/exclude), so screenshots never get
+// committed by accident and the project's .gitignore stays untouched.
+// config.yaml and flows/ stay visible to git, to share with the team. It
+// does nothing outside a git repository.
 func (s Store) ExcludeFromGit() {
 	out, err := exec.Command("git", "rev-parse", "--git-path", "info/exclude").Output()
 	if err != nil {
@@ -180,9 +201,10 @@ func (s Store) ExcludeFromGit() {
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return
 	}
-	line := "/" + filepath.ToSlash(rel) + "/"
+	base := "/" + filepath.ToSlash(rel) + "/"
+	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/"}
 	existing, _ := os.ReadFile(path) //nolint:gosec // the repository's own exclude file
-	if slices.Contains(strings.Split(string(existing), "\n"), line) {
+	if slices.Contains(strings.Split(string(existing), "\n"), lines[0]) {
 		return
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // the repository's own exclude file
@@ -193,5 +215,5 @@ func (s Store) ExcludeFromGit() {
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
 		_, _ = f.WriteString("\n")
 	}
-	_, _ = f.WriteString("# Soundcheck snapshots and reports\n" + line + "\n")
+	_, _ = f.WriteString("# Soundcheck snapshots and reports\n" + strings.Join(lines, "\n") + "\n")
 }
