@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -135,5 +138,28 @@ func TestSnapshotAndCompare(t *testing.T) {
 	}
 	if len(cmp.Warnings) != 0 {
 		t.Errorf("warnings: %v", cmp.Warnings)
+	}
+}
+
+func TestFailedLoginIsOneWarning(t *testing.T) {
+	needBrowser(t)
+	var broken atomic.Bool
+	srv := site(t, &broken)
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Modules, cfg.Viewports, cfg.Rate = []string{"health"}, []string{"desktop"}, 50
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Browser: browser.Options{NoDownload: true}, Modules: []check.Module{health.Module{}},
+		Login: func(*url.URL) func(context.Context, *rod.Browser) error {
+			return func(context.Context, *rod.Browser) error { return fmt.Errorf("wrong password for us***") }
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Options.LoggedIn {
+		t.Error("a failed login mustn't mark the run as logged in")
+	}
+	if !slices.ContainsFunc(run.Warnings, func(w string) bool { return strings.Contains(w, "login failed") }) {
+		t.Errorf("warnings = %v", run.Warnings)
 	}
 }

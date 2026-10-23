@@ -131,6 +131,14 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if opts.Login != nil {
 		cc.Login = opts.Login(base)
 	}
+	// Try the login once up front: a wrong password or a changed login
+	// form is one clear warning, and the checks that need it skip.
+	if cc.Login != nil {
+		if err := tryLogin(ctx, b, cc.Login); err != nil {
+			cc.Warn("login failed, so the checks that need it were skipped: " + err.Error())
+			cc.Login = nil
+		}
+	}
 	run.Options.LoggedIn = cc.Login != nil
 
 	// Visit pages in parallel tabs; links found while rendering are added
@@ -362,3 +370,12 @@ func hostOf(raw string) string {
 	return ""
 }
 
+// tryLogin logs in within a throwaway private session.
+func tryLogin(ctx context.Context, b *browser.Browser, login func(context.Context, *rod.Browser) error) error {
+	sess, err := b.Session()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sess.Close() }()
+	return login(ctx, sess)
+}
