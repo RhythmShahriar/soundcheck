@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
+	"net/url"
 	"path/filepath"
 
 	"github.com/go-rod/rod"
@@ -12,10 +12,13 @@ import (
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/cache"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
+	"github.com/RhythmShahriar/soundcheck/checks/interact"
 	"github.com/RhythmShahriar/soundcheck/checks/speed"
 	"github.com/RhythmShahriar/soundcheck/checks/visual"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/lighthouse"
+	"github.com/RhythmShahriar/soundcheck/login"
 )
 
 // speedModule keeps per-run state between its hooks; one per process.
@@ -24,10 +27,11 @@ var speedModule = speed.New()
 // modules returns the enabled modules in config.Modules order.
 func modules(cfg config.Config) []check.Module {
 	all := map[string]check.Module{
-		"health": health.Module{},
-		"visual": visual.Module{},
-		"cache":  cache.Module{},
-		"speed":  speedModule,
+		"health":   health.Module{},
+		"visual":   visual.Module{},
+		"interact": interact.New(),
+		"cache":    cache.Module{},
+		"speed":    speedModule,
 	}
 	var out []check.Module
 	for _, name := range config.Modules {
@@ -38,13 +42,25 @@ func modules(cfg config.Config) []check.Module {
 	return out
 }
 
-// loginFunc returns how to log in, and who as (masked), when
-// SOUNDCHECK_USER and SOUNDCHECK_PASSWORD are set.
-func loginFunc(_ config.Config, off bool) (func(context.Context, *rod.Browser) error, string) {
-	if off || os.Getenv("SOUNDCHECK_USER") == "" || os.Getenv("SOUNDCHECK_PASSWORD") == "" {
+// loginFunc returns how to log in once the site's address is known, and
+// who as (masked), when SOUNDCHECK_USER and SOUNDCHECK_PASSWORD are set.
+func loginFunc(cfg config.Config, off bool) (func(*url.URL) func(context.Context, *rod.Browser) error, string) {
+	user, _, ok := login.Credentials()
+	if off || !ok {
 		return nil, ""
 	}
-	return nil, ""
+	return func(base *url.URL) func(context.Context, *rod.Browser) error {
+		return login.New(login.Options{Base: base, Config: cfg})
+	}, mask(user)
+}
+
+// mask shows enough of a name to recognize it: "ad***".
+func mask(s string) string {
+	r := []rune(s)
+	if len(r) <= 2 {
+		return "***"
+	}
+	return string(r[:2]) + "***"
 }
 
 // lighthouse hands the site to Unlighthouse for full Lighthouse audits,
@@ -74,6 +90,11 @@ func cmdFlows(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
 		return exitUsage
 	}
-	fmt.Fprintln(stdout, "flows:", cfg.Flows)
+	path, err := flow.Init(cfg.Flows)
+	if err != nil {
+		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		return exitError
+	}
+	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level inspect,click,flows\n", path)
 	return exitOK
 }

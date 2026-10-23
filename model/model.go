@@ -105,7 +105,7 @@ type Rect struct{ X, Y, W, H int }
 
 // Interaction is one element Soundcheck clicked or submitted.
 type Interaction struct {
-	Kind     string `json:"kind"`     // click or submit
+	Kind     string `json:"kind"`     // form (inspected), click or submit
 	Selector string `json:"selector"` // stable CSS selector
 	Label    string `json:"label"`    // visible text or aria-label
 	Outcome  string `json:"outcome"`  // ok, dead, error, validation, success, failed, skipped

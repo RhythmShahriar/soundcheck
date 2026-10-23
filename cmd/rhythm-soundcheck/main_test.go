@@ -273,3 +273,34 @@ func TestRunOnce(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 }
+
+func TestFlowsInit(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, out, errOut := runCLI(t, "flows", "init")
+	if code != exitOK || !strings.Contains(out, "example.yaml") {
+		t.Fatalf("exit %d: %s %s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(".soundcheck", "flows", "example.yaml")); err != nil {
+		t.Error(err)
+	}
+	if code, _, _ := runCLI(t, "flows"); code != exitUsage {
+		t.Error("flows without init must be a usage error")
+	}
+}
+
+func TestLoginOnlyFromEnv(t *testing.T) {
+	t.Setenv("SOUNDCHECK_USER", "")
+	t.Setenv("SOUNDCHECK_PASSWORD", "")
+	if f, who := loginFunc(config.Default(), false); f != nil || who != "" {
+		t.Error("no credentials, no login")
+	}
+	t.Setenv("SOUNDCHECK_USER", "admin")
+	t.Setenv("SOUNDCHECK_PASSWORD", "s3cret")
+	f, who := loginFunc(config.Default(), false)
+	if f == nil || who != "ad***" {
+		t.Errorf("who = %q", who)
+	}
+	if f, _ := loginFunc(config.Default(), true); f != nil {
+		t.Error("--no-login must win")
+	}
+}
