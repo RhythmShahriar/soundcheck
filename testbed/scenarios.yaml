@@ -158,8 +158,8 @@ scenarios:
     levels: [inspect, click]
     toggle: "menu.js 2.0 binds to a class the header doesn't render (wp/themes/testbed/js/menu-2.0.js)"
     expect:
-      - {class: broke, check: interact/, title: dead}
-      - {class: new, check: interact/, title: dead}
+      - {class: broke, check: interact/dead-click, title: does nothing}
+      - {class: new, check: interact/dead-click, title: does nothing}
     tools: []
 
   - id: s13
@@ -171,8 +171,8 @@ scenarios:
     levels: [inspect, click]
     toggle: "wishlist 2.0 calls an undefined WishlistStore on click (wp/themes/testbed/js/wishlist-2.0.js)"
     expect:
-      - {class: broke, check: interact/, title: WishlistStore}
-      - {class: new, check: interact/, title: WishlistStore}
+      - {class: broke, check: interact/click-error, title: throws a JS error}
+      - {class: new, check: interact/click-error, title: throws a JS error}
     tools: []
 
   - id: s14
