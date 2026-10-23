@@ -186,11 +186,16 @@ func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold 
 	for _, reg := range d.Regions {
 		r.sigs = append(r.sigs, d.signature(reg.Rect))
 	}
-	if r.report && cmp.Save != nil {
+	if (r.report || r.banded()) && cmp.Save != nil {
 		r.files = save(cmp, a, vp, rawB, rawA, d)
 	}
 	d.release() // keep only the summary; hundreds of pages don't fit in memory
 	return r
+}
+
+// banded reports whether a block was inserted or removed mid-page.
+func (r *shotDiff) banded() bool {
+	return r.diff.Band.H >= minResize || -r.diff.Band.H >= minResize
 }
 
 // save stores the before and after screenshots and the diff image in the
@@ -234,10 +239,14 @@ func (d *Diff) release() { d.after, d.before, d.rows, d.class = nil, nil, nil, n
 // narrower. Pages that changed by the same amount are one change.
 func resizes(results []*shotDiff) []model.Change {
 	groups := map[string]*model.Change{}
+	bandOf := map[string]Band{}
 	var order []string
 	for _, r := range results {
 		for _, s := range sizeChanges(r.sizeB, r.sizeA) {
 			title := fmt.Sprintf("Page got %s (%s)", s, r.viewport)
+			if r.banded() && (strings.HasSuffix(s, "taller") || strings.HasSuffix(s, "shorter")) {
+				bandOf[title] = r.diff.Band
+			}
 			g := groups[title]
 			if g == nil {
 				g = &model.Change{Class: model.Changed, Check: "visual/size", Title: title,
@@ -260,6 +269,8 @@ func resizes(results []*shotDiff) []model.Change {
 		if len(g.Pages) > 1 {
 			g.Detail = fmt.Sprintf("%d pages changed size by the same amount.", len(g.Pages))
 			g.Before, g.After = "", ""
+		} else if b := bandOf[t]; b.H != 0 {
+			g.Detail = bandDetail(b) + "."
 		}
 		out = append(out, *g)
 	}
@@ -292,10 +303,12 @@ func pct(before, after int) float64 {
 	return d
 }
 
-// changes turns diffs into changes: first regions that changed
-// identically on several pages, then pages whose remaining change is
-// still over the threshold.
+// changes turns diffs into changes: blocks inserted or removed at the
+// same place on several pages, regions that changed identically on
+// several pages, then pages whose remaining change is still over the
+// threshold (collapsed into one change per viewport when there are many).
 func changes(results []*shotDiff, threshold float64) []model.Change {
+	out := bands(results)
 	type member struct {
 		r      *shotDiff
 		region Region
@@ -309,7 +322,6 @@ func changes(results []*shotDiff, threshold float64) []model.Change {
 		}
 	}
 	explained := map[*shotDiff]map[int]bool{} // regions covered by a shared change
-	var out []model.Change
 	keys := make([]string, 0, len(bySig))
 	for k := range bySig {
 		keys = append(keys, k)
@@ -344,6 +356,7 @@ func changes(results []*shotDiff, threshold float64) []model.Change {
 		out = append(out, ch)
 	}
 
+	pages := map[string][]model.Change{} // by viewport
 	for _, r := range results {
 		if !r.report {
 			continue
@@ -371,16 +384,136 @@ func changes(results []*shotDiff, threshold float64) []model.Change {
 		}
 		big := rest[0]
 		detail += fmt.Sprintf("; the largest at %d,%d (%d×%d px)", big.X, big.Y, big.W, big.H)
-		if d.Shift != 0 {
-			detail += fmt.Sprintf("; content below it moved %d px", d.Shift)
+		if r.banded() {
+			detail += "; " + lower(bandDetail(d.Band))
 		}
-		out = append(out, model.Change{Class: model.Changed, Check: "visual/page",
+		pages[r.viewport] = append(pages[r.viewport], model.Change{Class: model.Changed, Check: "visual/page",
 			Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
 			Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
 			Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."})
 	}
+	for _, vp := range Viewports {
+		out = append(out, collapse(pages[vp], vp)...)
+	}
 	return out
 }
+
+// maxPages is how many pages may each get their own "looks different"
+// change in one viewport; beyond it they're one change, because a list
+// of hundreds hides the point (something site-wide changed).
+const maxPages = 5
+
+// collapse folds more than maxPages page changes into one, keeping the
+// pages, the worst page's images, and the median and highest scores.
+func collapse(cs []model.Change, vp string) []model.Change {
+	if len(cs) <= maxPages {
+		return cs
+	}
+	slices.SortFunc(cs, func(a, b model.Change) int {
+		return cmp.Or(cmp.Compare(b.Score, a.Score), strings.Compare(a.Pages[0], b.Pages[0]))
+	})
+	scores := make([]float64, len(cs))
+	var pages []string
+	for i, c := range cs {
+		scores[i] = c.Score
+		pages = append(pages, c.Pages...)
+	}
+	slices.Sort(scores)
+	slices.Sort(pages)
+	median := scores[len(scores)/2]
+	if len(scores)%2 == 0 {
+		median = (scores[len(scores)/2-1] + median) / 2
+	}
+	worst := cs[0]
+	return []model.Change{{Class: model.Changed, Check: "visual/page",
+		Title:  fmt.Sprintf("%d pages look different (%s)", len(cs), vp),
+		Detail: fmt.Sprintf("Median %.2f%% of each page changed, at most %.2f%% (%s, shown).", round2(median), worst.Score, worst.Pages[0]),
+		Pages:  pages, Score: worst.Score, Files: worst.Files, Fix: worst.Fix}}
+}
+
+// bandTolerance is how far apart (px) the same block may start on
+// different pages, which differ a little above it (titles, breadcrumbs).
+const bandTolerance = 16
+
+// bands reports blocks inserted or removed at the same place on several
+// pages, e.g. a banner a plugin added to the top of every page. Pages
+// match when the block has the same height and starts within
+// bandTolerance px.
+func bands(results []*shotDiff) []model.Change {
+	byKey := map[string][]*shotDiff{}
+	var keys []string
+	for _, r := range results {
+		if !r.banded() {
+			continue
+		}
+		k := fmt.Sprintf("%s|%d", r.viewport, r.diff.Band.H)
+		if byKey[k] == nil {
+			keys = append(keys, k)
+		}
+		byKey[k] = append(byKey[k], r)
+	}
+	slices.Sort(keys)
+	var out []model.Change
+	for _, k := range keys {
+		rs := byKey[k]
+		slices.SortFunc(rs, func(a, b *shotDiff) int {
+			return cmp.Or(cmp.Compare(a.diff.Band.Y, b.diff.Band.Y), strings.Compare(a.page.Path, b.page.Path))
+		})
+		for len(rs) > 0 {
+			n := 1
+			for n < len(rs) && rs[n].diff.Band.Y-rs[0].diff.Band.Y <= bandTolerance {
+				n++
+			}
+			if n >= 2 {
+				out = append(out, bandChange(rs[:n]))
+			}
+			rs = rs[n:]
+		}
+	}
+	return out
+}
+
+func bandChange(rs []*shotDiff) model.Change {
+	first := rs[0]
+	b := first.diff.Band
+	where := fmt.Sprintf("%d px down on", b.Y/10*10)
+	switch {
+	case b.Y < edge:
+		where = "at the top of"
+	case b.Y > first.sizeB.Y-edge:
+		where = "at the bottom of"
+	}
+	title := fmt.Sprintf("New block %s %d pages (%s)", where, len(rs), first.viewport)
+	if b.H < 0 {
+		title = fmt.Sprintf("Block removed %s %d pages (%s)", strings.Replace(where, "at the", "from the", 1), len(rs), first.viewport)
+	}
+	ch := model.Change{Class: model.Changed, Check: "visual/shared", Title: title,
+		Detail: "On every page listed: " + lower(bandDetail(b)) + ".",
+		Fix:    "Expected if you added or removed it; otherwise look for a plugin or theme notice, banner or element that appeared."}
+	paths := make([]string, 0, len(rs))
+	for _, r := range rs {
+		paths = append(paths, r.page.Path)
+		ch.Score = max(ch.Score, round2(pct(r.sizeB.Y, r.sizeB.Y+r.diff.Band.H)))
+	}
+	slices.Sort(paths)
+	ch.Pages = paths
+	for _, r := range rs {
+		if r.page.Path == paths[0] {
+			ch.Files = r.files
+		}
+	}
+	return ch
+}
+
+// bandDetail describes an inserted or removed block.
+func bandDetail(b Band) string {
+	if b.H < 0 {
+		return fmt.Sprintf("A %d px tall block was removed %d px down; the content below it moved up", -b.H, b.Y)
+	}
+	return fmt.Sprintf("A %d px tall block was inserted %d px down; the content below it moved down", b.H, b.Y)
+}
+
+func lower(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 // areaName names a region by where it sits on the page.
 func areaName(r model.Rect, height int) string {

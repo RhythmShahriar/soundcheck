@@ -3,8 +3,10 @@ package visual
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -118,6 +120,137 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 	if len(entries) != 3*5 {
 		t.Errorf("%d files saved", len(entries))
 	}
+}
+
+// A plugin inserted the same banner at the top of every page. Pages
+// differ above and below it, and on one page something else changed
+// too: one change for the banner, one for that page.
+func TestCompareGroupsInsertedBanner(t *testing.T) {
+	beforeDir, afterDir, cmpDir := t.TempDir(), t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
+		for _, vp := range []string{"desktop", "mobile"} {
+			w := map[string]int{"desktop": 800, "mobile": 390}[vp]
+			b := page(w, 1200+i*100) // pages differ in length and content
+			fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+			a := insertRows(b, 0, 320, color.NRGBA{255, 200, 100, 255})
+			if path == "/b/" && vp == "desktop" {
+				fill(a, image.Rect(400, 1000, 700, 1200), red) // below the banner, in shifted content
+			}
+			addShot(t, before, beforeDir, path, vp, b)
+			addShot(t, after, afterDir, path, vp, a)
+		}
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir,
+		Dir: cmpDir, Save: store.Saver(cmpDir)}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	for _, title := range []string{"New block at the top of 4 pages (desktop)", "New block at the top of 4 pages (mobile)"} {
+		c, ok := got[title]
+		if !ok {
+			t.Fatalf("missing %q in %v", title, keys(got))
+		}
+		if strings.Join(c.Pages, ",") != "/,/a/,/b/,/c/" || c.Files["diff"] == "" || !strings.Contains(c.Detail, "320 px tall block was inserted 0 px down") {
+			t.Errorf("%s = %+v", title, c)
+		}
+	}
+	p, ok := got["Page looks different (desktop)"]
+	if !ok || strings.Join(p.Pages, ",") != "/b/" {
+		t.Fatalf("leftover change = %+v (all %v)", p, keys(got))
+	}
+	if p.Score != 5.36 { // 300×200 of 800×1400 compared
+		t.Errorf("leftover score %v: %s", p.Score, p.Detail)
+	}
+	if c := got["Page got 320 px taller (desktop)"]; len(c.Pages) != 4 {
+		t.Errorf("size change = %+v", c)
+	}
+	if len(got) != 5 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// A block removed from the middle of two pages is one change.
+func TestCompareGroupsRemovedBlock(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/x/", "/y/"} {
+		b := page(800, 1500)
+		fill(b, image.Rect(20, 300+i*30, 300, 320+i*30), blue)
+		b = insertRows(b, 700, 200, red)
+		a := removeRows(b, 700, 200)
+		addShot(t, before, beforeDir, path, "desktop", b)
+		addShot(t, after, afterDir, path, "desktop", a)
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	if _, ok := got["Block removed 700 px down on 2 pages (desktop)"]; !ok || len(got) != 2 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// More than five pages that each changed differently are one change.
+func TestCompareCollapsesManyPages(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i := range 7 {
+		path := fmt.Sprintf("/p%d/", i)
+		a := page(800, 1200)
+		fill(a, image.Rect(500, 100+i*20, 700, 140+i*30+i*i*10), red) // a different change on each page
+		addShot(t, before, beforeDir, path, "desktop", page(800, 1200))
+		addShot(t, after, afterDir, path, "desktop", a)
+	}
+	cmpDir := t.TempDir()
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir,
+		Dir: cmpDir, Save: store.Saver(cmpDir)}
+	cs := Module{}.Compare(context.Background(), cc)
+	if len(cs) != 1 {
+		t.Fatalf("changes: %v", keys(byTitle(cs)))
+	}
+	c := cs[0]
+	if c.Title != "7 pages look different (desktop)" || len(c.Pages) != 7 || c.Pages[0] != "/p0/" {
+		t.Errorf("collapsed = %+v", c)
+	}
+	// Scores 0.83, 1.25, 2.08, 3.33, 5, 7.08 and 9.58% (/p6/: 200×460 px).
+	if c.Score != 9.58 || c.Files["after"] != "visual/"+model.PageID("/p6/")+"-desktop-after.png" ||
+		!strings.Contains(c.Detail, "at most 9.58% (/p6/, shown)") || !strings.HasPrefix(c.Detail, "Median 3.33%") {
+		t.Errorf("collapsed = %+v", c)
+	}
+
+	// Five stay separate.
+	before.Pages, after.Pages = before.Pages[:5], after.Pages[:5]
+	if cs := (Module{}).Compare(context.Background(), cc); len(cs) != 5 {
+		t.Errorf("%d changes for 5 pages", len(cs))
+	}
+}
+
+func addShot(t *testing.T, r *model.Run, dir, path, vp string, img image.Image) {
+	t.Helper()
+	p := r.Page(path)
+	if p == nil {
+		r.Pages = append(r.Pages, model.Page{ID: model.PageID(path), Path: path, Status: 200, Shots: map[string]model.Shot{}})
+		p = &r.Pages[len(r.Pages)-1]
+	}
+	file := "shots/" + p.ID + "-" + vp + ".png"
+	writePNG(t, dir, file, img)
+	p.Shots[vp] = model.Shot{File: file, Width: img.Bounds().Dx(), Height: img.Bounds().Dy()}
+}
+
+// insertRows returns img with n rows of c inserted at y.
+func insertRows(img *image.NRGBA, y, n int, c color.Color) *image.NRGBA {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	out := canvas(w, h+n)
+	draw.Draw(out, image.Rect(0, 0, w, y), img, image.Point{}, draw.Src)
+	fill(out, image.Rect(0, y, w, y+n), c)
+	draw.Draw(out, image.Rect(0, y+n, w, h+n), img, image.Pt(0, y), draw.Src)
+	return out
+}
+
+// removeRows returns img without rows [y, y+n).
+func removeRows(img *image.NRGBA, y, n int) *image.NRGBA {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	out := canvas(w, h-n)
+	draw.Draw(out, image.Rect(0, 0, w, y), img, image.Point{}, draw.Src)
+	draw.Draw(out, image.Rect(0, y, w, h-n), img, image.Pt(0, y+n), draw.Src)
+	return out
 }
 
 func TestCompareThreshold(t *testing.T) {

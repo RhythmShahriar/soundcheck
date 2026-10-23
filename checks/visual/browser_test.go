@@ -41,7 +41,7 @@ func site(t *testing.T, changed *atomic.Bool) *httptest.Server {
 		}
 		fmt.Fprintf(w, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>%s</title>
 <style>body{margin:0;font:16px/1.5 sans-serif;color:#222} header{height:60px;background:%s} header a{color:#fff;margin:0 8px;line-height:60px}
-main{padding:20px} .box{width:300px;height:150px} .slides{width:300px;height:100px} @media (max-width:600px){.slides{display:none}}</style></head>
+main{padding:20px} .box{width:300px;height:150px} .slides{width:300px;height:100px}</style></head>
 <body><header><a href="/">Home</a><a href="/about/">About</a><a href="/blog/">Blog</a></header><main><h1>%s</h1>%s
 <p>Thoughtful words about coffee, written slowly and read quickly.</p><div style="height:1400px"></div><p>More words at the bottom of the page.</p></main></body></html>`,
 			title, header, title, body)
@@ -98,11 +98,13 @@ func TestSnapshotAndCompareInChrome(t *testing.T) {
 	for _, p := range before.Pages {
 		paths = append(paths, p.Path)
 		desk := p.Shots["desktop"]
-		if desk.File == "" || desk.Second == "" || p.Shots["mobile"].File == "" {
+		if desk.File == "" || desk.Second == "" || p.Shots["mobile"].Second == "" {
 			t.Fatalf("%s: shots %+v", p.Path, p.Shots)
 		}
-		if (len(desk.Dynamic) > 0) != (p.Path == "/") {
-			t.Errorf("%s: dynamic regions %+v", p.Path, desk.Dynamic)
+		for vp, s := range p.Shots {
+			if (len(s.Dynamic) > 0) != (p.Path == "/") {
+				t.Errorf("%s %s: dynamic regions %+v", p.Path, vp, s.Dynamic)
+			}
 		}
 	}
 	slices.Sort(paths)
@@ -167,5 +169,80 @@ func TestSnapshotAndCompareInChrome(t *testing.T) {
 	}
 	if len(got) != 6 {
 		t.Errorf("%d changes, want 6", len(got))
+	}
+}
+
+// A plugin adds the same banner to the top of every page: every page
+// gets taller and everything below the banner moves, which is one
+// change per viewport, not one per page.
+func TestBannerOnEveryPageInChrome(t *testing.T) {
+	needBrowser(t)
+	var banner atomic.Bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && strings.Count(r.URL.Path, "/") != 2 {
+			http.NotFound(w, r)
+			return
+		}
+		top := ""
+		if banner.Load() {
+			top = `<div style="height:320px;background:#fc6;padding:20px"><p>Big summer sale, everything must go!</p></div>`
+		}
+		fmt.Fprintf(w, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>%[1]s</title>
+<style>body{margin:0;font:16px/1.5 sans-serif} header{height:60px;background:#222}</style></head><body>%[2]s
+<header></header><main style="padding:20px"><h1>Page %[1]s</h1><p>Words that differ: %[1]s %[1]s %[1]s.</p>
+<a href="/a/">A</a> <a href="/b/">B</a> <a href="/c/">C</a> <a href="/d/">D</a><div style="height:1500px"></div><p>End.</p></main></body></html>`,
+			r.URL.Path, top)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Rate, cfg.Tabs = 0, 3
+	cfg.Modules = []string{"visual"}
+	modules := []check.Module{visual.Module{}}
+	st := store.Store{Root: t.TempDir()}
+	ctx := context.Background()
+	snapDir, _ := st.NewDir("snapshots", "before")
+	before, err := runner.Run(ctx, runner.Options{Config: cfg, Target: srv.URL, Snapshot: true, Dir: snapDir, Version: "test",
+		Modules: modules, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, p := range before.Pages {
+		paths = append(paths, p.Path)
+	}
+	if len(paths) != 5 {
+		t.Fatalf("discovered %v", paths)
+	}
+	banner.Store(true)
+	runDir, _ := st.NewDir("runs", "now")
+	after, err := runner.Run(ctx, runner.Options{Config: cfg, Target: srv.URL, Paths: paths, Dir: runDir, Version: "test",
+		Modules: modules, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmpDir, _ := st.NewDir("runs", "cmp")
+	cmp := compare.Compare(ctx, &check.CompareContext{Config: cfg, Before: before, After: after, BeforeDir: snapDir, AfterDir: runDir,
+		Dir: cmpDir, Save: store.Saver(cmpDir)}, modules, "test")
+	var titles []string
+	for _, c := range cmp.Changes {
+		t.Logf("%s %s %v %.2f %s", c.Class, c.Title, c.Pages, c.Score, c.Detail)
+		titles = append(titles, c.Title)
+		if c.Check == "visual/page" {
+			t.Errorf("page-level change: %s %v", c.Title, c.Pages)
+		}
+		if len(c.Pages) != 5 {
+			t.Errorf("%s: pages %v", c.Title, c.Pages)
+		}
+	}
+	for _, want := range []string{"New block at the top of 5 pages (desktop)", "New block at the top of 5 pages (mobile)"} {
+		if !slices.Contains(titles, want) {
+			t.Errorf("missing %q in %v", want, titles)
+		}
+	}
+	if len(titles) != 4 { // the two blocks and the two size changes
+		t.Errorf("%d changes: %v", len(titles), titles)
 	}
 }

@@ -221,8 +221,8 @@ func TestInsertedBanner(t *testing.T) {
 	fill(a, image.Rect(0, 60, 800, 120), red) // the banner
 	draw.Draw(a, image.Rect(0, 120, 800, 1260), b, image.Pt(0, 60), draw.Src)
 	d := Compare(b, a, DiffOptions{})
-	if d.Shift != 60 || d.Changed != 0 {
-		t.Fatalf("shift %d, changed %d (%.2f%%)", d.Shift, d.Changed, d.Percent)
+	if d.Band != (Band{Y: 60, H: 60}) || d.Changed != 0 {
+		t.Fatalf("band %+v, changed %d (%.2f%%)", d.Band, d.Changed, d.Percent)
 	}
 	if d.Height != 1260 || d.Compared != 800*1200 {
 		t.Errorf("size %dx%d compared %d", d.Width, d.Height, d.Compared)
@@ -246,8 +246,8 @@ func TestTallerAtBottom(t *testing.T) {
 	draw.Draw(a, b.Bounds(), b, image.Point{}, draw.Src)
 	fill(a, image.Rect(0, 1200, 800, 1500), blue)
 	d := Compare(b, a, DiffOptions{})
-	if d.Shift != 0 || d.Changed != 0 || d.Compared != 800*1200 {
-		t.Errorf("shift %d changed %d compared %d", d.Shift, d.Changed, d.Compared)
+	if d.Band != (Band{}) || d.Changed != 0 || d.Compared != 800*1200 {
+		t.Errorf("band %+v changed %d compared %d", d.Band, d.Changed, d.Compared)
 	}
 	if got := sizeChanges(image.Pt(800, 1500), image.Pt(780, 1200)); len(got) != 2 || got[0] != "300 px shorter" || got[1] != "20 px narrower" {
 		t.Errorf("size changes %v", got)
@@ -326,8 +326,8 @@ func BenchmarkCompareShifted(b *testing.B) {
 	draw.Draw(after, image.Rect(0, 740, 1366, 5340), before, image.Pt(0, 400), draw.Src)
 	b.ReportAllocs()
 	for b.Loop() {
-		if d := Compare(before, after, DiffOptions{}); d.Shift != 340 {
-			b.Fatalf("shift %d", d.Shift)
+		if d := Compare(before, after, DiffOptions{}); d.Band != (Band{Y: 400, H: 340}) {
+			b.Fatalf("band %+v", d.Band)
 		}
 	}
 }

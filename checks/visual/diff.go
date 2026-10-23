@@ -44,10 +44,10 @@ type Diff struct {
 	Compared      int     // pixels that had a counterpart and weren't ignored
 	Percent       float64 // Changed / Compared × 100
 	Regions       []Region
-	// Shift is how far content below the changed band moved down (or up,
-	// when negative) when the pages differ in height and aligning their
-	// bottoms matched better than aligning their tops.
-	Shift int
+	// Band is the run of rows inserted into (H > 0) or removed from
+	// (H < 0) the page when content below it moved; zero when the pages
+	// line up from the top.
+	Band Band
 
 	after  *raster
 	before *raster
@@ -60,6 +60,11 @@ type Region struct {
 	model.Rect
 	Pixels int
 }
+
+// Band is a run of rows inserted (H > 0) or removed (H < 0) at Y, in
+// before coordinates: a new banner pushing the page down, a section
+// taken out.
+type Band struct{ Y, H int }
 
 // raster is an image as straight-alpha RGBA bytes.
 type raster struct {
@@ -91,20 +96,23 @@ func (r *raster) row(y, w int) []uint8 { return r.pix[y*r.stride : y*r.stride+w*
 
 // Compare diffs before and after in the style of pixelmatch: YIQ color
 // distance with a threshold, and anti-aliased pixels ignored. When the
-// images differ in height it also tries aligning their bottoms (content
-// pushed down by a new banner) and keeps whichever alignment matches
-// better, so an inserted block doesn't make the whole page "change".
+// images differ in height it looks for the band of rows that was
+// inserted or removed (a new banner, a section taken out), lines up the
+// content above and below it, and keeps that alignment when it matches
+// better than lining up the tops, so one new block doesn't make the
+// whole page "change".
 func Compare(before, after image.Image, opts DiffOptions) *Diff {
 	b, a := toRaster(before), toRaster(after)
 	if opts.Threshold == 0 {
 		opts.Threshold = 0.1
 	}
 	w := min(a.w, b.w)
-	d := compareRows(b, a, w, topRows(b, a), opts)
+	n := min(a.h, b.h)
+	d := compareRows(b, a, w, splitRows(a.h, b.h, n), opts)
 	if a.h != b.h && w > 0 {
-		if rows, ok := shiftedRows(b, a, w); ok {
-			if s := compareRows(b, a, w, rows, opts); s.Changed < d.Changed {
-				s.Shift = a.h - b.h
+		if k := splitAt(b, a, w); k < n {
+			if s := compareRows(b, a, w, splitRows(a.h, b.h, k), opts); s.Changed < d.Changed {
+				s.Band = Band{Y: k, H: a.h - b.h}
 				d = s
 			}
 		}
@@ -112,48 +120,57 @@ func Compare(before, after image.Image, opts DiffOptions) *Diff {
 	return d
 }
 
-// topRows maps rows top-aligned: the overlap is compared, extra rows of a
-// taller after image have no counterpart.
-func topRows(b, a *raster) []int {
-	rows := make([]int, a.h)
+// splitAt finds where rows were inserted or removed: the row k (the same
+// in both images) above which the images line up from the top and below
+// which they line up shifted by the height difference, with the fewest
+// rows that differ. It returns min(heights) when lining up the tops is
+// as good as any split.
+func splitAt(b, a *raster, w int) int {
+	n, d := min(a.h, b.h), a.h-b.h
+	lead := max(d, 0)       // inserted rows sit between k and k+lead in the after image
+	top := make([]int, n+1) // top[k]: rows above k that differ when tops line up
+	for y := range n {
+		top[y+1] = top[y]
+		if !bytes.Equal(a.row(y, w), b.row(y, w)) {
+			top[y+1]++
+		}
+	}
+	shifted := make([]int, a.h+1) // shifted[y]: after rows from y down that differ from before row - d
+	for y := a.h - 1; y >= lead; y-- {
+		shifted[y] = shifted[y+1]
+		if !bytes.Equal(a.row(y, w), b.row(y-d, w)) {
+			shifted[y]++
+		}
+	}
+	best, at := top[n], n
+	for k := n - 1; k >= 0; k-- {
+		if m := top[k] + shifted[k+lead]; m < best {
+			best, at = m, k
+		}
+	}
+	return at
+}
+
+// splitRows maps after rows to before rows: rows above k line up, rows
+// below the inserted band (or from k down, when rows were removed) are
+// shifted by the height difference. k = min(heights) lines up the tops.
+func splitRows(ah, bh, k int) []int {
+	d := ah - bh
+	rows := make([]int, ah)
 	for y := range rows {
-		rows[y] = y
-		if y >= b.h {
+		switch {
+		case y < k:
+			rows[y] = y
+		case y < k+max(d, 0):
+			rows[y] = -1
+		default:
+			rows[y] = y - d
+		}
+		if rows[y] >= bh {
 			rows[y] = -1
 		}
 	}
 	return rows
-}
-
-// shiftedRows aligns the common top rows and the common bottom rows of
-// two images of different heights, comparing the band between them
-// top-aligned. ok is false when the bottoms don't match at all.
-func shiftedRows(b, a *raster, w int) ([]int, bool) {
-	n := min(a.h, b.h)
-	top := 0
-	for top < n && bytes.Equal(a.row(top, w), b.row(top, w)) {
-		top++
-	}
-	bottom := 0
-	for bottom < n-top && bytes.Equal(a.row(a.h-1-bottom, w), b.row(b.h-1-bottom, w)) {
-		bottom++
-	}
-	if bottom == 0 {
-		return nil, false
-	}
-	rows := make([]int, a.h)
-	bandB := b.h - bottom // before rows [top, bandB) are the changed band
-	for y := range rows {
-		switch {
-		case y >= a.h-bottom:
-			rows[y] = y - (a.h - b.h)
-		case y < bandB:
-			rows[y] = y
-		default:
-			rows[y] = -1
-		}
-	}
-	return rows, true
 }
 
 // cell is the clustering grid size in pixels.
