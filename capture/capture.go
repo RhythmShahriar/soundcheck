@@ -37,7 +37,7 @@ const maxShotHeight = 12000
 type Options struct {
 	Timeout   time.Duration
 	Ignore    []string // CSS selectors hidden before screenshots
-	Twice     bool     // take a second desktop shot to learn dynamic regions
+	Twice     bool     // take a second shot of each viewport to learn dynamic regions
 	UserAgent string
 	Headers   map[string]string
 	Save      func(name string, data []byte) error // stores a screenshot; nil skips screenshots
@@ -405,7 +405,7 @@ func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Opti
 	if err := opts.Save(shot.File, img); err != nil {
 		return err
 	}
-	if opts.Twice && viewport == "desktop" {
+	if opts.Twice {
 		time.Sleep(1200 * time.Millisecond)
 		if img2, err := take(); err == nil {
 			shot.Second = fmt.Sprintf("shots/%s-%s.2.png", p.ID, viewport)
