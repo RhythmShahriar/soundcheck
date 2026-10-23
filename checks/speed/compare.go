@@ -56,6 +56,11 @@ type hit struct {
 	pct           float64 // % worse (100 when it was 0 before), or % lower for improvements
 }
 
+// OwnsIssues keeps the generic issue diff away from speed issues: lab
+// numbers wobble between runs, so a page near a threshold would flip
+// between NEW and FIXED. Compare reports speed changes with noise floors.
+func (*Module) OwnsIssues() {}
+
 // Compare reports pages that got measurably slower (SLOWER) or faster
 // (FIXED), grouped by page template, or as one site-wide change when most
 // pages moved; and plugins or themes that now add much more weight.

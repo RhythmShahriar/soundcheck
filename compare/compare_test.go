@@ -50,3 +50,28 @@ func TestIssues(t *testing.T) {
 		t.Errorf("warnings = %v (one page from the snapshot wasn't checked)", cmp.Warnings)
 	}
 }
+
+// owner reports its own changes, so its issues must not also come out of
+// the generic diff.
+type owner struct{}
+
+func (owner) Name() string { return "speed" }
+func (owner) OwnsIssues()  {}
+func (owner) Compare(context.Context, *check.CompareContext) []model.Change {
+	return []model.Change{{Class: model.Slower, Check: "speed/lcp", Title: "LCP 40% slower"}}
+}
+
+func TestIssueOwnerSkipsGenericDiff(t *testing.T) {
+	slow := issue("speed/lcp", model.Error, "Largest Contentful Paint over 4 s (lab)")
+	php := issue("health/php-error", model.Warning, "PHP Warning: x")
+	before := &model.Run{Pages: []model.Page{{Path: "/"}}}
+	after := &model.Run{Pages: []model.Page{{Path: "/", Issues: []model.Issue{slow, php}}}}
+	cmp := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, []check.Module{owner{}}, "test")
+	var got []string
+	for _, c := range cmp.Changes {
+		got = append(got, c.Class+":"+c.Title)
+	}
+	if len(got) != 2 || got[0] != "new:PHP Warning: x" || got[1] != "slower:LCP 40% slower" {
+		t.Errorf("changes = %v", got)
+	}
+}

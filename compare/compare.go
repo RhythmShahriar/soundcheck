@@ -25,6 +25,13 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	out.Warnings = mismatch(cc.Before, cc.After)
 	out.Changes = Issues(cc.Before, cc.After)
 	for _, m := range modules {
+		if _, ok := m.(check.IssueOwner); ok {
+			out.Changes = slices.DeleteFunc(out.Changes, func(c model.Change) bool {
+				return strings.HasPrefix(c.Check, m.Name()+"/")
+			})
+		}
+	}
+	for _, m := range modules {
 		if c, ok := m.(check.Comparer); ok {
 			out.Changes = append(out.Changes, c.Compare(ctx, cc)...)
 		}

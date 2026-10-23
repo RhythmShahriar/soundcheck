@@ -51,6 +51,14 @@ type Comparer interface {
 	Compare(ctx context.Context, cmp *CompareContext) []model.Change
 }
 
+// IssueOwner is a Comparer that reports every change in its own issues,
+// e.g. with noise floors for lab measurements that vary between runs. The
+// generic new/fixed issue diff skips checks named "<module>/…" for it.
+type IssueOwner interface {
+	Comparer
+	OwnsIssues()
+}
+
 // Context is what a module can use during a run.
 type Context struct {
 	Config     config.Config
