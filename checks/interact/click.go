@@ -150,8 +150,9 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 			}
 		}
 	}
-	// Leave the page as it was loaded for the next level.
-	if n > 0 {
+	// Leave the page as it was loaded for the submit level. Otherwise the
+	// runner's mobile pass reloads it anyway, so don't load it twice.
+	if n > 0 && cc.Config.Level("submit") {
 		_ = reload(ctx, tab, pageURL)
 	}
 	return clicked

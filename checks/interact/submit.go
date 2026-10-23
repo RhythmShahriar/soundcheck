@@ -120,9 +120,8 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 		done++
 		m.submitForm(ctx, cc, tab, p, pageURL, fm, fake, record)
 	}
-	if done > 0 {
-		_ = reload(ctx, tab, pageURL)
-	}
+	// No reload at the end: interact's Live hook runs last, and the mobile
+	// pass navigates to the page afresh.
 }
 
 // outcome is what happened after a submit.

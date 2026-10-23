@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"slices"
 
 	"github.com/go-rod/rod"
 
@@ -24,7 +25,9 @@ import (
 // speedModule keeps per-run state between its hooks; one per process.
 var speedModule = speed.New()
 
-// modules returns the enabled modules in config.Modules order.
+// modules returns the enabled modules in config.Modules order, except that
+// interact comes last: its clicks and submits change the page, and the
+// other modules' Live hooks must measure it as loaded.
 func modules(cfg config.Config) []check.Module {
 	all := map[string]check.Module{
 		"health":   health.Module{},
@@ -34,7 +37,8 @@ func modules(cfg config.Config) []check.Module {
 		"speed":    speedModule,
 	}
 	var out []check.Module
-	for _, name := range config.Modules {
+	order := append(slices.DeleteFunc(slices.Clone(config.Modules), func(m string) bool { return m == "interact" }), "interact")
+	for _, name := range order {
 		if m, ok := all[name]; ok && cfg.Has(name) {
 			out = append(out, m)
 		}
