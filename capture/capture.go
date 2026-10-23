@@ -66,13 +66,16 @@ type req struct {
 }
 
 // metricsJS runs before any page script and keeps Web Vitals in
-// window.__soundcheck.
+// window.__soundcheck. Long tasks are kept as [start, end] so factsJS can
+// compute Total Blocking Time once FCP is known. Chrome only paints, and
+// so only reports FCP, LCP and long tasks, for a visible page: tabs must
+// be opened in their own window (see runner).
 const metricsJS = `(() => {
-  const s = window.__soundcheck = {lcp: 0, cls: 0, tbt: 0, fcp: 0};
+  const s = window.__soundcheck = {lcp: 0, cls: 0, fcp: 0, tasks: []};
   const watch = (type, fn) => { try { new PerformanceObserver(l => l.getEntries().forEach(fn)).observe({type, buffered: true}); } catch (e) {} };
   watch('largest-contentful-paint', e => { s.lcp = e.renderTime || e.loadTime || e.startTime; });
   watch('layout-shift', e => { if (!e.hadRecentInput) s.cls += e.value; });
-  watch('longtask', e => { s.tbt += Math.max(0, e.duration - 50); });
+  watch('longtask', e => { s.tasks.push([e.startTime, e.startTime + e.duration]); });
   watch('paint', e => { if (e.name === 'first-contentful-paint') s.fcp = e.startTime; });
 })();`
 
@@ -246,16 +249,26 @@ type pageFacts struct {
 	Height int      `json:"height"`
 }
 
+// factsJS reads the page after it settled. TBT follows Lighthouse: the
+// part of each long task after FCP, minus 50 ms, summed; Lighthouse stops
+// at Time to Interactive, Soundcheck at the moment it reads the page
+// (load plus network idle), which is close for most pages. A script that
+// blocks before the first paint delays FCP and LCP instead.
 const factsJS = `() => {
   const nav = performance.getEntriesByType('navigation')[0] || {};
   const s = window.__soundcheck || {};
+  let tbt = 0;
+  for (const [start, end] of s.tasks || []) {
+    const d = end - Math.max(start, s.fcp || 0);
+    if (end - start > 50 && d > 50) tbt += d - 50;
+  }
   const robots = [...document.querySelectorAll('meta[name="robots" i],meta[name="googlebot" i]')].map(m => m.content).join(', ');
   const links = [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))].slice(0, 2000);
   return {
     title: document.title || '', robots, links,
     text: (document.body && document.body.innerText || '').slice(0, 200000),
     ttfb: nav.responseStart || 0, load: nav.loadEventEnd || nav.duration || 0,
-    fcp: s.fcp || 0, lcp: s.lcp || 0, cls: s.cls || 0, tbt: s.tbt || 0,
+    fcp: s.fcp || 0, lcp: s.lcp || 0, cls: s.cls || 0, tbt,
     height: Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0),
   };
 }`
@@ -358,6 +371,8 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 			if xr := q.headers["x-robots-tag"]; xr != "" {
 				p.Robots = strings.Trim(p.Robots+", "+xr, ", ")
 			}
+			p.Metrics.Requests++ // the page's weight includes its HTML
+			p.Metrics.Bytes += q.bytes
 			continue
 		}
 		if strings.HasPrefix(q.url, "data:") || strings.HasPrefix(q.url, "blob:") {
