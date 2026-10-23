@@ -2,6 +2,7 @@ package compare
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -73,5 +74,19 @@ func TestIssueOwnerSkipsGenericDiff(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != "new:PHP Warning: x" || got[1] != "slower:LCP 40% slower" {
 		t.Errorf("changes = %v", got)
+	}
+}
+
+func TestOnlyModulesInBothRunsCompare(t *testing.T) {
+	speed := issue("speed/lcp", model.Warning, "LCP over 2.5 s")
+	php := issue("health/php-error", model.Warning, "PHP Warning: x")
+	before := &model.Run{Options: model.Options{Modules: []string{"health"}}, Pages: []model.Page{{Path: "/"}}}
+	after := &model.Run{Options: model.Options{Modules: []string{"health", "speed"}}, Pages: []model.Page{{Path: "/", Issues: []model.Issue{speed, php}}}}
+	cmp := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+	if len(cmp.Changes) != 1 || cmp.Changes[0].Check != "health/php-error" {
+		t.Errorf("changes = %+v", cmp.Changes)
+	}
+	if len(cmp.Warnings) == 0 || !strings.Contains(cmp.Warnings[0], "only modules in both") {
+		t.Errorf("warnings = %v", cmp.Warnings)
 	}
 }

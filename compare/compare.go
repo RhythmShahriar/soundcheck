@@ -24,6 +24,14 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	}
 	out.Warnings = mismatch(cc.Before, cc.After)
 	out.Changes = Issues(cc.Before, cc.After)
+	// A module that ran only once has nothing to compare against: all its
+	// issues would look new (or fixed).
+	if b, a := cc.Before.Options.Modules, cc.After.Options.Modules; len(b) > 0 && len(a) > 0 {
+		out.Changes = slices.DeleteFunc(out.Changes, func(c model.Change) bool {
+			mod, _, _ := strings.Cut(c.Check, "/")
+			return !slices.Contains(b, mod) || !slices.Contains(a, mod)
+		})
+	}
 	for _, m := range modules {
 		if _, ok := m.(check.IssueOwner); ok {
 			out.Changes = slices.DeleteFunc(out.Changes, func(c model.Change) bool {
@@ -134,7 +142,7 @@ func mismatch(before, after *model.Run) []string {
 		w = append(w, fmt.Sprintf("viewports differ (snapshot %v, now %v)", before.Options.Viewports, after.Options.Viewports))
 	}
 	if !slices.Equal(before.Options.Modules, after.Options.Modules) {
-		w = append(w, fmt.Sprintf("modules differ (snapshot %v, now %v)", before.Options.Modules, after.Options.Modules))
+		w = append(w, fmt.Sprintf("modules differ (snapshot %v, now %v); only modules in both are compared", before.Options.Modules, after.Options.Modules))
 	}
 	if !slices.Equal(before.Options.Levels, after.Options.Levels) {
 		w = append(w, fmt.Sprintf("interaction levels differ (snapshot %v, now %v)", before.Options.Levels, after.Options.Levels))
