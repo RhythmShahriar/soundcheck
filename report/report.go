@@ -43,14 +43,16 @@ type classInfo struct {
 }
 
 var classes = map[string]classInfo{
-	model.Broke:   {"BROKE", "✖", "worked in the snapshot, fails now"},
+	model.Broke:   {"BROKE", "✗", "worked in the snapshot, fails now"},
 	model.New:     {"NEW", "▲", "problems that weren't there before"},
 	model.Changed: {"CHANGED", "■", "looks or reads differently; check it's intended"},
 	model.Slower:  {"SLOWER", "◆", "measurably slower than the snapshot"},
-	model.Fixed:   {"FIXED", "✔", "problems from the snapshot that are gone"},
+	model.Fixed:   {"FIXED", "✓", "problems from the snapshot that are gone"},
 }
 
-var levelGlyphs = map[model.Level]string{model.Error: "✖", model.Warning: "▲", model.Notice: "·"}
+// Glyphs are plain text symbols: emoji-capable ones (✖ ✔) have no agreed
+// width, which misaligns boxes in some terminals.
+var levelGlyphs = map[model.Level]string{model.Error: "✗", model.Warning: "▲", model.Notice: "·"}
 
 // Levels in report order.
 var Levels = []model.Level{model.Error, model.Warning, model.Notice}

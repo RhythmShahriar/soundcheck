@@ -146,7 +146,7 @@ func TestMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"**Something broke.**", "| 1 | 1 | 1 | 1 | 1 |", "### ✖ BROKE (1)", `Layout changed \| header`, "`/` `/shop/`", "<details>"} {
+	for _, want := range []string{"**Something broke.**", "| 1 | 1 | 1 | 1 | 1 |", "### ✗ BROKE (1)", `Layout changed \| header`, "`/` `/shop/`", "<details>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("markdown lacks %q:\n%s", want, out)
 		}

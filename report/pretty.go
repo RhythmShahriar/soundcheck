@@ -165,7 +165,7 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 	fill := bar * done / max(total, 1)
 	tally := ""
 	if p.errors > 0 {
-		tally = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color(ui.Danger)).Bold(true).Render(fmt.Sprintf("✖ %d", p.errors))
+		tally = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color(ui.Danger)).Bold(true).Render(fmt.Sprintf("✗ %d", p.errors))
 	}
 	fmt.Fprintf(p.w, "\r\x1b[2K  %s %s %s  %s%s",
 		ui.Brand.Render(spinner[done%len(spinner)]),
@@ -595,7 +595,7 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 	}
 	body := strings.Join(parts, "   ")
 	if counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0 {
-		body = ui.Good.Render("✔ no problems found")
+		body = ui.Good.Render("✓ no problems found")
 	}
 	return ui.Panel(head+"\n"+body, color)
 }
