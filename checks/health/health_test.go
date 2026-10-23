@@ -1,6 +1,7 @@
 package health
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -114,7 +115,7 @@ func TestCleanPageHasNoIssues(t *testing.T) {
 func TestCompare(t *testing.T) {
 	before := &model.Run{Pages: []model.Page{{Path: "/a", Status: 200, Title: "A", TextLength: 1000, FinalURL: "https://x/a"}}}
 	after := &model.Run{Pages: []model.Page{{Path: "/a", Status: 200, Title: "A new", TextLength: 100, FinalURL: "https://x/login"}}}
-	changes := Module{}.Compare(nil, &check.CompareContext{Before: before, After: after})
+	changes := Module{}.Compare(context.Background(), &check.CompareContext{Before: before, After: after})
 	var got []string
 	for _, c := range changes {
 		got = append(got, c.Check)

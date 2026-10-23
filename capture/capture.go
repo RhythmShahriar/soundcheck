@@ -374,12 +374,12 @@ func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Opti
 	if len(opts.Ignore) > 0 {
 		css += strings.Join(opts.Ignore, ",") + "{visibility:hidden!important}"
 	}
-	js := fmt.Sprintf(`(css, sels) => {
+	js := `(css, sels) => {
 	  const s = document.createElement('style'); s.id = '__soundcheck_still'; s.textContent = css; document.documentElement.appendChild(s);
 	  const rects = [];
 	  for (const sel of sels) { try { document.querySelectorAll(sel).forEach(e => { const r = e.getBoundingClientRect(); if (r.width && r.height) rects.push({X: Math.round(r.left + scrollX), Y: Math.round(r.top + scrollY), W: Math.round(r.width), H: Math.round(r.height)}); }); } catch (e) {} }
 	  return rects;
-	}`)
+	}`
 	var masked []model.Rect
 	if obj, err := page.Eval(js, css, opts.Ignore); err == nil {
 		_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &masked)
