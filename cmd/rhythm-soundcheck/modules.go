@@ -10,8 +10,10 @@ import (
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/checks/cache"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/checks/speed"
+	"github.com/RhythmShahriar/soundcheck/checks/visual"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/lighthouse"
 )
@@ -23,6 +25,8 @@ var speedModule = speed.New()
 func modules(cfg config.Config) []check.Module {
 	all := map[string]check.Module{
 		"health": health.Module{},
+		"visual": visual.Module{},
+		"cache":  cache.Module{},
 		"speed":  speedModule,
 	}
 	var out []check.Module
