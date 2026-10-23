@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -131,4 +132,26 @@ func keys(m map[string]model.Issue) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestInlineScriptErrorsGroup(t *testing.T) {
+	cc := &check.Context{}
+	var keys []string
+	for i, path := range []string{"/", "/about/"} {
+		u := "http://x.test" + path
+		p := &model.Page{URL: u, FinalURL: u, Path: path, Status: 200, TextLength: 100,
+			Console: []string{fmt.Sprintf("Uncaught TypeError: Cannot read properties of undefined (reading 'init') (%s:%d)", u, 200+i*80)}}
+		Module{}.CheckPage(cc, p)
+		for _, is := range p.Issues {
+			if is.Check == "health/js-error" {
+				keys = append(keys, is.Key)
+				if is.Source != "inline script" {
+					t.Errorf("source = %q", is.Source)
+				}
+			}
+		}
+	}
+	if len(keys) != 2 || keys[0] != keys[1] {
+		t.Errorf("the same inline error on two pages must share a key: %v", keys)
+	}
 }

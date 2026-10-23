@@ -94,6 +94,11 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 		if m := scriptLoc.FindStringSubmatch(c); m != nil {
 			msg = strings.TrimSpace(strings.TrimSuffix(c, m[0]))
 			src = stripQuery(m[1]) + ":" + m[2]
+			// A script inside the page itself: its line moves with the
+			// content, so the same error on every page would never group.
+			if u := stripQuery(m[1]); u == stripQuery(p.URL) || u == stripQuery(p.FinalURL) {
+				src = "inline script"
+			}
 		}
 		check.Page(p, model.Issue{Check: "health/js-error", Level: model.Warning, Title: "JS error: " + normalize(msg), Source: src,
 			Fix: "Open the browser console on this page to see the full stack."})
