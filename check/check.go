@@ -59,6 +59,13 @@ type IssueOwner interface {
 	OwnsIssues()
 }
 
+// ChangeFilter tidies the full list of changes after every comparer ran,
+// e.g. dropping a generic NEW issue that one of its own changes already
+// explains.
+type ChangeFilter interface {
+	FilterChanges(changes []model.Change) []model.Change
+}
+
 // Context is what a module can use during a run.
 type Context struct {
 	Config     config.Config

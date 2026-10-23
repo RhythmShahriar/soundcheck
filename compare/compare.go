@@ -36,6 +36,11 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 			out.Changes = append(out.Changes, c.Compare(ctx, cc)...)
 		}
 	}
+	for _, m := range modules {
+		if f, ok := m.(check.ChangeFilter); ok {
+			out.Changes = f.FilterChanges(out.Changes)
+		}
+	}
 	Sort(out.Changes)
 	return out
 }

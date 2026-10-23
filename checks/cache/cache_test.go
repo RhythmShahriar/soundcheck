@@ -387,3 +387,18 @@ func TestCompare(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterChangesOneCauseOneLine(t *testing.T) {
+	cs := []model.Change{
+		{Class: model.Changed, Check: "cache/stopped", Title: "Page cache stopped working"},
+		{Class: model.New, Check: "cache/never-cached", Title: "Pages are never served from the page cache"},
+		{Class: model.Broke, Check: "cache/private-cached", Title: "Private page is served from cache"},
+	}
+	got := Module{}.FilterChanges(cs)
+	if len(got) != 2 || got[1].Check != "cache/private-cached" {
+		t.Errorf("got %+v", got)
+	}
+	if n := len(Module{}.FilterChanges(cs[1:])); n != 2 {
+		t.Errorf("without cache/stopped nothing is dropped, got %d", n)
+	}
+}

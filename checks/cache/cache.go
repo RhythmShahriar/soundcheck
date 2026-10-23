@@ -712,3 +712,15 @@ func orDefault(s, d string) string {
 	}
 	return s
 }
+
+// FilterChanges drops "never served from cache" and "no page cache" when
+// the comparison already says the page cache stopped working: one cause,
+// one line.
+func (Module) FilterChanges(changes []model.Change) []model.Change {
+	if !slices.ContainsFunc(changes, func(c model.Change) bool { return c.Check == "cache/stopped" }) {
+		return changes
+	}
+	return slices.DeleteFunc(changes, func(c model.Change) bool {
+		return c.Class == model.New && (c.Check == "cache/never-cached" || c.Check == "cache/none")
+	})
+}
