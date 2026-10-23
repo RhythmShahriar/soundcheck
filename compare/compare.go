@@ -22,7 +22,9 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: version, Created: time.Now().UTC(),
 		Before: ref(cc.Before, cc.BeforeDir), After: ref(cc.After, cc.AfterDir), Pages: len(cc.After.Pages),
 	}
-	out.Warnings = mismatch(cc.Before, cc.After)
+	// The run's own notes (a skipped leak test, unreadable flows) belong in
+	// the comparison too, so JSON readers see them.
+	out.Warnings = append(mismatch(cc.Before, cc.After), cc.After.Warnings...)
 	out.Changes = Issues(cc.Before, cc.After)
 	// A module that ran only once has nothing to compare against: all its
 	// issues would look new (or fixed).

@@ -230,7 +230,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 		}
 		fmt.Fprintf(p.w, "\n%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
 			snapshotName(c.Before), r.stats())
-		p.notes(c.Warnings, r.Run.Warnings)
+		p.notes(c.Warnings)
 		if hint != "" {
 			fmt.Fprintln(p.w, hint)
 		}
@@ -264,7 +264,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 	}
 	fmt.Fprintln(p.w, comparePanel(c))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(fmt.Sprintf("compared with %s · %s", snapshotName(c.Before), r.stats())))
-	p.notes(c.Warnings, r.Run.Warnings)
+	p.notes(c.Warnings)
 	if hint != "" {
 		fmt.Fprintf(p.w, "\n  %s %s\n", ui.Brand.Render("→"), muted.Render(hint))
 	}
@@ -280,6 +280,9 @@ func (p *Pretty) run(r Result, hint string) {
 			if i.Source != "" {
 				fmt.Fprintf(p.w, "  source: %s\n", i.Source)
 			}
+			if d := firstLine(i.Detail); d != "" && len(i.Pages) <= 1 {
+				fmt.Fprintf(p.w, "  %s\n", d)
+			}
 			if fix := firstLine(i.Fix); fix != "" && i.Level != model.Notice {
 				fmt.Fprintf(p.w, "  fix: %s\n", fix)
 			}
@@ -288,8 +291,9 @@ func (p *Pretty) run(r Result, hint string) {
 			return
 		}
 		counts := Counts(issues)
-		fmt.Fprintf(p.w, "\n%s - %d errors, %d warnings, %d notices - %s\n", runVerdict(r.Run, counts),
-			counts[model.Error], counts[model.Warning], counts[model.Notice], r.stats())
+		fmt.Fprintf(p.w, "\n%s - %s, %s, %s - %s\n", runVerdict(r.Run, counts),
+			plural(counts[model.Error], "error", "errors"), plural(counts[model.Warning], "warning", "warnings"),
+			plural(counts[model.Notice], "notice", "notices"), r.stats())
 		p.notes(r.Run.Warnings)
 		if hint != "" {
 			fmt.Fprintln(p.w, hint)
@@ -498,10 +502,21 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 	return prefix + "all clear"
 }
 
-func snapshotName(r model.RunRef) string {
+// snapshotName is `snapshot "good" (3h ago)` for the terminal.
+func snapshotName(r model.RunRef) string { return refName(r, true) }
+
+// snapshotAt is `snapshot "good" (23 Oct 2026 18:04 UTC)`, for saved
+// reports where "3h ago" would go stale.
+func snapshotAt(r model.RunRef) string { return refName(r, false) }
+
+func refName(r model.RunRef, relative bool) string {
 	when := ""
-	if !r.Started.IsZero() {
+	switch {
+	case r.Started.IsZero():
+	case relative:
 		when = " (" + Ago(r.Started) + ")"
+	default:
+		when = " (" + r.Started.UTC().Format("2 Jan 2006 15:04 MST") + ")"
 	}
 	if r.Name != "" {
 		return fmt.Sprintf("snapshot %q%s", r.Name, when)
@@ -570,7 +585,7 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 		if n > 0 {
 			style = lipgloss.NewStyle().Foreground(LevelColor(l)).Bold(true)
 		}
-		parts = append(parts, style.Render(fmt.Sprintf("%s %d", levelGlyphs[l], n))+" "+muted.Render(string(l)+"s"))
+		parts = append(parts, style.Render(fmt.Sprintf("%s %d", levelGlyphs[l], n))+" "+muted.Render(strings.TrimPrefix(plural(n, string(l), string(l)+"s"), fmt.Sprint(n)+" ")))
 	}
 	body := strings.Join(parts, "   ")
 	if counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0 {

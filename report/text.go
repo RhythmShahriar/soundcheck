@@ -31,7 +31,7 @@ func Markdown(w io.Writer, r Result) error {
 	b.WriteString("## ♪ Soundcheck\n\n")
 	if r.Compared() {
 		c := r.Comparison
-		fmt.Fprintf(&b, "**%s.** %d pages of %s compared with %s.\n\n", verdict(c), c.Pages, run.Target, snapshotName(c.Before))
+		fmt.Fprintf(&b, "**%s.** %d pages of %s compared with %s.\n\n", verdict(c), c.Pages, run.Target, snapshotAt(c.Before))
 		b.WriteString("| Broke | New | Changed | Slower | Fixed |\n|---:|---:|---:|---:|---:|\n|")
 		for _, class := range model.Classes {
 			fmt.Fprintf(&b, " %d |", c.Count(class))
@@ -58,7 +58,7 @@ func Markdown(w io.Writer, r Result) error {
 			}
 			b.WriteString("\n")
 		}
-		writeNotes(&b, append(slices.Clone(c.Warnings), run.Warnings...))
+		writeNotes(&b, c.Warnings)
 	} else {
 		issues := Issues(run)
 		counts := Counts(issues)

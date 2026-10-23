@@ -85,7 +85,7 @@ func HTML(w io.Writer, r Result) error {
 	if r.Compared() {
 		c := r.Comparison
 		d.Title = "Soundcheck · " + verdict(c)
-		d.Verdict, d.Against = verdict(c), snapshotName(c.Before)
+		d.Verdict, d.Against = verdict(c), snapshotAt(c.Before)
 		d.Tone = "ok"
 		switch {
 		case c.Count(model.Broke) > 0:
@@ -132,7 +132,7 @@ func HTML(w io.Writer, r Result) error {
 			}
 			d.Groups = append(d.Groups, g)
 		}
-		d.Notes = append(append(d.Notes, c.Warnings...), run.Warnings...)
+		d.Notes = c.Warnings
 	} else {
 		issues := Issues(run)
 		counts := Counts(issues)
