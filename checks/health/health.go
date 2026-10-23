@@ -5,6 +5,7 @@
 package health
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -156,6 +158,7 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 	cc.Lock()
 	visited := map[string]int{}
 	from := map[string][]string{}
+	orig := map[string]string{} // a link as written, to request and show; keys drop the trailing slash
 	for _, p := range cc.Run.Pages {
 		visited[strip(p.URL)] = p.Status
 		if p.FinalURL != "" {
@@ -165,6 +168,9 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 	for _, p := range cc.Run.Pages {
 		for _, l := range p.Links {
 			k := strip(l)
+			if _, ok := orig[k]; !ok {
+				orig[k] = l
+			}
 			if !slices.Contains(from[k], p.Path) {
 				from[k] = append(from[k], p.Path)
 			}
@@ -174,7 +180,7 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 
 	var todo []string
 	for l := range from {
-		if _, ok := visited[l]; !ok && isPage(l) {
+		if _, ok := visited[l]; !ok && linkToCheck(orig[l], cc.Config.Pages.Exclude) {
 			todo = append(todo, l)
 		}
 	}
@@ -188,7 +194,7 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			code := probe(ctx, cc, l)
+			code := probe(ctx, cc, orig[l])
 			mu.Lock()
 			status[l] = code
 			mu.Unlock()
@@ -203,7 +209,7 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 		if code == 404 || code == 410 || code >= 500 {
 			slices.Sort(pages)
 			cc.AddIssue(model.Issue{Check: "health/broken-link", Level: model.Warning,
-				Title: fmt.Sprintf("Broken link to %s (%d)", shortURL(cc.Base, l), code), Pages: pages,
+				Title: fmt.Sprintf("Broken link to %s (%d)", shortURL(cc.Base, cmp.Or(orig[l], l)), code), Pages: pages,
 				Fix: "Update or remove the link, or redirect the old URL."})
 		}
 	}
@@ -322,12 +328,13 @@ func strip(raw string) string {
 	return strings.TrimSuffix(raw, "/")
 }
 
-var nonPage = regexp.MustCompile(`(?i)\.(jpe?g|png|gif|webp|svg|pdf|zip|mp[34]|css|js|xml|txt)$`)
-
-func isPage(raw string) bool {
+// linkToCheck reports whether a link is a page worth requesting: the same
+// rules as discovery, so links that act (add to cart, log out) are never
+// requested, not even with HEAD.
+func linkToCheck(raw string, exclude []string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && !nonPage.MatchString(u.Path) &&
-		!strings.Contains(u.Path, "/wp-admin") && !strings.Contains(u.RawQuery, "action=logout")
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && crawl.IsPage(u) &&
+		!crawl.Excluded(u, crawl.DefaultExcludes) && !crawl.Excluded(u, exclude)
 }
 
 func orDefault(s, d string) string {

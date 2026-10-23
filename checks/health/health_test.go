@@ -3,11 +3,16 @@ package health
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -170,5 +175,36 @@ func TestWhiteScreenIgnoresFavicon(t *testing.T) {
 		if i.Check == "health/white-screen" {
 			t.Error("a page showing an image isn't blank")
 		}
+	}
+}
+
+func TestCheckSiteLinks(t *testing.T) {
+	var cartHit atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Query().Has("add-to-cart"):
+			cartHit.Store(true)
+		case r.URL.Path == "/about/", r.URL.Path == "/":
+			return // 200; note /about without the slash would 404
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	base, _ := url.Parse(srv.URL + "/")
+	run := &model.Run{Pages: []model.Page{{URL: srv.URL + "/", Path: "/", Status: 200,
+		Links: []string{srv.URL + "/about/", srv.URL + "/gone/", srv.URL + "/shop/?add-to-cart=12", srv.URL + "/private/x/"}}}}
+	cfg := config.Default()
+	cfg.Pages.Exclude = []string{"/private/*"}
+	cc := &check.Context{Config: cfg, Base: base, Run: run, HTTP: srv.Client(), Hosts: ratelimit.NewHosts(0)}
+	Module{}.CheckSite(context.Background(), cc)
+	var titles []string
+	for _, i := range run.Issues {
+		titles = append(titles, i.Title)
+	}
+	if len(titles) != 1 || titles[0] != "Broken link to /gone/ (404)" {
+		t.Errorf("issues = %v; want only the missing /gone/, keeping its slash", titles)
+	}
+	if cartHit.Load() {
+		t.Error("an add-to-cart link must never be requested")
 	}
 }
