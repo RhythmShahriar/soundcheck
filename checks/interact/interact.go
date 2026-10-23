@@ -56,12 +56,14 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	}
 	admin := isAdmin(p.Path)
 	clicked := map[string]bool{}
+	set := &issueSet{}
 	if cfg.Level("click") && !admin {
-		clicked = m.clicks(ctx, cc, tab, p, f)
+		clicked = m.clicks(ctx, cc, tab, p, f, set)
 	}
 	if cfg.Level("inspect") {
-		m.inspect(ctx, cc, p, f, clicked)
+		m.inspect(ctx, cc, p, f, clicked, set)
 	}
+	set.flush(p)
 	if cfg.Level("submit") && !admin {
 		m.submits(ctx, cc, tab, p, f)
 	}
@@ -74,7 +76,7 @@ func isAdmin(path string) bool {
 
 // inspect reports what the DOM shows without touching anything.
 // Elements level 2 clicked are judged by the click instead.
-func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, f *facts, clicked map[string]bool) {
+func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, f *facts, clicked map[string]bool, set *issueSet) {
 	for _, u := range limit(f.Unnamed, 20) {
 		check.Page(p, model.Issue{Check: "interact/unnamed-field", Level: model.Warning,
 			Title:  "Form field has no name: " + u.Label,
@@ -97,7 +99,7 @@ func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, 
 		if clicked[n.Sel] {
 			continue
 		}
-		check.Page(p, deadIssue(n.Label, n.Sel, n.Link, "Nothing on the page listens for clicks on it or its parents."))
+		set.add(deadIssue(n.Label, n.Link, "Nothing on the page listens for clicks on it or its parents."), n.Sel)
 	}
 	base, _ := url.Parse(p.URL)
 	for _, fm := range f.Forms {
@@ -123,13 +125,15 @@ func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, 
 	}
 }
 
-func deadIssue(label, sel string, link bool, detail string) model.Issue {
+// deadIssue is titled by the visible label only, so identical controls
+// share one issue and the title stays the same across runs.
+func deadIssue(label string, link bool, detail string) model.Issue {
 	what, fix := "Button", "Wire up its click handler, or remove the button if it's no longer needed."
 	if link {
 		what, fix = "Link", "Give the link a real href, or attach the script that should handle it."
 	}
-	return model.Issue{Check: "interact/dead-click", Level: model.Warning, Title: what + " does nothing: " + orDefault(label, sel),
-		Detail: detail + " (" + sel + ")", Fix: fix}
+	return model.Issue{Check: "interact/dead-click", Level: model.Warning, Title: what + " does nothing: " + orDefault(label, "(no label)"),
+		Detail: detail, Fix: fix}
 }
 
 // probe checks a form action with HEAD, falling back to GET. It never

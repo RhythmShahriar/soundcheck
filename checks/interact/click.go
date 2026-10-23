@@ -8,12 +8,9 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/input"
-	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -68,8 +65,12 @@ func (s pageState) reacted(voidLink bool) bool {
 		(!voidLink && (s.Hash || s.Scrolled))
 }
 
+// clickBudget bounds the time level 2 spends on one page, so a slow page
+// can't hold a tab for minutes.
+const clickBudget = 45 * time.Second
+
 // clicks runs level 2 and returns the selectors it clicked.
-func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p *model.Page, f *facts) map[string]bool {
+func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p *model.Page, f *facts, set *issueSet) map[string]bool {
 	clicked := map[string]bool{}
 	pageURL := orDefault(p.FinalURL, p.URL)
 	base, _ := url.Parse(pageURL)
@@ -79,11 +80,7 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 	}
 	cands := slices.Clone(f.Cands)
 	slices.SortStableFunc(cands, func(a, b candidate) int { return a.Prio - b.Prio })
-	labels := map[string]int{}
-	for _, c := range cands {
-		labels[c.Label]++
-	}
-	if _, err := tab.Eval(guardJS); err != nil {
+	if _, err := tab.Timeout(10 * time.Second).Eval(guardJS); err != nil {
 		return clicked
 	}
 	w := watch(ctx, tab)
@@ -94,9 +91,14 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 			p.Interact = append(p.Interact, model.Interaction{Kind: "click", Selector: c.Sel, Label: c.Label, Outcome: outcome, Detail: detail})
 		}
 	}
-	n := 0
-	for _, c := range cands {
+	deadline := time.Now().Add(clickBudget)
+	n, left := 0, 0
+	for i, c := range cands {
 		if ctx.Err() != nil || n >= maxClicks {
+			break
+		}
+		if time.Now().After(deadline) {
+			left = len(cands) - i
 			break
 		}
 		switch {
@@ -107,40 +109,39 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 			record(c, "skipped", "looks destructive")
 			continue
 		}
-		name := c.Label
-		if name == "" || labels[c.Label] > 1 {
-			name = strings.TrimSpace(c.Label + " (" + c.Sel + ")")
-		}
 		e, err := m.clickOne(ctx, tab, w, c, pageURL)
-		if err != nil {
-			if errors.Is(err, errCovered) {
-				// Something (an open menu or modal) covers it: start fresh once.
-				if reload(ctx, tab, pageURL) == nil {
-					e, err = m.clickOne(ctx, tab, w, c, pageURL)
-				}
+		if errors.Is(err, errCovered) {
+			// Something (an open menu or modal) covers it: start fresh once.
+			if reload(ctx, tab, pageURL) == nil {
+				e, err = m.clickOne(ctx, tab, w, c, pageURL)
 			}
-			if err != nil {
-				record(c, "skipped", err.Error())
-				continue
-			}
+		}
+		var gone *notThere
+		switch {
+		case errors.As(err, &gone):
+			continue // hidden, off screen or gone: not something a visitor can click
+		case err != nil:
+			record(c, "skipped", err.Error())
+			continue
 		}
 		n++
 		clicked[c.Sel] = true
+		name := orDefault(c.Label, "(no label)")
 		switch {
 		case len(e.errors) > 0:
 			record(c, "error", e.errors[0])
-			check.Page(p, model.Issue{Check: "interact/click-error", Level: model.Error,
+			set.add(model.Issue{Check: "interact/click-error", Level: model.Error,
 				Title: "Clicking " + name + " throws a JS error", Detail: e.errors[0],
-				Fix: "Click it with the browser console open to see the stack trace."})
+				Fix: "Click it with the browser console open to see the stack trace."}, c.Sel)
 		case len(e.failed) > 0:
 			d := describe(e.failed[0], base)
 			record(c, "error", d)
-			check.Page(p, model.Issue{Check: "interact/click-request", Level: model.Error,
+			set.add(model.Issue{Check: "interact/click-request", Level: model.Error,
 				Title: "Clicking " + name + " makes a request that fails", Detail: d,
-				Fix: "Check the server log for the endpoint at the time of the click."})
+				Fix: "Check the server log for the endpoint at the time of the click."}, c.Sel)
 		case e.dead:
 			record(c, "dead", "no DOM change, request or navigation within 1.5 s")
-			check.Page(p, deadIssue(name, c.Sel, c.Tag == "a", "Clicking it changed nothing on the page, made no request and didn't navigate."))
+			set.add(deadIssue(c.Label, c.Tag == "a", "Clicking it changed nothing on the page, made no request and didn't navigate."), c.Sel)
 		default:
 			record(c, "ok", c.Kind)
 		}
@@ -149,6 +150,9 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 				break
 			}
 		}
+	}
+	if left > 0 {
+		cc.Warn(fmt.Sprintf("interact %s: stopped clicking after %s with %d controls left (the page is slow)", p.Path, clickBudget, left))
 	}
 	// Leave the page as it was loaded for the submit level. Otherwise the
 	// runner's mobile pass reloads it anyway, so don't load it twice.
@@ -160,6 +164,12 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 
 var errCovered = errors.New("covered by another element")
 
+// notThere is an element a visitor couldn't click either: hidden, clipped
+// by a collapsed parent, off screen or no longer in the page.
+type notThere struct{ why string }
+
+func (e *notThere) Error() string { return e.why }
+
 type clickResult struct {
 	errors []string
 	failed []model.Request
@@ -167,39 +177,99 @@ type clickResult struct {
 	left   bool // the page navigated: reload before the next click
 }
 
-// clickOne moves the mouse onto the element, waits for hover effects to
-// settle, then clicks and watches for a reaction.
+// prepJS scrolls the element to the middle of the viewport, checks that a
+// visitor could click it (visible, not clipped by a collapsed parent, on
+// screen, not covered) and hovers it. Everything is done in the page:
+// Chrome doesn't render background tabs, so CDP mouse input and
+// requestAnimationFrame (which rod's scrolling waits on) stall there,
+// while DOM events, layout and hit testing work in every tab.
+const prepJS = `(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return {state: 'gone'};
+  const cs = getComputedStyle(el);
+  if (!el.getClientRects().length || cs.display === 'none' || cs.visibility === 'hidden' || cs.pointerEvents === 'none' || cs.opacity === '0' || el.closest('[inert]'))
+    return {state: 'hidden'};
+  el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  const r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return {state: 'hidden'};
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return {state: 'offscreen'};
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return {state: 'hidden'};
+    if (s.overflowX !== 'visible' || s.overflowY !== 'visible') {
+      const b = n.getBoundingClientRect();
+      if (x < b.left || x > b.right || y < b.top || y > b.bottom) return {state: 'hidden'};
+    }
+  }
+  const hit = document.elementFromPoint(x, y);
+  if (hit && hit !== el && !el.contains(hit)) return {state: 'covered', by: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '')};
+  const o = {bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, view: window};
+  const ptr = {pointerId: 1, pointerType: 'mouse', isPrimary: true};
+  el.dispatchEvent(new PointerEvent('pointerover', {...o, ...ptr}));
+  el.dispatchEvent(new PointerEvent('pointerenter', {...o, ...ptr, bubbles: false}));
+  el.dispatchEvent(new MouseEvent('mouseover', o));
+  el.dispatchEvent(new MouseEvent('mouseenter', {...o, bubbles: false}));
+  el.dispatchEvent(new PointerEvent('pointermove', {...o, ...ptr}));
+  el.dispatchEvent(new MouseEvent('mousemove', o));
+  return {state: 'ok', x, y};
+}`
+
+// pressJS clicks like a mouse: down, focus, up, click. The click event
+// runs the element's default action too (follow a link, toggle details).
+const pressJS = `(sel, x, y) => {
+  const el = document.querySelector(sel);
+  if (!el) return false;
+  const o = {bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, view: window, button: 0};
+  const ptr = {pointerId: 1, pointerType: 'mouse', isPrimary: true};
+  el.dispatchEvent(new PointerEvent('pointerdown', {...o, ...ptr, buttons: 1}));
+  el.dispatchEvent(new MouseEvent('mousedown', {...o, buttons: 1}));
+  if (el.focus) el.focus({preventScroll: true});
+  el.dispatchEvent(new PointerEvent('pointerup', {...o, ...ptr}));
+  el.dispatchEvent(new MouseEvent('mouseup', o));
+  el.dispatchEvent(new MouseEvent('click', {...o, detail: 1}));
+  return true;
+}`
+
+// escapeJS presses Escape, which closes most menus and modals.
+const escapeJS = `() => {
+  const t = document.activeElement || document.body || document;
+  for (const type of ['keydown', 'keyup']) t.dispatchEvent(new KeyboardEvent(type, {key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true}));
+}`
+
+// clickOne hovers the element, lets hover effects settle, then clicks and
+// watches for a reaction.
 func (m *Module) clickOne(ctx context.Context, tab *rod.Page, w *watcher, c candidate, pageURL string) (clickResult, error) {
 	var r clickResult
-	sel := c.Sel
-	t := tab.Context(ctx).Timeout(5 * time.Second)
-	els, err := t.Elements(sel)
-	if err != nil || len(els) == 0 {
-		return r, errors.New("not found")
-	}
-	el := els[0]
-	if err := el.ScrollIntoView(); err != nil {
-		return r, errors.New("can't scroll to it")
-	}
-	pt, err := el.Interactable()
+	t := tab.Context(ctx).Timeout(10 * time.Second)
+	res, err := t.Eval(prepJS, c.Sel)
 	if err != nil {
-		var covered *rod.CoveredError
-		if errors.As(err, &covered) {
-			return r, errCovered
-		}
-		return r, errors.New("hidden")
+		return r, fmt.Errorf("couldn't reach it: %w", err)
 	}
-	if err := t.Mouse.MoveTo(*pt); err != nil {
+	var prep struct {
+		State string  `json:"state"`
+		By    string  `json:"by"`
+		X     float64 `json:"x"`
+		Y     float64 `json:"y"`
+	}
+	if err := json.Unmarshal([]byte(res.Value.JSON("", "")), &prep); err != nil {
 		return r, err
+	}
+	switch prep.State {
+	case "ok":
+	case "covered":
+		return r, fmt.Errorf("%w (%s)", errCovered, prep.By)
+	default:
+		return r, &notThere{prep.State}
 	}
 	settle(ctx, 200*time.Millisecond)
 	if _, err := t.Eval(armJS); err != nil {
 		return r, err
 	}
 	w.reset()
-	if err := t.Mouse.Click(proto.InputMouseButtonLeft, 1); err != nil {
-		return r, err
-	}
+	// An error here usually means the click navigated mid-call; the
+	// watcher has the rest.
+	_, _ = t.Eval(pressJS, c.Sel, prep.X, prep.Y)
 
 	// Wait for a reaction: up to 1.5 s for nothing to happen, longer while
 	// requests it started are still running.
@@ -221,7 +291,7 @@ func (m *Module) clickOne(ctx context.Context, tab *rod.Page, w *watcher, c cand
 	r.dead = !st.reacted(c.Void) && e.requests == 0 && e.nav == nil && len(e.errors) == 0
 	r.left = e.nav != nil || st.Moved || !st.Armed
 	// Close whatever opened (menus, modals) before the next click.
-	_ = tab.Keyboard.Type(input.Escape)
+	_, _ = tab.Timeout(5 * time.Second).Eval(escapeJS)
 	if !r.left {
 		if info, err := tab.Info(); err == nil && strip(info.URL) != strip(pageURL) {
 			r.left = true
@@ -234,7 +304,7 @@ func (m *Module) clickOne(ctx context.Context, tab *rod.Page, w *watcher, c cand
 // observer is gone and Armed is false.
 func state(tab *rod.Page) pageState {
 	var s pageState
-	res, err := tab.Timeout(2 * time.Second).Eval(stateJS)
+	res, err := tab.Timeout(5 * time.Second).Eval(stateJS)
 	if err != nil {
 		return s
 	}

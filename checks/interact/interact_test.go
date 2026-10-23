@@ -50,6 +50,9 @@ const home = `<!doctype html><html><head><title>Brew</title>
   <button type="button" id="stock">Check stock</button>
   <button type="button" id="del">Delete account</button>
   <a href="#" class="share">Share</a>
+  <ul class="products"><li><button class="wish" data-id="1">Add to wishlist</button></li><li><button class="wish" data-id="2">Add to wishlist</button></li><li><button class="wish" data-id="3">Add to wishlist</button></li></ul>
+  <a class="skip" href="#content" style="position:absolute;left:-9999px" onclick="return false">Skip to content</a>
+  <div class="collapsed" style="max-height:0;overflow:hidden"><button type="button" class="inner" onclick="this.textContent='x'">Hidden option</button></div>
   <details><summary>Shipping</summary><p>Two days.</p></details>
   <p id="dup">one</p><p id="dup">two</p>
   <form method="post" action="/missing-handler/">
@@ -67,6 +70,7 @@ const home = `<!doctype html><html><head><title>Brew</title>
   document.getElementById('dead').addEventListener('mouseover', () => {});
   document.getElementById('boom').addEventListener('click', () => { offers.render(); });
   document.getElementById('stock').addEventListener('click', () => { fetch('/api/stock'); });
+  document.querySelectorAll('.wish').forEach(b => b.addEventListener('click', () => WishlistStore.add(b.dataset.id)));
   document.getElementById('del').addEventListener('click', () => { fetch('/api/delete', {method: 'POST'}); });
 </script></body></html>`
 
@@ -108,6 +112,10 @@ func newFixture(t *testing.T) *fixture {
 		return func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }
 	}
 	mux.HandleFunc("/{$}", page(home))
+	for _, p := range []string{"/a/", "/b/", "/c/"} {
+		mux.HandleFunc(p, page(home))
+	}
+	mux.HandleFunc("/contact-sent/", page(strings.Replace(contact, "wpcf7-form init", "wpcf7-form sent", 1)))
 	mux.HandleFunc("/contact/", page(contact))
 	mux.HandleFunc("/wp-includes/js/jquery.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
@@ -152,7 +160,10 @@ func newFixture(t *testing.T) *fixture {
 
 func (fx *fixture) run(t *testing.T, cfg config.Config, paths ...string) *model.Run {
 	t.Helper()
-	cfg.Rate, cfg.Tabs = 0, 1
+	cfg.Rate = 0
+	if cfg.Tabs == config.Default().Tabs {
+		cfg.Tabs = 1
+	}
 	cfg.Viewports = []string{"desktop"}
 	cfg.Modules = []string{"interact"}
 	st := store.Store{Root: t.TempDir()}
@@ -188,11 +199,19 @@ func TestInspectAndClick(t *testing.T) {
 	needBrowser(t)
 	fx := newFixture(t)
 	cfg := config.Default() // inspect + click
-	run := fx.run(t, cfg, "/")
-	p := run.Page("/")
-	if p == nil || p.Error != "" {
-		t.Fatalf("page: %+v", p)
+	cfg.Tabs = 4            // background tabs must click as reliably as the front one
+	run := fx.run(t, cfg, "/", "/a/", "/b/", "/c/")
+	for _, path := range []string{"/", "/a/", "/b/", "/c/"} {
+		p := run.Page(path)
+		if p == nil || p.Error != "" {
+			t.Fatalf("page %s: %+v", path, p)
+		}
+		checkHome(t, fx, p)
 	}
+}
+
+func checkHome(t *testing.T, fx *fixture, p *model.Page) {
+	t.Helper()
 	got := issues(p)
 	for title, level := range map[string]model.Level{
 		"Button does nothing: Subscribe":                        model.Warning,
@@ -204,6 +223,7 @@ func TestInspectAndClick(t *testing.T) {
 		"Required field has no label: phone":                    model.Notice,
 		"Form sends to a missing page (404): /missing-handler/": model.Error,
 		"Form has no nonce: form 1":                             model.Warning,
+		"Clicking Add to wishlist throws a JS error":            model.Error,
 	} {
 		i, ok := got[title]
 		if !ok {
@@ -217,12 +237,29 @@ func TestInspectAndClick(t *testing.T) {
 	if e := got["Clicking Show offers throws a JS error"]; !strings.Contains(e.Detail, "offers is not defined") {
 		t.Errorf("JS error detail: %q", e.Detail)
 	}
-	if e := got["Clicking Check stock makes a request that fails"]; e.Detail != "GET /api/stock returned 500" {
+	if e := got["Clicking Check stock makes a request that fails"]; e.Detail != "GET /api/stock returned 500 (#stock)" {
 		t.Errorf("request detail: %q", e.Detail)
 	}
 	for _, bad := range []string{"Button does nothing: Menu", "Button does nothing: Shipping"} {
 		if _, ok := got[bad]; ok {
 			t.Errorf("working control reported: %s", bad)
+		}
+	}
+	n := 0
+	for _, i := range p.Issues {
+		if strings.Contains(i.Title, "wishlist") {
+			n++
+		}
+	}
+	if w := got["Clicking Add to wishlist throws a JS error"]; n != 1 || !strings.Contains(w.Detail, "(3 controls: ") {
+		t.Errorf("%s: %d wishlist issues, detail %q", p.Path, n, w.Detail)
+	}
+	for _, i := range p.Interact {
+		if i.Kind == "click" && i.Outcome == "skipped" && i.Detail != "looks destructive" && i.Detail != "navigates away" {
+			t.Errorf("%s: skipped %s: %s", p.Path, i.Label, i.Detail)
+		}
+		if i.Label == "Skip to content" || i.Label == "Hidden option" {
+			t.Errorf("%s: hidden control treated as a candidate: %+v", p.Path, i)
 		}
 	}
 	clicks := outcomes(p, "click")
@@ -254,6 +291,11 @@ func TestSubmitForms(t *testing.T) {
 	run := fx.run(t, cfg, "/contact/")
 	p := run.Page("/contact/")
 	subs := outcomes(p, "submit")
+	for _, i := range p.Interact {
+		if i.Selector != "form.wpcf7-form" {
+			t.Errorf("selector %q carries CF7 state", i.Selector)
+		}
+	}
 	if subs["Contact Form 7 #42"] != "success" {
 		t.Fatalf("submit outcomes: %+v, issues %v", p.Interact, p.Issues)
 	}
@@ -373,5 +415,60 @@ steps:
 	defer fx.mu.Unlock()
 	if len(fx.posts) != 1 || !strings.Contains(fx.posts[0], "soundcheck-test") {
 		t.Errorf("flow posts: %q", fx.posts)
+	}
+}
+
+func TestSelectorsIgnorePluginState(t *testing.T) {
+	needBrowser(t)
+	fx := newFixture(t)
+	cfg := config.Default()
+	cfg.Interactions.Levels = []string{"inspect"}
+	run := fx.run(t, cfg, "/contact/", "/contact-sent/")
+	for _, path := range []string{"/contact/", "/contact-sent/"} {
+		p := run.Page(path)
+		if len(p.Interact) != 1 || p.Interact[0].Selector != "form.wpcf7-form" || p.Interact[0].Label != "Contact Form 7 #42" {
+			t.Errorf("%s: %+v", path, p.Interact)
+		}
+	}
+}
+
+func TestFlowFilesAndProduction(t *testing.T) {
+	needBrowser(t)
+	fx := newFixture(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"a-broken.yaml":  "name: Broken\nsteps:\n  - clik: .menu-toggle\n",
+		"b-menu.yaml":    "name: Menu\nsteps:\n  - expect: {text: Show offers}\n  - click: .menu-toggle\n  - expect: {selector: \"#nav\"}\n",
+		"c-allowed.yaml": "name: Allowed\nproduction: true\nsteps:\n  - click: .menu-toggle\n  - expect: {selector: \"#nav\"}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Default()
+	cfg.Interactions.Levels = []string{"flows"}
+	cfg.Flows = dir
+	cfg.Timeout = 5
+	cfg.Production = []string{fx.srv.URL}
+	run := fx.run(t, cfg, "/")
+	got := map[string]model.Issue{}
+	for _, i := range run.Issues {
+		got[i.Title] = i
+	}
+	if i, ok := got[`Flow file "a-broken.yaml" can't be read`]; !ok || i.Level != model.Error || !strings.Contains(i.Detail, "clik") {
+		t.Errorf("bad flow file: %v", keys(got))
+	}
+	if i, ok := got[`Flow "Menu" step 2 refused on production: click .menu-toggle`]; !ok || i.Level != model.Warning {
+		t.Errorf("production refusal: %v", keys(got))
+	}
+	if len(got) != 2 {
+		t.Errorf("issues: %v", keys(got))
+	}
+	warned := false
+	for _, w := range run.Warnings {
+		warned = warned || strings.Contains(w, "production")
+	}
+	if !warned {
+		t.Errorf("no production warning: %v", run.Warnings)
 	}
 }

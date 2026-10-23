@@ -83,7 +83,10 @@ const guardJS = `() => {
 const helpersJS = `
 const clean = s => (s || '').replace(/\s+/g, ' ').trim();
 const visible = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length)) && getComputedStyle(e).visibility !== 'hidden';
-const stateClass = /^(is-|has-)?(active|open|opened|show|shown|hover|focus|focused|selected|current|visible|hidden|collapsed|expanded|in|toggled|on|off|closed)$/;
+const stateClass = /^(is-|has-)?(active|open|opened|show|shown|hover|focus|focused|selected|current|visible|hidden|collapsed|expanded|in|toggled|on|off|closed|loading|loaded|error|success|disabled)$/;
+// Form plugins change these classes as a submission goes through (CF7:
+// init → submitting → sent/invalid/failed…), so selectors must ignore them.
+const pluginState = /^(init|sent|failed|invalid|unaccepted|spam|aborted|resetting|submitting|payment-required|wpcf7-mail-sent-ok|wpcf7-mail-sent-ng|wpcf7-validation-errors|wpforms-submitting|wpforms-submitted|wpforms-form-submitted|wpforms-has-error|wpforms-error|gform_validation_error|gform_submitting|gform_submission_error|gfield_error|elementor-form-waiting|elementor-form-success|elementor-error)$/;
 const stable = s => !!s && /^[A-Za-z][\w-]*$/.test(s) && !/\d{4,}/.test(s);
 const unique = s => { try { return document.querySelectorAll(s).length === 1; } catch (e) { return false; } };
 const selectorOf = e => {
@@ -93,7 +96,7 @@ const selectorOf = e => {
     if (n !== e && stable(n.id) && unique('#' + CSS.escape(n.id))) { parts.unshift('#' + CSS.escape(n.id)); break; }
     if (n === document.body) { parts.unshift('body'); break; }
     let part = n.tagName.toLowerCase();
-    const cls = [...n.classList].filter(c => stable(c) && !stateClass.test(c)).slice(0, 2);
+    const cls = [...n.classList].filter(c => stable(c) && !stateClass.test(c) && !pluginState.test(c)).slice(0, 2);
     if (cls.length) part += '.' + cls.map(c => CSS.escape(c)).join('.');
     const sib = n.parentElement ? [...n.parentElement.children].filter(c => c.tagName === n.tagName) : [];
     if (sib.length > 1) part += ':nth-of-type(' + (sib.indexOf(n) + 1) + ')';
@@ -209,6 +212,11 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
   for (const e of set) {
     if (out.cands.length >= 200) break;
     if (!(e instanceof HTMLElement) || !visible(e) || e.disabled || e.getAttribute('aria-disabled') === 'true') continue;
+    // Off-screen controls (skip links, closed off-canvas menus) aren't
+    // something a visitor can click as the page loads.
+    const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+    if (r.width < 1 || r.height < 1 || r.right + scrollX <= 0 || r.bottom + scrollY <= 0 || r.left + scrollX >= document.documentElement.scrollWidth ||
+        cs.opacity === '0' || cs.pointerEvents === 'none') continue;
     if (e.matches('input,select,textarea,option,label,form,html,body') || e.closest('[inert]')) continue;
     if (e.type === 'reset') continue;
     // Form submits belong to level 3.
