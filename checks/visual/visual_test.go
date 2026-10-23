@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,7 +74,8 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 	cfg := config.Default()
 	cc := &check.CompareContext{Config: cfg, Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir,
 		Dir: cmpDir, Save: store.Saver(cmpDir)}
-	got := byTitle(Module{}.Compare(context.Background(), cc))
+	all := Module{}.Compare(context.Background(), cc)
+	got := byTitle(all)
 
 	header, ok := got["Header changed on 5 pages (desktop)"]
 	if !ok {
@@ -85,9 +87,9 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 	if header.Score < 4 || header.Score > 6 { // 800×60 of 800×1200 = 5%
 		t.Errorf("header score = %v", header.Score)
 	}
-	about, ok := got["Page looks different (desktop)"]
-	if !ok || len(about.Pages) != 1 || about.Pages[0] != "/about/" {
-		t.Fatalf("page change = %+v (all %v)", about, keys(got))
+	about, ok := find(all, "Page looks different (desktop)", "/about/")
+	if !ok {
+		t.Fatalf("no page change for /about/ in %v", keys(got))
 	}
 	if about.Score != 8.33 || !strings.Contains(about.Detail, "besides the changes shared") { // the block, 80000 of 960000 px; the header is reported once
 		t.Errorf("about score = %v", about.Score)
@@ -108,12 +110,14 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 	if header.Files == nil {
 		t.Error("shared change has no images")
 	}
-	taller, ok := got["Page got 340 px taller (desktop)"]
-	if !ok || strings.Join(taller.Pages, ",") != "/blog/" || taller.Before != "800×1200 px" || taller.After != "800×1540 px" {
-		t.Errorf("size change = %+v (all %v)", taller, keys(got))
+	// /blog/ grew at the bottom: a block only it has, reported with the
+	// page, not as a separate size change.
+	blog, ok := find(all, "Page looks different (desktop)", "/blog/")
+	if !ok || !strings.Contains(blog.Detail, "A 340 px tall block was inserted 1200 px down") || blog.Score != 28.33 {
+		t.Errorf("blog = %+v", blog)
 	}
-	if len(got) != 3 {
-		t.Errorf("changes: %v", keys(got))
+	if len(all) != 3 {
+		t.Errorf("changes: %v", all)
 	}
 	// Only pages that changed get images.
 	entries, _ := os.ReadDir(filepath.Join(cmpDir, "visual"))
@@ -149,7 +153,8 @@ func TestCompareGroupsInsertedBanner(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing %q in %v", title, keys(got))
 		}
-		if strings.Join(c.Pages, ",") != "/,/a/,/b/,/c/" || c.Files["diff"] == "" || !strings.Contains(c.Detail, "320 px tall block was inserted 0 px down") {
+		if strings.Join(c.Pages, ",") != "/,/a/,/b/,/c/" || c.Files["diff"] == "" || c.Check != "visual/block" ||
+			!strings.HasPrefix(c.Detail, "A 320 px tall block appeared at the top of each page listed") || !strings.Contains(c.Detail, "320 px taller in all") {
 			t.Errorf("%s = %+v", title, c)
 		}
 	}
@@ -160,10 +165,51 @@ func TestCompareGroupsInsertedBanner(t *testing.T) {
 	if p.Score != 5.36 { // 300×200 of 800×1400 compared
 		t.Errorf("leftover score %v: %s", p.Score, p.Detail)
 	}
-	if c := got["Page got 320 px taller (desktop)"]; len(c.Pages) != 4 {
-		t.Errorf("size change = %+v", c)
+	if len(got) != 3 { // the size change is told with the blocks
+		t.Errorf("changes: %v", keys(got))
 	}
-	if len(got) != 5 {
+}
+
+// A plugin adds a banner at the top and a notice above the footer of
+// every page: one change per block per viewport, nothing per page. The
+// notice wraps onto more lines on mobile, and on some pages.
+func TestCompareGroupsTwoBlocks(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
+		for _, vp := range []string{"desktop", "mobile"} {
+			w, notice := 800, 53
+			if vp == "mobile" {
+				w, notice = 390, 96
+			}
+			if i == 3 {
+				notice += 8 // a longer page title wraps the notice once more
+			}
+			h := 1500 + i*200
+			b := page(w, h)
+			fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+			a := insertRows(b, 0, 320, color.NRGBA{255, 200, 100, 255})
+			a = insertRows(a, 320+h-80, notice, color.NRGBA{250, 250, 200, 255}) // above the footer
+			addShot(t, before, beforeDir, path, vp, b)
+			addShot(t, after, afterDir, path, vp, a)
+		}
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	cs := Module{}.Compare(context.Background(), cc)
+	got := byTitle(cs)
+	for _, title := range []string{
+		"New block at the top of 4 pages (desktop)", "New block at the top of 4 pages (mobile)",
+		"New block near the bottom of 4 pages (desktop)", "New block near the bottom of 4 pages (mobile)",
+	} {
+		if c, ok := got[title]; !ok || len(c.Pages) != 4 {
+			t.Errorf("%s: %+v", title, c)
+		}
+	}
+	if d := got["New block near the bottom of 4 pages (mobile)"].Detail; !strings.HasPrefix(d, "A 96–104 px tall block appeared near the bottom") ||
+		!strings.Contains(d, "416–424 px taller in all") {
+		t.Errorf("mobile notice: %s", d)
+	}
+	if len(cs) != 4 {
 		t.Errorf("changes: %v", keys(got))
 	}
 }
@@ -182,7 +228,7 @@ func TestCompareGroupsRemovedBlock(t *testing.T) {
 	}
 	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
 	got := byTitle(Module{}.Compare(context.Background(), cc))
-	if _, ok := got["Block removed 700 px down on 2 pages (desktop)"]; !ok || len(got) != 2 {
+	if _, ok := got["Block removed 700 px down on 2 pages (desktop)"]; !ok || len(got) != 1 {
 		t.Errorf("changes: %v", keys(got))
 	}
 }
@@ -338,6 +384,15 @@ func grow(img *image.NRGBA, rows int) *image.NRGBA {
 	out := canvas(b.Dx(), b.Dy()+rows)
 	copy(out.Pix, img.Pix)
 	return out
+}
+
+func find(cs []model.Change, title, page string) (model.Change, bool) {
+	for _, c := range cs {
+		if c.Title == title && slices.Contains(c.Pages, page) {
+			return c, true
+		}
+	}
+	return model.Change{}, false
 }
 
 func keys(m map[string]model.Change) []string {

@@ -79,7 +79,7 @@ func TestSnapshotAndCompareInChrome(t *testing.T) {
 	var changed atomic.Bool
 	srv := site(t, &changed)
 	cfg := config.Default()
-	cfg.Rate, cfg.Tabs = 0, 3
+	cfg.Rate, cfg.Tabs = 0, 1 // one tab: a background tab may not repaint between the two shots
 	cfg.Modules = []string{"visual"}
 	modules := []check.Module{visual.Module{}}
 	st := store.Store{Root: t.TempDir()}
@@ -140,41 +140,45 @@ func TestSnapshotAndCompareInChrome(t *testing.T) {
 	cmpDir, _ = st.NewDir("runs", "now-cmp")
 	cmp = compare.Compare(ctx, &check.CompareContext{Config: cfg, Before: loaded, After: after, BeforeDir: snapDir, AfterDir: runDir,
 		Dir: cmpDir, Save: store.Saver(cmpDir)}, modules, "test")
-	got := map[string]model.Change{}
 	for _, c := range cmp.Changes {
-		got[c.Title] = c
 		t.Logf("%s %s %v %.2f %s", c.Class, c.Title, c.Pages, c.Score, c.Detail)
 	}
-	for title, pages := range map[string]string{
-		"Header changed on 3 pages (desktop)": "/,/about/,/blog/",
-		"Header changed on 3 pages (mobile)":  "/,/about/,/blog/",
-		"Page got 340 px taller (desktop)":    "/about/",
-		"Page got 340 px taller (mobile)":     "/about/",
-		"Page looks different (desktop)":      "/blog/",
-		"Page looks different (mobile)":       "/blog/",
+	// The header changed everywhere; /about/ got a 340 px block (only
+	// there, so it's that page's change); /blog/'s box changed color.
+	for _, want := range []struct{ title, pages, detail string }{
+		{"Header changed on 3 pages (desktop)", "/,/about/,/blog/", ""},
+		{"Header changed on 3 pages (mobile)", "/,/about/,/blog/", ""},
+		{"Page looks different (desktop)", "/about/", "A 340 px tall block was inserted"},
+		{"Page looks different (mobile)", "/about/", "A 340 px tall block was inserted"},
+		{"Page looks different (desktop)", "/blog/", "changed, in 1 area"},
+		{"Page looks different (mobile)", "/blog/", "changed, in 1 area"},
 	} {
-		c, ok := got[title]
-		if !ok {
-			t.Errorf("missing %q", title)
+		i := slices.IndexFunc(cmp.Changes, func(c model.Change) bool {
+			return c.Title == want.title && strings.Join(c.Pages, ",") == want.pages
+		})
+		if i < 0 {
+			t.Errorf("missing %q on %s", want.title, want.pages)
 			continue
 		}
-		if strings.Join(c.Pages, ",") != pages || c.Class != model.Changed {
-			t.Errorf("%s: %s %v", title, c.Class, c.Pages)
+		c := cmp.Changes[i]
+		if c.Class != model.Changed || !strings.Contains(c.Detail, want.detail) {
+			t.Errorf("%s: %s %s", want.title, c.Class, c.Detail)
 		}
 		for _, f := range c.Files {
 			if _, err := os.Stat(filepath.Join(cmpDir, f)); err != nil {
-				t.Errorf("%s: %v", title, err)
+				t.Errorf("%s: %v", want.title, err)
 			}
 		}
 	}
-	if len(got) != 6 {
-		t.Errorf("%d changes, want 6", len(got))
+	if len(cmp.Changes) != 6 {
+		t.Errorf("%d changes, want 6", len(cmp.Changes))
 	}
 }
 
-// A plugin adds the same banner to the top of every page: every page
-// gets taller and everything below the banner moves, which is one
-// change per viewport, not one per page.
+// A plugin adds the same banner to the top of every page and a notice
+// above the end of it: every page gets taller and everything below each
+// block moves, which is one change per block per viewport, not one per
+// page. The notice wraps onto more lines on mobile.
 func TestBannerOnEveryPageInChrome(t *testing.T) {
 	needBrowser(t)
 	var banner atomic.Bool
@@ -184,15 +188,17 @@ func TestBannerOnEveryPageInChrome(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		top := ""
+		top, notice := "", ""
 		if banner.Load() {
 			top = `<div style="height:320px;background:#fc6;padding:20px"><p>Big summer sale, everything must go!</p></div>`
+			notice = `<p style="background:#fee"><b>Warning</b>: Undefined array key "promo" in /var/www/html/wp-content/plugins/promo/promo.php on line 88</p>`
 		}
 		fmt.Fprintf(w, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>%[1]s</title>
 <style>body{margin:0;font:16px/1.5 sans-serif} header{height:60px;background:#222}</style></head><body>%[2]s
 <header></header><main style="padding:20px"><h1>Page %[1]s</h1><p>Words that differ: %[1]s %[1]s %[1]s.</p>
-<a href="/a/">A</a> <a href="/b/">B</a> <a href="/c/">C</a> <a href="/d/">D</a><div style="height:1500px"></div><p>End.</p></main></body></html>`,
-			r.URL.Path, top)
+<a href="/a/">A</a> <a href="/b/">B</a> <a href="/c/">C</a> <a href="/d/">D</a><div style="height:1500px"></div><p>End.</p>%[3]s
+<footer style="height:120px;background:#333"></footer></main></body></html>`,
+			r.URL.Path, top, notice)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -237,12 +243,13 @@ func TestBannerOnEveryPageInChrome(t *testing.T) {
 			t.Errorf("%s: pages %v", c.Title, c.Pages)
 		}
 	}
-	for _, want := range []string{"New block at the top of 5 pages (desktop)", "New block at the top of 5 pages (mobile)"} {
+	for _, want := range []string{"New block at the top of 5 pages (desktop)", "New block at the top of 5 pages (mobile)",
+		"New block near the bottom of 5 pages (desktop)", "New block near the bottom of 5 pages (mobile)"} {
 		if !slices.Contains(titles, want) {
 			t.Errorf("missing %q in %v", want, titles)
 		}
 	}
-	if len(titles) != 4 { // the two blocks and the two size changes
+	if len(titles) != 4 { // one per block per viewport; the size change is told with them
 		t.Errorf("%d changes: %v", len(titles), titles)
 	}
 }

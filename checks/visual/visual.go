@@ -178,24 +178,33 @@ func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold 
 		return nil
 	}
 	d := Compare(imgB, imgA, DiffOptions{
-		IgnoreBefore: concat(sb.Masked, sb.Dynamic, sa.Dynamic),
-		IgnoreAfter:  concat(sa.Masked, sa.Dynamic, sb.Dynamic),
+		// Rows are lined up before pixels are compared, so each side's
+		// regions apply in its own coordinates.
+		IgnoreBefore: concat(sb.Masked, sb.Dynamic),
+		IgnoreAfter:  concat(sa.Masked, sa.Dynamic),
 	})
 	r := &shotDiff{page: a, viewport: vp, diff: d, sizeB: imgB.Bounds().Size(), sizeA: imgA.Bounds().Size(),
 		report: d.Changed > 0 && d.Percent > threshold}
 	for _, reg := range d.Regions {
 		r.sigs = append(r.sigs, d.signature(reg.Rect))
 	}
-	if (r.report || r.banded()) && cmp.Save != nil {
+	if (r.report || len(r.blocks()) > 0) && cmp.Save != nil {
 		r.files = save(cmp, a, vp, rawB, rawA, d)
 	}
 	d.release() // keep only the summary; hundreds of pages don't fit in memory
 	return r
 }
 
-// banded reports whether a block was inserted or removed mid-page.
-func (r *shotDiff) banded() bool {
-	return r.diff.Band.H >= minResize || -r.diff.Band.H >= minResize
+// blocks returns the blocks inserted into or removed from the page that
+// are big enough to report.
+func (r *shotDiff) blocks() []Band {
+	var out []Band
+	for _, b := range r.diff.Blocks {
+		if b.H >= minResize || -b.H >= minResize {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // save stores the before and after screenshots and the diff image in the
@@ -236,17 +245,22 @@ func (d *Diff) signature(r model.Rect) uint64 {
 func (d *Diff) release() { d.after, d.before, d.rows, d.class = nil, nil, nil, nil }
 
 // resizes reports pages whose screenshots got taller, shorter, wider or
-// narrower. Pages that changed by the same amount are one change.
+// narrower. Pages that changed by the same amount are one change. A
+// height change that inserted or removed blocks account for isn't
+// repeated here: the blocks are reported with it.
 func resizes(results []*shotDiff) []model.Change {
 	groups := map[string]*model.Change{}
-	bandOf := map[string]Band{}
 	var order []string
 	for _, r := range results {
-		for _, s := range sizeChanges(r.sizeB, r.sizeA) {
-			title := fmt.Sprintf("Page got %s (%s)", s, r.viewport)
-			if r.banded() && (strings.HasSuffix(s, "taller") || strings.HasSuffix(s, "shorter")) {
-				bandOf[title] = r.diff.Band
+		explained := r.diff.Padding
+		for _, b := range r.blocks() {
+			explained += b.H
+		}
+		for _, s := range sizeChanges(r.sizeB, image.Pt(r.sizeA.X, r.sizeA.Y-explained)) {
+			if strings.HasSuffix(s, "taller") || strings.HasSuffix(s, "shorter") {
+				s = sizeChanges(image.Pt(0, r.sizeB.Y), image.Pt(0, r.sizeA.Y))[0] // the page's real change
 			}
+			title := fmt.Sprintf("Page got %s (%s)", s, r.viewport)
 			g := groups[title]
 			if g == nil {
 				g = &model.Change{Class: model.Changed, Check: "visual/size", Title: title,
@@ -269,8 +283,6 @@ func resizes(results []*shotDiff) []model.Change {
 		if len(g.Pages) > 1 {
 			g.Detail = fmt.Sprintf("%d pages changed size by the same amount.", len(g.Pages))
 			g.Before, g.After = "", ""
-		} else if b := bandOf[t]; b.H != 0 {
-			g.Detail = bandDetail(b) + "."
 		}
 		out = append(out, *g)
 	}
@@ -305,10 +317,10 @@ func pct(before, after int) float64 {
 
 // changes turns diffs into changes: blocks inserted or removed at the
 // same place on several pages, regions that changed identically on
-// several pages, then pages whose remaining change is still over the
-// threshold (collapsed into one change per viewport when there are many).
+// several pages, then at most one change per page for what's left
+// (collapsed into one change per viewport when there are many).
 func changes(results []*shotDiff, threshold float64) []model.Change {
-	out := bands(results)
+	out, grouped := blockChanges(results)
 	type member struct {
 		r      *shotDiff
 		region Region
@@ -358,44 +370,67 @@ func changes(results []*shotDiff, threshold float64) []model.Change {
 
 	pages := map[string][]model.Change{} // by viewport
 	for _, r := range results {
-		if !r.report {
-			continue
+		if c, ok := pageChange(r, explained[r], grouped[r], threshold); ok {
+			pages[r.viewport] = append(pages[r.viewport], c)
 		}
-		d := r.diff
-		var rest []Region // largest first, as in d.Regions
-		pixels := 0
-		for i, reg := range d.Regions {
-			if !explained[r][i] {
-				rest = append(rest, reg)
-				pixels += reg.Pixels
-			}
-		}
-		score := float64(pixels) * 100 / float64(d.Compared)
-		if pixels == 0 || score <= threshold {
-			continue
-		}
-		areas := "1 area"
-		if n := len(rest); n != 1 {
-			areas = fmt.Sprintf("%d areas", n)
-		}
-		detail := fmt.Sprintf("%.2f%% of the page changed, in %s", score, areas)
-		if len(rest) < len(d.Regions) {
-			detail += " besides the changes shared with other pages"
-		}
-		big := rest[0]
-		detail += fmt.Sprintf("; the largest at %d,%d (%d×%d px)", big.X, big.Y, big.W, big.H)
-		if r.banded() {
-			detail += "; " + lower(bandDetail(d.Band))
-		}
-		pages[r.viewport] = append(pages[r.viewport], model.Change{Class: model.Changed, Check: "visual/page",
-			Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
-			Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
-			Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."})
 	}
 	for _, vp := range Viewports {
 		out = append(out, collapse(pages[vp], vp)...)
 	}
 	return out
+}
+
+// pageChange is what's left on one page once shared changes are taken
+// out: changed regions and blocks no other page shares.
+func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64) (model.Change, bool) {
+	d := r.diff
+	var rest []Region // largest first, as in d.Regions
+	pixels := 0
+	if r.report {
+		for i, reg := range d.Regions {
+			if !explained[i] {
+				rest = append(rest, reg)
+				pixels += reg.Pixels
+			}
+		}
+	}
+	var blocks []Band
+	for i, b := range r.blocks() {
+		if !grouped[i] {
+			blocks = append(blocks, b)
+		}
+	}
+	score := 0.0
+	if d.Compared > 0 {
+		score = float64(pixels) * 100 / float64(d.Compared)
+	}
+	for _, b := range blocks {
+		score += pct(r.sizeB.Y, r.sizeB.Y+b.H)
+	}
+	if (pixels == 0 && len(blocks) == 0) || score <= threshold {
+		return model.Change{}, false
+	}
+	var parts []string
+	if pixels > 0 {
+		areas := "1 area"
+		if n := len(rest); n != 1 {
+			areas = fmt.Sprintf("%d areas", n)
+		}
+		p := fmt.Sprintf("%.2f%% of the page changed, in %s", float64(pixels)*100/float64(d.Compared), areas)
+		if len(rest) < len(d.Regions) {
+			p += " besides the changes shared with other pages"
+		}
+		big := rest[0]
+		parts = append(parts, p+fmt.Sprintf("; the largest at %d,%d (%d×%d px)", big.X, big.Y, big.W, big.H))
+	}
+	for _, b := range blocks {
+		parts = append(parts, bandDetail(b))
+	}
+	detail := strings.Join(parts, ". ")
+	return model.Change{Class: model.Changed, Check: "visual/page",
+		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
+		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
+		Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."}, true
 }
 
 // maxPages is how many pages may each get their own "looks different"
@@ -431,78 +466,167 @@ func collapse(cs []model.Change, vp string) []model.Change {
 		Pages:  pages, Score: worst.Score, Files: worst.Files, Fix: worst.Fix}}
 }
 
-// bandTolerance is how far apart (px) the same block may start on
-// different pages, which differ a little above it (titles, breadcrumbs).
-const bandTolerance = 16
+// Where a block sits, for grouping: pages differ in length, so a block
+// above the footer is "near the bottom" on every page rather than at one
+// y position.
+const (
+	atTop    = "at the top of"
+	nearEnd  = "near the bottom of"
+	midPage  = "down on"
+	nearRows = 600 // a block starting this close to the end is near the bottom
+)
 
-// bands reports blocks inserted or removed at the same place on several
-// pages, e.g. a banner a plugin added to the top of every page. Pages
-// match when the block has the same height and starts within
-// bandTolerance px.
-func bands(results []*shotDiff) []model.Change {
-	byKey := map[string][]*shotDiff{}
-	var keys []string
-	for _, r := range results {
-		if !r.banded() {
-			continue
-		}
-		k := fmt.Sprintf("%s|%d", r.viewport, r.diff.Band.H)
-		if byKey[k] == nil {
-			keys = append(keys, k)
-		}
-		byKey[k] = append(byKey[k], r)
-	}
-	slices.Sort(keys)
-	var out []model.Change
-	for _, k := range keys {
-		rs := byKey[k]
-		slices.SortFunc(rs, func(a, b *shotDiff) int {
-			return cmp.Or(cmp.Compare(a.diff.Band.Y, b.diff.Band.Y), strings.Compare(a.page.Path, b.page.Path))
-		})
-		for len(rs) > 0 {
-			n := 1
-			for n < len(rs) && rs[n].diff.Band.Y-rs[0].diff.Band.Y <= bandTolerance {
-				n++
-			}
-			if n >= 2 {
-				out = append(out, bandChange(rs[:n]))
-			}
-			rs = rs[n:]
-		}
-	}
-	return out
-}
-
-func bandChange(rs []*shotDiff) model.Change {
-	first := rs[0]
-	b := first.diff.Band
-	where := fmt.Sprintf("%d px down on", b.Y/10*10)
+func place(b Band, height int) string {
 	switch {
 	case b.Y < edge:
-		where = "at the top of"
-	case b.Y > first.sizeB.Y-edge:
-		where = "at the bottom of"
+		return atTop
+	case height-b.Y <= max(nearRows, height/4) && b.Y >= height/2:
+		return nearEnd
 	}
-	title := fmt.Sprintf("New block %s %d pages (%s)", where, len(rs), first.viewport)
-	if b.H < 0 {
-		title = fmt.Sprintf("Block removed %s %d pages (%s)", strings.Replace(where, "at the", "from the", 1), len(rs), first.viewport)
+	return midPage
+}
+
+// sameBlock reports whether two blocks look like the same block on two
+// pages: inserted or removed alike, about the same height (text inside
+// may wrap differently) and, mid-page, about the same place.
+func sameBlock(x, y Band, where string) bool {
+	if (x.H > 0) != (y.H > 0) {
+		return false
 	}
-	ch := model.Change{Class: model.Changed, Check: "visual/shared", Title: title,
-		Detail: "On every page listed: " + lower(bandDetail(b)) + ".",
-		Fix:    "Expected if you added or removed it; otherwise look for a plugin or theme notice, banner or element that appeared."}
-	paths := make([]string, 0, len(rs))
-	for _, r := range rs {
-		paths = append(paths, r.page.Path)
-		ch.Score = max(ch.Score, round2(pct(r.sizeB.Y, r.sizeB.Y+r.diff.Band.H)))
+	hx, hy := abs(x.H), abs(y.H)
+	if abs(hx-hy) > max(minResize, max(hx, hy)*15/100) {
+		return false
+	}
+	return where != midPage || abs(x.Y-y.Y) <= max(32, x.Y/20)
+}
+
+// blockChanges reports blocks inserted or removed in the same place on
+// several pages, e.g. a banner a plugin added to the top of every page,
+// as one change each. It returns which of each page's blocks it covered.
+func blockChanges(results []*shotDiff) ([]model.Change, map[*shotDiff]map[int]bool) {
+	type at struct {
+		r     *shotDiff
+		b     Band
+		index int
+	}
+	byKey := map[string][]at{}
+	for _, r := range results {
+		for i, b := range r.blocks() {
+			k := fmt.Sprintf("%s|%t|%s", r.viewport, b.H > 0, place(b, r.sizeB.Y))
+			byKey[k] = append(byKey[k], at{r, b, i})
+		}
+	}
+	keys := make([]string, 0, len(byKey))
+	for k := range byKey {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	grouped := map[*shotDiff]map[int]bool{}
+	var out []model.Change
+	for _, k := range keys {
+		rest := byKey[k]
+		slices.SortFunc(rest, func(x, y at) int {
+			return cmp.Or(cmp.Compare(abs(y.b.H), abs(x.b.H)), cmp.Compare(x.b.Y, y.b.Y), strings.Compare(x.r.page.Path, y.r.page.Path))
+		})
+		for len(rest) > 0 {
+			seed := rest[0]
+			where := place(seed.b, seed.r.sizeB.Y)
+			var group, left []at
+			for _, x := range rest {
+				if sameBlock(seed.b, x.b, where) {
+					group = append(group, x)
+				} else {
+					left = append(left, x)
+				}
+			}
+			rest = left
+			pages := map[string]bool{}
+			for _, x := range group {
+				pages[x.r.page.Path] = true
+			}
+			if len(pages) < 2 {
+				continue
+			}
+			var rs []*shotDiff
+			var bs []Band
+			for _, x := range group {
+				if grouped[x.r] == nil {
+					grouped[x.r] = map[int]bool{}
+				}
+				grouped[x.r][x.index] = true
+				rs = append(rs, x.r)
+				bs = append(bs, x.b)
+			}
+			out = append(out, blockChange(rs, bs, where))
+		}
+	}
+	return out, grouped
+}
+
+func blockChange(rs []*shotDiff, bs []Band, where string) model.Change {
+	vp := rs[0].viewport
+	var paths []string
+	var heights, totals []int
+	score := 0.0
+	for i, r := range rs {
+		if !slices.Contains(paths, r.page.Path) {
+			paths = append(paths, r.page.Path)
+			totals = append(totals, abs(r.sizeA.Y-r.sizeB.Y))
+		}
+		heights = append(heights, abs(bs[i].H))
+		score = max(score, pct(r.sizeB.Y, r.sizeB.Y+bs[i].H))
 	}
 	slices.Sort(paths)
-	ch.Pages = paths
-	for _, r := range rs {
-		if r.page.Path == paths[0] {
-			ch.Files = r.files
+	removed := bs[0].H < 0
+	pos := where
+	if where == midPage {
+		pos = fmt.Sprintf("%d px down on", bs[0].Y/10*10)
+	}
+	title := fmt.Sprintf("New block %s %d pages (%s)", pos, len(paths), vp)
+	verb := "appeared"
+	if removed {
+		title = fmt.Sprintf("Block removed %s %d pages (%s)", strings.Replace(pos, "at the top of", "from the top of", 1), len(paths), vp)
+		verb = "was removed"
+	}
+	where = strings.TrimSuffix(strings.TrimSuffix(where, " of"), " on")
+	if where == "down" {
+		where = fmt.Sprintf("about %d px down", bs[0].Y/10*10)
+	}
+	detail := fmt.Sprintf("A %s tall block %s %s of each page listed, moving the content below it; that content is unchanged.",
+		span(heights), verb, where)
+	if t := span(totals); t != "0 px" {
+		dir := "taller"
+		if rs[0].sizeA.Y < rs[0].sizeB.Y {
+			dir = "shorter"
+		}
+		detail += fmt.Sprintf(" The pages are %s %s in all.", t, dir)
+	}
+	ch := model.Change{Class: model.Changed, Check: "visual/block", Title: title, Detail: detail, Pages: paths, Score: round2(score),
+		Fix: "Expected if you added or removed it; otherwise look for a plugin or theme notice, banner or element that appeared."}
+	for _, p := range paths {
+		for _, r := range rs {
+			if r.page.Path == p && ch.Files == nil {
+				ch.Files = r.files
+			}
 		}
 	}
 	return ch
+}
+
+// span is "320 px" or "300–340 px".
+func span(vs []int) string {
+	lo, hi := slices.Min(vs), slices.Max(vs)
+	if lo == hi {
+		return fmt.Sprintf("%d px", lo)
+	}
+	return fmt.Sprintf("%d–%d px", lo, hi)
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 // bandDetail describes an inserted or removed block.
@@ -512,8 +636,6 @@ func bandDetail(b Band) string {
 	}
 	return fmt.Sprintf("A %d px tall block was inserted %d px down; the content below it moved down", b.H, b.Y)
 }
-
-func lower(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 // areaName names a region by where it sits on the page.
 func areaName(r model.Rect, height int) string {

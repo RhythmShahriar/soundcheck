@@ -42,7 +42,7 @@ func glyphs(img *image.NRGBA, ox, oy float64, lines, cols int, gamma float64) {
 	}
 	for l := range lines {
 		for c := range cols {
-			shape := shapes[(l+c)%len(shapes)]
+			shape := shapes[(uint32(l)*2654435761+uint32(c)*40503)>>7%uint32(len(shapes))] // varied, so lines differ like real text
 			gx, gy := ox+float64(c*11), oy+float64(l*18)
 			for py := int(gy) - 1; py < int(gy)+14; py++ {
 				for px := int(gx) - 1; px < int(gx)+12; px++ {
@@ -152,7 +152,9 @@ func TestShiftedOnePixel(t *testing.T) {
 		fill(a, image.Rect(400+int(off[0]), 420+int(off[1]), 500+int(off[0]), 470+int(off[1])), blue)
 		d := Compare(b, a, DiffOptions{})
 		raw := Compare(b, a, DiffOptions{CountAA: true})
-		if raw.Changed < 1000 || d.Changed > 0 {
+		// Vertical shifts are lined up row by row, so nothing differs at
+		// all; horizontal ones differ but are recognized as nudged.
+		if (off[0] != 0 && raw.Changed < 1000) || d.Changed > 0 {
 			t.Errorf("shift %v: %d of %d differing pixels counted", off, d.Changed, raw.Changed)
 		}
 	}
@@ -221,8 +223,8 @@ func TestInsertedBanner(t *testing.T) {
 	fill(a, image.Rect(0, 60, 800, 120), red) // the banner
 	draw.Draw(a, image.Rect(0, 120, 800, 1260), b, image.Pt(0, 60), draw.Src)
 	d := Compare(b, a, DiffOptions{})
-	if d.Band != (Band{Y: 60, H: 60}) || d.Changed != 0 {
-		t.Fatalf("band %+v, changed %d (%.2f%%)", d.Band, d.Changed, d.Percent)
+	if len(d.Blocks) != 1 || d.Blocks[0] != (Band{Y: 60, H: 60, At: 60}) || d.Changed != 0 {
+		t.Fatalf("blocks %+v, changed %d (%.2f%%)", d.Blocks, d.Changed, d.Percent)
 	}
 	if d.Height != 1260 || d.Compared != 800*1200 {
 		t.Errorf("size %dx%d compared %d", d.Width, d.Height, d.Compared)
@@ -246,8 +248,8 @@ func TestTallerAtBottom(t *testing.T) {
 	draw.Draw(a, b.Bounds(), b, image.Point{}, draw.Src)
 	fill(a, image.Rect(0, 1200, 800, 1500), blue)
 	d := Compare(b, a, DiffOptions{})
-	if d.Band != (Band{}) || d.Changed != 0 || d.Compared != 800*1200 {
-		t.Errorf("band %+v changed %d compared %d", d.Band, d.Changed, d.Compared)
+	if len(d.Blocks) != 1 || d.Blocks[0] != (Band{Y: 1200, H: 300, At: 1200}) || d.Changed != 0 || d.Compared != 800*1200 {
+		t.Errorf("blocks %+v changed %d compared %d", d.Blocks, d.Changed, d.Compared)
 	}
 	if got := sizeChanges(image.Pt(800, 1500), image.Pt(780, 1200)); len(got) != 2 || got[0] != "300 px shorter" || got[1] != "20 px narrower" {
 		t.Errorf("size changes %v", got)
@@ -326,8 +328,25 @@ func BenchmarkCompareShifted(b *testing.B) {
 	draw.Draw(after, image.Rect(0, 740, 1366, 5340), before, image.Pt(0, 400), draw.Src)
 	b.ReportAllocs()
 	for b.Loop() {
-		if d := Compare(before, after, DiffOptions{}); d.Band != (Band{Y: 400, H: 340}) {
-			b.Fatalf("band %+v", d.Band)
+		if d := Compare(before, after, DiffOptions{}); len(d.Blocks) != 1 || d.Blocks[0] != (Band{Y: 400, H: 340, At: 400}) {
+			b.Fatalf("blocks %+v", d.Blocks)
+		}
+	}
+}
+
+// Three blocks: a banner at the top, a section removed mid-page and a
+// notice above the footer, plus a change in place.
+func BenchmarkCompareThreeBlocks(b *testing.B) {
+	before := page(1366, 5000)
+	text(before, 40, 1200, 150, 100)
+	after := insertRows(before, 0, 320, red)
+	after = removeRows(after, 2320, 400)
+	after = insertRows(after, 4800, 53, blue)
+	fill(after, image.Rect(200, 3000, 1100, 3300), red)
+	b.ReportAllocs()
+	for b.Loop() {
+		if d := Compare(before, after, DiffOptions{}); len(d.Blocks) != 3 || d.Changed == 0 {
+			b.Fatalf("blocks %+v changed %d", d.Blocks, d.Changed)
 		}
 	}
 }

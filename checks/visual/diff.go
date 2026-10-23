@@ -2,12 +2,15 @@ package visual
 
 import (
 	"bytes"
+	"hash/maphash"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -44,10 +47,12 @@ type Diff struct {
 	Compared      int     // pixels that had a counterpart and weren't ignored
 	Percent       float64 // Changed / Compared × 100
 	Regions       []Region
-	// Band is the run of rows inserted into (H > 0) or removed from
-	// (H < 0) the page when content below it moved; zero when the pages
-	// line up from the top.
-	Band Band
+	// Blocks are runs of rows inserted into or removed from the page,
+	// which moved the content below them. They aren't pixel changes.
+	Blocks []Band
+	// Padding is blank space added at the end of the page (negative when
+	// removed): the document grew without content.
+	Padding int
 
 	after  *raster
 	before *raster
@@ -60,11 +65,6 @@ type Region struct {
 	model.Rect
 	Pixels int
 }
-
-// Band is a run of rows inserted (H > 0) or removed (H < 0) at Y, in
-// before coordinates: a new banner pushing the page down, a section
-// taken out.
-type Band struct{ Y, H int }
 
 // raster is an image as straight-alpha RGBA bytes.
 type raster struct {
@@ -95,78 +95,91 @@ func toRaster(img image.Image) *raster {
 func (r *raster) row(y, w int) []uint8 { return r.pix[y*r.stride : y*r.stride+w*4] }
 
 // Compare diffs before and after in the style of pixelmatch: YIQ color
-// distance with a threshold, and anti-aliased pixels ignored. When the
-// images differ in height it looks for the band of rows that was
-// inserted or removed (a new banner, a section taken out), lines up the
-// content above and below it, and keeps that alignment when it matches
-// better than lining up the tops, so one new block doesn't make the
-// whole page "change".
+// distance with a threshold, and anti-aliased pixels ignored. First the
+// rows of the two images are lined up like lines in a text diff (see
+// matchRows), so content that only moved because a block was inserted or
+// removed above it isn't a change; the inserted and removed blocks are
+// reported in Blocks, and the pixel diff runs on the aligned rows.
 func Compare(before, after image.Image, opts DiffOptions) *Diff {
 	b, a := toRaster(before), toRaster(after)
 	if opts.Threshold == 0 {
 		opts.Threshold = 0.1
 	}
 	w := min(a.w, b.w)
-	n := min(a.h, b.h)
-	d := compareRows(b, a, w, splitRows(a.h, b.h, n), opts)
-	if a.h != b.h && w > 0 {
-		if k := splitAt(b, a, w); k < n {
-			if s := compareRows(b, a, w, splitRows(a.h, b.h, k), opts); s.Changed < d.Changed {
-				s.Band = Band{Y: k, H: a.h - b.h}
-				d = s
-			}
-		}
+	ignoreB := maskOf(opts.IgnoreBefore, w, b.h)
+	ignoreA := maskOf(opts.IgnoreAfter, w, a.h)
+	rows, blocks, padding := alignRows(b, a, w, ignoreB, opts)
+	d := compareRows(b, a, w, rows, ignoreB, ignoreA, opts, 0)
+	d.Blocks, d.Padding = blocks, padding
+	if len(blocks) == 0 {
+		return d
+	}
+	// Moving rows around can also "explain" a change in place (a red box
+	// where text was, as text removed and a box inserted). Keep the
+	// alignment only when it explains the page with fewer changed pixels
+	// than lining up the tops, counting rows without a counterpart as
+	// changed on both sides.
+	cost := d.Changed
+	for _, bl := range blocks {
+		cost += max(bl.H, -bl.H) * w
+	}
+	extra := max(a.h-b.h, b.h-a.h) * w
+	if cost <= extra {
+		return d // lining up the tops can't do better
+	}
+	if top := compareRows(b, a, w, topRows(a.h, b.h), ignoreB, ignoreA, opts, cost-extra); top.Changed+extra < cost {
+		return top
 	}
 	return d
 }
 
-// splitAt finds where rows were inserted or removed: the row k (the same
-// in both images) above which the images line up from the top and below
-// which they line up shifted by the height difference, with the fewest
-// rows that differ. It returns min(heights) when lining up the tops is
-// as good as any split.
-func splitAt(b, a *raster, w int) int {
-	n, d := min(a.h, b.h), a.h-b.h
-	lead := max(d, 0)       // inserted rows sit between k and k+lead in the after image
-	top := make([]int, n+1) // top[k]: rows above k that differ when tops line up
-	for y := range n {
-		top[y+1] = top[y]
-		if !bytes.Equal(a.row(y, w), b.row(y, w)) {
-			top[y+1]++
-		}
+// alignRows lines up the rows of the two images. Regions ignored in the
+// before image (dynamic ones, learned in the snapshot) are blanked in
+// the after image too, where they ended up: first assuming they didn't
+// move, then, if the first alignment shows content above them moved,
+// at their new place.
+func alignRows(b, a *raster, w int, ignoreB mask, opts DiffOptions) ([]int, []Band, int) {
+	seed := maphash.MakeSeed()
+	hb := rowHashes(b, w, ignoreB, seed)
+	align := func(extra []model.Rect) ([]int, []Band, int) {
+		ignore := maskOf(append(slices.Clone(opts.IgnoreAfter), extra...), w, a.h)
+		return plan(b, a, w, matchRows(hb, rowHashes(a, w, ignore, seed)))
 	}
-	shifted := make([]int, a.h+1) // shifted[y]: after rows from y down that differ from before row - d
-	for y := a.h - 1; y >= lead; y-- {
-		shifted[y] = shifted[y+1]
-		if !bytes.Equal(a.row(y, w), b.row(y-d, w)) {
-			shifted[y]++
-		}
+	rows, blocks, padding := align(opts.IgnoreBefore)
+	if len(opts.IgnoreBefore) == 0 || len(blocks) == 0 {
+		return rows, blocks, padding
 	}
-	best, at := top[n], n
-	for k := n - 1; k >= 0; k-- {
-		if m := top[k] + shifted[k+lead]; m < best {
-			best, at = m, k
-		}
+	// Only rows that occur once are trusted to say how far content moved;
+	// a repeated row (blank, a solid band) may be matched anywhere.
+	count := make(map[uint64]int, len(hb))
+	for _, h := range hb {
+		count[h]++
 	}
-	return at
+	moved := false
+	shifted := make([]model.Rect, len(opts.IgnoreBefore))
+	for i, r := range opts.IgnoreBefore {
+		off := 0
+		for ya, yb := range rows { // the nearest unique matched row above the region
+			if yb >= 0 && yb <= r.Y && count[hb[yb]] == 1 {
+				off = ya - yb
+			}
+		}
+		shifted[i] = r
+		shifted[i].Y += off
+		moved = moved || off != 0
+	}
+	if !moved {
+		return rows, blocks, padding
+	}
+	return align(shifted)
 }
 
-// splitRows maps after rows to before rows: rows above k line up, rows
-// below the inserted band (or from k down, when rows were removed) are
-// shifted by the height difference. k = min(heights) lines up the tops.
-func splitRows(ah, bh, k int) []int {
-	d := ah - bh
+// topRows lines rows up from the top.
+func topRows(ah, bh int) []int {
 	rows := make([]int, ah)
 	for y := range rows {
-		switch {
-		case y < k:
-			rows[y] = y
-		case y < k+max(d, 0):
-			rows[y] = -1
-		default:
-			rows[y] = y - d
-		}
-		if rows[y] >= bh {
+		rows[y] = y
+		if y >= bh {
 			rows[y] = -1
 		}
 	}
@@ -180,10 +193,11 @@ const cell = 8
 // grid cell is shared between workers.
 const band = cell * 4
 
-func compareRows(b, a *raster, w int, rows []int, opts DiffOptions) *Diff {
+// compareRows diffs after rows against the before rows they're mapped
+// to. With limit > 0 it gives up once more than limit pixels changed
+// (the result then only says Changed > limit).
+func compareRows(b, a *raster, w int, rows []int, ignoreB, ignoreA mask, opts DiffOptions, limit int) *Diff {
 	d := &Diff{Width: w, Height: a.h, after: a, before: b, rows: rows, class: make([]uint8, w*a.h)}
-	ignoreB := maskOf(opts.IgnoreBefore, w, b.h)
-	ignoreA := maskOf(opts.IgnoreAfter, w, a.h)
 	maxDelta := 35215 * opts.Threshold * opts.Threshold
 	g := newGrid(w, a.h)
 
@@ -191,11 +205,16 @@ func compareRows(b, a *raster, w int, rows []int, opts DiffOptions) *Diff {
 	bands := (a.h + band - 1) / band
 	tallies := make([]tally, bands)
 	jobs := make(chan int)
+	var total atomic.Int64 // changed so far, when there's a limit
 	var wg sync.WaitGroup
 	for range min(runtime.GOMAXPROCS(0), max(bands, 1)) {
 		wg.Go(func() {
 			for i := range jobs {
 				var t tally
+				if limit > 0 && total.Load() > int64(limit) {
+					tallies[i] = tally{changed: limit + 1}
+					continue
+				}
 				for ya := i * band; ya < min((i+1)*band, a.h); ya++ {
 					cls := d.class[ya*w : (ya+1)*w]
 					yb := rows[ya]
@@ -235,6 +254,9 @@ func compareRows(b, a *raster, w int, rows []int, opts DiffOptions) *Diff {
 					}
 				}
 				tallies[i] = t
+				if limit > 0 {
+					total.Add(int64(t.changed))
+				}
 			}
 		})
 	}
