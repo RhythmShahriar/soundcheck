@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
@@ -216,7 +215,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	fail := func(err error) *model.Page {
 		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: err.Error()}
 	}
-	tab, err := cc.Browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	tab, err := browser.NewTab(cc.Browser)
 	if err != nil {
 		return fail(err)
 	}
@@ -362,3 +361,4 @@ func hostOf(raw string) string {
 	}
 	return ""
 }
+

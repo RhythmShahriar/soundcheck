@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -61,7 +61,7 @@ func identify(ctx context.Context, sess *rod.Browser, base string) (Identity, er
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
-	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	tab, err := browser.NewTab(sess)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -248,7 +248,7 @@ func leak(ctx context.Context, cc *check.Context, results []*result) {
 
 // visitAs loads raw in the logged-in session and returns the HTML.
 func visitAs(ctx context.Context, sess *rod.Browser, raw string, timeout time.Duration) (string, error) {
-	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	tab, err := browser.NewTab(sess)
 	if err != nil {
 		return "", err
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/rod/lib/utils"
 
 	"github.com/RhythmShahriar/rhythm/kit/config"
@@ -166,4 +167,21 @@ func Prune(all bool) ([]string, error) {
 		removed = append(removed, p)
 	}
 	return removed, nil
+}
+
+// NewTab opens a blank tab in sess that renders as if it were in front.
+// Headless Chrome only draws frames for the front tab: in the others
+// requestAnimationFrame never fires, so animations stand still, scrolling
+// helpers wait forever and input stalls. Focus emulation lifts that, and
+// pages checked in parallel tabs behave like the one a visitor sees.
+func NewTab(sess *rod.Browser) (*rod.Page, error) {
+	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		return nil, err
+	}
+	if err := (proto.EmulationSetFocusEmulationEnabled{Enabled: true}).Call(tab); err != nil {
+		_ = tab.Close()
+		return nil, err
+	}
+	return tab, nil
 }

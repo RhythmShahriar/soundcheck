@@ -20,6 +20,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/flow"
 )
@@ -85,7 +86,7 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 	if err != nil {
 		return fmt.Errorf("login flow: %w", err)
 	}
-	page, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := browser.NewTab(sess)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func WordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 		return err
 	}
 	loginURL := base.ResolveReference(ref).String()
-	page, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := browser.NewTab(sess)
 	if err != nil {
 		return err
 	}
@@ -217,7 +218,7 @@ func (u User) Values() []string {
 // the profile page (/wp-admin/profile.php). It only reads; nothing is
 // changed.
 func WhoAmI(ctx context.Context, sess *rod.Browser, base *url.URL) (User, error) {
-	page, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := browser.NewTab(sess)
 	if err != nil {
 		return User{}, err
 	}

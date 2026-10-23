@@ -7,8 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-rod/rod/lib/proto"
-
+	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -73,7 +72,7 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 			return
 		}
 	}
-	page, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := browser.NewTab(sess)
 	if err != nil {
 		cc.Warn(fmt.Sprintf("flow %q: %v", f.Name, err))
 		return
