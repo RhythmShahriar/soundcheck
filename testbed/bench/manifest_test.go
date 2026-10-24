@@ -42,8 +42,9 @@ func TestLoadManifestRejects(t *testing.T) {
 		"no expect":           {"  - id: s01\n" + ok, "no expect"},
 		"two kinds":           {"  - id: s01\n" + ok + "    expect: [{clean: true, exit: 3}]\n", "exactly one"},
 		"empty expect":        {"  - id: s01\n" + ok + "    expect: [{}]\n", "exactly one"},
-		"unknown class":       {"  - id: s01\n" + ok + "    expect: [{class: unstable}]\n", "unknown class"},
-		"pending class":       {"  - id: s01\n" + ok + "    pending: true\n    expect: [{class: unstable}]\n", ""},
+		"unknown class":       {"  - id: s01\n" + ok + "    expect: [{class: wobbly}]\n", "unknown class"},
+		"pending class":       {"  - id: s01\n" + ok + "    pending: true\n    expect: [{class: wobbly}]\n", ""},
+		"merged class":        {"  - id: s01\n" + ok + "    expect: [{class: unstable}]\n", ""},
 		"forbid not a change": {"  - id: s01\n" + ok + "    expect: [{clean: true}]\n    forbid: [{exit: 1}]\n", "forbid"},
 		"unknown harness":     {"  - id: s01\n" + ok + "    harness: wobble\n    expect: [{clean: true}]\n", "unknown harness"},
 		"interrupt delay":     {"  - id: s01\n" + ok + "    harness: interrupt\n    expect: [{interrupted: true}]\n", "interrupt_after"},
@@ -103,6 +104,26 @@ func TestEvaluate(t *testing.T) {
 	for _, c := range cases {
 		if got := Evaluate(c.s, c.obs).Outcome; got != c.want {
 			t.Errorf("%s: %s, want %s", c.name, got, c.want)
+		}
+	}
+}
+
+// A scenario Soundcheck wasn't run on (it needs Echo) isn't counted as
+// missed: the score leaves it out and says so.
+func TestScoreboardNotRun(t *testing.T) {
+	m := &Manifest{Scenarios: []Scenario{{ID: "s01"}, {ID: "s33", Echo: true}}}
+	outcomes := []Outcome{
+		{Scenario: Scenario{ID: "s01", Name: "one", Module: "health", Expect: []Expect{{Class: "broke", Check: "health/"}}}, Soundcheck: Result{Outcome: Caught}},
+		{Scenario: Scenario{ID: "s33", Name: "mail", Module: "echo", Echo: true, Expect: []Expect{{Class: "broke", Check: "echo/"}}},
+			Soundcheck: Result{Outcome: NotRun, Detail: "needs Echo"}},
+	}
+	if sc := score(outcomes); sc.caught != 1 || sc.total != 1 || !slices.Equal(sc.notRun, []string{"s33"}) {
+		t.Errorf("score = %+v", sc)
+	}
+	md := scoreboard(m, outcomes, nil, "rhythm-soundcheck 1.2.3", nil, nil, false)
+	for _, want := range []string{"**Soundcheck caught 1 of 1 scenarios.**", "Not run and not counted: s33 (needs Echo)", "| s33 | mail |"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("scoreboard lacks %q:\n%s", want, md)
 		}
 	}
 }

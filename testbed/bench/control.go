@@ -93,13 +93,21 @@ func falseAlarmCount(rounds []ControlRound) int {
 }
 
 // tally is the score: scenarios with a merged detector and the pending
-// ones, counted apart.
-type tally struct{ caught, total, pendingCaught, pending int }
+// ones, counted apart. Scenarios Soundcheck wasn't run on (they need Echo
+// and -echo wasn't given) count in neither: notRun lists them.
+type tally struct {
+	caught, total, pendingCaught, pending int
+	notRun                                []string
+}
 
 func score(outcomes []Outcome) tally {
 	var t tally
 	for _, o := range outcomes {
 		ok := o.Soundcheck.Outcome == Caught
+		if o.Soundcheck.Outcome == NotRun {
+			t.notRun = append(t.notRun, o.Scenario.ID)
+			continue
+		}
 		if o.Scenario.Pending {
 			t.pending++
 			if ok {

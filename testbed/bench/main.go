@@ -192,6 +192,9 @@ func run(ctx context.Context, o options) error {
 		return err
 	}
 	sc := score(outcomes)
+	if len(sc.notRun) > 0 {
+		fmt.Fprintf(os.Stderr, "Not run and not counted: %s\n", strings.Join(sc.notRun, ", "))
+	}
 	switch {
 	case binErr != nil:
 		fmt.Fprintf(os.Stderr, "Soundcheck wasn't run: %v. Scoreboard: %s\n", binErr, o.out)
@@ -209,6 +212,7 @@ func run(ctx context.Context, o options) error {
 // broken → compare (and tools' check). Third-party results go into tools.
 func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Scenario, wd, bin string, binErr error,
 	tools []*Tool, results map[string]Result) Result {
+	o.timeout = max(o.timeout, s.Timeout)
 	if s.Harness == "wp-update" {
 		return wpUpdateScenario(ctx, o, m, s, wd, bin, binErr)
 	}
@@ -232,7 +236,7 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 	case binErr != nil:
 		sc = Result{Outcome: NotRun, Detail: binErr.Error()}
 	case s.Echo && o.echo == "":
-		sc = Result{Outcome: NotRun, Detail: "needs Echo: start it (rhythm echo up) and pass -echo http://127.0.0.1:8025"}
+		sc = Result{Outcome: NotRun, Detail: "needs Echo: start it (rhythm echo up), start the testbed with TESTBED_SMTP=host.docker.internal:1025 and pass -echo http://127.0.0.1:8025"}
 	default:
 		snap := append([]string{"snapshot", url, "--name", "good", "--json", "-o", "good.json", "--config", cfgPath}, args...)
 		if _, _, err := command(ctx, o.timeout, wd, env(s), bin, snap...); err != nil {

@@ -43,6 +43,9 @@ func scoreboard(m *Manifest, outcomes []Outcome, rounds []ControlRound, version 
 			w(" (a partial run: `-only` was used)")
 		}
 		w("\n\n")
+		if len(sc.notRun) > 0 {
+			w("Not run and not counted: %s (%s); see [Run it](#run-it).\n\n", strings.Join(sc.notRun, ", "), notRunReasons(outcomes))
+		}
 		if sc.pending > 0 {
 			w("%d more scenarios wait for detectors that aren't merged yet; they are listed apart under [Pending](#pending) and not counted (%d of them caught already).\n\n",
 				sc.pending, sc.pendingCaught)
@@ -131,6 +134,18 @@ func scoreboard(m *Manifest, outcomes []Outcome, rounds []ControlRound, version 
 	w("Scenarios that need Echo (%s) run only with `-echo http://127.0.0.1:8025` and Echo running.\n", strings.Join(echoScenarios(m), ", "))
 	w("Runs are kept in `testbed/bench/work/<id>/` (snapshot, compare.json, tool output) and the control pass in `work/control/`; `work/results.json` has every result.\n")
 	return b.String()
+}
+
+// notRunReasons says why Soundcheck wasn't run on some scenarios, each
+// reason once.
+func notRunReasons(outcomes []Outcome) string {
+	var why []string
+	for _, o := range outcomes {
+		if r := o.Soundcheck; r.Outcome == NotRun && !slices.Contains(why, r.Detail) {
+			why = append(why, r.Detail)
+		}
+	}
+	return strings.Join(why, "; ")
 }
 
 // table writes the scoreboard table for some outcomes.

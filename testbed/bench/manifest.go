@@ -63,6 +63,9 @@ type Scenario struct {
 
 	// InterruptAfter is when harness interrupt sends Ctrl+C.
 	InterruptAfter time.Duration `yaml:"interrupt_after"`
+	// Timeout is the time limit for each of the scenario's commands when
+	// it needs more than -timeout (a big site).
+	Timeout time.Duration `yaml:"timeout"`
 
 	// Pending marks a scenario whose detector isn't merged yet; the
 	// scoreboard reports it apart from the score. Note says what it waits for.
