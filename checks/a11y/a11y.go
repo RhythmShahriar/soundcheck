@@ -32,6 +32,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -253,8 +254,17 @@ func clean(s string) string {
 // value and data-*. Their contents never reach run.json or a report.
 var filled = regexp.MustCompile(`(?i)(\s(?:value|data-[\w.:-]+)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)`)
 
+// linked matches the URL attributes of an element, whose query (a reset
+// link's token and email) or long path segments may be a credential.
+var linked = regexp.MustCompile(`(?i)(\s(?:href|src|action|formaction)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'<>` + "`" + `]+)`)
+
+// opaque is a path segment long and random enough to be a token.
+var opaque = regexp.MustCompile(`/[A-Za-z0-9_-]{24,}`)
+
 // snippet shortens the element's HTML to its opening tag, with the values
-// of filled attributes replaced by "***".
+// of filled attributes replaced by "***", the query of every link and
+// any long opaque path segment in it masked, and credentials the kit
+// knows redacted.
 func snippet(html string) string {
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
 	html = filled.ReplaceAllStringFunc(html, func(m string) string {
@@ -264,6 +274,16 @@ func snippet(html string) string {
 		}
 		return sub[1] + `"***"`
 	})
+	html = linked.ReplaceAllStringFunc(html, func(m string) string {
+		sub := linked.FindStringSubmatch(m)
+		v := strings.Trim(sub[2], `"'`)
+		if q := strings.IndexAny(v, "?#"); q >= 0 && q < len(v)-1 {
+			v = v[:q+1] + "***"
+		}
+		v = opaque.ReplaceAllString(v, "/***")
+		return sub[1] + `"` + v + `"`
+	})
+	html = secrets.Redact(html)
 	if r := []rune(html); len(r) > 160 {
 		html = string(r[:159]) + "…"
 	}

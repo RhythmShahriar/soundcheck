@@ -141,6 +141,22 @@ func TestSnippetMasksFilledValues(t *testing.T) {
 	}
 }
 
+// A link's query (a reset token and email) and a token in its path never
+// reach run.json; the path the link goes to stays readable.
+func TestSnippetMasksLinks(t *testing.T) {
+	for in, want := range map[string]string{
+		`<a href="/reset?token=9f8e7d6c5b4a&email=ana@example.com"></a>`: `<a href="/reset?***"></a>`,
+		`<a href='/password/reset/Zx81kQpL0aTnB4vRu7cWmE2s'></a>`:        `<a href="/password/reset/***"></a>`,
+		`<form action=/subscribe?key=abc123>`:                            `<form action="/subscribe?***">`,
+		`<img src="/logo.png">`:                                          `<img src="/logo.png">`,
+		`<a href="/shop/">`:                                              `<a href="/shop/">`,
+	} {
+		if got := snippet(in); got != want {
+			t.Errorf("snippet(%s) = %s, want %s", in, got, want)
+		}
+	}
+}
+
 func TestIssuesCapsElements(t *testing.T) {
 	r := result{ID: "link-name", Impact: "serious", Help: "Links must have discernible text"}
 	for i := range 50 {
