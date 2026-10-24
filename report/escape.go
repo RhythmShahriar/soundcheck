@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/RhythmShahriar/rhythm/kit/term"
+
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -20,8 +22,10 @@ import (
 // Term makes s safe to print in a terminal. Control characters other
 // than tab (C0, DEL, C1) and bytes that aren't UTF-8 are shown as text
 // like \x1b and bidirectional overrides (U+202A to U+202E, U+2066 to
-// U+2069) are removed.
-func Term(s string) string { return escape(s, false) }
+// U+2069) are removed. It is the kit's term.Sanitize, with newlines and
+// C1 controls written as \x0a and \x9b: one line stays one line, and
+// a C1 control reads the same whether it came as a character or a byte.
+func Term(s string) string { return term.Sanitize(preEscape(s, false)) }
 
 // MarkdownText makes s plain text in Markdown, in a table cell too: newlines
 // become spaces, control characters are shown as with Term and every
@@ -30,9 +34,12 @@ func Term(s string) string { return escape(s, false) }
 // with a backslash. GitHub also links bare URLs, "www." names and email
 // addresses without any of those, so the ":" of "://", the "." after
 // "www" and every "@" are escaped too.
+//
+// The kit's term.EscapeMarkdown isn't used here: it also escapes what
+// only starts a list or a block ("1.0.0" becomes "1\.0.0"), which would
+// change every stored report and PR comment for no gain in a table cell.
 func MarkdownText(s string) string {
-	s = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
-	s = Term(s)
+	s = Term(strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s))
 	var b strings.Builder
 	for i, r := range s {
 		if strings.ContainsRune("\\`*_[]()<>#|~!@", r) || autolinks(s, i, r) {
@@ -65,7 +72,7 @@ func xmlText(s string) string {
 			return -1
 		}
 		return r
-	}, escape(s, true))
+	}, term.Sanitize(preEscape(s, true)))
 }
 
 // noBidi removes bidirectional overrides, for HTML: html/template
@@ -83,29 +90,19 @@ func bidi(r rune) bool {
 	return (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069)
 }
 
-// escape is Term, keeping newlines when lines is set.
-func escape(s string, lines bool) string {
-	clean := true
-	for _, r := range s {
-		if r == utf8.RuneError || r < 0x20 || (r >= 0x7F && r <= 0x9F) || bidi(r) {
-			clean = false
-			break
-		}
-	}
-	if clean { // the usual case: no copy
-		return s
+// preEscape writes what term.Sanitize would show otherwise: C1
+// characters as \x9b (the kit writes \u009b) and, unless lines is set,
+// newlines as \x0a. Bytes that aren't UTF-8 are left for Sanitize.
+func preEscape(s string, lines bool) string {
+	if !strings.ContainsFunc(s, func(r rune) bool { return (r == '\n' && !lines) || (r >= 0x80 && r <= 0x9F) }) {
+		return s // the usual case: no copy
 	}
 	var b strings.Builder
 	for i := 0; i < len(s); {
 		r, n := utf8.DecodeRuneInString(s[i:])
 		switch {
-		case r == utf8.RuneError && n == 1:
-			fmt.Fprintf(&b, `\x%02x`, s[i])
-		case r == '\t' || (r == '\n' && lines):
-			b.WriteRune(r)
-		case r < 0x20 || (r >= 0x7F && r <= 0x9F):
+		case n > 1 && r >= 0x80 && r <= 0x9F, r == '\n' && !lines:
 			fmt.Fprintf(&b, `\x%02x`, r)
-		case bidi(r):
 		default:
 			b.WriteString(s[i : i+n])
 		}

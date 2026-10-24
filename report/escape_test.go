@@ -14,6 +14,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"github.com/RhythmShahriar/rhythm/kit/term"
+
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -38,6 +40,19 @@ func TestTerm(t *testing.T) {
 		if got := Term(in); got != want {
 			t.Errorf("Term(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Term is the kit's term.Sanitize wherever the text has no newline or C1
+// character, and xmlText keeps the newlines Sanitize keeps.
+func TestTermIsKitSanitize(t *testing.T) {
+	for _, in := range []string{"plain", "a\x1b[2Jb", "del\x7f", "raw \x9b byte", "\u202egnp.exe", "tab\tstays", osc52} {
+		if got, want := Term(in), term.Sanitize(in); got != want {
+			t.Errorf("Term(%q) = %q, kit %q", in, got, want)
+		}
+	}
+	if got := xmlText("a\nb\u009b\x1b\uFFFE"); got != `a`+"\n"+`b\x9b\x1b` {
+		t.Errorf("xmlText = %q", got)
 	}
 }
 
