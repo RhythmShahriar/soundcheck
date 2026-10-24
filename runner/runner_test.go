@@ -247,6 +247,58 @@ func TestSiblingPortIsAnotherSite(t *testing.T) {
 	}
 }
 
+// On an https site, links and sitemap entries to the same host over
+// plain http are another site: the kit's frontier drops them as "other
+// site", so they aren't visited without the run's headers and cookies.
+func TestHTTPSiteDropsPlainHTTPLinks(t *testing.T) {
+	needBrowser(t)
+	var plain atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprintf(w, `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>https://%[1]s/about/</loc></url><url><loc>http://%[1]s/pricing/</loc></url></urlset>`, r.Host)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil {
+			plain.Add(1)
+		}
+		fmt.Fprintf(w, `<!doctype html><title>Home</title><p>Welcome.</p><a href="/about/">About</a> <a href="http://%s/team/">Team</a>`, r.Host)
+	})
+	srv := httptest.NewTLSServer(mux)
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "https://")
+	cfg := config.Default()
+	cfg.Modules, cfg.Viewports, cfg.Rate = []string{"health"}, []string{"desktop"}, 0
+	var discovered, final map[string]int
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Insecure: true, Browser: browser.Options{NoDownload: true, Insecure: true},
+		Hooks: Hooks{Discovered: func(_ int, skipped map[string]int) { discovered = skipped },
+			Skipped: func(skipped map[string]int) { final = skipped }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	for _, p := range run.Pages {
+		visited = append(visited, p.URL)
+	}
+	slices.Sort(visited)
+	if want := []string{srv.URL + "/", srv.URL + "/about/"}; !slices.Equal(visited, want) {
+		t.Errorf("visited %v, want %v", visited, want)
+	}
+	if n := plain.Load(); n != 0 {
+		t.Errorf("%d plain http requests reached the site", n)
+	}
+	// The sitemap's http entry is dropped while discovering, the rendered
+	// http link once the start page is visited.
+	if discovered["other site"] != 1 {
+		t.Errorf("discovered skipped %v, want 1 other site (http://%s/pricing/)", discovered, host)
+	}
+	if run.Skipped["other site"] != 2 || final["other site"] != 2 {
+		t.Errorf("run.json skipped %v, Skipped hook %v, want 2 other site", run.Skipped, final)
+	}
+}
+
 // A robots.txt that fails leaves only the start page and the pages
 // listed; the run says so rather than passing for the whole site.
 func TestRobotsUnavailableWarns(t *testing.T) {
@@ -263,10 +315,17 @@ func TestRobotsUnavailableWarns(t *testing.T) {
 	cfg := config.Default()
 	cfg.Modules, cfg.Viewports, cfg.Rate = []string{"health"}, []string{"desktop"}, 0
 	cfg.Pages.Extra = []string{"/team/"}
+	// The rendered link to /about/ is left out after the Pages line, so
+	// the Skipped hook gives the terminal the final count.
+	var final map[string]int
 	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
-		Browser: browser.Options{NoDownload: true}})
+		Browser: browser.Options{NoDownload: true},
+		Hooks:   Hooks{Skipped: func(skipped map[string]int) { final = skipped }}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if final["robots-unavailable"] < 1 || final["robots-unavailable"] != run.Skipped["robots-unavailable"] {
+		t.Errorf("Skipped hook got %v, run.json has %v", final, run.Skipped)
 	}
 	var visited []string
 	for _, p := range run.Pages {
