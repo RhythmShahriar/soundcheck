@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -74,7 +73,7 @@ type session struct {
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
 	s := &session{plan: p, stdout: stdout, stderr: stderr, st: store.Store{Root: p.storeDir}}
-	s.ctx, s.stop = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	s.ctx, s.stop = signal.NotifyContext(context.Background(), stopSignals...)
 	s.tty = cli.IsTerminal(stdout)
 	plain := p.o.plain || !s.tty
 	if plain || p.o.noColor {
