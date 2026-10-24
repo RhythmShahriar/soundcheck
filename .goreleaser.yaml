@@ -7,14 +7,15 @@
 version: 2
 project_name: rhythm-soundcheck
 
-# The release must carry current Chrome for Testing pins: regenerate them
-# (this downloads and hashes every platform's archive) and stop if they
-# differ from what's committed. Run `go generate ./browser` and commit
-# browser/cft_pins.go before tagging.
+# The release must carry valid Chrome for Testing pins: hash the committed
+# version's archives again (about 1 GB of downloads) and stop if they
+# differ or nothing is pinned. It never moves to a newer Stable, so a tag
+# pushed after Google's weekly Stable change still releases. Bump the
+# pins with `go generate ./browser` and commit browser/cft_pins.go before
+# tagging.
 before:
   hooks:
-    - go run ./browser/internal/pingen -o browser/cft_pins.go
-    - git diff --exit-code browser/cft_pins.go
+    - scripts/verify-pins.sh
 
 builds:
   - main: ./cmd/rhythm-soundcheck

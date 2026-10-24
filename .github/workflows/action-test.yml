@@ -219,6 +219,7 @@ jobs:
         run: |
           scripts/action-test.sh
           scripts/comment-test.sh
+          scripts/verify-pins-test.sh
       - name: Shellcheck
         run: shellcheck scripts/*.sh testbed/toggle.sh testbed/wp/seed.sh .github/action-test/*.sh
 
