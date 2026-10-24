@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -51,8 +52,13 @@ type Options struct {
 	Login func(base *url.URL) func(ctx context.Context, sess *rod.Browser) error
 	// Echo, when set, records what each form submit and flow sends; the
 	// run gets its own ID from its start time.
-	Echo  *echolink.Link
-	Hooks Hooks
+	Echo *echolink.Link
+	// FollowHost lets the target redirect to another site and checks that
+	// site instead. Without it, a redirect to another host (other than
+	// apex to www) is an error, so the run and its -H headers don't
+	// silently move somewhere the user didn't name.
+	FollowHost bool
+	Hooks      Hooks
 }
 
 // Hooks report progress. Calls are serialized.
@@ -67,7 +73,18 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
 	client := httpClient(opts)
-	startURL, err := resolve(ctx, client, opts.Target, opts.UserAgent)
+	var mu sync.Mutex // serializes hooks
+	emit := func(fn func()) {
+		mu.Lock()
+		defer mu.Unlock()
+		fn()
+	}
+	log := func(s string) {
+		if opts.Hooks.Log != nil {
+			emit(func() { opts.Hooks.Log(s) })
+		}
+	}
+	startURL, err := resolve(ctx, client, opts.Target, opts.UserAgent, opts.FollowHost, log)
 	if err != nil {
 		return nil, err
 	}
@@ -79,17 +96,6 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Name: opts.Name, Started: start.UTC(),
 		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
 			Limit: cfg.Pages.Limit},
-	}
-	var mu sync.Mutex // serializes hooks
-	emit := func(fn func()) {
-		mu.Lock()
-		defer mu.Unlock()
-		fn()
-	}
-	log := func(s string) {
-		if opts.Hooks.Log != nil {
-			emit(func() { opts.Hooks.Log(s) })
-		}
 	}
 
 	// Pages: the given paths, or discovered from sitemaps and links.
@@ -326,14 +332,28 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 }
 
 // resolve fetches the target once, following redirects, and returns the
-// start page: the URL the site really answers on (http → https, apex →
-// www), with the path and query it ended up at, so a run started at
-// /q?lang=fr checks that page and one redirected to /b checks /b. A bare
-// hostname falls back to http when https fails.
-func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.URL, error) {
+// start page: the URL the site really answers on, with the path and query
+// it ended up at, so a run started at /q?lang=fr checks that page and one
+// redirected to /b checks /b.
+//
+// Redirects may move to https and between apex and www (logged as "moved
+// to ..."); one to another site is an error unless followHost is set. A
+// bare hostname falls back to http only when https is refused outright:
+// a bad certificate or a timeout is a reason to stop, not to downgrade.
+func resolve(ctx context.Context, client *http.Client, target, ua string, followHost bool, log func(string)) (*url.URL, error) {
 	u, explicit, err := ratelimit.ParseTarget(target)
 	if err != nil {
 		return nil, err
+	}
+	c := *client
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if !followHost && !check.SameSite(via[0].URL, req.URL) {
+			return &hostChangeError{from: via[0].URL, to: req.URL}
+		}
+		return nil
 	}
 	try := func(u *url.URL) (*url.URL, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -343,7 +363,7 @@ func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.
 		if ua != "" {
 			req.Header.Set("User-Agent", ua)
 		}
-		resp, err := client.Do(req)
+		resp, err := c.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -352,13 +372,18 @@ func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.
 		return &url.URL{Scheme: final.Scheme, Host: final.Host, Path: final.Path, RawPath: final.RawPath, RawQuery: final.RawQuery}, nil
 	}
 	base, err := try(u)
-	if err != nil && !explicit && ctx.Err() == nil {
+	if err != nil && !explicit && ctx.Err() == nil && refused(err) {
+		log("https refused; using http")
 		u.Scheme = "http"
 		base, err = try(u)
 	}
 	if err != nil {
 		var cv *tls.CertificateVerificationError
-		if errors.As(err, &cv) {
+		var hc *hostChangeError
+		switch {
+		case errors.As(err, &hc):
+			return nil, hc
+		case errors.As(err, &cv):
 			return nil, fmt.Errorf("can't reach %s: invalid TLS certificate (rerun with --insecure to check it anyway)", u.Host)
 		}
 		return nil, fmt.Errorf("can't reach %s: %w", u.Host, err)
@@ -366,7 +391,28 @@ func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.
 	if base.Path == "" {
 		base.Path = "/"
 	}
+	if base.Scheme != u.Scheme || !strings.EqualFold(base.Host, u.Host) {
+		log("moved to " + base.String())
+	}
 	return base, nil
+}
+
+// hostChangeError is a target that redirects to another site.
+type hostChangeError struct{ from, to *url.URL }
+
+func (e *hostChangeError) Error() string {
+	return fmt.Sprintf("%s redirects to %s, which is another site; check that address instead if it's the one you meant", e.from, e.to)
+}
+
+// refused reports whether err is a refused connection: nothing listens on
+// the port. Windows words it differently and has its own error number,
+// so the message is matched too.
+func refused(err error) bool {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "connection refused") || strings.Contains(s, "actively refused")
 }
 
 // headerTransport adds the run's extra headers to every request.
