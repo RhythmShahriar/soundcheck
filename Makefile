@@ -1,12 +1,17 @@
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
-.PHONY: build test lint fmt check hooks testbed testbed-down bench
+.PHONY: build test test-short lint fmt check hooks testbed testbed-down bench
 
 build: ## build bin/rhythm-soundcheck
 	go build -o bin/rhythm-soundcheck ./cmd/rhythm-soundcheck
 
+# The visual checks take about 6 minutes under -race, so Go's 10 minute
+# default timeout is too close for the whole suite.
 test: ## run tests (browser tests need Chrome)
-	go test -race ./...
+	go test -race -timeout 30m ./...
+
+test-short: ## quick pass: tests that honour -short skip slow browser work
+	go test -short -race -timeout 10m ./...
 
 lint:
 	$(GOLANGCI) run ./...

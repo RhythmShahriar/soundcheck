@@ -187,6 +187,7 @@ All of it lives in the **[Rhythm documentation wiki](https://github.com/RhythmSh
 git clone https://github.com/RhythmShahriar/soundcheck && cd soundcheck
 make hooks   # Conventional Commits check
 make check   # lint + tests (browser tests need Chrome or Chromium)
+make test-short # the quick pass: tests that honour -short skip slow browser work
 make testbed # 20 broken sites in Docker, for end-to-end tests and the benchmark
 ```
 
