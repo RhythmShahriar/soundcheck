@@ -17,7 +17,7 @@ import (
 
 // The store's lock is a file, .soundcheck/.lock, that one process at a
 // time creates around changes several runs could make at once
-// (promoting a snapshot, moving LATEST, pruning runs). It holds the
+// (promoting a snapshot, moving the LATEST pointer, pruning runs). It holds the
 // owner's PID and the time, so a lock left by a crashed process is
 // broken instead of blocking every later run.
 const lockFile = ".lock"

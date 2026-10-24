@@ -29,10 +29,29 @@ const Incoming = ".incoming"
 // Store is a .soundcheck folder.
 type Store struct{ Root string }
 
+// Latest is the file in the store's root that names the snapshot compare
+// uses by default. Older versions kept it in snapshots/, where it shared
+// the namespace with snapshot folders (see latest).
+const Latest = "LATEST"
+
 var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // ValidName reports whether name can be used as a snapshot name.
-func ValidName(name string) bool { return safeName.MatchString(name) }
+func ValidName(name string) bool { return checkName(name) == nil }
+
+// checkName says why name can't be a folder name in the store, or
+// returns nil when it can. "latest" is reserved in any case: a snapshot
+// folder with that name would sit where older versions keep the LATEST
+// pointer, and on case-insensitive disks "Latest" is the same file.
+func checkName(name string) error {
+	if !safeName.MatchString(name) {
+		return fmt.Errorf("%q isn't a valid name: use letters, digits, dots, dashes and underscores", name)
+	}
+	if strings.EqualFold(name, Latest) {
+		return fmt.Errorf("%q is reserved; pick another name", name)
+	}
+	return nil
+}
 
 // Stamp is the default name for snapshots and runs: UTC to the
 // millisecond, so names sort by time and rarely collide.
@@ -51,8 +70,8 @@ const maxSuffix = 1000
 // the same millisecond, or a crashed one), so it creates name-2, name-3
 // and so on instead.
 func (s Store) NewDir(kind, name string) (string, error) {
-	if !ValidName(name) {
-		return "", fmt.Errorf("%q isn't a valid name: use letters, digits, dots, dashes and underscores", name)
+	if err := checkName(name); err != nil {
+		return "", err
 	}
 	parent := filepath.Join(s.Root, kind)
 	if err := os.MkdirAll(parent, 0o750); err != nil {
@@ -156,48 +175,101 @@ func (s Store) Promote(dir, name string) (string, error) {
 		return "", err
 	}
 	final := filepath.Join(snapshots, name)
+	if _, err := os.Lstat(final); err != nil {
+		if err := rename(dir, final); err != nil {
+			return "", err
+		}
+		return final, Release(final)
+	}
 	// The old snapshot is moved aside, not deleted, until the new one is
 	// in place: a failed rename then puts it back.
-	var aside string
-	if _, err := os.Lstat(final); err == nil {
-		tmp, err := os.MkdirTemp(snapshots, ".replaced-*")
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = os.RemoveAll(tmp) }() //nolint:gosec // our own temporary folder
-		aside = filepath.Join(tmp, name)
-		if err := os.Rename(final, aside); err != nil {
-			return "", err
-		}
-	}
-	if err := os.Rename(dir, final); err != nil {
-		if aside != "" {
-			_ = os.Rename(aside, final)
-		}
+	tmp, err := os.MkdirTemp(snapshots, ".replaced-*")
+	if err != nil {
 		return "", err
 	}
+	aside := filepath.Join(tmp, name)
+	if err := rename(final, aside); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := rename(dir, final); err != nil {
+		if rerr := rename(aside, final); rerr != nil {
+			// Deleting tmp now would delete the old snapshot too, so it
+			// stays where the user can move it back.
+			return "", fmt.Errorf("%w; the previous snapshot %q couldn't be put back and is in %s", err, name, aside)
+		}
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	_ = os.RemoveAll(tmp) //nolint:gosec // our own temporary folder
 	return final, Release(final)
 }
 
+// rename is os.Rename, swapped in tests to make it fail.
+var rename = os.Rename
+
 // SetLatest records name as the snapshot compare uses by default.
 func (s Store) SetLatest(name string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("%q isn't a valid snapshot name", name)
+	}
 	unlock, err := s.lock()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return cache.WriteFile(filepath.Join(s.Root, "snapshots", "LATEST"), []byte(name+"\n"))
+	if err := cache.WriteFile(filepath.Join(s.Root, Latest), []byte(name+"\n")); err != nil {
+		return err
+	}
+	// The old pointer would otherwise name a stale snapshot to an older
+	// Soundcheck sharing this store, and look like a snapshot to no one.
+	if legacy := s.legacyLatest(); isFile(legacy) {
+		_ = os.Remove(legacy)
+	}
+	return nil
+}
+
+// latest returns the name LATEST points to, or "" when there's none. A
+// store from an older version has the pointer in snapshots/; it's read
+// there once and moved to the root.
+func (s Store) latest() string {
+	if b, err := os.ReadFile(filepath.Join(s.Root, Latest)); err == nil {
+		return strings.TrimSpace(string(b))
+	}
+	legacy := s.legacyLatest()
+	if !isFile(legacy) {
+		// A folder there is a snapshot named LATEST from before the
+		// name was reserved, not a pointer.
+		return ""
+	}
+	b, err := os.ReadFile(legacy) //nolint:gosec // the store's own pointer file
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(string(b))
+	if ValidName(name) {
+		// A read-only store can't be migrated; it's read from the old
+		// place every time then, which works as well.
+		_ = s.SetLatest(name)
+	}
+	return name
+}
+
+func (s Store) legacyLatest() string { return filepath.Join(s.Root, "snapshots", Latest) }
+
+// isFile reports whether path is a regular file.
+func isFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // Snapshot returns the directory of a named snapshot, or of the latest
 // one when name is empty.
 func (s Store) Snapshot(name string) (string, error) {
 	if name == "" {
-		b, err := os.ReadFile(filepath.Join(s.Root, "snapshots", "LATEST"))
-		if err != nil {
+		if name = s.latest(); name == "" {
 			return "", errors.New("no snapshot yet; take one first: rhythm soundcheck snapshot <url>")
 		}
-		name = strings.TrimSpace(string(b))
 	}
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
@@ -230,8 +302,10 @@ func (s Store) list(kind string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		// Dot folders are Promote's temporary ones.
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+		// Dot folders are Promote's temporary ones. Other invalid names
+		// (a snapshot named LATEST from before the name was reserved)
+		// can't be opened or deleted by name, so they aren't listed.
+		if e.IsDir() && ValidName(e.Name()) {
 			names = append(names, e.Name())
 		}
 	}
@@ -267,8 +341,10 @@ func (s Store) Prune(keep int) error {
 // ExcludeFromGit adds the store's snapshots and runs to the repository's
 // local exclude list (.git/info/exclude), so screenshots never get
 // committed by accident and the project's .gitignore stays untouched.
+// The LATEST pointer and the lock are local state and are excluded too.
 // config.yaml and flows/ stay visible to git, to share with the team. It
-// does nothing outside a git repository.
+// does nothing outside a git repository, and adds only the lines that
+// are missing, so stores excluded by an older version get the new ones.
 func (s Store) ExcludeFromGit() {
 	out, err := exec.Command("git", "rev-parse", "--git-path", "info/exclude").Output()
 	if err != nil {
@@ -292,10 +368,16 @@ func (s Store) ExcludeFromGit() {
 		return
 	}
 	base := "/" + filepath.ToSlash(rel) + "/"
-	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/"}
+	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/", base + Latest, base + lockFile}
 	existing, _ := os.ReadFile(path) //nolint:gosec // the repository's own exclude file
-	if slices.Contains(strings.Split(string(existing), "\n"), lines[0]) {
+	have := strings.Split(string(existing), "\n")
+	missing := slices.DeleteFunc(slices.Clone(lines), func(l string) bool { return slices.Contains(have, l) })
+	if len(missing) == 0 {
 		return
+	}
+	text := strings.Join(missing, "\n") + "\n"
+	if len(missing) == len(lines) {
+		text = "# Soundcheck snapshots and reports\n" + text
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // the repository's own exclude file
 	if err != nil {
@@ -305,5 +387,5 @@ func (s Store) ExcludeFromGit() {
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
 		_, _ = f.WriteString("\n")
 	}
-	_, _ = f.WriteString("# Soundcheck snapshots and reports\n" + strings.Join(lines, "\n") + "\n")
+	_, _ = f.WriteString(text)
 }

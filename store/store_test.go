@@ -118,8 +118,35 @@ func TestExcludeFromGit(t *testing.T) {
 	if strings.Count(ex, "/.soundcheck/snapshots/") != 1 || !strings.Contains(ex, "/.soundcheck/runs/") {
 		t.Errorf("exclude file:\n%s", ex)
 	}
+	for _, line := range []string{"/.soundcheck/LATEST\n", "/.soundcheck/.lock\n"} {
+		if strings.Count(ex, line) != 1 {
+			t.Errorf("want %q once in:\n%s", line, ex)
+		}
+	}
 	if strings.Contains(ex, "/.soundcheck/\n") {
 		t.Error("config.yaml must stay visible to git")
+	}
+}
+
+func TestExcludeFromGitAddsMissingLines(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatal(string(out))
+	}
+	t.Chdir(repo)
+	path := filepath.Join(repo, ".git", "info", "exclude")
+	// What an older version wrote.
+	old := "# Soundcheck snapshots and reports\n/.soundcheck/snapshots/\n/.soundcheck/runs/\n/.soundcheck/.incoming/\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	Store{Root: ".soundcheck"}.ExcludeFromGit()
+	data, _ := os.ReadFile(path)
+	if want := old + "/.soundcheck/LATEST\n/.soundcheck/.lock\n"; string(data) != want {
+		t.Errorf("exclude file:\n%s\nwant:\n%s", data, want)
 	}
 }
 
