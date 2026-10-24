@@ -5,8 +5,11 @@ package compare
 
 import (
 	"context"
+	"encoding/json"
+	"math/rand/v2"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -104,5 +107,78 @@ func TestMismatchEchoMode(t *testing.T) {
 	after.Options.EchoMode = "seal"
 	if w := mismatch(before, after); len(w) != 0 {
 		t.Errorf("same mode warned: %q", w)
+	}
+}
+
+// deterministicRuns has one issue on six pages with a different detail on
+// each, plus changes that tie on class, score and title.
+func deterministicRuns() (before, after *model.Run) {
+	before, after = &model.Run{}, &model.Run{}
+	for _, path := range []string{"/f", "/c", "/a", "/e", "/b", "/d"} {
+		warn := issue("health/php-error", model.Warning, "PHP Warning: x")
+		warn.Detail = "seen on " + path
+		js := issue("health/js-error", model.Warning, "Same title")
+		js.Source = "app.js"
+		other := issue("health/console", model.Warning, "Same title")
+		other.Source = "lib.js"
+		before.Pages = append(before.Pages, model.Page{Path: path})
+		after.Pages = append(after.Pages, model.Page{Path: path, Issues: []model.Issue{other, js, warn}})
+	}
+	return before, after
+}
+
+func TestIssuesAreDeterministic(t *testing.T) {
+	marshal := func(before, after *model.Run) string {
+		c := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+		c.Created = time.Time{}
+		b, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	before, after := deterministicRuns()
+	want := marshal(before, after)
+	for range 50 {
+		if got := marshal(before, after); got != want {
+			t.Fatalf("output changed between identical calls:\n%s\n%s", want, got)
+		}
+	}
+	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // shuffling test input
+	for range 20 {
+		rng.Shuffle(len(after.Pages), func(i, j int) { after.Pages[i], after.Pages[j] = after.Pages[j], after.Pages[i] })
+		rng.Shuffle(len(before.Pages), func(i, j int) { before.Pages[i], before.Pages[j] = before.Pages[j], before.Pages[i] })
+		if got := marshal(before, after); got != want {
+			t.Fatalf("page order changed the output:\n%s\n%s", want, got)
+		}
+	}
+	c := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+	var got []string
+	for _, ch := range c.Changes {
+		got = append(got, ch.Check+":"+ch.Detail)
+	}
+	// Ties on class and score go by check; the detail is the lowest page's.
+	if strings.Join(got, ",") != "health/console:,health/js-error:,health/php-error:seen on /a" {
+		t.Errorf("changes = %v", got)
+	}
+}
+
+func TestSortTieBreaks(t *testing.T) {
+	cs := []model.Change{
+		{Class: model.New, Check: "b", Title: "t", Pages: []string{"/"}},
+		{Class: model.New, Check: "a", Source: "z", Title: "t", Pages: []string{"/"}},
+		{Class: model.New, Check: "a", Source: "y", Title: "t", Pages: []string{"/b"}},
+		{Class: model.New, Check: "a", Source: "y", Title: "t", Pages: []string{"/a"}},
+		{Class: model.New, Check: "a", Source: "y", Title: "s", Pages: []string{"/a"}},
+		{Class: model.Broke, Check: "z", Title: "t", Pages: []string{"/"}},
+	}
+	Sort(cs)
+	var got []string
+	for _, c := range cs {
+		got = append(got, c.Check+c.Source+c.Pages[0]+c.Title)
+	}
+	want := "z/t,ay/as,ay/at,ay/bt,az/t,b/t"
+	if strings.Join(got, ",") != want {
+		t.Errorf("order = %v, want %s", got, want)
 	}
 }

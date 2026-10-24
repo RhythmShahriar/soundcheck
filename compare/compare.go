@@ -11,6 +11,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -91,23 +92,35 @@ func Issues(before, after *model.Run) []model.Change {
 	b, a := index(before, after), index(after, before)
 
 	// Group by issue key, so one PHP warning on 14 pages is one change.
-	groups := map[string]*model.Change{}
+	// Maps are walked in sorted key order and the detail comes from the
+	// lowest page path, so the same two runs always give the same output.
+	type group struct {
+		change     model.Change
+		pages      map[string]bool
+		detailFrom string // the page the detail came from
+	}
+	groups := map[string]*group{}
 	add := func(class string, x *at) {
 		k := class + "|" + x.issue.Key
 		g := groups[k]
+		first := ""
+		if len(x.pages) > 0 {
+			first = slices.Min(x.pages)
+		}
 		if g == nil {
-			g = &model.Change{Class: class, Check: x.issue.Check, Title: x.issue.Title, Detail: x.issue.Detail,
-				Source: x.issue.Source, Fix: x.issue.Fix}
+			g = &group{change: model.Change{Class: class, Check: x.issue.Check, Title: x.issue.Title, Detail: x.issue.Detail,
+				Source: x.issue.Source, Fix: x.issue.Fix}, pages: map[string]bool{}, detailFrom: first}
 			groups[k] = g
+		} else if first < g.detailFrom {
+			g.change.Detail, g.detailFrom = x.issue.Detail, first
 		}
 		for _, p := range x.pages {
-			if !slices.Contains(g.Pages, p) {
-				g.Pages = append(g.Pages, p)
-			}
+			g.pages[p] = true
 		}
 	}
-	for k, x := range a {
+	for _, k := range sortedKeys(a) {
 		if _, ok := b[k]; !ok {
+			x := a[k]
 			class := model.New
 			if x.issue.Level == model.Error {
 				class = model.Broke
@@ -115,27 +128,44 @@ func Issues(before, after *model.Run) []model.Change {
 			add(class, x)
 		}
 	}
-	for k, x := range b {
+	for _, k := range sortedKeys(b) {
 		if _, ok := a[k]; !ok {
-			add(model.Fixed, x)
+			add(model.Fixed, b[k])
 		}
 	}
-	var out []model.Change
-	for _, g := range groups {
-		slices.Sort(g.Pages)
-		g.Score = float64(len(g.Pages))
-		out = append(out, *g)
+	out := make([]model.Change, 0, len(groups))
+	for _, k := range sortedKeys(groups) {
+		g := groups[k]
+		g.change.Pages = sortedKeys(g.pages)
+		g.change.Score = float64(len(g.change.Pages))
+		out = append(out, g.change)
 	}
 	return out
 }
 
-// Sort orders changes by class, then by score (biggest first), then title.
+func sortedKeys[V any](m map[string]V) []string {
+	return slices.Sorted(maps.Keys(m))
+}
+
+// Sort orders changes by class, then by score (biggest first). Ties are
+// broken by check, source, first page, title and detail, so the order
+// never depends on the order the changes were found in.
 func Sort(cs []model.Change) {
+	firstPage := func(c model.Change) string {
+		if len(c.Pages) == 0 {
+			return ""
+		}
+		return c.Pages[0]
+	}
 	slices.SortStableFunc(cs, func(x, y model.Change) int {
 		return cmp.Or(
 			cmp.Compare(slices.Index(model.Classes, x.Class), slices.Index(model.Classes, y.Class)),
 			cmp.Compare(y.Score, x.Score),
-			strings.Compare(x.Title, y.Title))
+			strings.Compare(x.Check, y.Check),
+			strings.Compare(x.Source, y.Source),
+			strings.Compare(firstPage(x), firstPage(y)),
+			strings.Compare(x.Title, y.Title),
+			strings.Compare(x.Detail, y.Detail))
 	})
 }
 
