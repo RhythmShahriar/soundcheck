@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -210,7 +211,7 @@ func parse(args []string) (*plan, error) {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, err
 		}
-		return nil, cli.UsageError{Msg: err.Error()}
+		return nil, flagError(fs, err)
 	}
 	p.args = pos
 	set := map[string]bool{}
@@ -221,7 +222,11 @@ func parse(args []string) (*plan, error) {
 	if path == "" {
 		path = filepath.Join(config.Dir, "config.yaml")
 	} else if _, err := os.Stat(path); err != nil {
-		return nil, cli.Usagef("--config %s: %v", path, err)
+		var pe *os.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err // the path is in the message already
+		}
+		return nil, cli.Usagef("--config: %s: %v", path, err)
 	}
 	if p.cfg, err = config.Load(path); err != nil {
 		return nil, cli.UsageError{Msg: err.Error()}
@@ -279,7 +284,7 @@ func parse(args []string) (*plan, error) {
 	}
 	if set["rate"] {
 		if err := config.CheckRate(o.rate); err != nil {
-			return nil, cli.Usagef("--rate: %v", err)
+			return nil, cli.Usagef("--rate (rate): %v", err)
 		}
 		cfg.Rate = o.rate
 	}
@@ -325,7 +330,7 @@ func parse(args []string) (*plan, error) {
 	for _, raw := range o.headers {
 		name, value, ok := strings.Cut(raw, ":")
 		if name = strings.TrimSpace(name); !ok || name == "" || strings.ContainsAny(name, " \t") {
-			return nil, cli.Usagef("bad header %q, use \"Name: value\"", raw)
+			return nil, cli.Usagef("--header: %q isn't a header; use \"Name: value\"", raw)
 		}
 		p.headers[name] = strings.TrimSpace(value)
 	}
@@ -338,7 +343,7 @@ func parse(args []string) (*plan, error) {
 	if o.proxy != "" {
 		u, err := url.Parse(o.proxy)
 		if err != nil || u.Host == "" || !slices.Contains([]string{"http", "https", "socks5", "socks5h"}, u.Scheme) {
-			return nil, cli.Usagef("bad --proxy %q, use e.g. http://127.0.0.1:8080 or socks5://127.0.0.1:1080", o.proxy)
+			return nil, cli.Usagef("--proxy: %q isn't an http, https or socks5 proxy, e.g. http://127.0.0.1:8080 or socks5://127.0.0.1:1080", o.proxy)
 		}
 		p.proxy = u
 	}
@@ -347,7 +352,7 @@ func parse(args []string) (*plan, error) {
 		p.ua = fmt.Sprintf("rhythm-soundcheck/%s (+https://rythm.sh/soundcheck)", version)
 	}
 	if o.name != "" && !validName(o.name) {
-		return nil, cli.Usagef("--name %q: use letters, digits, dots, dashes and underscores", o.name)
+		return nil, cli.Usagef("--name: %q isn't a snapshot name; use letters, digits, dots, dashes and underscores", o.name)
 	}
 	p.storeDir = config.Dir
 	return p, nil
@@ -454,14 +459,14 @@ func (p *plan) trust() error {
 	t := &p.cfg.Trust
 	for _, name := range p.o.allowEnv {
 		if name == "" || strings.ContainsAny(name, " =${}") {
-			return cli.Usagef("--allow-env %q isn't an environment variable name", name)
+			return cli.Usagef("--allow-env: %q isn't an environment variable name", name)
 		}
 		t.AllowEnv = append(t.AllowEnv, name)
 	}
 	for _, h := range p.o.allowHosts {
 		key, err := config.ParseHost(h)
 		if err != nil {
-			return cli.Usagef("--allow-host %v", err)
+			return cli.Usagef("--allow-host: %v", err)
 		}
 		t.AllowHosts = append(t.AllowHosts, key)
 	}
@@ -520,12 +525,16 @@ func (s *session) failOn(compared bool) error {
 	if v == "" {
 		return nil
 	}
-	err := report.ValidFailOn(v, compared) // parse lowercased it
-	if err == nil {
+	if report.ValidFailOn(v, compared) == nil { // parse lowercased it
 		return nil
 	}
 	if s.failOnFrom == "" {
-		return cli.UsageError{Msg: err.Error()}
+		// parse checked it's a known value, so it's for the other kind
+		// of command.
+		if compared {
+			return cli.Usagef("--fail-on (fail_on): %q is for run and snapshot; a comparison takes broke, new, changed or slower", v)
+		}
+		return cli.Usagef("--fail-on (fail_on): %q is for comparisons; run and snapshot take error, warning or notice", v)
 	}
 	s.o.failOn = ""
 	if !s.o.quiet {
@@ -556,6 +565,90 @@ func looksLikeTarget(s string) bool {
 var settingFlags = map[string]string{
 	"modules": "--modules", "interactions.levels": "--level", "viewports": "--viewport", "pages.limit": "--limit",
 	"tabs": "--tabs", "timeout": "--timeout", "rate": "--rate", "echo.url": "--echo", "fail_on": "--fail-on",
+}
+
+// Go's flag package words its errors for its own single-dash style.
+var (
+	flagBadValue  = regexp.MustCompile(`^invalid (?:boolean )?value "(.*)" for (?:flag )?-([^:]+): (.*)$`)
+	flagUndefined = regexp.MustCompile(`^flag provided but not defined: -+(.+)$`)
+	flagNoValue   = regexp.MustCompile(`^flag needs an argument: -+(.+)$`)
+)
+
+// flagError rewords a flag parse error the way every other value error
+// reads: "--tabs (tabs): "abc" isn't a whole number", and "unknown flag
+// --levle (did you mean --level?)".
+func flagError(fs *flag.FlagSet, err error) error {
+	msg := err.Error()
+	if m := flagUndefined.FindStringSubmatch(msg); m != nil {
+		var names []string
+		fs.VisitAll(func(f *flag.Flag) {
+			if len(f.Name) > 1 {
+				names = append(names, f.Name)
+			}
+		})
+		hint := ""
+		if s := config.Suggest(m[1], names); s != "" {
+			hint = fmt.Sprintf(" (did you mean --%s?)", s)
+		}
+		return cli.Usagef("unknown flag %s%s", dashed(m[1]), hint)
+	}
+	if m := flagNoValue.FindStringSubmatch(msg); m != nil {
+		return cli.Usagef("%s needs a value", dashed(m[1]))
+	}
+	if m := flagBadValue.FindStringSubmatch(msg); m != nil {
+		value, name, why := m[1], m[2], m[3]
+		if why == "parse error" || strings.HasPrefix(why, "strconv.") {
+			why = fmt.Sprintf("%q isn't %s", value, valueKind(fs.Lookup(name)))
+		}
+		return cli.Usagef("%s: %s", flagLabel(name), why)
+	}
+	return cli.UsageError{Msg: msg}
+}
+
+// dashed writes a flag as it's typed: -o, --fail-on.
+func dashed(name string) string {
+	if len(name) == 1 {
+		return "-" + name
+	}
+	return "--" + name
+}
+
+// flagLabel names a flag for an error: its long name, and the config key
+// that sets the same value when there is one, "--tabs (tabs)".
+func flagLabel(name string) string {
+	if long, ok := shortFlags[name]; ok {
+		name = long
+	}
+	label := "--" + name
+	for key, f := range settingFlags {
+		if f == label {
+			return label + " (" + key + ")"
+		}
+	}
+	return label
+}
+
+// shortFlags are the one-letter flags and the long names they stand for.
+var shortFlags = map[string]string{"o": "output", "q": "quiet", "v": "verbose", "A": "user-agent", "H": "header", "k": "insecure"}
+
+// valueKind says what a flag takes, for "isn't a whole number".
+func valueKind(f *flag.Flag) string {
+	if f == nil {
+		return "a valid value"
+	}
+	g, ok := f.Value.(flag.Getter)
+	if !ok {
+		return "a valid value"
+	}
+	switch g.Get().(type) {
+	case int:
+		return "a whole number"
+	case float64:
+		return "a number"
+	case bool:
+		return "true or false"
+	}
+	return "a valid value"
 }
 
 // flagName points a config error at the flag that sets the same value,

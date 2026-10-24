@@ -276,6 +276,9 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	if err := s.connectEcho(); err != nil {
 		return nil, err
 	}
+	if s.o.verbose {
+		s.view.Step("Browser", s.browserInfo())
+	}
 	if who != "" {
 		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
 	}
@@ -288,11 +291,45 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log},
 	}
 	run, err := runner.Run(s.ctx, opts)
+	if s.o.verbose && run != nil {
+		s.view.Step("Timing", timing(run))
+	}
 	// A snapshot runs Lighthouse once it's saved under its own name.
 	if run != nil && s.o.lighthouse && !snapshot && s.ctx.Err() == nil {
 		s.lighthouse(run.Target, dir)
 	}
 	return run, err
+}
+
+// browserInfo names the browser a run will use, for -v. It never
+// downloads: the run itself does that, and says so.
+func (s *session) browserInfo() string {
+	bin, downloaded, err := browser.Find(browser.Options{Bin: s.o.browser, NoDownload: true})
+	switch {
+	case err != nil && s.o.noDownload:
+		return "none found"
+	case err != nil:
+		return "none installed; Chromium is downloaded once, now"
+	case downloaded:
+		return bin + " (the Chromium Soundcheck downloaded)"
+	}
+	return bin
+}
+
+// timing sums up how long a run took and its slowest pages, for -v.
+func timing(run *model.Run) string {
+	ms := func(v float64) string { return time.Duration(v * float64(time.Millisecond)).Round(10 * time.Millisecond).String() }
+	line := fmt.Sprintf("%s in %s", plural(len(run.Pages), "page"), ms(run.Duration))
+	pages := slices.Clone(run.Pages)
+	slices.SortStableFunc(pages, func(a, b model.Page) int { return cmp.Compare(b.Duration, a.Duration) })
+	var slow []string
+	for _, p := range pages[:min(3, len(pages))] {
+		slow = append(slow, p.Path+" "+ms(p.Duration))
+	}
+	if len(slow) > 0 {
+		line += "; slowest " + strings.Join(slow, ", ")
+	}
+	return line
 }
 
 // render writes res in one output format.

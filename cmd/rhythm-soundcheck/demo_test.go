@@ -58,7 +58,7 @@ func TestDemoOptions(t *testing.T) {
 		{[]string{"example.com"}, false, "", "takes no URL"},
 		{[]string{"--modules", "health"}, false, "", "demo doesn't take --modules; it takes --plain"},
 		{[]string{"--fail-on", "broke", "--level", "click"}, false, "", "demo doesn't take --fail-on, --level"},
-		{[]string{"--frobnicate"}, false, "", "flag provided but not defined"},
+		{[]string{"--frobnicate"}, false, "", "unknown flag --frobnicate"},
 	} {
 		keep, rest, err := demoOptions(tc.args)
 		switch {

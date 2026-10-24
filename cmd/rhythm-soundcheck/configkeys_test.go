@@ -142,7 +142,7 @@ func TestFailOnKey(t *testing.T) {
 	}
 	// --fail-on that fits the other kind is still an error.
 	writeConfig(t, "")
-	if code, _, errOut := runCLI(t, "run", "a.test", "--fail-on", "broke"); code != exitUsage || !strings.Contains(errOut, `--fail-on "broke": want error, warning or notice`) {
+	if code, _, errOut := runCLI(t, "run", "a.test", "--fail-on", "broke"); code != exitUsage || !strings.Contains(errOut, `--fail-on (fail_on): "broke" is for comparisons; run and snapshot take error, warning or notice`) {
 		t.Errorf("--fail-on broke on run: exit %d %q", code, errOut)
 	}
 	if code, _, errOut := runCLI(t, "run", "a.test", "--fail-on", "brok"); code != exitUsage || errOut !=

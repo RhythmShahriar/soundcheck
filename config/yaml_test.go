@@ -117,7 +117,7 @@ func TestSuggest(t *testing.T) {
 	opts := []string{"pages", "viewports", "modules", "interactions", "rate", "tabs"}
 	for in, want := range map[string]string{
 		"pagez": "pages", "Pages": "pages", "modlues": "modules", "viewport": "viewports", "intractions": "interactions",
-		"rat": "rate", "tab": "tabs", "x": "", "wallpaper": "", "speedometer": "", "": "",
+		"rat": "rate", "tab": "tabs", "tbas": "tabs", "paegs": "pages", "x": "", "wallpaper": "", "speedometer": "", "": "",
 	} {
 		if got := Suggest(in, opts); got != want {
 			t.Errorf("Suggest(%q) = %q, want %q", in, got, want)
@@ -126,7 +126,10 @@ func TestSuggest(t *testing.T) {
 	for _, tc := range []struct {
 		a, b string
 		d    int
-	}{{"", "", 0}, {"a", "", 1}, {"kitten", "sitting", 3}, {"flaw", "lawn", 2}, {"bücher", "bucher", 1}} {
+	}{{"", "", 0}, {"a", "", 1}, {"kitten", "sitting", 3}, {"flaw", "lawn", 2}, {"bücher", "bucher", 1},
+		// A swap of neighbors is one edit (positive), letters further
+		// apart are not (negative).
+		{"submti", "submit", 1}, {"ab", "ba", 1}, {"abc", "cba", 2}, {"ca", "abc", 3}} {
 		if d := distance(tc.a, tc.b); d != tc.d {
 			t.Errorf("distance(%q, %q) = %d, want %d", tc.a, tc.b, d, tc.d)
 		}

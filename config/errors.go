@@ -77,11 +77,14 @@ func Suggest(s string, options []string) string {
 	return best
 }
 
-// distance is the Levenshtein distance between a and b: the fewest
-// single-character insertions, deletions and substitutions that turn one
-// into the other.
+// distance is the optimal string alignment distance between a and b:
+// the fewest single-character insertions, deletions, substitutions and
+// swaps of two neighbors that turn one into the other. A swap counts as
+// one edit because it's the most common typo ("submti" for "submit").
 func distance(a, b string) int {
 	ra, rb := []rune(a), []rune(b)
+	// Three rows: a swap looks two rows back.
+	prev2 := make([]int, len(rb)+1)
 	prev := make([]int, len(rb)+1)
 	cur := make([]int, len(rb)+1)
 	for j := range prev {
@@ -95,8 +98,11 @@ func distance(a, b string) int {
 				cost = 0
 			}
 			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+			if i > 1 && j > 1 && ra[i-1] == rb[j-2] && ra[i-2] == rb[j-1] {
+				cur[j] = min(cur[j], prev2[j-2]+1)
+			}
 		}
-		prev, cur = cur, prev
+		prev2, prev, cur = prev, cur, prev2
 	}
 	return prev[len(rb)]
 }

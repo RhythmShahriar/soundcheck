@@ -111,7 +111,10 @@ func demoOptions(args []string) (keep bool, rest []string, err error) {
 	fs.BoolVar(&keep, "keep", false, "")
 	pos, err := cli.ParseInterspersed(fs, args)
 	if err != nil {
-		return false, nil, err
+		if errors.Is(err, flag.ErrHelp) {
+			return false, nil, err
+		}
+		return false, nil, flagError(fs, err)
 	}
 	if len(pos) > 0 {
 		return false, nil, fmt.Errorf("demo checks its own site, so it takes no URL: %s demo", cmdName())

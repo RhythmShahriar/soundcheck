@@ -65,8 +65,8 @@ func TestUsageErrors(t *testing.T) {
 		{[]string{"snapshot", "a.test", "--level", "explode"}, "--level"},
 		{[]string{"snapshot", "a.test", "--skip", "nope"}, "--skip"},
 		{[]string{"snapshot", "a.test", "--tabs", "99"}, "--tabs"},
-		{[]string{"snapshot", "a.test", "-H", "bad header"}, "bad header"},
-		{[]string{"snapshot", "a.test", "--proxy", "ftp://x"}, "bad --proxy"},
+		{[]string{"snapshot", "a.test", "-H", "bad header"}, "--header: "},
+		{[]string{"snapshot", "a.test", "--proxy", "ftp://x"}, "--proxy: "},
 		{[]string{"snapshot", "a.test", "--name", "../x"}, "--name"},
 		{[]string{"snapshot", "a.test", "--fail-on", "broke"}, "--fail-on"},
 		{[]string{"compare"}, "no snapshot yet"},
@@ -416,7 +416,7 @@ func TestRateFlag(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, r := range []string{"NaN", "Inf", "+Inf", "-Inf", "-1", "0", "1e-300", "0.009", "1001"} {
 		code, _, errOut := runCLI(t, "run", "a.test", "--rate", r)
-		if code != exitUsage || !strings.Contains(errOut, "--rate: ") || !strings.Contains(errOut, "isn't between 0.01 and 1000 page loads a second") {
+		if code != exitUsage || !strings.Contains(errOut, "--rate (rate): ") || !strings.Contains(errOut, "isn't between 0.01 and 1000 page loads a second") {
 			t.Errorf("--rate %s: exit %d, %q", r, code, errOut)
 		}
 	}

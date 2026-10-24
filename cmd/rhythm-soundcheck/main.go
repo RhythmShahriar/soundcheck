@@ -97,20 +97,20 @@ Usage:
   rhythm soundcheck                          interactive picker
   rhythm soundcheck snapshot <url> [flags]   record how the site works now
   rhythm soundcheck compare [url] [flags]    check again and show what changed
-  rhythm soundcheck <url> --against <url>    compare two sites now (staging vs live)
+  rhythm soundcheck <url> --against <url>    compare staging with live, now
   rhythm soundcheck run <url> [flags]        check once, no comparison
-  rhythm soundcheck report [run] [flags]     show the last result again (--open, -o)
-  rhythm soundcheck snapshots [--json]       list snapshots (delete <name> removes one)
-  rhythm soundcheck init                     write .soundcheck/config.yaml to edit
+  rhythm soundcheck report [run] [flags]     show the last result again
+  rhythm soundcheck snapshots [--json]       list (delete <name> removes one)
+  rhythm soundcheck init                     write a config file to edit
   rhythm soundcheck flows init               write an example flow to edit
-  rhythm soundcheck update [--clear]         install or refresh the browser it uses
-  rhythm soundcheck demo [--keep]            try it on a built-in site: snapshot,
-                                             break, compare (nothing to set up)
+  rhythm soundcheck update [--clear]         install or refresh its browser
+  rhythm soundcheck demo [--keep]            try it on a built-in site
 
 Snapshots:
       --name <name>          snapshot name (default: date and time); compare
                              uses the latest snapshot unless --snapshot is given
-      --snapshot <name>      compare with this snapshot (alias --against-snapshot)
+      --snapshot <name>      compare with this snapshot
+                             (alias --against-snapshot)
       --against <url>        compare with another site instead of a snapshot
       --strict               stop (exit 2) when compare wouldn't run with the
                              snapshot's modules, levels and viewports
@@ -130,7 +130,9 @@ Output:
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
       --no-color             no color
-  -v, --verbose              a line per page, and the browser's log
+  -v, --verbose              also show the browser used, the slowest pages
+                             and every log line; a line per page in place
+                             of the progress bar
 
 What to check:
       --config <file>        settings file (default .soundcheck/config.yaml)
@@ -181,8 +183,8 @@ Requests and browser:
 CI:
       --fail-on <level>      exit 1 when a comparison has changes at or above
                              broke, new, changed or slower; for run and
-                             snapshot: issues at or above error, warning, notice;
-                             none never fails (overrides fail_on)
+                             snapshot: issues at or above error, warning or
+                             notice; none never fails (overrides fail_on)
 
 Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
 test that caches don't leak logged-in pages to visitors, and to run flows that
@@ -203,12 +205,13 @@ Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
 Settings: .soundcheck/config.yaml (rhythm soundcheck init writes one) can set
 most flags, plus site (checked when no URL is given), fail_on and headers
 (each read from a SOUNDCHECK_* variable).
-Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check · 130 interrupted
+Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check the
+site · 130 interrupted
 
 Examples:
   rhythm soundcheck snapshot staging.example.com --name before-update
   rhythm soundcheck compare --open
   rhythm soundcheck staging.example.com --against example.com --fail-on broke
   rhythm soundcheck run example.test -k --level submit --md -o check.md
-  rhythm soundcheck snapshot staging.shop.test --level inspect,click,submit --echo
+  rhythm soundcheck snapshot staging.shop.test --level submit --echo
 `

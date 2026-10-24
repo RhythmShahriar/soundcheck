@@ -75,9 +75,9 @@ func TestTrustFlags(t *testing.T) {
 		t.Errorf("trust by default: %+v", p.cfg.Trust)
 	}
 	for args, want := range map[string]string{
-		"a.test --allow-env A=B":      `--allow-env "A=B" isn't`,
-		"a.test --allow-env ${X}":     `--allow-env "${X}" isn't`,
-		"a.test --allow-host http://": `--allow-host "http://" isn't a host`,
+		"a.test --allow-env A=B":      `--allow-env: "A=B" isn't`,
+		"a.test --allow-env ${X}":     `--allow-env: "${X}" isn't`,
+		"a.test --allow-host http://": `--allow-host: "http://" isn't a host`,
 	} {
 		if _, err := parse(strings.Fields(args)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want %q", args, err, want)
