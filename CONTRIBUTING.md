@@ -68,8 +68,10 @@ blank-imports the package (until every module does, it also lists them in
 
 A hook that panics doesn't end the run: the runner calls each one through `check.Safe` and the
 panic becomes a warning naming the module, the hook and where it happened. Hooks of different
-pages run at the same time, so a module that keeps state between hooks guards it with a mutex,
-and one that changes `cc.Run` holds `cc.Lock()`.
+pages run at the same time, so a module that keeps state between hooks guards it with a mutex.
+One that changes `cc.Run` holds `cc.Lock()`. Release it with `defer cc.Unlock()` whenever
+the code in between could panic: the panic warning takes the same lock, so a lock left held stops
+the whole run.
 
 ### Browser engines
 

@@ -117,7 +117,11 @@ func (c *Context) Progress(label string, done, total int) {
 	}
 }
 
-// Lock serializes access to Run from hooks running in parallel.
+// Lock serializes access to Run from hooks running in parallel. Hold it
+// only around the Run fields a hook reads or changes and release it with
+// a deferred Unlock when anything in between could panic: Safe turns the
+// panic into a warning through Warn, which takes the same lock, so a lock
+// left held would stop the whole run instead.
 func (c *Context) Lock()   { c.mu.Lock() }
 func (c *Context) Unlock() { c.mu.Unlock() }
 

@@ -15,7 +15,10 @@ import (
 // out of range) mustn't lose every other module's results or leave
 // Chrome running. The warning reads
 // "<module>: panic in <hook>: <value> (<top 3 frames>)", the frames being
-// where the panic happened, so the module's author can find it.
+// where the panic happened, so the module's author can find it. warn is
+// usually Context.Warn, which takes the Context's lock: a hook must not
+// panic while it holds that lock without a deferred Unlock (see
+// Context.Lock).
 func Safe(module, hook string, warn func(string), fn func()) {
 	defer func() {
 		if v := recover(); v != nil {
