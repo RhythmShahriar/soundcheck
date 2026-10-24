@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -304,6 +305,49 @@ func TestFaviconIsSiteLevel(t *testing.T) {
 	}
 	if cs := compare.Issues(before, after); len(cs) != 0 {
 		t.Errorf("an unchanged site visited in another order must have no changes: %+v", cs)
+	}
+}
+
+// A cache-buster on the favicon's URL that changes between runs is the
+// same missing favicon, not FIXED plus NEW.
+func TestFaviconKeyIgnoresQuery(t *testing.T) {
+	with := func(q string) model.Page {
+		p := favicon404("/")
+		p.Failed[0].URL += q
+		return p
+	}
+	before, after := siteRun(with("?v=1")), siteRun(with("?v=2"))
+	if len(after.Issues) != 1 || after.Issues[0].Source != "/favicon.ico" {
+		t.Errorf("issues = %+v", after.Issues)
+	}
+	if cs := compare.Issues(before, after); len(cs) != 0 {
+		t.Errorf("want no changes, got %+v", cs)
+	}
+}
+
+// The link probe reports its progress, so a long probe isn't silent.
+func TestLinkProbeProgress(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	p := model.Page{URL: srv.URL + "/", Path: "/", Status: 200, Title: "T", TextLength: 500}
+	for i := range 5 {
+		p.Links = append(p.Links, fmt.Sprintf("%s/l%d/", srv.URL, i))
+	}
+	cc := ctx()
+	cc.Base, _ = url.Parse(srv.URL + "/")
+	cc.HTTP, cc.Hosts = srv.Client(), ratelimit.NewHosts(0)
+	cc.Run = &model.Run{Pages: []model.Page{p}}
+	cc.Config = config.Default()
+	var mu sync.Mutex
+	var got []string
+	cc.OnProgress = func(label string, done, total int) {
+		mu.Lock()
+		got = append(got, fmt.Sprintf("%s %d/%d", label, done, total))
+		mu.Unlock()
+	}
+	Module{}.CheckSite(context.Background(), cc)
+	if len(got) != 6 || got[0] != "Checking 5 links 0/5" || got[5] != "Checking 5 links 5/5" {
+		t.Errorf("progress = %q", got)
 	}
 }
 

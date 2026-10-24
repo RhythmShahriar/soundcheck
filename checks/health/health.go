@@ -245,6 +245,13 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
+	label := "Checking " + thousands(len(todo)) + " links"
+	if len(todo) == 1 {
+		label = "Checking 1 link"
+	}
+	if len(todo) > 0 {
+		cc.Progress(label, 0, len(todo))
+	}
 	for _, l := range todo {
 		sem <- struct{}{}
 		wg.Go(func() {
@@ -252,6 +259,7 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 			code := probe(ctx, cc, orig[l])
 			mu.Lock()
 			status[l] = code
+			cc.Progress(label, len(status), len(todo))
 			mu.Unlock()
 		})
 	}
@@ -291,7 +299,9 @@ func favicon(cc *check.Context) {
 	for _, p := range cc.Run.Pages {
 		for _, r := range p.Failed {
 			if isFavicon(r.URL) {
-				targets = append(targets, shortURL(cc.Base, r.URL))
+				// The path alone: a cache-buster (?v=2) that changes
+				// isn't a different favicon.
+				targets = append(targets, shortURL(cc.Base, stripQuery(r.URL)))
 				if !slices.Contains(pages, p.Path) {
 					pages = append(pages, p.Path)
 				}
