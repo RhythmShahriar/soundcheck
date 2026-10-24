@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RhythmShahriar/soundcheck/blob/main/model/schema/comparison.v1.json",
+  "title": "Soundcheck comparison",
+  "description": "What changed between a snapshot and the current run: compare --json, comparison.json and report --json on a comparison. Fields are only added within rhythm-soundcheck/v1.",
+  "type": "object",
+  "required": ["schema", "kind", "tool", "version", "before", "after", "changes", "pages", "warnings", "summary", "created"],
+  "properties": {
+    "schema": {"const": "rhythm-soundcheck/v1"},
+    "kind": {"const": "comparison"},
+    "tool": {"type": "string"},
+    "version": {"type": "string"},
+    "before": {"$ref": "#/$defs/runRef", "description": "The snapshot (or the --against site)."},
+    "after": {"$ref": "#/$defs/runRef", "description": "The current run."},
+    "changes": {
+      "type": "array",
+      "description": "Most urgent first: by class, then score. Empty when nothing changed.",
+      "items": {"$ref": "#/$defs/change"}
+    },
+    "pages": {"type": "integer", "minimum": 0, "description": "Pages compared."},
+    "warnings": {"type": "array", "items": {"type": "string"}, "description": "Notes on the comparison, such as settings that differ between the runs."},
+    "summary": {"$ref": "#/$defs/summary"},
+    "created": {"type": "string", "format": "date-time"},
+    "interrupted": {"type": "boolean", "description": "The current run was stopped before it finished, so the result is partial. Left out when false."}
+  },
+  "$defs": {
+    "runRef": {
+      "type": "object",
+      "required": ["target", "dir", "started"],
+      "properties": {
+        "target": {"type": "string"},
+        "name": {"type": "string", "description": "The snapshot's name."},
+        "dir": {"type": "string"},
+        "started": {"type": "string", "format": "date-time"}
+      }
+    },
+    "change": {
+      "type": "object",
+      "required": ["id", "class", "check", "title", "pages"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[0-9a-f]{8}$", "description": "The first 8 hex digits of the SHA-256 of check, title, source and pages: the same change has the same id in the next comparison."},
+        "class": {"enum": ["broke", "new", "changed", "slower", "fixed", "unstable"]},
+        "check": {"type": "string", "description": "The module and rule, such as health/php-error."},
+        "title": {"type": "string"},
+        "detail": {"type": "string"},
+        "source": {"type": "string"},
+        "fix": {"type": "string"},
+        "pages": {"type": "array", "items": {"type": "string"}, "description": "Page paths; empty for a change of the whole site."},
+        "before": {"type": "string"},
+        "after": {"type": "string"},
+        "score": {"type": "number", "description": "Ranks changes within a class: percent changed or slower, or the page count."},
+        "files": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Images such as before, after and diff, relative to the comparison's folder."}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["broke", "new", "changed", "slower", "fixed", "unstable", "ignored", "verdict"],
+      "properties": {
+        "broke": {"type": "integer", "minimum": 0},
+        "new": {"type": "integer", "minimum": 0},
+        "changed": {"type": "integer", "minimum": 0},
+        "slower": {"type": "integer", "minimum": 0},
+        "fixed": {"type": "integer", "minimum": 0},
+        "unstable": {"type": "integer", "minimum": 0},
+        "ignored": {"type": "integer", "minimum": 0},
+        "verdict": {"enum": ["clean", "changed", "broke", "interrupted"], "description": "interrupted when the run was stopped, else broke when anything broke, changed when anything is new, changed or slower, clean otherwise."},
+        "failed": {"type": "boolean", "description": "Whether the result fails at the --fail-on threshold. Left out without one."}
+      }
+    }
+  }
+}

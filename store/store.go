@@ -135,7 +135,12 @@ func SaveRun(dir string, r *model.Run) error {
 	if slices.ContainsFunc(r.Pages, func(p model.Page) bool { return p.Canceled() }) {
 		r.Interrupted = true
 	}
-	return cache.WriteJSON(filepath.Join(dir, "run.json"), r)
+	r.Complete()
+	// The summary and groups are for command output; run.json keeps
+	// what was recorded.
+	stored := *r
+	stored.Summary, stored.Groups = nil, nil
+	return cache.WriteJSON(filepath.Join(dir, "run.json"), &stored)
 }
 
 // LoadRun reads run.json from dir.
@@ -153,8 +158,10 @@ func LoadRun(dir string) (*model.Run, error) {
 	return &r, nil
 }
 
-// SaveComparison writes comparison.json into dir.
+// SaveComparison writes comparison.json into dir, completed (kind,
+// change IDs, summary) the way scripts expect it.
 func SaveComparison(dir string, c *model.Comparison) error {
+	c.Complete()
 	return cache.WriteJSON(filepath.Join(dir, "comparison.json"), c)
 }
 

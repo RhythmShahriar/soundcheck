@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RhythmShahriar/soundcheck/blob/main/model/schema/run.v1.json",
+  "title": "Soundcheck run",
+  "description": "One check of a site: run --json, snapshot --json, report --json on a run, and run.json in a snapshot or run folder. summary and groups are in the command output only. Fields are only added within rhythm-soundcheck/v1.",
+  "type": "object",
+  "required": ["schema", "kind", "tool", "version", "target", "started", "duration_ms", "options", "pages", "warnings"],
+  "properties": {
+    "schema": {"const": "rhythm-soundcheck/v1"},
+    "kind": {"const": "run"},
+    "tool": {"type": "string"},
+    "version": {"type": "string"},
+    "target": {"type": "string"},
+    "name": {"type": "string", "description": "The snapshot's name, for a snapshot."},
+    "started": {"type": "string", "format": "date-time"},
+    "duration_ms": {"type": "number"},
+    "options": {"$ref": "#/$defs/options"},
+    "pages": {"type": "array", "items": {"$ref": "#/$defs/page"}},
+    "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}, "description": "Issues of the whole site, such as broken links."},
+    "skipped": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "URLs discovery left out, by reason."},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "cache": {"type": "object", "additionalProperties": {"type": "string"}},
+    "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}, "description": "Messages each flow made the site send."},
+    "interrupted": {"type": "boolean", "description": "Stopped before it finished; left out when false."},
+    "summary": {"$ref": "#/$defs/summary"},
+    "groups": {
+      "type": "array",
+      "description": "Every issue once, with all the pages that have it, most serious first.",
+      "items": {
+        "type": "object",
+        "required": ["key", "check", "level", "title", "pages"],
+        "properties": {
+          "key": {"type": "string"},
+          "check": {"type": "string"},
+          "level": {"$ref": "#/$defs/level"},
+          "title": {"type": "string"},
+          "pages": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "level": {"enum": ["error", "warning", "notice"]},
+    "summary": {
+      "type": "object",
+      "required": ["errors", "warnings", "notices", "verdict"],
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "notices": {"type": "integer", "minimum": 0},
+        "verdict": {"enum": ["clean", "warnings", "errors", "interrupted"], "description": "interrupted when the run was stopped, else errors, warnings or clean (notices only, or nothing)."},
+        "failed": {"type": "boolean", "description": "Whether the run fails at the --fail-on threshold. Left out without one."}
+      }
+    },
+    "options": {
+      "type": "object",
+      "required": ["viewports", "levels", "modules", "limit"],
+      "properties": {
+        "viewports": {"type": ["array", "null"], "items": {"type": "string"}},
+        "levels": {"type": ["array", "null"], "items": {"type": "string"}},
+        "modules": {"type": ["array", "null"], "items": {"type": "string"}},
+        "limit": {"type": "integer"},
+        "logged_in": {"type": "boolean"},
+        "echo": {"type": "boolean"},
+        "echo_mode": {"type": "string"},
+        "echo_url": {"type": "string"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["check", "level", "title", "key"],
+      "properties": {
+        "check": {"type": "string"},
+        "level": {"$ref": "#/$defs/level"},
+        "title": {"type": "string"},
+        "detail": {"type": "string"},
+        "source": {"type": "string"},
+        "fix": {"type": "string"},
+        "key": {"type": "string", "description": "check|title|source: the issue's identity across runs."},
+        "pages": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {"type": "string"},
+        "method": {"type": "string"},
+        "type": {"type": "string"},
+        "status": {"type": "integer"},
+        "error": {"type": "string"}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["url", "type", "status", "bytes"],
+      "properties": {
+        "url": {"type": "string"},
+        "type": {"type": "string"},
+        "status": {"type": "integer"},
+        "bytes": {"type": "integer"},
+        "protocol": {"type": "string"},
+        "encoding": {"type": "string"},
+        "cache": {"type": "string"},
+        "mime": {"type": "string"},
+        "unused": {"type": "integer"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["ttfb_ms", "cls", "tbt_ms", "load_ms", "bytes", "requests"],
+      "properties": {
+        "ttfb_ms": {"type": "number"},
+        "fcp_ms": {"type": "number"},
+        "lcp_ms": {"type": "number"},
+        "cls": {"type": "number"},
+        "tbt_ms": {"type": "number"},
+        "load_ms": {"type": "number"},
+        "bytes": {"type": "integer"},
+        "requests": {"type": "integer"}
+      }
+    },
+    "rect": {
+      "type": "object",
+      "required": ["X", "Y", "W", "H"],
+      "properties": {"X": {"type": "integer"}, "Y": {"type": "integer"}, "W": {"type": "integer"}, "H": {"type": "integer"}}
+    },
+    "shot": {
+      "type": "object",
+      "required": ["file", "width", "height"],
+      "properties": {
+        "file": {"type": "string", "description": "Relative to the run's folder."},
+        "second": {"type": "string"},
+        "width": {"type": "integer"},
+        "height": {"type": "integer"},
+        "dynamic": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+        "masked": {"type": "array", "items": {"$ref": "#/$defs/rect"}}
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "required": ["kind", "selector", "label", "outcome"],
+      "properties": {
+        "kind": {"type": "string"},
+        "selector": {"type": "string"},
+        "label": {"type": "string"},
+        "outcome": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "echoAction": {
+      "type": "object",
+      "required": ["action", "label", "kind", "page", "messages"],
+      "properties": {
+        "action": {"type": "string"},
+        "label": {"type": "string"},
+        "kind": {"enum": ["form", "flow"]},
+        "page": {"type": "string"},
+        "messages": {"type": ["array", "null"], "items": {"type": "object", "description": "A message in Echo's own format."}}
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "url", "path", "status", "text_length", "metrics", "duration_ms"],
+      "properties": {
+        "id": {"type": "string"},
+        "url": {"type": "string"},
+        "path": {"type": "string"},
+        "group": {"type": "string"},
+        "final_url": {"type": "string"},
+        "status": {"type": "integer"},
+        "redirects": {"type": "array", "items": {"type": "string"}},
+        "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+        "title": {"type": "string"},
+        "robots": {"type": "string"},
+        "text_hash": {"type": "string"},
+        "text_length": {"type": "integer"},
+        "console": {"type": "array", "items": {"type": "string"}},
+        "failed": {"type": "array", "items": {"$ref": "#/$defs/request"}},
+        "resources": {"type": "array", "items": {"$ref": "#/$defs/resource"}},
+        "links": {"type": "array", "items": {"type": "string"}},
+        "metrics": {"$ref": "#/$defs/metrics"},
+        "shots": {"type": "object", "additionalProperties": {"$ref": "#/$defs/shot"}, "description": "By viewport: desktop, mobile."},
+        "interactions": {"type": "array", "items": {"$ref": "#/$defs/interaction"}},
+        "cache": {"type": "object", "additionalProperties": {"type": "string"}},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+        "error": {"type": "string", "description": "Why the page couldn't be visited."},
+        "duration_ms": {"type": "number"},
+        "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}}
+      }
+    }
+  }
+}

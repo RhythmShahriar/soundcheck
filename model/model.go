@@ -179,6 +179,7 @@ type EchoAction struct {
 // Run is one check of a site.
 type Run struct {
 	Schema   string         `json:"schema"`
+	Kind     string         `json:"kind"` // always KindRun; see Complete
 	Tool     string         `json:"tool"`
 	Version  string         `json:"version"`
 	Target   string         `json:"target"`
@@ -189,7 +190,7 @@ type Run struct {
 	Pages    []Page         `json:"pages"`
 	Issues   []Issue        `json:"issues,omitempty"`  // site-level issues
 	Skipped  map[string]int `json:"skipped,omitempty"` // discovery: URLs left out, by reason
-	Warnings []string       `json:"warnings,omitempty"`
+	Warnings []string       `json:"warnings"`
 	// Cache is the cache module's site summary (hit rate, layers, cached
 	// and uncached TTFB); see checks/cache for the keys.
 	Cache map[string]string `json:"cache,omitempty"`
@@ -199,6 +200,12 @@ type Run struct {
 	// Interrupted says the run was stopped before it finished, so it
 	// holds partial results; see Page.Canceled.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// Summary and Groups are filled for JSON output (report.JSON), not
+	// stored in run.json: the counts and grouped list the terminal shows,
+	// so scripts don't have to group issues themselves.
+	Summary *RunSummary `json:"summary,omitempty"`
+	Groups  []Group     `json:"groups,omitempty"`
 
 	index *pageIndex // see Page
 }
@@ -320,6 +327,9 @@ var Classes = []string{Broke, New, Changed, Slower, Fixed}
 
 // Change is one difference between a snapshot and the current run.
 type Change struct {
+	// ID names the change in this comparison and in the next one when
+	// nothing about it changed; see ChangeID.
+	ID     string            `json:"id"`
 	Class  string            `json:"class"`
 	Check  string            `json:"check"`
 	Title  string            `json:"title"`
@@ -336,13 +346,15 @@ type Change struct {
 // Comparison is the result of `compare`: what changed between two runs.
 type Comparison struct {
 	Schema   string    `json:"schema"`
+	Kind     string    `json:"kind"` // always KindComparison; see Complete
 	Tool     string    `json:"tool"`
 	Version  string    `json:"version"`
 	Before   RunRef    `json:"before"`
 	After    RunRef    `json:"after"`
 	Changes  []Change  `json:"changes"`
 	Pages    int       `json:"pages"`
-	Warnings []string  `json:"warnings,omitempty"`
+	Warnings []string  `json:"warnings"`
+	Summary  Summary   `json:"summary"`
 	Created  time.Time `json:"created"`
 	// Interrupted says the current run was stopped before it finished:
 	// pages it didn't finish weren't compared, so the comparison is

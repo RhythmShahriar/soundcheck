@@ -16,15 +16,47 @@ import (
 )
 
 // JSON writes the comparison, or the run when there's none, in the
-// versioned rhythm-soundcheck/v1 schema.
+// versioned rhythm-soundcheck/v1 schema (model.Schemas describes both).
+// Lists are [] when empty, every change has an ID, and a summary counts
+// what the terminal shows; a run also gets its issues grouped across
+// pages. The result itself isn't changed.
 func JSON(w io.Writer, r Result) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
-	if r.Compared() {
-		return enc.Encode(r.Comparison)
+	var failed *bool
+	if r.FailOn != "" {
+		f := FailOn(r, r.FailOn)
+		failed = &f
 	}
-	return enc.Encode(r.Run)
+	if r.Compared() {
+		c := *r.Comparison
+		c.Changes = slices.Clone(c.Changes)
+		c.Complete()
+		c.Summary.Failed = failed
+		return enc.Encode(&c)
+	}
+	run := *r.Run
+	run.Complete()
+	issues := Issues(&run)
+	counts := Counts(issues)
+	s := &model.RunSummary{Errors: counts[model.Error], Warnings: counts[model.Warning], Notices: counts[model.Notice], Failed: failed}
+	switch {
+	case Partial(r):
+		s.Verdict = model.VerdictInterrupted
+	case s.Errors > 0:
+		s.Verdict = model.VerdictErrors
+	case s.Warnings > 0:
+		s.Verdict = model.VerdictWarnings
+	default:
+		s.Verdict = model.VerdictClean
+	}
+	run.Summary = s
+	run.Groups = make([]model.Group, 0, len(issues))
+	for _, i := range issues {
+		run.Groups = append(run.Groups, model.Group{Key: i.Key, Check: i.Check, Level: i.Level, Title: i.Title, Pages: i.Pages})
+	}
+	return enc.Encode(&run)
 }
 
 // Markdown writes a report for pull requests, issues and CI summaries.

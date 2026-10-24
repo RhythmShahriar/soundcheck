@@ -26,6 +26,9 @@ type Result struct {
 	Run        *model.Run
 	Comparison *model.Comparison
 	Dir        string // the folder Run (and Comparison) were saved in; Files paths are relative to it
+	// FailOn is the --fail-on threshold, when there is one; JSON output
+	// then says in summary.failed whether the result fails at it.
+	FailOn string
 }
 
 // Compared reports whether the result is a comparison.

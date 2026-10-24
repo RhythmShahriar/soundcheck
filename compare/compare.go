@@ -86,6 +86,7 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	}
 	out.Changes = oneCause(out.Changes, siteIssue(cc.Before, cc.After))
 	Sort(out.Changes)
+	out.Complete() // IDs follow the sorted order, so they're deterministic too
 	return out
 }
 
