@@ -3,6 +3,23 @@
 
 # Soundcheck as a GitHub Action. See the wiki page Soundcheck-CI for
 # examples: https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI
+#
+# Snapshot main after each deploy, compare every pull request with it
+# and comment there:
+#
+#   on: {push: {branches: [main]}}            # after the deploy job
+#     - uses: RhythmShahriar/soundcheck@v1.2.3
+#       with: {url: https://example.com, mode: snapshot, baseline: main}
+#
+#   on: deployment_status                     # a preview is ready
+#   permissions: {contents: read, pull-requests: write}
+#     - uses: RhythmShahriar/soundcheck@v1.2.3
+#       if: github.event.deployment_status.state == 'success'
+#       with:
+#         url: ${{ github.event.deployment_status.target_url }}
+#         mode: compare
+#         baseline: main
+#         comment: true
 name: Rhythm Soundcheck
 description: Did your change break anything? Compare a whole site before and after a deploy, in a real browser.
 author: Rhythm Shahriar
@@ -21,7 +38,8 @@ inputs:
   mode:
     description: >
       What to do: "against" (needs the against input), "snapshot" (record the site, for a later
-      compare step in the same job), "compare" (with the latest snapshot), or "run" (check once).
+      compare step in the same job, or with baseline for later runs), "compare" (with the latest
+      snapshot, or the baseline), or "run" (check once).
       Default: against when the against input is set, otherwise run.
     required: false
     default: ""
@@ -29,6 +47,29 @@ inputs:
     description: Snapshot name for mode snapshot.
     required: false
     default: ci
+  baseline:
+    description: >
+      Keep a snapshot between workflow runs, e.g. "main". With mode snapshot (on your main branch,
+      after each deploy) it saves .soundcheck/snapshots/<baseline> to the Actions cache; with mode
+      compare (on pull requests) it restores the newest one and compares with it. Pull requests can
+      restore caches saved on their base branch. Use the same working-directory in both workflows.
+      For Vercel or Netlify previews, run the compare on deployment_status with
+      url: github.event.deployment_status.target_url, when github.event.deployment_status.state is
+      success.
+    required: false
+    default: ""
+  comment:
+    description: >
+      "true" posts the result as one comment on the pull request and updates that same comment on
+      later runs: the counts, the top changes and a link to the full report. The job needs
+      "permissions: pull-requests: write"; on deployment_status it finds the pull request of the
+      deployed commit. A token that can't comment (a pull request from a fork) only gives a warning.
+    required: false
+    default: "false"
+  github-token:
+    description: Token for the pull request comment. Default the job's GITHUB_TOKEN.
+    required: false
+    default: ${{ github.token }}
   fail-on:
     description: >
       Fail the job on changes at or above broke, new, changed or slower (modes against and compare),
@@ -120,6 +161,28 @@ runs:
         VERSION: ${{ steps.version.outputs.version }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-install.sh" install'
 
+    - name: Check the inputs
+      id: prep
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        URL: ${{ inputs.url }}
+        AGAINST: ${{ inputs.against }}
+        MODE: ${{ inputs.mode }}
+        NAME: ${{ inputs.name }}
+        BASELINE: ${{ inputs.baseline }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" prepare'
+
+    # The newest cache whose key starts with soundcheck-<baseline>-. The
+    # key itself never matches, since this run hasn't saved one.
+    - name: Restore the baseline
+      if: inputs.baseline != '' && steps.prep.outputs.mode == 'compare'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/${{ steps.prep.outputs.snapshots }}
+        key: soundcheck-${{ inputs.baseline }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: soundcheck-${{ inputs.baseline }}-
+
     - name: Run Soundcheck
       id: check
       shell: bash
@@ -134,15 +197,38 @@ runs:
         HEADERS: ${{ inputs.headers }}
         CONFIG: ${{ inputs.config }}
         ECHO: ${{ inputs.echo }}
+        BASELINE: ${{ inputs.baseline }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
+    # A snapshot with issues (exit 1) is still the baseline; one that
+    # couldn't be taken (2 or 3) is not saved.
+    - name: Save the baseline
+      if: >-
+        always() && inputs.baseline != '' && steps.prep.outputs.mode == 'snapshot' &&
+        (steps.check.outputs.exit-code == '0' || steps.check.outputs.exit-code == '1')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/${{ steps.prep.outputs.snapshots }}
+        key: soundcheck-${{ inputs.baseline }}-${{ github.run_id }}-${{ github.run_attempt }}
+
     - name: Upload reports
+      id: upload
       if: always() && inputs.upload == 'true' && steps.check.outputs.report != ''
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: soundcheck-report
         path: ${{ runner.temp }}/soundcheck-report/
         if-no-files-found: ignore
+
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && steps.check.outputs.markdown != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        MARKDOWN: ${{ steps.check.outputs.markdown }}
+        REPORT_URL: ${{ steps.upload.outputs.artifact-url }}
+      run: '"$GITHUB_ACTION_PATH/scripts/comment.sh" post "$MARKDOWN" "$REPORT_URL"'
 
     - name: Fail on changes
       if: steps.check.outputs.exit-code == '1'

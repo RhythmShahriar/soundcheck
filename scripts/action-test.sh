@@ -101,6 +101,39 @@ if [ "$code" = 2 ] && contains "$work/runner/summary" "mode against needs the ag
   ok "mode against without against"
 else bad "mode against without against"; fi
 
+# Baselines kept between workflow runs.
+act action-run.sh prepare MODE=snapshot BASELINE=main
+if [ "$code" = 0 ] && has "$work/runner/output" mode=snapshot && has "$work/runner/output" snapshots=.soundcheck/snapshots/main; then
+  ok "prepare names the baseline's folder for the cache"
+else bad "prepare names the baseline's folder for the cache"; fi
+
+act action-run.sh run MODE=snapshot BASELINE=main NAME=ci
+if [ "$code" = 0 ] && has "$work/args" snapshot && has "$work/args" main && ! has "$work/args" ci; then
+  ok "snapshot with a baseline names the snapshot after it"
+else bad "snapshot with a baseline names the snapshot after it"; fi
+
+act action-run.sh run MODE=compare BASELINE=main
+if [ "$code" = 2 ] && contains "$work/runner/summary" 'no baseline "main" was found in the cache' && [ ! -e "$work/args" ]; then
+  ok "compare without a restored baseline says so"
+else bad "compare without a restored baseline says so"; fi
+
+mkdir -p "$work/site/.soundcheck/snapshots/main"
+act action-run.sh run MODE=compare BASELINE=main
+if [ "$code" = 0 ] && has "$work/args" --snapshot && has "$work/args" main; then
+  ok "compare with a restored baseline compares with it"
+else bad "compare with a restored baseline compares with it"; fi
+rm -rf "$work/site/.soundcheck"
+
+act action-run.sh prepare MODE=run BASELINE=main
+if [ "$code" = 2 ] && contains "$work/runner/summary" "the baseline input works with mode snapshot or compare, not run"; then
+  ok "a baseline needs mode snapshot or compare"
+else bad "a baseline needs mode snapshot or compare"; fi
+
+act action-run.sh prepare MODE=snapshot BASELINE="../main"
+if [ "$code" = 2 ] && contains "$work/runner/summary" "isn't a valid snapshot name"; then
+  ok "a baseline name can't leave the snapshots folder"
+else bad "a baseline name can't leave the snapshots folder"; fi
+
 # Install: the version follows the action's tag, a matching install is reused.
 act action-install.sh check ACTION_REF=v2.3.4
 if [ "$code" = 0 ] && has "$work/runner/output" version=2.3.4 && has "$work/runner/output" skip=false && ! contains "$work/log" "::warning::"; then

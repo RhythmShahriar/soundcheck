@@ -127,12 +127,98 @@ jobs:
           grep -q "Soundcheck could not check:" "$RUNNER_TEMP/soundcheck-summary.md"
           grep -q "127.0.0.1:20349" "$RUNNER_TEMP/soundcheck-summary.md"
 
+  # A baseline saved in one job (as on main after a deploy) and compared
+  # in another (as on a pull request), through the Actions cache.
+  baseline-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20342
+      - name: Snapshot into the cache
+        id: snap
+        uses: ./
+        with:
+          url: http://127.0.0.1:20342/
+          mode: snapshot
+          baseline: action-test-${{ github.run_id }}
+          fail-on: none
+          upload: "false"
+      - name: The snapshot was taken under the baseline's name
+        run: test -f ".soundcheck/snapshots/action-test-${{ github.run_id }}/run.json"
+
+  baseline-compare:
+    needs: baseline-snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20342
+      - name: Compare with the cached baseline
+        id: compare
+        uses: ./
+        with:
+          url: http://127.0.0.1:20342/
+          mode: compare
+          baseline: action-test-${{ github.run_id }}
+          upload: "false"
+      - name: The baseline came from the other job
+        env:
+          CODE: ${{ steps.compare.outputs.exit-code }}
+        run: |
+          set -x
+          test -f ".soundcheck/snapshots/action-test-${{ github.run_id }}/run.json"
+          test "$CODE" = 0
+
+  # One comment on the pull request, updated in place on the second run.
+  # Pull requests from forks get a read-only token, so they skip this.
+  comment:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20343
+      - name: Snapshot
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: snapshot
+          fail-on: none
+          upload: "false"
+      - name: Compare and comment
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: compare
+          comment: "true"
+      - name: Compare and comment again
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: compare
+          comment: "true"
+      - name: There is exactly one Soundcheck comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          n=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.body | startswith("<!-- rhythm-soundcheck -->")) | .id' | wc -l)
+          echo "$n Soundcheck comments"
+          test "$n" = 1
+
   scripts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Test the Action's helper scripts offline
-        run: scripts/action-test.sh
+        run: |
+          scripts/action-test.sh
+          scripts/comment-test.sh
       - name: Shellcheck
         run: shellcheck scripts/*.sh testbed/toggle.sh testbed/wp/seed.sh .github/action-test/*.sh
 
