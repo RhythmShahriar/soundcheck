@@ -11,7 +11,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -72,7 +74,7 @@ func cmdImport(args []string, stdout, stderr io.Writer) int {
 		res, err = importer.Backstop(data, *site)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %v\n", prefix(), src, err)
+		fmt.Fprintf(stderr, "%s %s: %s\n", prefix(), src, printable(err.Error()))
 		return exitUsage
 	}
 
@@ -94,7 +96,7 @@ func cmdImport(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "Wrote %s from %s:\n", path, src)
 	for _, l := range res.Mapped {
-		fmt.Fprintln(stdout, "  "+l)
+		fmt.Fprintln(stdout, "  "+printable(l))
 	}
 	if len(res.Mapped) == 0 {
 		fmt.Fprintln(stdout, "  nothing: every setting keeps its default")
@@ -102,7 +104,7 @@ func cmdImport(args []string, stdout, stderr io.Writer) int {
 	if len(res.Unmapped) > 0 {
 		fmt.Fprintln(stdout, "Not imported:")
 		for _, l := range res.Unmapped {
-			fmt.Fprintln(stdout, "  - "+named(l))
+			fmt.Fprintln(stdout, "  - "+printable(named(l)))
 		}
 	}
 	next := cmdName() + " snapshot <url>"
@@ -111,6 +113,26 @@ func cmdImport(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "Next: %s, then %s compare after your change\n", next, cmdName())
 	return exitOK
+}
+
+// printable escapes what the terminal would act on rather than show, so
+// labels and selectors from an imported file someone else wrote can't
+// move the cursor, change colors or set the window title. An escape
+// prints as \x1b, a right-to-left override as \u202e.
+func printable(s string) string {
+	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsPrint(r) {
+			b.WriteRune(r)
+			continue
+		}
+		q := strconv.QuoteRune(r)
+		b.WriteString(q[1 : len(q)-1])
+	}
+	return b.String()
 }
 
 func importUsage() string {

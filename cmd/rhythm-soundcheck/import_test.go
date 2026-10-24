@@ -136,3 +136,43 @@ func TestImportRunsNothing(t *testing.T) {
 		t.Errorf("import started %s", ran)
 	}
 }
+
+// A backstop.json from someone else can't drive the terminal: escapes in
+// its selectors and URLs are printed as text.
+func TestImportEscapesControlCharacters(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "backstop.json")
+	const data = `{"scenarios": [
+		{"label": "Home", "url": "https://shop.test/", "hideSelectors": [".ad\u001b]0;owned\u0007"]},
+		{"label": "Bad", "url": "https://shop.test/\u001b[2J"}
+	]}`
+	if err := os.WriteFile(src, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	code, out, errOut := runCLI(t, "import", src)
+	if code != exitOK {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	if strings.ContainsAny(out, "\x1b\x07") {
+		t.Errorf("control characters reached the terminal:\n%q", out)
+	}
+	for _, want := range []string{`.ad\x1b]0;owned\a`, `https://shop.test/\x1b[2J`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestPrintable(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain .cookie-banner, é and 日本": "plain .cookie-banner, é and 日本",
+		"a\x1b[31mred":                   `a\x1b[31mred`,
+		"tab\there":                      `tab\there`,
+		"rtl\u202eevil":                  `rtl\u202eevil`,
+	} {
+		if got := printable(in); got != want {
+			t.Errorf("printable(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
