@@ -72,9 +72,12 @@ var profiles = map[string]profile{
 	},
 }
 
-// eligible decides whether level 3 may submit a form. On production URLs
-// only forms matched by interactions.forms are submitted.
-func eligible(fm formInfo, production bool) (bool, string) {
+// eligible decides whether level 3 may submit a form on the page at
+// base. On production URLs only forms matched by interactions.forms are
+// submitted. A form posting to another site (a newsletter or CRM
+// service) is never submitted unless allowlisted: the test entry would
+// land in someone else's list.
+func eligible(fm formInfo, base *url.URL, production bool) (bool, string) {
 	switch {
 	case fm.Allowed:
 		return true, ""
@@ -86,6 +89,8 @@ func eligible(fm formInfo, production bool) (bool, string) {
 		return false, "has a password field"
 	case fm.Search || (fm.Method != "post" && fm.Profile == ""):
 		return false, "search or GET form"
+	case offSite(fm.Action, base) != "":
+		return false, "posts to " + offSite(fm.Action, base)
 	case fm.Comment:
 		return false, "comment form; allowlist it in interactions.forms to test it"
 	case fm.CartForm:
@@ -101,6 +106,7 @@ func eligible(fm formInfo, production bool) (bool, string) {
 // submits runs level 3 on the page's forms.
 func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, p *model.Page, f *facts) {
 	pageURL := orDefault(p.FinalURL, p.URL)
+	base, _ := url.Parse(pageURL)
 	prod := cc.Config.IsProduction(pageURL) || cc.Config.IsProduction(p.URL)
 	fake := flow.Fake{Seed: cc.Run.Started.String()}
 	record := func(fm formInfo, outcome, detail string) {
@@ -111,7 +117,7 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 		if ctx.Err() != nil || done >= 5 {
 			return
 		}
-		ok, why := eligible(fm, prod)
+		ok, why := eligible(fm, base, prod)
 		if !ok {
 			if prod {
 				m.warnOnce(cc, "production", "Form submits skipped on production URLs: allowlist forms in interactions.forms to test them there")
@@ -147,13 +153,15 @@ func (m *Module) submitForm(ctx context.Context, cc *check.Context, tab *rod.Pag
 	prof := profiles[fm.Profile]
 
 	// Woo checkout only with a payment method that takes no money.
+	noGateway := func() {
+		record(fm, "skipped", "no offline (cod, bacs, cheque) or test-mode payment method") //nolint:misspell // WooCommerce gateway id
+	}
 	if fm.Profile == "woo-checkout" {
 		if err := reload(ctx, tab, pageURL); err != nil {
 			return
 		}
-		res, err := tab.Timeout(10*time.Second).Eval(gatewayJS, fm.Sel)
-		if err != nil || !res.Value.Bool() {
-			record(fm, "skipped", "no offline (cod, bacs, cheque) or test-mode payment method") //nolint:misspell // WooCommerce gateway id
+		if _, ok := testGateway(tab, fm.Sel); !ok {
+			noGateway()
 			return
 		}
 	}
@@ -163,6 +171,12 @@ func (m *Module) submitForm(ctx context.Context, cc *check.Context, tab *rod.Pag
 		if err := reload(ctx, tab, pageURL); err != nil {
 			record(fm, "skipped", "couldn't reload the page")
 			return
+		}
+		if fm.Profile == "woo-checkout" {
+			if _, ok := testGateway(tab, fm.Sel); !ok {
+				noGateway()
+				return
+			}
 		}
 		res, err := tab.Timeout(10*time.Second).Eval(clearJS, fm.Sel)
 		switch {
@@ -193,12 +207,17 @@ func (m *Module) submitForm(ctx context.Context, cc *check.Context, tab *rod.Pag
 		record(fm, "skipped", "couldn't reload the page")
 		return
 	}
-	if fm.Profile == "woo-checkout" {
-		_, _ = tab.Timeout(10*time.Second).Eval(gatewayJS, fm.Sel)
-	}
 	if err := fill(tab, fm.Sel, fake); err != nil {
 		record(fm, "skipped", err.Error())
 		return
+	}
+	// After filling: Woo reloads the payment methods when the address
+	// changes. The site's default (a live card gateway) may be back.
+	if fm.Profile == "woo-checkout" {
+		if _, ok := testGateway(tab, fm.Sel); !ok {
+			noGateway()
+			return
+		}
 	}
 	act := model.EchoAction{Action: echolink.FormAction(p.Path, fm.Sel), Label: fm.Name, Kind: "form", Page: p.Path}
 	o := m.sendTagged(ctx, cc, tab, fm, prof, base, act.Action)
@@ -457,13 +476,46 @@ const submitJS = `(sel) => {
   return true;
 }`
 
-// gatewayJS selects an offline payment method on a WooCommerce checkout.
-// It returns false when there's none and the gateway isn't in test mode.
+// testGateway selects a WooCommerce payment method that takes no money
+// and returns its id. ok is false when the checkout has none, or when it
+// couldn't be selected; the form must not be submitted then, since the
+// site's default gateway may be a live one.
+func testGateway(tab *rod.Page, sel string) (id string, ok bool) {
+	res, err := tab.Timeout(10*time.Second).Eval(gatewayJS, sel)
+	if err != nil {
+		return "", false
+	}
+	return res.Value.Get("id").Str(), res.Value.Get("ok").Bool()
+}
+
+// gatewayJS selects a payment method that takes no money on a
+// WooCommerce checkout: an offline one (cash on delivery, bank transfer
+// or check payments) by its id, else one whose own list item says it's
+// in test mode or a sandbox. The item's textContent is read, not
+// innerText: the box with that note is hidden until its method is
+// selected. It reports whether that method's radio is the checked one
+// afterwards.
 const gatewayJS = `(sel) => {
   const f = document.querySelector(sel);
-  if (!f) return false;
-  const offline = [...f.querySelectorAll('input[name=payment_method]')].find(r => ['cod', 'bacs', 'cheque'].includes(r.value));
-  if (offline) { offline.click(); offline.checked = true; return true; }
-  const pay = f.querySelector('#payment');
-  return !!pay && /test ?mode|sandbox/i.test(pay.innerText || '');
+  if (!f) return {ok: false, id: ''};
+  const radios = [...f.querySelectorAll('input[name=payment_method]')];
+  const note = r => { const li = r.closest('li'); return li ? li.textContent : ''; };
+  const pick = radios.find(r => ['cod', 'bacs', 'cheque'].includes(r.value)) || radios.find(r => /test ?mode|sandbox/i.test(note(r)));
+  if (!pick) return {ok: false, id: ''};
+  if (!pick.checked) pick.click();
+  if (!pick.checked) { pick.checked = true; pick.dispatchEvent(new Event('change', {bubbles: true})); }
+  return {ok: f.querySelector('input[name=payment_method]:checked') === pick, id: pick.value};
 }`
+
+// offSite returns the host a form posts to when that's another site
+// than base, else "". A form without an action posts to its own page.
+func offSite(action string, base *url.URL) string {
+	if action == "" || base == nil {
+		return ""
+	}
+	u, err := url.Parse(action)
+	if err != nil || u.Host == "" || check.SameSite(base, u) {
+		return ""
+	}
+	return u.Host
+}

@@ -3,7 +3,10 @@
 
 package interact
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+)
 
 func TestDestructive(t *testing.T) {
 	for _, words := range []string{
@@ -43,10 +46,18 @@ func TestEligible(t *testing.T) {
 		{"hidden", formInfo{Method: "post", Fields: 3}, false, false},
 		{"admin", formInfo{Method: "post", Visible: true, Fields: 3, Action: "https://x.test/wp-admin/admin-post.php"}, false, false},
 		{"generic post", formInfo{Method: "post", Visible: true, Fields: 3}, false, true},
+		{"posts here", formInfo{Method: "post", Visible: true, Fields: 3, Action: "https://www.x.test/join"}, false, true},
+		{"posts elsewhere", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://list.mail.test/subscribe/post"}, false, false},
+		{"posts to another port", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://x.test:8443/join"}, false, false},
+		{"allowlisted elsewhere", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://list.mail.test/", Allowed: true}, false, true},
 	}
+	base, _ := url.Parse("https://x.test/contact/")
 	for _, c := range cases {
-		if got, why := eligible(c.f, c.prod); got != c.want {
+		if got, why := eligible(c.f, base, c.prod); got != c.want {
 			t.Errorf("%s: got %v (%s)", c.name, got, why)
 		}
+	}
+	if _, why := eligible(cases[len(cases)-3].f, base, false); why != "posts to list.mail.test" {
+		t.Errorf("reason: %q", why)
 	}
 }
