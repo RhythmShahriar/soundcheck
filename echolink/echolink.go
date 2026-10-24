@@ -25,6 +25,7 @@ import (
 	"github.com/RhythmShahriar/echo/client"
 	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/echo/wire"
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -115,14 +116,14 @@ func (l *Link) Messages(ctx context.Context, action string) ([]echomodel.Message
 // Tag makes tab's requests to site's origin carry X-Echo-Run for action,
 // as a header and as a cookie, until the returned function is called.
 //
-// The header is added by intercepting requests to the site's own origin
-// (Fetch.requestPaused), not with Network.setExtraHTTPHeaders: an extra
-// header goes to every host, and Chrome then preflights cross-origin
-// calls (reCAPTCHA, payment and CRM scripts), which fail when those
-// services don't allow it. The run's own extra headers (-H) are still
-// sent: they are part of the paused request. The cookie covers handlers
-// that read cookies but not headers.
-func (l *Link) Tag(ctx context.Context, tab *rod.Page, site, action string) (func(), error) {
+// The header is added by pausing each request (see package intercept)
+// and tagging only those to the site's own origin, not with
+// Network.setExtraHTTPHeaders: an extra header goes to every host. Chrome
+// then preflights cross-origin calls (reCAPTCHA, payment and CRM
+// scripts), which fail when those services don't allow it. The
+// interceptor is shared, so the run's own -H headers are still added.
+// The cookie covers handlers that read cookies but not headers.
+func (l *Link) Tag(_ context.Context, tab *rod.Page, site, action string) (func(), error) {
 	u, err := url.Parse(site)
 	if err != nil || u.Host == "" {
 		return func() {}, fmt.Errorf("can't tag requests to %q", site)
@@ -133,30 +134,17 @@ func (l *Link) Tag(ctx context.Context, tab *rod.Page, site, action string) (fun
 		return func() {}, err
 	}
 	untagCookie := func() { _ = proto.NetworkDeleteCookies{Name: wire.RunHeader, URL: origin + "/"}.Call(tab) }
-	err = proto.FetchEnable{Patterns: []*proto.FetchRequestPattern{
-		{URLPattern: origin + "/*", RequestStage: proto.FetchRequestStageRequest},
-	}}.Call(tab)
+	untag, err := intercept.Add(tab, func(q *intercept.Request) {
+		if q.URL != nil && strings.EqualFold(q.URL.Scheme+"://"+q.URL.Host, origin) {
+			q.SetHeader(wire.RunHeader, value)
+		}
+	})
 	if err != nil {
 		untagCookie()
 		return func() {}, err
 	}
-	ectx, cancel := context.WithCancel(ctx)
-	wait := tab.Context(ectx).EachEvent(func(e *proto.FetchRequestPaused) {
-		headers := []*proto.FetchHeaderEntry{{Name: wire.RunHeader, Value: value}}
-		for k, v := range e.Request.Headers {
-			if !strings.EqualFold(k, wire.RunHeader) {
-				headers = append(headers, &proto.FetchHeaderEntry{Name: k, Value: v.Str()})
-			}
-		}
-		_ = proto.FetchContinueRequest{RequestID: e.RequestID, Headers: headers}.Call(tab)
-	})
-	done := make(chan struct{})
-	go func() { wait(); close(done) }()
 	return func() {
-		// Disabling first lets any request still paused go on.
-		_ = proto.FetchDisable{}.Call(tab)
-		cancel()
-		<-done
+		untag()
 		untagCookie()
 	}, nil
 }
