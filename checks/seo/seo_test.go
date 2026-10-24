@@ -170,6 +170,29 @@ func TestCheckSite(t *testing.T) {
 	}
 }
 
+// An index with more sitemaps than one run reads stops at maxFiles and
+// says so.
+func TestCheckSiteCapsTheSitemaps(t *testing.T) {
+	files := map[string]string{}
+	var index strings.Builder
+	index.WriteString("<sitemapindex>")
+	for i := range maxFiles + 5 {
+		path := fmt.Sprintf("/s%d.xml", i)
+		index.WriteString("<sitemap><loc>{site}" + path + "</loc></sitemap>")
+		files[path] = `<urlset><url><loc>a</loc></url></urlset>`
+	}
+	files["/sitemap_index.xml"] = index.String() + "</sitemapindex>"
+	s := checkSite(t, site(t, "Sitemap: {site}/sitemap_index.xml\n", files))
+	if !s.Sitemap.Capped || s.Sitemap.Files != maxFiles || s.Sitemap.Pages != maxFiles-1 {
+		t.Errorf("sitemap = %+v", s.Sitemap)
+	}
+	// A sitemap read in full isn't capped.
+	s = checkSite(t, site(t, "", map[string]string{"/sitemap.xml": `<urlset><url><loc>a</loc></url></urlset>`}))
+	if s.Sitemap.Capped {
+		t.Errorf("small sitemap = %+v", s.Sitemap)
+	}
+}
+
 func TestCheckSiteFindsTheSitemap(t *testing.T) {
 	// No robots.txt: WordPress's own sitemap is found by its usual name.
 	s := checkSite(t, site(t, "", map[string]string{"/wp-sitemap.xml": `<urlset><url><loc>a</loc></url></urlset>`}))

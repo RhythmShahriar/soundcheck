@@ -360,6 +360,9 @@ func (d *differ) sitemap(b, a Sitemap) {
 		d.add(model.Change{Class: model.Broke, Check: "seo/sitemap", Title: fmt.Sprintf("Sitemap is gone (%d)", a.Status), Source: src,
 			Before: status(b.Status), After: status(a.Status),
 			Fix: "Restore the sitemap (the SEO plugin's, or WordPress's own at /wp-sitemap.xml) and its line in robots.txt."}, "")
+	case b.Capped || a.Capped:
+		// A capped count depends on which sitemaps were read first, so a
+		// reordered index would look like a drop.
 	case b.Status == 200 && a.Status == 200 && b.Pages > 0 && (b.Pages-a.Pages)*100 > b.Pages*sitemapDrop:
 		d.add(model.Change{Class: model.Changed, Check: "seo/sitemap", Title: "Sitemap lists fewer pages", Source: src,
 			Before: pages(b.Pages), After: pages(a.Pages), Score: float64(b.Pages-a.Pages) * 100 / float64(b.Pages),

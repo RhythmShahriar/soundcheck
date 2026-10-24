@@ -287,6 +287,11 @@ func TestSitemap(t *testing.T) {
 	none(t, run(sm(200, 100), sm(200, 81)))
 	none(t, run(sm(200, 100), sm(200, 140)))
 	none(t, run(sm(500, 0), sm(500, 0)))
+	// A count that stopped at the cap isn't compared.
+	capped := sm(200, 70)
+	capped.Sitemap.Capped = true
+	none(t, run(sm(200, 100), capped))
+	none(t, run(capped, sm(200, 20)))
 }
 
 func TestCompareNeedsTheModuleInBothRuns(t *testing.T) {

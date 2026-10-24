@@ -41,6 +41,10 @@ type Sitemap struct {
 	Status int    `json:"status"`
 	Pages  int    `json:"pages"`
 	Files  int    `json:"files,omitempty"` // sitemap files read
+	// Capped is set when the run stopped at maxFiles or maxTotal with
+	// sitemaps left to read, so Pages is a lower bound that depends on
+	// the order the index lists them in.
+	Capped bool `json:"capped,omitempty"`
 }
 
 const (
@@ -50,6 +54,9 @@ const (
 	// maxBytes caps one robots.txt or sitemap file. Google reads at most
 	// 50 MB of a sitemap, so a bigger one is broken anyway.
 	maxBytes = 50 << 20
+	// maxTotal caps the sitemap bytes one run downloads, so a big index
+	// can't make it fetch maxFiles times maxBytes.
+	maxTotal = 100 << 20
 )
 
 // CheckSite fetches robots.txt and the sitemap and stores them with the
@@ -156,15 +163,21 @@ func sitemap(ctx context.Context, cc *check.Context, root *url.URL, listed []str
 		}
 	}
 	s := Sitemap{URL: start[0]}
-	queue, seen := slices.Clone(start), map[string]bool{}
-	for len(queue) > 0 && s.Files < maxFiles {
+	queue, seen, total := slices.Clone(start), map[string]bool{}, 0
+	for len(queue) > 0 {
 		u := queue[0]
-		queue = queue[1:]
 		if seen[u] {
+			queue = queue[1:]
 			continue
 		}
+		if s.Files >= maxFiles || total >= maxTotal {
+			s.Capped = true
+			break
+		}
+		queue = queue[1:]
 		seen[u] = true
 		status, body := fetch(ctx, cc, u)
+		total += len(body)
 		if u == s.URL {
 			s.Status = status
 		}
