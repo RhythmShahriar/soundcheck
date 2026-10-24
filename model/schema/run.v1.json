@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/RhythmShahriar/soundcheck/blob/main/model/schema/run.v1.json",
   "title": "Soundcheck run",
-  "description": "One check of a site: run --json, snapshot --json, report --json on a run, and run.json in a snapshot or run folder. summary and groups are in the command output only. Fields are only added within rhythm-soundcheck/v1.",
+  "description": "One check of a site: run --json, snapshot --json, report --json on a run, and run.json in a snapshot or run folder. summary and groups are in the command output only. run.json has schema rhythm-soundcheck/v1+jsonl, an empty pages list, pages_file and page_count: the pages are in pages_file next to it, one page object per line. A run.json from an older version has schema rhythm-soundcheck/v1 and its pages inline. Fields are only added within rhythm-soundcheck/v1.",
   "type": "object",
   "required": ["schema", "kind", "tool", "version", "target", "started", "duration_ms", "options", "pages", "warnings"],
   "properties": {
-    "schema": {"const": "rhythm-soundcheck/v1"},
+    "schema": {"enum": ["rhythm-soundcheck/v1", "rhythm-soundcheck/v1+jsonl"], "description": "rhythm-soundcheck/v1 in command output; rhythm-soundcheck/v1+jsonl in run.json, whose pages are in pages_file."},
     "kind": {"const": "run"},
     "tool": {"type": "string"},
     "version": {"type": "string"},
@@ -22,6 +22,8 @@
     "cache": {"type": "object", "additionalProperties": {"type": "string"}},
     "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}, "description": "Messages each flow made the site send."},
     "interrupted": {"type": "boolean", "description": "Stopped before it finished; left out when false."},
+    "pages_file": {"type": "string", "description": "In run.json only: the file next to it that holds the pages, one per line (pages.jsonl or pages.1.jsonl)."},
+    "page_count": {"type": "integer", "minimum": 0, "description": "In run.json only: how many lines pages_file has."},
     "summary": {"$ref": "#/$defs/summary"},
     "groups": {
       "type": "array",

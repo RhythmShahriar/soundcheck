@@ -3,7 +3,8 @@
 
 // Package store keeps Soundcheck's files in the project's .soundcheck/
 // folder: named snapshots, recent runs and comparisons, each a directory
-// with run.json (or comparison.json) and its screenshots.
+// with run.json, the run's pages in pages.jsonl, comparison.json for a
+// comparison and the screenshots.
 package store
 
 import (
@@ -128,34 +129,84 @@ func Contained(dir, rel string) (string, error) {
 	return filepath.Join(dir, clean), nil
 }
 
-// SaveRun writes run.json into dir. A run with pages whose visit was
+// SaveRun writes the run into dir: its pages to a pages file (see
+// PagesFile), then run.json naming it. A run with pages whose visit was
 // canceled is marked as interrupted, so it's never read back as a full
 // result.
+//
+// Rewriting a stored run (accepting a change into a snapshot) writes
+// the pages under the other name before run.json is replaced, so a
+// crash leaves the old run or the new one, never a mix; the old pages
+// file is removed last.
 func SaveRun(dir string, r *model.Run) error {
 	if slices.ContainsFunc(r.Pages, func(p model.Page) bool { return p.Canceled() }) {
 		r.Interrupted = true
 	}
 	r.Complete()
+	name := PagesFile
+	if currentPagesFile(dir) == PagesFile {
+		name = altPagesFile
+	}
+	if err := writePages(filepath.Join(dir, name), r.Pages); err != nil {
+		return err
+	}
 	// The summary and groups are for command output; run.json keeps
 	// what was recorded.
 	stored := *r
 	stored.Summary, stored.Groups = nil, nil
-	return cache.WriteJSON(filepath.Join(dir, "run.json"), &stored)
+	stored.Pages = []model.Page{}
+	if stored.Schema == model.Schema {
+		// A run of another schema keeps it, and reads back as such.
+		stored.Schema = SplitSchema
+	}
+	if err := cache.WriteJSON(filepath.Join(dir, "run.json"), storedRun{Run: &stored, PagesFile: name, PageCount: len(r.Pages)}); err != nil {
+		if name == altPagesFile {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+		return err
+	}
+	old := altPagesFile
+	if name == altPagesFile {
+		old = PagesFile
+	}
+	_ = os.Remove(filepath.Join(dir, old))
+	return nil
 }
 
-// LoadRun reads run.json from dir.
+// LoadRun reads the run in dir: run.json and the pages it names, or a
+// run.json from an older version that holds its pages itself.
 func LoadRun(dir string) (*model.Run, error) {
+	r, s, err := loadHead(dir)
+	if err != nil || s.PagesFile == "" {
+		return r, err
+	}
+	if r.Pages, err = readPages(dir, s.PagesFile, s.PageCount); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// loadHead reads run.json in dir. In the split layout the run comes back
+// without its pages, and the schema is set to model.Schema, the one the
+// rest of Soundcheck knows.
+func loadHead(dir string) (*model.Run, storedRun, error) {
 	var r model.Run
-	if err := cache.ReadJSON(filepath.Join(dir, "run.json"), &r); err != nil {
+	s := storedRun{Run: &r}
+	if err := cache.ReadJSON(filepath.Join(dir, "run.json"), &s); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("no run in %s", dir)
+			return nil, s, fmt.Errorf("no run in %s", dir)
 		}
-		return nil, fmt.Errorf("%s: %w", dir, err)
+		return nil, s, fmt.Errorf("%s: %w", dir, err)
 	}
-	if r.Schema != model.Schema {
-		return nil, fmt.Errorf("%s was made by an incompatible Soundcheck (%s); take a new snapshot", dir, r.Schema)
+	switch {
+	case r.Schema == SplitSchema && s.PagesFile != "":
+		r.Schema = model.Schema
+	case r.Schema == model.Schema:
+		s.PagesFile = "" // pages are inline in this layout
+	default:
+		return nil, s, fmt.Errorf("%s was made by an incompatible Soundcheck (%s); take a new snapshot", dir, r.Schema)
 	}
-	return &r, nil
+	return &r, s, nil
 }
 
 // SaveComparison writes comparison.json into dir, completed (kind,

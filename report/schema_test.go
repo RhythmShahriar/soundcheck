@@ -213,6 +213,42 @@ func TestJSONMatchesSchemas(t *testing.T) {
 			t.Error("run.json stores the groups, which are for output only")
 		}
 	}
+
+	// run.json's pages are in the file it names, one page per line.
+	doc := decode(t, must(os.ReadFile(filepath.Join(dir, "run.json"))))
+	if doc["schema"] != store.SplitSchema || doc["page_count"] != float64(len(run.Pages)) || len(doc["pages"].([]any)) != 0 {
+		t.Errorf("run.json head: schema %v, page_count %v, pages %v", doc["schema"], doc["page_count"], doc["pages"])
+	}
+	lines := strings.Split(strings.TrimSuffix(string(must(os.ReadFile(filepath.Join(dir, doc["pages_file"].(string))))), "\n"), "\n")
+	if len(lines) != len(run.Pages) {
+		t.Fatalf("%d page lines, want %d", len(lines), len(run.Pages))
+	}
+	page := map[string]any{"$ref": "#/$defs/page"}
+	if len(validatePage(runSchema, page, map[string]any{"path": 1.0})) == 0 {
+		t.Error("a page with a number for its path passed $defs/page")
+	}
+	for i, line := range lines {
+		if p := validatePage(runSchema, page, decode(t, []byte(line))); len(p) != 0 {
+			t.Errorf("pages line %d doesn't match $defs/page:\n%s", i+1, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// validatePage checks doc against a part of schema, such as its page
+// definition.
+func validatePage(schema, part map[string]any, doc any) []string {
+	whole := map[string]any{"$defs": schema["$defs"]}
+	for k, v := range part {
+		whole[k] = v
+	}
+	return validate(whole, doc)
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }
 
 func TestJSONSummaryAndGroups(t *testing.T) {
