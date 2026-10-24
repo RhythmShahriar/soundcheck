@@ -49,6 +49,7 @@ type Event struct {
 	Level  string // Console: log, info, warning, error…
 	Text   string // Console: the arguments joined with spaces; Exception: the message
 	URL    string // Response: the request's URL; Exception: the script, when known
+	Line   int    // Exception: the line in URL, from 1, when known
 	Type   string // Response: Document, Script, XHR, Fetch, Image…
 	Status int    // Response: the HTTP status
 }
@@ -96,7 +97,11 @@ func (t rodTab) On(ctx context.Context, fn func(Event)) func() {
 			if d.Exception != nil && d.Exception.Description != "" {
 				msg = d.Exception.Description
 			}
-			fn(Event{Kind: Exception, Text: msg, URL: d.URL})
+			ev := Event{Kind: Exception, Text: msg, URL: d.URL}
+			if d.URL != "" {
+				ev.Line = d.LineNumber + 1
+			}
+			fn(ev)
 		},
 		func(e *proto.NetworkResponseReceived) {
 			fn(Event{Kind: Response, URL: e.Response.URL, Type: string(e.Type), Status: e.Response.Status})

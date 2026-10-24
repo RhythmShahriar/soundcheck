@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/sha1" //nolint:gosec // content fingerprint, not security
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image/png"
@@ -51,20 +50,28 @@ type Options struct {
 	Headers map[string]string
 	Site    *url.URL                             // the site being checked; without it Headers go nowhere
 	Save    func(name string, data []byte) error // stores a screenshot; nil skips screenshots
+	// Engine is the browser engine the tab runs in, which names the
+	// screenshots; empty is Chrome.
+	Engine Engine
 }
 
 // Recorder collects browser events for one page.
 type Recorder struct {
-	page    *rod.Page
+	page    *rod.Page // Chrome, recorded through its DevTools protocol
+	tab     Tab       // any other engine (see StartTab); nil for page
 	frame   proto.PageFrameID
 	mu      sync.Mutex
-	reqs    map[proto.NetworkRequestID]*req
-	order   []proto.NetworkRequestID
-	doc     proto.NetworkRequestID
+	reqs    map[string]*req
+	order   []string
+	doc     string
 	chain   []string
 	console []string
 	stop    func()
 	release func() // removes the header handler
+	// Requests still under way and when the network was last busy, for
+	// StartTab's recorders to wait for the network to go quiet.
+	inflight map[string]bool
+	busy     time.Time
 }
 
 type req struct {
@@ -101,7 +108,7 @@ const stillCSS = `*,*::before,*::after{animation-play-state:paused!important;ani
 
 // Start opens recording on a fresh tab. Call it before navigating.
 func Start(ctx context.Context, page *rod.Page, opts Options) (*Recorder, error) {
-	r := &Recorder{page: page, reqs: map[proto.NetworkRequestID]*req{}}
+	r := &Recorder{page: page, reqs: map[string]*req{}}
 	for _, call := range []func() error{
 		func() error { return proto.NetworkEnable{}.Call(page) },
 		// Every page loads cold, like a first visit: with the tabs sharing
@@ -165,7 +172,7 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 			extra[k] = v
 			continue
 		}
-		for _, c := range cookies(v) {
+		for _, c := range Cookies(v) {
 			// HttpOnly keeps them from the page's own scripts, third-party
 			// ones included.
 			_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/", HTTPOnly: true}.Call(tab)
@@ -186,9 +193,9 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 	})
 }
 
-// cookies splits a Cookie header ("a=1; b=2") into name and value pairs.
+// Cookies splits a Cookie header ("a=1; b=2") into name and value pairs.
 // Like a browser, it skips parts without a name.
-func cookies(header string) [][2]string {
+func Cookies(header string) [][2]string {
 	var out [][2]string
 	for part := range strings.SplitSeq(header, ";") {
 		name, value, _ := strings.Cut(strings.TrimSpace(part), "=")
@@ -202,25 +209,33 @@ func cookies(header string) [][2]string {
 func (r *Recorder) onRequest(e *proto.NetworkRequestWillBeSent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if e.Type == proto.NetworkResourceTypeDocument && (r.frame == "" || e.FrameID == r.frame) && (r.doc == "" || r.doc == e.RequestID) {
-		r.frame, r.doc = e.FrameID, e.RequestID
+	id := string(e.RequestID)
+	if e.Type == proto.NetworkResourceTypeDocument && (r.frame == "" || e.FrameID == r.frame) && (r.doc == "" || r.doc == id) {
+		r.frame, r.doc = e.FrameID, id
 		if e.RedirectResponse != nil {
 			r.chain = append(r.chain, fmt.Sprintf("%d %s", e.RedirectResponse.Status, e.RedirectResponse.URL))
 		}
 	}
-	q, ok := r.reqs[e.RequestID]
+	q := r.request(id)
+	q.url, q.method, q.typ = e.Request.URL, e.Request.Method, string(e.Type)
+}
+
+// request is the request with id, added when it is new. The caller
+// holds r.mu.
+func (r *Recorder) request(id string) *req {
+	q, ok := r.reqs[id]
 	if !ok {
 		q = &req{}
-		r.reqs[e.RequestID] = q
-		r.order = append(r.order, e.RequestID)
+		r.reqs[id] = q
+		r.order = append(r.order, id)
 	}
-	q.url, q.method, q.typ = e.Request.URL, e.Request.Method, string(e.Type)
+	return q
 }
 
 func (r *Recorder) onResponse(e *proto.NetworkResponseReceived) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	q := r.reqs[e.RequestID]
+	q := r.reqs[string(e.RequestID)]
 	if q == nil {
 		return
 	}
@@ -236,7 +251,7 @@ func (r *Recorder) onResponse(e *proto.NetworkResponseReceived) {
 func (r *Recorder) onFinished(e *proto.NetworkLoadingFinished) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if q := r.reqs[e.RequestID]; q != nil {
+	if q := r.reqs[string(e.RequestID)]; q != nil {
 		q.bytes, q.done = int64(e.EncodedDataLength), true
 	}
 }
@@ -244,7 +259,7 @@ func (r *Recorder) onFinished(e *proto.NetworkLoadingFinished) {
 func (r *Recorder) onFailed(e *proto.NetworkLoadingFailed) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if q := r.reqs[e.RequestID]; q != nil && !e.Canceled {
+	if q := r.reqs[string(e.RequestID)]; q != nil && !e.Canceled {
 		q.failed = e.ErrorText
 	}
 }
@@ -367,13 +382,13 @@ const (
 // own budget (see readBudget), so a page that answers just inside the
 // timeout is still read instead of being recorded empty.
 func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*model.Page, error) {
-	p := &model.Page{ID: model.PageID(rawURL), URL: rawURL, Shots: map[string]model.Shot{}}
-	if u, err := url.Parse(rawURL); err == nil {
-		p.Path = u.RequestURI()
-	}
+	p := newPage(rawURL)
 	start := time.Now()
 	// Every outcome, a timeout included, records how long it really took.
 	defer func() { p.Duration = float64(time.Since(start).Milliseconds()) }()
+	if r.tab != nil {
+		return p, visitTab(ctx, r, p, rawURL, opts)
+	}
 	page := r.page.Context(ctx).Timeout(opts.Timeout)
 	if err := page.SetViewport(ptr(Viewports["desktop"])); err != nil {
 		return p, err
@@ -391,28 +406,40 @@ func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*mode
 
 	// A fresh deadline: the one above may be all but spent by a slow
 	// first response.
-	page = r.page.Context(ctx).Timeout(readBudget(opts.Timeout))
+	rctx, cancel := context.WithTimeout(ctx, readBudget(opts.Timeout))
+	defer cancel()
+	return p, r.read(ctx, rctx, ChromeTab(r.page), p, opts)
+}
+
+// read records the loaded page into p: the facts factsJS reads, the
+// recorded events, the final URL and, when opts.Save is set, the desktop
+// screenshot. rctx is the reading's budget; ctx is the run's.
+func (r *Recorder) read(ctx, rctx context.Context, tab Tab, p *model.Page, opts Options) error {
 	var f pageFacts
-	obj, err := page.Eval(factsJS)
-	if err != nil {
+	if err := tab.Eval(rctx, factsJS, &f); err != nil {
 		// Empty facts would read as a blank page that lost its title.
 		r.fill(p, pageFacts{})
 		p.TextHash = ""
 		p.Error = readError(ctx, err)
-		return p, errors.New(p.Error)
+		return errors.New(p.Error)
 	}
-	_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &f)
 	r.fill(p, f)
 	p.Text = strings.Join(strings.Fields(f.Text), " ")
-	if info, err := page.Info(); err == nil {
-		p.FinalURL = info.URL
+	if u, err := tab.URL(rctx); err == nil {
+		p.FinalURL = u
 	}
 	if opts.Save != nil {
-		if err := shoot(page, p, "desktop", f.Height, opts); err != nil {
-			return p, err
-		}
+		return shoot(rctx, tab, p, "desktop", f.Height, opts)
 	}
-	return p, nil
+	return nil
+}
+
+func newPage(rawURL string) *model.Page {
+	p := &model.Page{ID: model.PageID(rawURL), URL: rawURL, Shots: map[string]model.Shot{}}
+	if u, err := url.Parse(rawURL); err == nil {
+		p.Path = u.RequestURI()
+	}
+	return p
 }
 
 // readBudget is how long reading a loaded page and screenshotting it may
@@ -432,6 +459,9 @@ func readError(ctx context.Context, err error) string {
 // Mobile reloads rawURL at the mobile viewport and screenshots it. Errors
 // that only happen on mobile are added to the page.
 func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts Options) error {
+	if r.tab != nil {
+		return mobileTab(ctx, r, p, rawURL, opts)
+	}
 	page := r.page.Context(ctx).Timeout(opts.Timeout)
 	if err := page.SetViewport(ptr(Viewports["mobile"])); err != nil {
 		return err
@@ -448,7 +478,14 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 	_ = page.WaitLoad()
 	page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	settle(ctx, 300*time.Millisecond)
-	page = r.page.Context(ctx).Timeout(readBudget(opts.Timeout))
+	rctx, cancel := context.WithTimeout(ctx, readBudget(opts.Timeout))
+	defer cancel()
+	return r.readMobile(rctx, ChromeTab(r.page), p, opts)
+}
+
+// readMobile adds the errors of the mobile load to p and takes the
+// mobile screenshot.
+func (r *Recorder) readMobile(rctx context.Context, tab Tab, p *model.Page, opts Options) error {
 	r.mu.Lock()
 	for _, c := range r.console {
 		if !slices.Contains(p.Console, c) {
@@ -460,10 +497,8 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 		return nil
 	}
 	h := 0
-	if obj, err := page.Eval(`() => document.documentElement.scrollHeight`); err == nil {
-		h = obj.Value.Int()
-	}
-	return shoot(page, p, "mobile", h, opts)
+	_ = tab.Eval(rctx, `() => document.documentElement.scrollHeight`, &h)
+	return shoot(rctx, tab, p, "mobile", h, opts)
 }
 
 // fill copies recorded events and DOM facts into p.
@@ -519,7 +554,7 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 // shoot hides ignored elements, pauses animations and takes a full-page
 // screenshot (capped at maxShotHeight), plus a second one when learning
 // dynamic regions.
-func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Options) error {
+func shoot(ctx context.Context, tab Tab, p *model.Page, viewport string, height int, opts Options) error {
 	css := stillCSS
 	if len(opts.Ignore) > 0 {
 		css += strings.Join(opts.Ignore, ",") + "{visibility:hidden!important}"
@@ -531,22 +566,20 @@ func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Opti
 	  return rects;
 	}`
 	var masked []model.Rect
-	if obj, err := page.Eval(js, css, opts.Ignore); err == nil {
-		_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &masked)
+	ignore := opts.Ignore
+	if ignore == nil {
+		ignore = []string{}
 	}
+	_ = tab.Eval(ctx, js, &masked, css, ignore)
+	vp := Viewports[viewport]
 	take := func() ([]byte, error) {
-		// Clip the page at its height instead of resizing the viewport to
-		// it, which would stretch 100vh layouts and push footers out.
-		vp := Viewports[viewport]
-		req := &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng, CaptureBeyondViewport: true,
-			Clip: &proto.PageViewport{Width: float64(vp.Width), Height: float64(min(max(height, vp.Height), maxShotHeight)), Scale: 1}}
-		return page.Screenshot(false, req)
+		return tab.Clip(ctx, vp.Width, min(max(height, vp.Height), maxShotHeight))
 	}
 	img, err := take()
 	if err != nil {
 		return fmt.Errorf("screenshot: %w", err)
 	}
-	shot := model.Shot{File: fmt.Sprintf("shots/%s-%s.png", p.ID, viewport), Masked: masked}
+	shot := model.Shot{File: shotFile(p.ID, viewport, opts.Engine, ""), Masked: masked}
 	if cfg, err := png.DecodeConfig(bytes.NewReader(img)); err == nil {
 		shot.Width, shot.Height = cfg.Width, cfg.Height
 	}
@@ -556,20 +589,35 @@ func shoot(page *rod.Page, p *model.Page, viewport string, height int, opts Opti
 	if opts.Twice {
 		time.Sleep(1200 * time.Millisecond)
 		if img2, err := take(); err == nil {
-			shot.Second = fmt.Sprintf("shots/%s-%s.2.png", p.ID, viewport)
+			shot.Second = shotFile(p.ID, viewport, opts.Engine, ".2")
 			if err := opts.Save(shot.Second, img2); err != nil {
 				return err
 			}
 		}
 	}
-	_, _ = page.Eval(`() => { const s = document.getElementById('__soundcheck_still'); if (s) s.remove(); }`)
+	_ = tab.Eval(ctx, `() => { const s = document.getElementById('__soundcheck_still'); if (s) s.remove(); }`, nil)
 	p.Shots[viewport] = shot
 	return nil
 }
 
+// shotFile is where a page's screenshot is stored: shots/<page>-<viewport>.png
+// in Chrome, with the engine added for the others
+// (shots/<page>-<viewport>-firefox.png), so shots of one engine are only
+// ever compared with shots of the same engine.
+func shotFile(page, viewport string, engine Engine, second string) string {
+	name := page + "-" + viewport
+	if engine != "" && engine != Chrome {
+		name += "-" + string(engine)
+	}
+	return "shots/" + name + second + ".png"
+}
+
 func navError(err error) string {
 	s := err.Error()
+	// Chrome's net::ERR_… and Firefox's NS_ERROR_… name the failure.
 	if i := strings.Index(s, "net::"); i >= 0 {
+		s = s[i:]
+	} else if i := strings.Index(s, "NS_ERROR_"); i >= 0 {
 		s = s[i:]
 	}
 	if strings.Contains(s, "context deadline exceeded") {
