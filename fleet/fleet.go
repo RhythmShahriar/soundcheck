@@ -154,6 +154,11 @@ func validate(sites []Site, dir string) error {
 			if strings.HasPrefix(a, "-") && slices.Contains(reserved, name) {
 				return fmt.Errorf("%s: args can't set %s; the fleet sets it for every site", where, a)
 			}
+			// The file can't let a site run programs: only the person
+			// running the fleet may, through the site's variables.
+			if strings.HasPrefix(a, "-") && name == "allow-exec" {
+				return fmt.Errorf("%s: args can't set %s; to let this site's exec commands run, set %s_SOUNDCHECK_ALLOW_EXEC=1", where, a, s.EnvPrefix)
+			}
 		}
 	}
 	return nil

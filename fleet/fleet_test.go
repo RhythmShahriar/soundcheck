@@ -138,6 +138,7 @@ func TestLoadRejects(t *testing.T) {
 		"json arg":         {"- {name: acme, url: a.test, args: [--json]}", "can't set --json"},
 		"output arg":       {"- {name: acme, url: a.test, args: ['-o=x.html']}", "can't set -o=x.html"},
 		"config arg":       {"- {name: acme, url: a.test, args: [--config, x]}", "can't set --config"},
+		"allow-exec arg":   {"- {name: acme, url: a.test, args: [--allow-exec]}", "can't set --allow-exec; to let this site's exec commands run, set ACME_SOUNDCHECK_ALLOW_EXEC=1"},
 		"missing config":   {"- {name: acme, url: a.test, config: nosuch.yaml}", "nosuch.yaml"},
 		"not yaml":         {"- [", "yaml"},
 	} {
