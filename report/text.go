@@ -142,12 +142,12 @@ type junitSuites struct {
 }
 
 type junitSuite struct {
-	Name      string      `xml:"name,attr"`
-	Tests     int         `xml:"tests,attr"`
-	Failures  int         `xml:"failures,attr"`
-	Errors    int         `xml:"errors,attr"`
-	Skipped   int         `xml:"skipped,attr"`
-	Timestamp string      `xml:"timestamp,attr"`
+	Name      string `xml:"name,attr"`
+	Tests     int    `xml:"tests,attr"`
+	Failures  int    `xml:"failures,attr"`
+	Errors    int    `xml:"errors,attr"`
+	Skipped   int    `xml:"skipped,attr"`
+	Timestamp string `xml:"timestamp,attr"`
 	// Properties carry facts about the whole run, e.g. interrupted=true.
 	Properties *junitProperties `xml:"properties,omitempty"`
 	Cases      []junitCase      `xml:"testcase"`

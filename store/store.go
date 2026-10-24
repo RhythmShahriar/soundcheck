@@ -34,20 +34,58 @@ var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 // ValidName reports whether name can be used as a snapshot name.
 func ValidName(name string) bool { return safeName.MatchString(name) }
 
-// Stamp is the default name for snapshots and runs.
-func Stamp(t time.Time) string { return t.Format("2006-01-02T15-04-05") }
+// Stamp is the default name for snapshots and runs: UTC to the
+// millisecond, so names sort by time and rarely collide.
+func Stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15-04-05.000Z") }
 
-// NewDir creates kind/name (kind is "snapshots" or "runs") and returns it.
-// An existing snapshot with the same name is replaced.
+// owner is the file in a folder NewDir created that says which process
+// is still writing it, so Prune leaves it alone.
+const owner = ".owner"
+
+// maxSuffix bounds how many "-2", "-3"… folder names NewDir tries.
+const maxSuffix = 1000
+
+// NewDir creates a new folder kind/name (kind is "snapshots", "runs" or
+// Incoming) and returns it. It never reuses or empties an existing
+// folder: when kind/name exists, another run made it (two commands in
+// the same millisecond, or a crashed one), so it creates name-2, name-3
+// and so on instead.
 func (s Store) NewDir(kind, name string) (string, error) {
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid name: use letters, digits, dots, dashes and underscores", name)
 	}
-	dir := filepath.Join(s.Root, kind, name)
-	if err := os.RemoveAll(dir); err != nil {
+	parent := filepath.Join(s.Root, kind)
+	if err := os.MkdirAll(parent, 0o750); err != nil {
 		return "", err
 	}
-	return dir, os.MkdirAll(dir, 0o750)
+	for n := 1; n <= maxSuffix; n++ {
+		dir := filepath.Join(parent, name)
+		if n > 1 {
+			dir = filepath.Join(parent, fmt.Sprintf("%s-%d", name, n))
+		}
+		// Mkdir fails when the folder exists, which makes it the claim:
+		// two processes can't both create the same one.
+		err := os.Mkdir(dir, 0o750)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return dir, writeOwner(filepath.Join(dir, owner))
+	}
+	return "", fmt.Errorf("couldn't create a folder for %q in %s: %d names are taken", name, parent, maxSuffix)
+}
+
+// Release marks a folder from NewDir as finished, so Prune may delete it
+// once it's old enough. Folders of processes that have exited count as
+// finished anyway.
+func Release(dir string) error {
+	err := os.Remove(filepath.Join(dir, owner))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // Saver returns a function that writes files into dir.
@@ -102,22 +140,52 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 
 // Promote moves a finished snapshot from Incoming into snapshots/name,
 // replacing an older snapshot with that name, and returns its new folder.
+// It holds the store's lock, so two snapshots finishing at once each
+// leave a whole snapshot, never a mix of both.
 func (s Store) Promote(dir, name string) (string, error) {
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
 	}
-	final := filepath.Join(s.Root, "snapshots", name)
-	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
+	unlock, err := s.lock()
+	if err != nil {
 		return "", err
 	}
-	if err := os.RemoveAll(final); err != nil {
+	defer unlock()
+	snapshots := filepath.Join(s.Root, "snapshots")
+	if err := os.MkdirAll(snapshots, 0o750); err != nil {
 		return "", err
 	}
-	return final, os.Rename(dir, final)
+	final := filepath.Join(snapshots, name)
+	// The old snapshot is moved aside, not deleted, until the new one is
+	// in place: a failed rename then puts it back.
+	var aside string
+	if _, err := os.Lstat(final); err == nil {
+		tmp, err := os.MkdirTemp(snapshots, ".replaced-*")
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = os.RemoveAll(tmp) }() //nolint:gosec // our own temporary folder
+		aside = filepath.Join(tmp, name)
+		if err := os.Rename(final, aside); err != nil {
+			return "", err
+		}
+	}
+	if err := os.Rename(dir, final); err != nil {
+		if aside != "" {
+			_ = os.Rename(aside, final)
+		}
+		return "", err
+	}
+	return final, Release(final)
 }
 
 // SetLatest records name as the snapshot compare uses by default.
 func (s Store) SetLatest(name string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	return cache.WriteFile(filepath.Join(s.Root, "snapshots", "LATEST"), []byte(name+"\n"))
 }
 
@@ -162,7 +230,8 @@ func (s Store) list(kind string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		// Dot folders are Promote's temporary ones.
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
 			names = append(names, e.Name())
 		}
 	}
@@ -171,17 +240,26 @@ func (s Store) list(kind string) ([]string, error) {
 }
 
 // Prune keeps the newest keep runs and deletes older ones. Snapshots are
-// never pruned.
+// never pruned, and neither is a run another process is still writing.
 func (s Store) Prune(keep int) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	runs, err := s.list("runs")
 	if err != nil {
 		return err
 	}
 	for len(runs) > keep {
-		if err := os.RemoveAll(filepath.Join(s.Root, "runs", runs[0])); err != nil {
+		dir := filepath.Join(s.Root, "runs", runs[0])
+		runs = runs[1:]
+		if inUse(filepath.Join(dir, owner)) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
 			return err
 		}
-		runs = runs[1:]
 	}
 	return nil
 }
