@@ -23,6 +23,8 @@ const configTemplate = `# Soundcheck settings. Everything here is optional: dele
 # Commit this file (and flows/) to share them with your team; snapshots and
 # runs are kept out of git automatically.
 
+site: ""                # checked by snapshot and run when no URL is given, e.g. staging.example.com
+
 pages:
   limit: 300            # most pages to check
   per_group: 3          # pages checked per URL pattern (/blog/{slug}/ …); -1 checks all
@@ -39,21 +41,22 @@ visual:
   ignore: []            # CSS selectors hidden before screenshots, e.g. [".ad", "#live-chat"]
 
 interactions:
-  levels: [inspect, click]  # add submit to send test data through forms, flows to run flows/
+  levels: [inspect, click]  # submit (which also clicks) sends test data through forms; flows runs flows/ too
   max_clicks: 15            # per page
   allow: []                 # selectors to click even if they look destructive
   forms: []                 # forms that may be submitted on production sites, by CSS selector
 
 # Live sites. Form submits are refused on these unless the form is in
-# interactions.forms. URL prefixes:
-production: []          # e.g. ["https://example.com"]
+# interactions.forms. A host covers http and https, www and any port;
+# *.example.com covers subdomains, example.com/shop only that path.
+production: []          # e.g. ["example.com", "*.example.com"]
 
 login:
-  url: ""               # login page; default /wp-login.php on WordPress
+  url: ""               # login page on the site; default /wp-login.php on WordPress
   flow: ""              # or a flow file that logs in, for other sites
 # Credentials come only from SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
 
-flows: .soundcheck/flows  # folder of YAML flows (rhythm soundcheck flows init)
+flows: .soundcheck/flows  # folder of YAML flows (the flows init command writes one)
 
 speed:
   slower: 25            # % slower before a page is reported SLOWER
@@ -63,13 +66,23 @@ speed:
 # is empty; --echo or SOUNDCHECK_ECHO turn it on too.
 echo:
   url: ""               # e.g. http://127.0.0.1:8025
-  token_env: RHYTHM_ECHO_TOKEN  # environment variable with Echo's token, if it has one
+  token_env: RHYTHM_ECHO_TOKEN  # variable with Echo's token, if it has one (RHYTHM_ECHO_*)
   quiet: 1500ms         # after a submit, wait until nothing new arrives for this long
   timeout: 10s          # but no longer than this
 
-rate: 5                 # page loads per second per site
+rate: 5                 # page loads per second per site, 0.01 to 1000
 tabs: 8                 # pages checked at once; politeness comes from rate
-timeout: 30             # seconds per page
+timeout: 30s            # per page: 30s, 1m or a number of seconds
+
+# Extra request headers, each read from an environment variable so no
+# secret is committed: {X-Staging-Auth: SOUNDCHECK_STAGING_AUTH}. Only
+# SOUNDCHECK_* variables, unless --allow-env names another.
+headers: {}
+
+# Exit 1 at or above this, when --fail-on isn't given: broke, new, changed
+# or slower for compare; error, warning or notice for run and snapshot;
+# none never fails.
+fail_on: ""
 `
 
 // cmdInit writes .soundcheck/config.yaml.
@@ -82,18 +95,18 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 	}
 	path := filepath.Join(config.Dir, "config.yaml")
 	if _, err := os.Stat(path); err == nil && !*force {
-		fmt.Fprintf(stderr, "rhythm soundcheck: %s already exists (--force replaces it)\n", path)
+		fmt.Fprintf(stderr, "%s %s already exists (--force replaces it)\n", prefix(), path)
 		return exitUsage
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if err := os.MkdirAll(config.Dir, 0o750); err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if err := os.WriteFile(path, []byte(configTemplate), 0o644); err != nil { //nolint:gosec // a project file meant to be committed
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	store.Store{Root: config.Dir}.ExcludeFromGit()

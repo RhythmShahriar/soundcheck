@@ -88,7 +88,7 @@ func TestExpandAndMask(t *testing.T) {
 	if _, _, err := Expand("${env:MISSING}", fake, env); err == nil {
 		t.Error("missing env var accepted")
 	}
-	if got := Mask("login hunter2 failed", secrets...); got != "login **** failed" {
+	if got := Mask("login hunter2 failed", secrets...); got != "login ••••• failed" {
 		t.Errorf("mask: %q", got)
 	}
 	if a, b, a2 := (Fake{Seed: "a"}).Tag(), (Fake{Seed: "b"}).Tag(), (Fake{Seed: "a"}).Tag(); a == b || a != a2 {
@@ -202,8 +202,9 @@ steps:
 	}
 	saved := map[string]int{}
 	fails := Run(context.Background(), page, f, Options{Base: base, Timeout: 2e9, Fake: Fake{Seed: "s"},
-		Env:  func(k string) string { return map[string]string{"SC_PASS": "s3cret-pw"}[k] },
-		Save: func(name string, data []byte) error { saved[name] = len(data); return nil }})
+		AllowEnv: []string{"SC_PASS"},
+		Env:      func(k string) string { return map[string]string{"SC_PASS": "s3cret-pw"}[k] },
+		Save:     func(name string, data []byte) error { saved[name] = len(data); return nil }})
 	if got.Get("email") != "soundcheck-test+"+(Fake{Seed: "s"}).Tag()+"@example.com" || got.Get("pass") != "s3cret-pw" ||
 		got.Get("plan") != "pro" || got.Get("terms") != "on" {
 		t.Errorf("posted %v", got)
@@ -216,7 +217,7 @@ steps:
 		}
 	}
 	want := []string{
-		`7 expect text "${env:SC_PASS}": the page doesn't show "****"`,
+		`7 expect text "${env:SC_PASS}": the page doesn't show "•••••"`,
 		"8 expect h2: h2 isn't visible",
 		"9 click #gone: #gone not found",
 	}

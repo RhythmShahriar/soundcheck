@@ -14,6 +14,8 @@ import (
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
+
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/cache"
 	echomod "github.com/RhythmShahriar/soundcheck/checks/echo"
@@ -61,29 +63,20 @@ func loginFunc(cfg config.Config, off bool) (func(*url.URL) func(context.Context
 	}
 	return func(base *url.URL) func(context.Context, *rod.Browser) error {
 		return login.New(login.Options{Base: base, Config: cfg})
-	}, mask(user)
-}
-
-// mask shows enough of a name to recognize it: "ad***".
-func mask(s string) string {
-	r := []rune(s)
-	if len(r) <= 2 {
-		return "***"
-	}
-	return string(r[:2]) + "***"
+	}, secrets.Mask(user, 2)
 }
 
 // lighthouse hands the site to Unlighthouse for full Lighthouse audits,
 // next to the run's own files.
 func (s *session) lighthouse(site, dir string) {
 	if !lighthouse.Available() {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: --lighthouse needs npx; install Node.js from https://nodejs.org")
+		fmt.Fprintln(s.stderr, prefix(), "--lighthouse needs npx; install Node.js from https://nodejs.org")
 		return
 	}
 	out := filepath.Join(dir, "lighthouse")
 	s.view.Step("Lighthouse", "running Unlighthouse (this takes a while)…")
 	if err := lighthouse.Run(s.ctx, site, out); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: lighthouse:", err)
+		fmt.Fprintln(s.stderr, prefix(), "lighthouse:", err)
 		return
 	}
 	s.view.Step("Lighthouse", "results in "+rel(filepath.Join(out, lighthouse.Result)))
@@ -92,23 +85,23 @@ func (s *session) lighthouse(site, dir string) {
 // cmdFlows handles `flows init`.
 func cmdFlows(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 || args[0] != "init" {
-		fmt.Fprintln(stderr, "rhythm soundcheck: usage: rhythm soundcheck flows init")
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "flows init")
 		return exitUsage
 	}
 	cfg, err := config.Load(filepath.Join(config.Dir, "config.yaml"))
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitUsage
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Flows, "example.yaml")); err == nil {
-		fmt.Fprintf(stderr, "rhythm soundcheck: %s already exists\n", filepath.Join(cfg.Flows, "example.yaml"))
+		fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), filepath.Join(cfg.Flows, "example.yaml"))
 		return exitUsage
 	}
 	path, err := flow.Init(cfg.Flows)
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
-	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level inspect,click,flows\n", path)
+	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level flows (it submits forms too)\n", path)
 	return exitOK
 }

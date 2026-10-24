@@ -1,0 +1,7 @@
+{
+  "viewports": [{"label": "laptop", "width": 1280, "height": 800}],
+  "scenarios": [
+    {"label": "Blog", "url": "https://blog.other.test/"},
+    {"label": "Status", "url": "http://status.other.test/now"}
+  ]
+}

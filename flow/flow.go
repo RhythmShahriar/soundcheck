@@ -25,6 +25,12 @@
 // printed) and ${fake:kind} (test data such as email, name, phone, url,
 // message; see Fake.Value).
 //
+// Flow files live in the project folder, which a pull request can change,
+// so a flow can't reach the runner's secrets or take them elsewhere: it
+// reads only SOUNDCHECK_* variables and opens only the site being checked,
+// unless Options.AllowEnv and Options.AllowHosts (--allow-env and
+// --allow-host) name more.
+//
 // With Echo running (--echo), expect: {message: …} checks what the flow
 // made the site send:
 //
@@ -46,6 +52,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	echomodel "github.com/RhythmShahriar/echo/model"
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
 )
 
 // Flow is one scripted journey.
@@ -348,6 +355,9 @@ func Parse(data []byte) (Flow, error) {
 	if len(f.Steps) == 0 {
 		return f, errors.New("a flow needs at least one step")
 	}
+	if err := checkRefs(f.Start); err != nil {
+		return f, fmt.Errorf("start: %w", err)
+	}
 	for i, s := range f.Steps {
 		if err := s.Validate(); err != nil {
 			return f, fmt.Errorf("step %d: %w", i+1, err)
@@ -369,11 +379,68 @@ func (s Step) values() []string {
 	if s.Select != nil {
 		out = append(out, s.Select.Value)
 	}
-	if s.Expect != nil && s.Expect.Message != nil {
-		m := s.Expect.Message
-		out = append(out, m.To, m.Subject, m.Text)
+	if s.Expect != nil {
+		out = append(out, s.Expect.Text)
+		if m := s.Expect.Message; m != nil {
+			out = append(out, m.To, m.Subject, m.Text)
+		}
 	}
 	return append(out, s.Goto)
+}
+
+// EnvNames lists the environment variables the flow reads with
+// ${env:NAME}, sorted, each once.
+func (f Flow) EnvNames() []string {
+	vals := []string{f.Start}
+	for _, s := range f.Steps {
+		vals = append(vals, s.values()...)
+	}
+	var names []string
+	for _, v := range vals {
+		names = append(names, envRefs(v)...)
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}
+
+// envRefs returns the names in every ${env:NAME} in s.
+func envRefs(s string) []string {
+	var out []string
+	for _, m := range ref.FindAllStringSubmatch(s, -1) {
+		if m[1] == "env" {
+			out = append(out, m[2])
+		}
+	}
+	return out
+}
+
+// EnvPrefix starts the variables every flow may read.
+const EnvPrefix = "SOUNDCHECK_"
+
+// EnvAllowed reports whether a flow may read the variable name: a
+// SOUNDCHECK_* one, or one in allow (--allow-env).
+func EnvAllowed(name string, allow []string) bool {
+	return strings.HasPrefix(name, EnvPrefix) || slices.Contains(allow, name)
+}
+
+// CheckEnv returns an error naming every variable the flow reads that
+// isn't allowed, so it fails before any step runs.
+func (f Flow) CheckEnv(allow []string) error {
+	return envError(f.EnvNames(), allow)
+}
+
+func envError(names, allow []string) error {
+	var bad []string
+	for _, n := range names {
+		if !EnvAllowed(n, allow) {
+			bad = append(bad, n)
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return fmt.Errorf("flows read only %s* variables; to let this one read %s, pass --allow-env %s",
+		EnvPrefix, strings.Join(bad, ", "), strings.Join(bad, " --allow-env "))
 }
 
 // ReadFile reads one flow from a file.
@@ -443,8 +510,10 @@ const Example = `# A Soundcheck flow: a scripted journey checked on every run wh
 # interactions.levels includes "flows". Each failed step is reported.
 #
 # Steps: goto, click, fill, select, check, submit, wait, expect, screenshot.
-# Values can use ${env:NAME} (read from the environment, never stored) and
-# ${fake:email}, ${fake:name}, ${fake:phone}, ${fake:message}, ...
+# Values can use ${env:NAME} (read from the environment, never stored; only
+# SOUNDCHECK_* names unless you pass --allow-env NAME) and ${fake:email},
+# ${fake:name}, ${fake:phone}, ${fake:message}, ... goto and start stay on
+# the site being checked unless you pass --allow-host.
 name: Contact form sends
 start: /contact/
 # login: true        # run as SOUNDCHECK_USER / SOUNDCHECK_PASSWORD
@@ -526,11 +595,12 @@ func Expand(s string, fake Fake, env func(string) string) (string, []string, err
 	return out, secrets, err
 }
 
-// Mask replaces every secret in s with asterisks.
-func Mask(s string, secrets ...string) string {
-	for _, v := range secrets {
+// Mask replaces every secret in s with the kit's mask, which hides the
+// whole value and its length.
+func Mask(s string, values ...string) string {
+	for _, v := range values {
 		if v != "" {
-			s = strings.ReplaceAll(s, v, "****")
+			s = strings.ReplaceAll(s, v, secrets.Mask(v, 0))
 		}
 	}
 	return s

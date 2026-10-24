@@ -1,0 +1,5 @@
+{
+  "scenarios": [
+    {"label": "Home", "url": "https://a.test/"},
+  ]
+}

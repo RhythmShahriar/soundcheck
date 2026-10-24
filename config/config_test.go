@@ -36,7 +36,7 @@ func TestLoad(t *testing.T) {
 		t.Errorf("empty file: %v", err)
 	}
 	for body, want := range map[string]string{
-		"pagez:\n  limit: 5\n":           "field pagez not found",
+		"pagez:\n  limit: 5\n":           `line 1: unknown setting "pagez" (did you mean "pages"?)`,
 		"viewports: [tablet]\n":          "tablet",
 		"modules: [health, magic]\n":     "magic",
 		"interactions:\n  levels: [x]\n": "interactions.levels",
@@ -59,16 +59,20 @@ func TestEcho(t *testing.T) {
 		t.Fatalf("echo override: %+v %v", c.Echo, err)
 	}
 	for body, want := range map[string]string{
-		"echo:\n  urll: x\n":                        "field urll not found",
-		"echo:\n  url: 127.0.0.1:8025\n":            "isn't an http(s) URL",
-		"echo:\n  url: ftp://x\n":                   "isn't an http(s) URL",
-		"echo:\n  quiet: 10ms\n":                    "echo.quiet",
-		"echo:\n  quiet: 5s\n  timeout: 2s\n":       "echo.timeout",
-		"echo:\n  timeout: 5m\n":                    "echo.timeout",
-		"echo:\n  quiet: 1500\n":                    "time.Duration",
-		"echo:\n  token_env: \"A B\"\n":             "token_env",
-		"modules: [health, echo]\n":                 "echo needs Echo's address",
-		"echo:\n  url: http://x\nmodules: [echo]\n": "",
+		"echo:\n  urll: x\n":                          `line 2: unknown setting "echo.urll" (did you mean "echo.url"?)`,
+		"echo:\n  url: 127.0.0.1:8025\n":              "isn't an http(s) URL",
+		"echo:\n  url: ftp://x\n":                     "isn't an http(s) URL",
+		"echo:\n  quiet: 10ms\n":                      "echo.quiet",
+		"echo:\n  quiet: 5s\n  timeout: 2s\n":         "echo.timeout",
+		"echo:\n  timeout: 5m\n":                      "echo.timeout",
+		"echo:\n  quiet: 1500\n":                      `line 2: echo.quiet: "1500" isn't a duration like 1500ms or 10s`,
+		"echo:\n  token_env: \"A B\"\n":               "token_env",
+		"echo:\n  token_env: AWS_SECRET_ACCESS_KEY\n": "must start with RHYTHM_ECHO_",
+		"echo:\n  token_env: GITHUB_TOKEN\n":          "must start with RHYTHM_ECHO_",
+		"echo:\n  token_env: RHYTHM_ECHO_CI\n":        "",
+		"echo:\n  token_env: \"\"\n":                  "",
+		"modules: [health, echo]\n":                   "echo needs Echo's address",
+		"echo:\n  url: http://x\nmodules: [echo]\n":   "",
 	} {
 		_, err := Load(write(t, body))
 		switch {
@@ -77,5 +81,69 @@ func TestEcho(t *testing.T) {
 		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
 			t.Errorf("%q: err = %v, want %q", body, err, want)
 		}
+	}
+}
+
+func TestLoginURL(t *testing.T) {
+	for body, want := range map[string]string{
+		"login:\n  url: /my-login/\n":                       "",
+		"login:\n  url: https://example.com/wp-login.php\n": "", // checked against the site when logging in
+		"login:\n  url: ftp://example.com/\n":               "login.url",
+		"login:\n  url: \"http://\"\n":                      "login.url",
+		"login:\n  url: \"://x\"\n":                         "login.url",
+	} {
+		_, err := Load(write(t, body))
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q: %v", body, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+	if _, err := Load(write(t, "trust:\n  allow_env: [GITHUB_TOKEN]\n")); err == nil {
+		t.Error("the config file must not set trust")
+	}
+}
+
+func TestRate(t *testing.T) {
+	for body, ok := range map[string]bool{
+		"rate: .nan\n": false, "rate: .inf\n": false, "rate: -.inf\n": false, "rate: -1\n": false, "rate: 0\n": false,
+		"rate: 1e-300\n": false, "rate: 0.009\n": false, "rate: 1001\n": false,
+		"rate: 0.01\n": true, "rate: 1\n": true, "rate: 5\n": true, "rate: 1000\n": true,
+	} {
+		_, err := Load(write(t, body))
+		switch {
+		case ok && err != nil:
+			t.Errorf("%q: %v", body, err)
+		case !ok && (err == nil || !strings.Contains(err.Error(), "config.yaml line 1: rate: ") || !strings.Contains(err.Error(), "between 0.01 and 1000")):
+			t.Errorf("%q: err = %v, want a rate error", body, err)
+		}
+	}
+}
+
+func TestInFile(t *testing.T) {
+	c, err := Load(write(t, "modules: [health, visual, interact, cache, speed]\ninteractions:\n  max_clicks: 5\npages:\n  limit: 300\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Set to the default value still counts: the user chose it.
+	for _, k := range []string{"modules", "interactions", "interactions.max_clicks", "pages.limit"} {
+		if !c.InFile(k) {
+			t.Errorf("InFile(%q) = false", k)
+		}
+	}
+	for _, k := range []string{"viewports", "interactions.levels", "rate"} {
+		if c.InFile(k) {
+			t.Errorf("InFile(%q) = true", k)
+		}
+	}
+	for _, body := range []string{"", "# only a comment\n"} {
+		c, err := Load(write(t, body))
+		if err != nil || c.InFile("modules") {
+			t.Errorf("%q: InFile(modules) = %t, %v", body, c.InFile("modules"), err)
+		}
+	}
+	if c, _ := Load(filepath.Join(t.TempDir(), "missing.yaml")); c.InFile("modules") {
+		t.Error("no file: InFile(modules) = true")
 	}
 }

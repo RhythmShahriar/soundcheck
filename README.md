@@ -62,17 +62,21 @@ irm https://rythm.sh/install.ps1 | iex
 go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 ```
 
+`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag.
+
 Soundcheck drives a real browser. It uses Chrome or Chromium if you have one, and otherwise downloads Chromium once, on first use, into your cache folder. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
 ## Check a change
 
+No site handy? `rhythm-soundcheck demo` serves a small built-in site, snapshots it, breaks it and shows the comparison, in a few seconds and without touching your project folder.
+
 ```sh
-rhythm soundcheck snapshot staging.yoursite.com   # before: record how every page works
+rhythm-soundcheck snapshot staging.yoursite.com   # before: record how every page works
 # …update plugins, switch PHP, deploy…
-rhythm soundcheck compare --open                  # after: what changed, in a report
+rhythm-soundcheck compare --open                  # after: what changed, in a report
 ```
 
-Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, screenshots, and stores it all in `./.soundcheck`. `compare` checks the same pages again and shows **only what's different**, most serious first:
+Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, takes screenshots and stores it all in `./.soundcheck`. `compare` checks the same pages again with the snapshot's modules, levels and viewports unless you set others. It shows **only what's different**, most serious first:
 
 | Class | Means |
 |---|---|
@@ -86,12 +90,16 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 
 | You want to… | Run |
 |---|---|
-| Compare staging with production right now | `rhythm soundcheck staging.site.com --against site.com` |
-| Check a site once, no snapshot | `rhythm soundcheck run site.test` |
-| Test that forms still send (staging only) | `rhythm soundcheck snapshot staging.site.com --level inspect,click,submit` |
-| Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm soundcheck snapshot …` |
-| A report for the pull request | `rhythm soundcheck compare --md -o soundcheck.md` |
-| Fail CI when something broke | `rhythm soundcheck compare --fail-on broke` |
+| Compare staging with production right now | `rhythm-soundcheck staging.site.com --against site.com` |
+| Check a site once, no snapshot | `rhythm-soundcheck run site.test` |
+| A fast pass: desktop only, health and interactions | `rhythm-soundcheck run site.test --quick` |
+| Test that forms still send (staging only) | `rhythm-soundcheck snapshot staging.site.com --level submit` |
+| Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm-soundcheck snapshot …` |
+| A report for the pull request | `rhythm-soundcheck compare --md -o soundcheck.md` |
+| Every report format from one run | `rhythm-soundcheck compare -o r.json -o r.md -o r.xml -o r.html` |
+| Fail CI when something broke | `rhythm-soundcheck compare --fail-on broke` |
+| Move over from BackstopJS | `rhythm-soundcheck import backstop.json` |
+| Move over from Lost Pixel (page paths only) | `rhythm-soundcheck import lostpixel.config.ts --pages-only` |
 
 Every flag is in the [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference).
 
@@ -151,7 +159,7 @@ A live terminal view; a standalone HTML report with before/after sliders and fil
 - **The whole site, not five pages.** Pages are grouped by URL pattern: once a folder has more than 10 pages, the rest of `/product/{slug}/` is sampled 3 at a time, so a shop with 3,000 products is checked through 13 pages, not 3,000. A 100-page site takes about a minute and a half to snapshot and one to compare (8 tabs on a 16-core machine).
 - **Knows WordPress.** PHP errors traced to the plugin file and line, plugin-aware speed costs, form plugin profiles, nonce and cache rules no generic tool checks.
 - **Local and free.** One binary, your machine or your CI. No account, no cloud, no page limits. Snapshots stay in your project.
-- **Safe on real sites.** Polite rate limits, a destructive-click blocklist, form submits off by default and refused on production, credentials only from environment variables and never written to reports.
+- **Safe on real sites.** Polite rate limits, a destructive-click blocklist, form submits off by default and refused on production, credentials only from environment variables, typed only on the site being checked and never written to reports.
 
 How it compares with other tools is measured, not claimed: see the [benchmark](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Benchmark) of 20 deliberately broken sites.
 
@@ -187,6 +195,7 @@ All of it lives in the **[Rhythm documentation wiki](https://github.com/RhythmSh
 git clone https://github.com/RhythmShahriar/soundcheck && cd soundcheck
 make hooks   # Conventional Commits check
 make check   # lint + tests (browser tests need Chrome or Chromium)
+make test-short # the quick pass: tests that honour -short skip slow browser work
 make testbed # 20 broken sites in Docker, for end-to-end tests and the benchmark
 ```
 

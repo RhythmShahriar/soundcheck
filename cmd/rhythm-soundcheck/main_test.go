@@ -25,6 +25,9 @@ func init() {
 	// No update checks or first-run notices from tests.
 	os.Setenv("RHYTHM_NO_UPDATE_CHECK", "1")
 	version = "1.0.0-test"
+	// The test binary is rhythm-soundcheck.test; name it as installed.
+	argv0 = "rhythm-soundcheck"
+	os.Unsetenv(invokedAs)
 }
 
 func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
@@ -42,7 +45,7 @@ func TestVersionAndHelp(t *testing.T) {
 		}
 	}
 	code, out, _ := runCLI(t, "--help")
-	if code != exitOK || !strings.Contains(out, "rhythm soundcheck snapshot <url>") {
+	if code != exitOK || !strings.Contains(out, "rhythm-soundcheck snapshot <url>") {
 		t.Errorf("help: %d", code)
 	}
 	if code, _, _ := runCLI(t, "frobnicate"); code != exitUsage {
@@ -62,8 +65,8 @@ func TestUsageErrors(t *testing.T) {
 		{[]string{"snapshot", "a.test", "--level", "explode"}, "--level"},
 		{[]string{"snapshot", "a.test", "--skip", "nope"}, "--skip"},
 		{[]string{"snapshot", "a.test", "--tabs", "99"}, "--tabs"},
-		{[]string{"snapshot", "a.test", "-H", "bad header"}, "bad header"},
-		{[]string{"snapshot", "a.test", "--proxy", "ftp://x"}, "bad --proxy"},
+		{[]string{"snapshot", "a.test", "-H", "bad header"}, "--header: "},
+		{[]string{"snapshot", "a.test", "--proxy", "ftp://x"}, "--proxy: "},
 		{[]string{"snapshot", "a.test", "--name", "../x"}, "--name"},
 		{[]string{"snapshot", "a.test", "--fail-on", "broke"}, "--fail-on"},
 		{[]string{"compare"}, "no snapshot yet"},
@@ -369,7 +372,7 @@ func TestLoginOnlyFromEnv(t *testing.T) {
 	t.Setenv("SOUNDCHECK_USER", "admin")
 	t.Setenv("SOUNDCHECK_PASSWORD", "s3cret")
 	f, who := loginFunc(config.Default(), false)
-	if f == nil || who != "ad***" {
+	if f == nil || who != "a•••••" {
 		t.Errorf("who = %q", who)
 	}
 	if f, _ := loginFunc(config.Default(), true); f != nil {
@@ -378,10 +381,85 @@ func TestLoginOnlyFromEnv(t *testing.T) {
 }
 
 func TestFlagNameEcho(t *testing.T) {
-	if got := flagName("modules: echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url"); strings.Count(got, "--echo") != 1 {
-		t.Errorf("flag named twice: %q", got)
+	if got := flagName(&config.SettingError{Key: "modules", Msg: "echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url"}); got != "--modules (modules): echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url" {
+		t.Errorf("modules: %q", got)
 	}
-	if got := flagName(`echo.url: "x" isn't an http(s) URL`); !strings.HasPrefix(got, "--echo (echo.url):") {
+	if got := flagName(&config.SettingError{Key: "echo.url", Msg: `"x" isn't an http(s) URL`}); !strings.HasPrefix(got, "--echo (echo.url):") {
 		t.Errorf("echo.url error not pointed at --echo: %q", got)
+	}
+}
+
+func TestProductionHeader(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	// A dead Echo stops the run right after the header, before any browsing.
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	_, out, _ := runCLI(t, "run", "127.0.0.1:20260", "--echo="+dead.URL, "--plain")
+	if !strings.Contains(out, "Production: none listed: submit and flows run on any site\n") {
+		t.Errorf("no production sites:\n%s", out)
+	}
+	_ = os.MkdirAll(".soundcheck", 0o755)
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("production: ['https://WWW.Example.com.:443/', '*.shop.test']\n"), 0o600)
+	_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--echo="+dead.URL, "--plain")
+	if !strings.Contains(out, "Production: example.com, *.shop.test: forms are not submitted there\n") {
+		t.Errorf("production sites:\n%s", out)
+	}
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("production: ['http://']\n"), 0o600)
+	code, _, errOut := runCLI(t, "run", "127.0.0.1:20260")
+	if code != exitUsage || !strings.Contains(errOut, `production: "http://" isn't a site`) {
+		t.Errorf("bad entry: exit %d, %q", code, errOut)
+	}
+}
+
+func TestRateFlag(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, r := range []string{"NaN", "Inf", "+Inf", "-Inf", "-1", "0", "1e-300", "0.009", "1001"} {
+		code, _, errOut := runCLI(t, "run", "a.test", "--rate", r)
+		if code != exitUsage || !strings.Contains(errOut, "--rate (rate): ") || !strings.Contains(errOut, "isn't between 0.01 and 1000 page loads a second") {
+			t.Errorf("--rate %s: exit %d, %q", r, code, errOut)
+		}
+	}
+	for _, r := range []string{"0.01", "1", "5", "1000"} {
+		if _, err := parse([]string{"a.test", "--rate", r}); err != nil {
+			t.Errorf("--rate %s: %v", r, err)
+		}
+	}
+	_ = os.MkdirAll(".soundcheck", 0o755)
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("rate: .nan\n"), 0o600)
+	if code, _, errOut := runCLI(t, "run", "a.test"); code != exitUsage || !strings.Contains(errOut, "rate: NaN isn't between") {
+		t.Errorf("rate: .nan: exit %d, %q", code, errOut)
+	}
+}
+
+func TestReportExitCodes(t *testing.T) {
+	t.Chdir(t.TempDir())
+	// Nothing stored yet or names that aren't there: usage errors.
+	for _, args := range [][]string{{"report"}, {"report", "nosuch"}, {"report", "../x"}} {
+		if code, _, errOut := runCLI(t, args...); code != exitUsage {
+			t.Errorf("%v: exit %d, want 2 (%s)", args, code, errOut)
+		}
+	}
+	_ = os.MkdirAll(".soundcheck/snapshots/good", 0o755)
+	_ = os.WriteFile(".soundcheck/snapshots/good/run.json", []byte("{not json"), 0o600)
+	_ = os.WriteFile(".soundcheck/snapshots/LATEST", []byte("good\n"), 0o600)
+	if code, _, errOut := runCLI(t, "report", "nosuch"); code != exitUsage || !strings.Contains(errOut, `no snapshot named "nosuch"`) {
+		t.Errorf("unknown snapshot: exit %d, %q", code, errOut)
+	}
+	_ = os.MkdirAll("empty-folder", 0o755)
+	if code, _, errOut := runCLI(t, "report", "empty-folder"); code != exitUsage || !strings.Contains(errOut, "no run in empty-folder") {
+		t.Errorf("folder without a run: exit %d, %q", code, errOut)
+	}
+	// A corrupt run.json is a file that can't be read: 3.
+	if code, _, errOut := runCLI(t, "report", "good"); code != exitError {
+		t.Errorf("corrupt snapshot: exit %d, want 3 (%s)", code, errOut)
+	}
+	_ = os.MkdirAll(".soundcheck/runs/20261024-120000", 0o755)
+	_ = os.WriteFile(".soundcheck/runs/20261024-120000/run.json", []byte("{not json"), 0o600)
+	if code, _, errOut := runCLI(t, "report"); code != exitError {
+		t.Errorf("corrupt latest run: exit %d, want 3 (%s)", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "report", ".soundcheck/runs/20261024-120000"); code != exitError {
+		t.Errorf("corrupt run folder: exit %d, want 3 (%s)", code, errOut)
 	}
 }

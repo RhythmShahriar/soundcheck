@@ -8,26 +8,30 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/report"
 )
 
 type options struct {
 	json, md, junit, html          bool
-	output                         string
+	outputs                        cli.RepeatFlag
 	open                           bool
 	quiet, plain, noColor, verbose bool
 
 	name, snapshot, against string
+	strict                  bool
 
 	configPath             string
 	limit                  int
@@ -37,9 +41,12 @@ type options struct {
 	modules, skip          cli.ListFlag
 	levels, viewports      cli.ListFlag
 	noLogin, lighthouse    bool
+	quick                  bool
+	allowEnv, allowHosts   cli.RepeatFlag
+	insecureLogin          bool
 	rate                   float64
 	tabs                   int
-	timeout                time.Duration
+	timeout                secondsFlag
 	userAgent              string
 	headers                cli.RepeatFlag
 	cookie, proxy, browser string
@@ -113,7 +120,7 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.BoolVar(&o.md, "md", false, "")
 	fs.BoolVar(&o.junit, "junit", false, "")
 	fs.BoolVar(&o.html, "html", false, "")
-	both("o", "output", func(n string) { fs.StringVar(&o.output, n, "", "") })
+	both("o", "output", func(n string) { fs.Var(&o.outputs, n, "") })
 	fs.BoolVar(&o.open, "open", false, "")
 	both("q", "quiet", func(n string) { fs.BoolVar(&o.quiet, n, false, "") })
 	fs.BoolVar(&o.plain, "plain", false, "")
@@ -124,6 +131,7 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.StringVar(&o.snapshot, "snapshot", "", "")
 	fs.StringVar(&o.snapshot, "against-snapshot", "", "")
 	fs.StringVar(&o.against, "against", "", "")
+	fs.BoolVar(&o.strict, "strict", false, "")
 
 	fs.StringVar(&o.configPath, "config", "", "")
 	fs.IntVar(&o.limit, "limit", 0, "")
@@ -135,12 +143,16 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.Var(&o.skip, "skip", "")
 	fs.Var(&o.levels, "level", "")
 	fs.Var(&o.viewports, "viewport", "")
+	fs.BoolVar(&o.quick, "quick", false, "")
 	fs.BoolVar(&o.noLogin, "no-login", false, "")
 	fs.BoolVar(&o.lighthouse, "lighthouse", false, "")
+	fs.Var(&o.allowEnv, "allow-env", "")
+	fs.Var(&o.allowHosts, "allow-host", "")
+	fs.BoolVar(&o.insecureLogin, "insecure-login", false, "")
 
 	fs.Float64Var(&o.rate, "rate", 0, "")
 	fs.IntVar(&o.tabs, "tabs", 0, "")
-	fs.DurationVar(&o.timeout, "timeout", 0, "")
+	fs.Var(&o.timeout, "timeout", "")
 	both("A", "user-agent", func(n string) { fs.StringVar(&o.userAgent, n, "", "") })
 	both("H", "header", func(n string) { fs.Var(&o.headers, n, "") })
 	fs.StringVar(&o.cookie, "cookie", "", "")
@@ -161,11 +173,30 @@ type plan struct {
 	o        options
 	args     []string // positional arguments
 	cfg      config.Config
-	format   string // json, md, junit, html or "" for the terminal view only
+	format   string   // json, md, junit or html for stdout, or "" for the live view
+	outputs  []output // files to write, from -o
 	headers  map[string]string
 	proxy    *url.URL
 	ua       string
 	storeDir string
+
+	configPath string   // the config file read, for messages
+	failOnFrom string   // the config file, when fail_on gave --fail-on's value
+	failOnSet  bool     // --fail-on or fail_on was given, so no tip about it
+	envHeaders []string // headers the config file read from the environment
+	// siteFrom is the config file when its site: is the site being
+	// checked. Such a site is as untrusted as the file, so nothing from
+	// the environment is sent to it.
+	siteFrom string
+	chosen   chosen // settings the user set, which compare keeps
+	quick    string // what --quick set, for the header
+	// noReportHint leaves the "full report:" hint out of the summary,
+	// for the demo, whose run folder is removed when it ends.
+	noReportHint bool
+	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
+	// A token goes to an Echo on another machine only when the person
+	// running Soundcheck named it, never the project's config alone.
+	echoFrom string
 }
 
 func parse(args []string) (*plan, error) {
@@ -180,7 +211,7 @@ func parse(args []string) (*plan, error) {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, err
 		}
-		return nil, cli.UsageError{Msg: err.Error()}
+		return nil, flagError(fs, err)
 	}
 	p.args = pos
 	set := map[string]bool{}
@@ -191,11 +222,17 @@ func parse(args []string) (*plan, error) {
 	if path == "" {
 		path = filepath.Join(config.Dir, "config.yaml")
 	} else if _, err := os.Stat(path); err != nil {
-		return nil, cli.Usagef("--config %s: %v", path, err)
+		var pe *os.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err // the path is in the message already
+		}
+		return nil, cli.Usagef("--config: %s: %v", path, err)
 	}
 	if p.cfg, err = config.Load(path); err != nil {
 		return nil, cli.UsageError{Msg: err.Error()}
 	}
+	p.configPath = path
+	p.chosen = chosenSettings(set, p.cfg, path)
 	cfg := &p.cfg
 	if set["limit"] {
 		cfg.Pages.Limit = o.limit
@@ -206,22 +243,28 @@ func parse(args []string) (*plan, error) {
 	if o.ignoreRobots {
 		cfg.Pages.IgnoreRobots = true
 	}
+	p.quickPreset(set)
 	if len(o.modules) > 0 {
-		cfg.Modules = o.modules
+		if cfg.Modules, err = config.AddList(cfg.Modules, o.modules); err != nil {
+			return nil, cli.Usagef("--modules (modules): %v", err)
+		}
 	}
 	for _, m := range o.skip {
 		if !slices.Contains(config.Modules, m) {
-			return nil, cli.Usagef("--skip %q isn't one of %s", m, strings.Join(config.Modules, ", "))
+			return nil, cli.Usagef("--skip: %v", config.OneOf(m, config.Modules))
 		}
 		cfg.Modules = slices.DeleteFunc(cfg.Modules, func(x string) bool { return x == m })
 	}
 	// Echo: --echo, then SOUNDCHECK_ECHO, then echo.url. It's on whenever
 	// it's configured, unless --skip echo.
+	if cfg.Echo.URL != "" {
+		p.echoFrom = "config"
+	}
 	if env := echoFromEnv(os.Getenv("SOUNDCHECK_ECHO")); env != "" {
-		cfg.Echo.URL = env
+		cfg.Echo.URL, p.echoFrom = env, "env"
 	}
 	if o.echo.set {
-		cfg.Echo.URL = o.echo.url
+		cfg.Echo.URL, p.echoFrom = o.echo.url, "flag"
 	}
 	switch {
 	case slices.Contains(o.skip, "echo"):
@@ -230,47 +273,56 @@ func parse(args []string) (*plan, error) {
 		cfg.Modules = append(cfg.Modules, "echo")
 	}
 	if len(o.levels) > 0 {
-		cfg.Interactions.Levels = o.levels
+		levels, err := config.AddList(cfg.Interactions.Levels, o.levels)
+		if err != nil {
+			return nil, cli.Usagef("--level (interactions.levels): %v", err)
+		}
+		cfg.Interactions.Levels = config.Cumulative(levels)
 	}
 	if len(o.viewports) > 0 {
 		cfg.Viewports = o.viewports
 	}
 	if set["rate"] {
+		if err := config.CheckRate(o.rate); err != nil {
+			return nil, cli.Usagef("--rate (rate): %v", err)
+		}
 		cfg.Rate = o.rate
 	}
 	if set["tabs"] {
 		cfg.Tabs = o.tabs
 	}
 	if set["timeout"] {
-		cfg.Timeout = int(o.timeout.Round(time.Second) / time.Second)
+		cfg.Timeout = config.Seconds(o.timeout)
+	}
+	p.failOnSet = set["fail-on"] || cfg.FailOn != ""
+	if !set["fail-on"] && cfg.FailOn != "" {
+		o.failOn, p.failOnFrom = cfg.FailOn, path
+	}
+	if o.failOn != "" {
+		v, err := config.ParseFailOn(o.failOn)
+		if err != nil {
+			return nil, cli.Usagef("--fail-on (fail_on): %v", err)
+		}
+		if v == config.FailOnNone {
+			v, p.failOnFrom = "", ""
+		}
+		o.failOn = v
+	}
+	if cfg.Echo.URL == "" {
+		p.echoFrom = ""
+	}
+	if err := p.trust(); err != nil {
+		return nil, err
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, cli.UsageError{Msg: flagName(err.Error())}
-	}
-	if cfg.Rate <= 0 {
-		return nil, cli.Usagef("--rate must be more than 0")
+		return nil, cli.UsageError{Msg: flagName(err)}
 	}
 	if len(cfg.Modules) == 0 {
 		return nil, cli.Usagef("no modules left to run")
 	}
 
-	// Output.
-	var chosen []string
-	for name, on := range map[string]bool{"json": o.json, "md": o.md, "junit": o.junit, "html": o.html} {
-		if on {
-			chosen = append(chosen, name)
-		}
-	}
-	switch {
-	case len(chosen) > 1:
-		slices.Sort(chosen)
-		return nil, cli.Usagef("pick one output format, not --%s", strings.Join(chosen, " and --"))
-	case len(chosen) == 1:
-		p.format = chosen[0]
-	case o.output != "":
-		if p.format = formatFromExt(o.output); p.format == "" {
-			return nil, cli.Usagef("can't tell the format of %s; add --json, --md, --junit or --html", o.output)
-		}
+	if err := p.outputFormats(); err != nil {
+		return nil, err
 	}
 
 	// Requests.
@@ -278,17 +330,20 @@ func parse(args []string) (*plan, error) {
 	for _, raw := range o.headers {
 		name, value, ok := strings.Cut(raw, ":")
 		if name = strings.TrimSpace(name); !ok || name == "" || strings.ContainsAny(name, " \t") {
-			return nil, cli.Usagef("bad header %q, use \"Name: value\"", raw)
+			return nil, cli.Usagef("--header: %q isn't a header; use \"Name: value\"", raw)
 		}
 		p.headers[name] = strings.TrimSpace(value)
 	}
 	if o.cookie != "" {
 		p.headers["Cookie"] = o.cookie
 	}
+	if err := p.configHeaders(); err != nil {
+		return nil, err
+	}
 	if o.proxy != "" {
 		u, err := url.Parse(o.proxy)
 		if err != nil || u.Host == "" || !slices.Contains([]string{"http", "https", "socks5", "socks5h"}, u.Scheme) {
-			return nil, cli.Usagef("bad --proxy %q, use e.g. http://127.0.0.1:8080 or socks5://127.0.0.1:1080", o.proxy)
+			return nil, cli.Usagef("--proxy: %q isn't an http, https or socks5 proxy, e.g. http://127.0.0.1:8080 or socks5://127.0.0.1:1080", o.proxy)
 		}
 		p.proxy = u
 	}
@@ -297,20 +352,197 @@ func parse(args []string) (*plan, error) {
 		p.ua = fmt.Sprintf("rhythm-soundcheck/%s (+https://rythm.sh/soundcheck)", version)
 	}
 	if o.name != "" && !validName(o.name) {
-		return nil, cli.Usagef("--name %q: use letters, digits, dots, dashes and underscores", o.name)
+		return nil, cli.Usagef("--name: %q isn't a snapshot name; use letters, digits, dots, dashes and underscores", o.name)
 	}
 	p.storeDir = config.Dir
 	return p, nil
 }
 
+// Quick is what --quick checks: one viewport and the modules that find
+// what breaks, leaving out the screenshots, cache and timing passes.
+var (
+	quickModules   = []string{"health", "interact"}
+	quickViewports = []string{"desktop"}
+)
+
+// quickPreset applies --quick over the config file. --modules and
+// --viewport still win, so --quick --viewport mobile checks mobile only.
+// compare then keeps --quick's settings over the snapshot's.
+func (p *plan) quickPreset(set map[string]bool) {
+	if !p.o.quick {
+		return
+	}
+	var applied, kept []string
+	if set["viewport"] {
+		kept = append(kept, "--viewport")
+	} else {
+		p.cfg.Viewports = slices.Clone(quickViewports)
+		p.chosen.viewports = "--quick"
+		applied = append(applied, "viewport "+strings.Join(quickViewports, ", "))
+	}
+	if set["modules"] {
+		kept = append(kept, "--modules")
+	} else {
+		p.cfg.Modules = slices.Clone(quickModules)
+		p.chosen.modules = "--quick"
+		applied = append(applied, "modules "+strings.Join(quickModules, ", "))
+	}
+	switch {
+	case len(applied) == 0:
+		p.quick = "--quick: nothing, " + strings.Join(kept, " and ") + " set it all"
+	case len(kept) == 0:
+		p.quick = "--quick: " + strings.Join(applied, "; ")
+	default:
+		p.quick = "--quick: " + strings.Join(applied, "; ") + " (" + strings.Join(kept, " and ") + " kept)"
+	}
+}
+
+// output is one report file -o asked for.
+type output struct {
+	path, format string
+}
+
+// outputFormats reads the format flags and -o. A format flag alone writes
+// to stdout in place of the live view. Each -o file takes its format from
+// its extension, so one run can write JSON, Markdown, JUnit and HTML at
+// once; with a single -o a format flag may name the format instead, as
+// in --md -o check.md.
+func (p *plan) outputFormats() error {
+	o := &p.o
+	var chosen []string
+	for name, on := range map[string]bool{"json": o.json, "md": o.md, "junit": o.junit, "html": o.html} {
+		if on {
+			chosen = append(chosen, name)
+		}
+	}
+	slices.Sort(chosen)
+	switch {
+	case len(chosen) > 1:
+		return cli.Usagef("pick one output format, not --%s", strings.Join(chosen, " and --"))
+	case len(o.outputs) == 0:
+		if len(chosen) == 1 {
+			p.format = chosen[0]
+		}
+		return nil
+	case len(o.outputs) == 1 && len(chosen) == 1:
+		p.outputs = []output{{o.outputs[0], chosen[0]}}
+		return nil
+	case len(chosen) == 1:
+		return cli.Usagef("--%s with several -o: each file's format comes from its extension, so leave out --%[1]s", chosen[0])
+	}
+	seen := map[string]string{}
+	for _, path := range o.outputs {
+		f := formatFromExt(path)
+		switch {
+		case f == "" && len(o.outputs) == 1:
+			return cli.Usagef("can't tell the format of %s; add --json, --md, --junit or --html", path)
+		case f == "":
+			return cli.Usagef("can't tell the format of %s from its extension; use .json, .md, .xml or .html", path)
+		}
+		// Two -o naming one file would leave only the last format there.
+		key := filepath.Clean(path)
+		if abs, err := filepath.Abs(path); err == nil {
+			key = abs
+		}
+		if first, ok := seen[key]; ok {
+			return cli.Usagef("-o %s and -o %s are the same file", first, path)
+		}
+		seen[key] = path
+		p.outputs = append(p.outputs, output{path, f})
+	}
+	return nil
+}
+
+// trust reads --allow-env, --allow-host and --insecure-login into the
+// config: flags only, since the project folder is untrusted.
+func (p *plan) trust() error {
+	t := &p.cfg.Trust
+	for _, name := range p.o.allowEnv {
+		if name == "" || strings.ContainsAny(name, " =${}") {
+			return cli.Usagef("--allow-env: %q isn't an environment variable name", name)
+		}
+		t.AllowEnv = append(t.AllowEnv, name)
+	}
+	for _, h := range p.o.allowHosts {
+		key, err := config.ParseHost(h)
+		if err != nil {
+			return cli.Usagef("--allow-host: %v", err)
+		}
+		t.AllowHosts = append(t.AllowHosts, key)
+	}
+	t.InsecureLogin = p.o.insecureLogin
+	return nil
+}
+
+// notStrict refuses --strict outside compare with a snapshot.
+func (p *plan) notStrict() error {
+	if p.o.strict {
+		return cli.Usagef("--strict works with compare against a snapshot: it stops when the comparison wouldn't use the snapshot's settings")
+	}
+	return nil
+}
+
+// configHeaders adds the config file's headers, each read from the
+// environment variable it names. -H and --cookie win over them. The file
+// is untrusted, so it may name only variables a flow could read: SOUNDCHECK_*
+// ones, or ones --allow-env lets through.
+func (p *plan) configHeaders() error {
+	for _, name := range slices.Sorted(maps.Keys(p.cfg.Headers)) {
+		if hasHeader(p.headers, name) {
+			continue
+		}
+		env := p.cfg.Headers[name]
+		if !flow.EnvAllowed(env, p.cfg.Trust.AllowEnv) {
+			return cli.Usagef("%s: headers: %s reads %s; headers read only %s* variables unless you pass --allow-env %s",
+				p.configPath, name, env, flow.EnvPrefix, env)
+		}
+		// Empty counts as missing: CI fills in an unset secret with "".
+		v := os.Getenv(env)
+		if v == "" {
+			return cli.Usagef("%s: headers: %s reads %s, which isn't set", p.configPath, name, env)
+		}
+		p.headers[name] = v
+		p.envHeaders = append(p.envHeaders, name)
+	}
+	return nil
+}
+
+func hasHeader(h map[string]string, name string) bool {
+	for k := range h {
+		if strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // failOn validates --fail-on now that the command knows whether it
-// compares.
-func (p *plan) failOn(compared bool) error {
-	if p.o.failOn == "" {
+// compares. A fail_on from the config file that fits the other kind of
+// command (broke for a run, error for a compare) is left out with a note,
+// so one file can serve both.
+func (s *session) failOn(compared bool) error {
+	v := s.o.failOn
+	if v == "" {
 		return nil
 	}
-	if err := report.ValidFailOn(p.o.failOn, compared); err != nil {
-		return cli.UsageError{Msg: err.Error()}
+	if report.ValidFailOn(v, compared) == nil { // parse lowercased it
+		return nil
+	}
+	if s.failOnFrom == "" {
+		// parse checked it's a known value, so it's for the other kind
+		// of command.
+		if compared {
+			return cli.Usagef("--fail-on (fail_on): %q is for run and snapshot; a comparison takes broke, new, changed or slower", v)
+		}
+		return cli.Usagef("--fail-on (fail_on): %q is for comparisons; run and snapshot take error, warning or notice", v)
+	}
+	s.o.failOn = ""
+	if !s.o.quiet {
+		kind := "comparisons"
+		if compared {
+			kind = "run and snapshot"
+		}
+		fmt.Fprintf(s.stderr, "Note: fail_on: %s in %s is for %s, so it doesn't apply here\n", v, s.failOnFrom, kind)
 	}
 	return nil
 }
@@ -329,11 +561,119 @@ func looksLikeTarget(s string) bool {
 	return strings.Contains(s, ".") || strings.Contains(s, "://") || strings.HasPrefix(s, "localhost")
 }
 
-// flagName points config errors at the flag that sets the same value.
-func flagName(msg string) string {
-	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "echo.url:", "--echo (echo.url):", "viewports:", "--viewport (viewports):",
-		"pages.limit", "--limit (pages.limit)", "tabs must", "--tabs must", "timeout must", "--timeout must")
-	return r.Replace(msg)
+// settingFlags are the flags that set the same value as a config key.
+var settingFlags = map[string]string{
+	"modules": "--modules", "interactions.levels": "--level", "viewports": "--viewport", "pages.limit": "--limit",
+	"tabs": "--tabs", "timeout": "--timeout", "rate": "--rate", "echo.url": "--echo", "fail_on": "--fail-on",
+}
+
+// Go's flag package words its errors for its own single-dash style.
+var (
+	flagBadValue  = regexp.MustCompile(`^invalid (?:boolean )?value "(.*)" for (?:flag )?-([^:]+): (.*)$`)
+	flagUndefined = regexp.MustCompile(`^flag provided but not defined: -+(.+)$`)
+	flagNoValue   = regexp.MustCompile(`^flag needs an argument: -+(.+)$`)
+)
+
+// flagError rewords a flag parse error the way every other value error
+// reads: "--tabs (tabs): "abc" isn't a whole number" or "unknown flag
+// --modlues (did you mean --modules?)".
+func flagError(fs *flag.FlagSet, err error) error {
+	msg := err.Error()
+	if m := flagUndefined.FindStringSubmatch(msg); m != nil {
+		var names []string
+		fs.VisitAll(func(f *flag.Flag) {
+			if len(f.Name) > 1 {
+				names = append(names, f.Name)
+			}
+		})
+		hint := ""
+		if s := config.Suggest(m[1], names); s != "" {
+			hint = fmt.Sprintf(" (did you mean --%s?)", s)
+		}
+		return cli.Usagef("unknown flag %s%s", dashed(m[1]), hint)
+	}
+	if m := flagNoValue.FindStringSubmatch(msg); m != nil {
+		return cli.Usagef("%s needs a value", dashed(m[1]))
+	}
+	if m := flagBadValue.FindStringSubmatch(msg); m != nil {
+		value, name, why := m[1], m[2], m[3]
+		if why == "parse error" || strings.HasPrefix(why, "strconv.") {
+			why = fmt.Sprintf("%q isn't %s", value, valueKind(fs.Lookup(name)))
+		}
+		return cli.Usagef("%s: %s", flagLabel(name), why)
+	}
+	return cli.UsageError{Msg: msg}
+}
+
+// dashed writes a flag as it's typed: -o, --fail-on.
+func dashed(name string) string {
+	if len(name) == 1 {
+		return "-" + name
+	}
+	return "--" + name
+}
+
+// flagLabel names a flag for an error: its long name plus the config key
+// that sets the same value when there is one, "--tabs (tabs)".
+func flagLabel(name string) string {
+	if long, ok := shortFlags[name]; ok {
+		name = long
+	}
+	label := "--" + name
+	for key, f := range settingFlags {
+		if f == label {
+			return label + " (" + key + ")"
+		}
+	}
+	return label
+}
+
+// shortFlags are the one-letter flags and the long names they stand for.
+var shortFlags = map[string]string{"o": "output", "q": "quiet", "v": "verbose", "A": "user-agent", "H": "header", "k": "insecure"}
+
+// valueKind says what a flag takes, for "isn't a whole number".
+func valueKind(f *flag.Flag) string {
+	if f == nil {
+		return "a valid value"
+	}
+	g, ok := f.Value.(flag.Getter)
+	if !ok {
+		return "a valid value"
+	}
+	switch g.Get().(type) {
+	case int:
+		return "a whole number"
+	case float64:
+		return "a number"
+	case bool:
+		return "true or false"
+	}
+	return "a valid value"
+}
+
+// flagName points a config error at the flag that sets the same value,
+// "--level (interactions.levels): ...", when a flag could have caused it:
+// errors from the file itself already name the file and line.
+func flagName(err error) string {
+	var se *config.SettingError
+	if errors.As(err, &se) && se.File == "" {
+		if f, ok := settingFlags[se.Key]; ok {
+			return fmt.Sprintf("%s (%s): %s", f, se.Key, se.Msg)
+		}
+	}
+	return err.Error()
+}
+
+// secondsFlag is --timeout: a duration like 30s or 1m, or a number of
+// seconds as in the config file.
+type secondsFlag int
+
+func (f *secondsFlag) String() string { return strconv.Itoa(int(*f)) + "s" }
+
+func (f *secondsFlag) Set(v string) error {
+	n, err := config.ParseSeconds(v)
+	*f = secondsFlag(n)
+	return err
 }
 
 func formatFromExt(path string) string {

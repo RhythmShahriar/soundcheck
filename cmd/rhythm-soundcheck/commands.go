@@ -6,17 +6,20 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,12 +27,14 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	kitconfig "github.com/RhythmShahriar/rhythm/kit/config"
+	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/rhythm/kit/update"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/runner"
@@ -47,7 +52,7 @@ func command(fn func(*session) int, args []string, stdout, stderr io.Writer) int
 			usage(stdout)
 			return exitOK
 		}
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitUsage
 	}
 	s := p.begin(stdout, stderr)
@@ -66,18 +71,19 @@ type session struct {
 	st             store.Store
 	notice         <-chan string
 	echo           *echolink.Link // connected on the first check, when Echo is on
+	flowsChecked   bool           // checkFlows ran
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
 	s := &session{plan: p, stdout: stdout, stderr: stderr, st: store.Store{Root: p.storeDir}}
-	s.ctx, s.stop = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	s.ctx, s.stop = signal.NotifyContext(context.Background(), stopSignals...)
 	s.tty = cli.IsTerminal(stdout)
 	plain := p.o.plain || !s.tty
 	if plain || p.o.noColor {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 	// Machine output on stdout replaces the live view; with -o both show.
-	s.live = p.format == "" || p.o.output != ""
+	s.live = p.format == ""
 	out := stdout
 	if !s.live {
 		out = io.Discard
@@ -90,10 +96,10 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 
 func (s *session) fail(err error) int {
 	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: canceled")
+		fmt.Fprintln(s.stderr, prefix(), "canceled")
 		return exitCanceled
 	}
-	fmt.Fprintln(s.stderr, "rhythm soundcheck:", err)
+	fmt.Fprintln(s.stderr, prefix(), named(err.Error()))
 	var ue cli.UsageError
 	if errors.As(err, &ue) {
 		return exitUsage
@@ -101,8 +107,33 @@ func (s *session) fail(err error) int {
 	return exitError
 }
 
-// start prints the header and the one-time notice, and looks for a new
-// release in the background.
+// site returns the one site snapshot or run checks: the argument, or the
+// config file's site when there is none.
+func (s *session) site(cmd, example string) (string, error) {
+	switch {
+	case len(s.args) == 1:
+		return s.args[0], target(s.args[0])
+	case len(s.args) == 0 && s.cfg.Site != "":
+		s.siteFrom = s.configPath
+		return s.cfg.Site, nil // Validate checked it
+	}
+	return "", cli.Usagef("%[1]s needs one site\n  try: %[2]s %[1]s %[3]s", cmd, cmdName(), example)
+}
+
+// untrusted reports whether target is the config file's site on another
+// machine. Nothing from the environment goes there: a pull request could
+// point site at its own server and collect the test password, the
+// headers' secrets or what flows type.
+func (s *session) untrusted(target string) bool {
+	if s.siteFrom == "" {
+		return false
+	}
+	u, _, err := ratelimit.ParseTarget(target)
+	return err != nil || !config.IsLoopback(u.Hostname())
+}
+
+// start prints the header, the effective settings, the production guard
+// and the one-time notice, then looks for a new release in the background.
 func (s *session) start(target string) {
 	if kitconfig.FirstRun("soundcheck-authorised-use") && !s.o.quiet {
 		fmt.Fprint(s.stderr, "Note: check only sites you own or are authorised to test. Soundcheck browses\n"+
@@ -112,6 +143,39 @@ func (s *session) start(target string) {
 	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
+	if s.siteFrom != "" {
+		s.view.Step("Site", "from "+s.siteFrom+" (site)")
+	}
+	// What will run, after the config file, flags and (for compare) the
+	// snapshot had their say, so nothing is dropped silently.
+	if s.quick != "" {
+		s.view.Step("Preset", s.quick)
+	}
+	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
+	s.view.Step("Levels", levels(s.cfg))
+	s.view.Step("Viewports", strings.Join(s.cfg.Viewports, ", "))
+	s.view.Step("Production", production(s.cfg))
+}
+
+// levels describes the interaction levels for the run header.
+func levels(cfg config.Config) string {
+	switch {
+	case !cfg.Has("interact"):
+		return "none: the interact module is off"
+	case len(cfg.Interactions.Levels) == 0:
+		return "none"
+	}
+	return strings.Join(cfg.Interactions.Levels, ", ")
+}
+
+// production describes the production guard for the run header, so a
+// user can see an entry matched what they meant.
+func production(cfg config.Config) string {
+	sites := cfg.ProductionSites()
+	if len(sites) == 0 {
+		return "none listed: submit and flows run on any site"
+	}
+	return strings.Join(sites, ", ") + ": forms are not submitted there"
 }
 
 // connectEcho checks once that Echo is running, when it's on. Echo not
@@ -121,11 +185,7 @@ func (s *session) connectEcho() error {
 	if !s.cfg.Has("echo") || s.echo != nil {
 		return nil
 	}
-	token := ""
-	if s.cfg.Echo.TokenEnv != "" {
-		token = os.Getenv(s.cfg.Echo.TokenEnv)
-	}
-	link, err := echolink.Connect(s.ctx, s.cfg.Echo, token)
+	link, err := echolink.Connect(s.ctx, s.cfg.Echo, s.echoToken())
 	if err != nil {
 		if s.ctx.Err() != nil {
 			return s.ctx.Err()
@@ -141,12 +201,84 @@ func (s *session) connectEcho() error {
 	return nil
 }
 
+// checkFlows names the environment variables each flow will read (once,
+// before any runs) and refuses a flow that reads one it may not.
+// Unreadable flow files are left to the interact module, which reports
+// them as issues.
+func (s *session) checkFlows(target string, loggingIn bool) error {
+	if s.flowsChecked {
+		return nil
+	}
+	s.flowsChecked = true
+	var flows []flow.Flow
+	if s.cfg.Has("interact") && s.cfg.Level("flows") && s.cfg.Flows != "" {
+		flows, _ = flow.Load(s.cfg.Flows)
+	}
+	if loggingIn && s.cfg.Login.Flow != "" {
+		if f, err := flow.ReadFile(s.cfg.Login.Flow); err == nil {
+			flows = append(flows, f)
+		}
+	}
+	for _, f := range flows {
+		names := f.EnvNames()
+		if len(names) == 0 {
+			continue
+		}
+		s.view.Step("Flows", fmt.Sprintf("%q reads %s", f.Name, strings.Join(names, ", ")))
+		if s.untrusted(target) {
+			return cli.Usagef("%s: not letting it read %s on %s: the site came from %s (site); name it on the command line",
+				f.File, strings.Join(names, ", "), target, s.siteFrom)
+		}
+		if err := f.CheckEnv(s.cfg.Trust.AllowEnv); err != nil {
+			return cli.UsageError{Msg: fmt.Sprintf("%s: %v", f.File, err)}
+		}
+	}
+	return nil
+}
+
+// echoToken returns the token to send Echo. When the project's config
+// alone turned Echo on, it says so on stderr and keeps the token on this
+// machine: a committed echo.url must not be able to collect it.
+func (s *session) echoToken() string {
+	token := ""
+	if s.cfg.Echo.TokenEnv != "" {
+		token = os.Getenv(s.cfg.Echo.TokenEnv)
+	}
+	if s.echoFrom != "config" {
+		return token
+	}
+	fmt.Fprintf(s.stderr, "Echo turned on by %s (echo.url)\n", s.configPath)
+	if u, err := url.Parse(s.cfg.Echo.URL); token != "" && (err != nil || !config.IsLoopback(u.Hostname())) {
+		fmt.Fprintf(s.stderr, "%s not sending %s to %s: the address came from the config; pass --echo=%s to send it\n",
+			prefix(), s.cfg.Echo.TokenEnv, s.cfg.Echo.URL, s.cfg.Echo.URL)
+		return ""
+	}
+	return token
+}
+
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
+	login, who := loginFunc(s.cfg, s.o.noLogin)
+	if s.untrusted(target) {
+		if len(s.envHeaders) > 0 {
+			return nil, cli.Usagef("not sending the headers %s to %s: the site came from %s (site); name it on the command line to send them",
+				strings.Join(s.envHeaders, ", "), target, s.siteFrom)
+		}
+		if login != nil {
+			fmt.Fprintf(s.stderr, "%s not logging in to %s: the site came from %s (site); name it on the command line to log in\n",
+				prefix(), target, s.siteFrom)
+			login, who = nil, ""
+		}
+	}
+	if err := s.checkFlows(target, login != nil); err != nil {
+		return nil, err
+	}
 	if err := s.connectEcho(); err != nil {
 		return nil, err
 	}
-	login, who := loginFunc(s.cfg, s.o.noLogin)
+	if s.o.verbose {
+		s.view.Step("Browser", s.browserInfo())
+	}
 	if who != "" {
 		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
 	}
@@ -159,6 +291,9 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log},
 	}
 	run, err := runner.Run(s.ctx, opts)
+	if s.o.verbose && run != nil {
+		s.view.Step("Timing", timing(run))
+	}
 	// A snapshot runs Lighthouse once it's saved under its own name.
 	if run != nil && s.o.lighthouse && !snapshot && s.ctx.Err() == nil {
 		s.lighthouse(run.Target, dir)
@@ -166,53 +301,99 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	return run, err
 }
 
-// finish saves the HTML report, writes the chosen format, prints the
+// browserInfo names the browser a run will use, for -v. It never
+// downloads: the run itself does that and says so.
+func (s *session) browserInfo() string {
+	bin, downloaded, err := browser.Find(browser.Options{Bin: s.o.browser, NoDownload: true})
+	switch {
+	case err != nil && s.o.noDownload:
+		return "none found"
+	case err != nil:
+		return "none installed; Chromium is downloaded once, now"
+	case downloaded:
+		return bin + " (the Chromium Soundcheck downloaded)"
+	}
+	return bin
+}
+
+// timing sums up how long a run took and its slowest pages, for -v.
+func timing(run *model.Run) string {
+	ms := func(v float64) string {
+		return time.Duration(v * float64(time.Millisecond)).Round(10 * time.Millisecond).String()
+	}
+	line := fmt.Sprintf("%s in %s", plural(len(run.Pages), "page"), ms(run.Duration))
+	pages := slices.Clone(run.Pages)
+	slices.SortStableFunc(pages, func(a, b model.Page) int { return cmp.Compare(b.Duration, a.Duration) })
+	var slow []string
+	for _, p := range pages[:min(3, len(pages))] {
+		slow = append(slow, p.Path+" "+ms(p.Duration))
+	}
+	if len(slow) > 0 {
+		line += "; slowest " + strings.Join(slow, ", ")
+	}
+	return line
+}
+
+// render writes res in one output format.
+func (s *session) render(w io.Writer, res report.Result, format string) error {
+	switch format {
+	case "json":
+		return report.JSON(w, res)
+	case "md":
+		return report.Markdown(w, res)
+	case "junit":
+		return report.JUnit(w, res, s.o.failOn)
+	}
+	return report.HTML(w, res)
+}
+
+// finish saves the HTML report, writes the chosen formats, prints the
 // summary and picks the exit code.
 func (s *session) finish(res report.Result, hint string) int {
 	html := filepath.Join(res.Dir, "report.html")
 	if err := writeFile(html, func(w io.Writer) error { return report.HTML(w, res) }); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: writing the HTML report:", err)
+		fmt.Fprintln(s.stderr, prefix(), "writing the HTML report:", err)
 		html = ""
 	}
 	if s.format != "" {
-		write := func(w io.Writer) error {
-			switch s.format {
-			case "json":
-				return report.JSON(w, res)
-			case "md":
-				return report.Markdown(w, res)
-			case "junit":
-				return report.JUnit(w, res, s.o.failOn)
-			}
-			return report.HTML(w, res)
-		}
-		var err error
-		if s.o.output != "" {
-			err = writeFile(s.o.output, write)
-		} else {
-			err = write(s.stdout)
-		}
-		if err != nil {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: writing the report:", err)
+		if err := s.render(s.stdout, res, s.format); err != nil {
+			fmt.Fprintln(s.stderr, prefix(), "writing the report:", err)
 			return exitError
 		}
 	}
-	open := html
-	if s.format == "html" && s.o.output != "" {
-		open = s.o.output
+	// Every file is attempted, so one bad path doesn't lose the others.
+	var written []string
+	for _, out := range s.outputs {
+		if err := writeFile(out.path, func(w io.Writer) error { return s.render(w, res, out.format) }); err != nil {
+			fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), out.path, err)
+			continue
+		}
+		written = append(written, out.path)
 	}
-	if hint == "" && open != "" {
+	open := html
+	for _, out := range s.outputs {
+		if out.format == "html" && slices.Contains(written, out.path) {
+			open = out.path
+			break
+		}
+	}
+	if hint == "" && open != "" && !s.noReportHint {
 		hint = "full report: " + rel(open)
 	}
 	if s.live {
 		s.view.Summary(res, hint)
 	}
-	if s.o.output != "" && !s.o.quiet {
-		fmt.Fprintf(s.stderr, "Report written to %s\n", s.o.output)
+	if !s.o.quiet {
+		for _, path := range written {
+			fmt.Fprintf(s.stderr, "Report written to %s\n", path)
+		}
+	}
+	if tip := s.failOnTip(res); tip != "" {
+		fmt.Fprintln(s.stderr, faint.Render(tip))
 	}
 	if s.o.open && open != "" {
 		if err := openFile(open); err != nil {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: opening the report:", err, "\n  open it yourself:", open)
+			fmt.Fprintln(s.stderr, prefix(), "opening the report:", err, "\n  open it yourself:", open)
 		}
 	}
 	if s.notice != nil && s.live && !s.o.quiet {
@@ -225,8 +406,11 @@ func (s *session) finish(res report.Result, hint string) int {
 		}
 	}
 	if s.ctx.Err() != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: canceled; results are partial")
+		fmt.Fprintln(s.stderr, prefix(), "canceled; results are partial")
 		return exitCanceled
+	}
+	if len(written) < len(s.outputs) {
+		return exitError
 	}
 	if report.FailOn(res, s.o.failOn) {
 		return exitFindings
@@ -234,11 +418,47 @@ func (s *session) finish(res report.Result, hint string) int {
 	return exitOK
 }
 
-func cmdSnapshot(s *session) int {
-	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("snapshot needs one site\n  try: rhythm soundcheck snapshot staging.example.com"))
+var faint = lipgloss.NewStyle().Faint(true)
+
+// failOnTip teaches the CI path after a comparison that found something
+// to fix: without --fail-on it still exits 0, which a script reads as
+// fine. It stays quiet with -q, when machine output owns stdout and when
+// --fail-on or fail_on was given, even as none.
+func (s *session) failOnTip(res report.Result) string {
+	if !res.Compared() || s.failOnSet || s.o.quiet || !s.live {
+		return ""
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false)); err != nil {
+	class := model.Broke
+	switch {
+	case res.Comparison.Count(model.Broke) > 0:
+	case res.Comparison.Count(model.New) > 0:
+		class = model.New // --fail-on broke wouldn't catch it
+	default:
+		return ""
+	}
+	return fmt.Sprintf("tip: add --fail-on %s to make this exit 1 in scripts", class)
+}
+
+// discard removes the folder of a check that saved nothing, and the
+// folders above it up to the store that it left empty, so a site that
+// couldn't be checked leaves no .soundcheck behind. os.Remove takes only
+// empty folders, so stored runs and snapshots stay.
+func (s *session) discard(dir string) {
+	_ = os.RemoveAll(dir) //nolint:gosec // a folder this command made in the store
+	root := filepath.Clean(s.st.Root)
+	for p := filepath.Dir(dir); strings.HasPrefix(p, root); p = filepath.Dir(p) {
+		if os.Remove(p) != nil || p == root { //nolint:gosec // a parent of that folder, inside the store
+			return
+		}
+	}
+}
+
+func cmdSnapshot(s *session) int {
+	site, err := s.site("snapshot", "staging.example.com")
+	if err != nil {
+		return s.fail(err)
+	}
+	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	name := cmp.Or(s.o.name, store.Stamp(time.Now()))
@@ -246,13 +466,13 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	defer func() { _ = os.RemoveAll(dir) }() //nolint:gosec // our own incoming folder; gone once promoted, cleans up a failed snapshot
-	s.start(s.args[0])
+	defer s.discard(dir) // gone once promoted; cleans up a failed snapshot
+	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q", name))
-	run, err := s.check(s.args[0], nil, true, name, dir)
+	run, err := s.check(site, nil, true, name, dir)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: snapshot canceled; nothing was saved")
+			fmt.Fprintln(s.stderr, prefix(), "snapshot canceled; nothing was saved")
 			return exitCanceled
 		}
 		return s.fail(err)
@@ -273,7 +493,7 @@ func cmdSnapshot(s *session) int {
 		s.lighthouse(run.Target, final)
 	}
 	return s.finish(report.Result{Run: run, Dir: final},
-		"next: make your change (update a plugin, deploy…), then run: rhythm soundcheck compare")
+		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
 }
 
 func cmdCompare(s *session) int {
@@ -301,12 +521,25 @@ func cmdCompare(s *session) int {
 		}
 		site = s.args[0]
 	}
+	changes := inherit(&s.cfg, before.Options, s.chosen, s.o.skip)
+	if len(s.cfg.Modules) == 0 {
+		return s.fail(cli.Usagef("no modules left to run: the snapshot ran %s", list(before.Options.Modules)))
+	}
+	if s.o.strict && len(changes) > 0 {
+		return s.fail(cli.Usagef("--strict: this comparison wouldn't use snapshot %q's settings: %s", before.Name, joinChanges(changes)))
+	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
 	if err != nil {
 		return s.fail(err)
 	}
 	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q, %s, taken %s", before.Name, plural(len(before.Pages), "page"), report.Ago(before.Started)))
+	if len(before.Options.Modules)+len(before.Options.Levels)+len(before.Options.Viewports) > 0 {
+		s.view.Step("Settings", snapshotSettings(before.Name, before.Options))
+	}
+	if len(changes) > 0 {
+		s.view.Step("You changed", joinChanges(changes))
+	}
 	return s.compareWith(before, snapDir, site, dir)
 }
 
@@ -314,12 +547,12 @@ func cmdCompare(s *session) int {
 // and plays the snapshot's part.
 func cmdAgainst(s *session) int {
 	if s.o.against == "" {
-		return s.fail(cli.Usagef("to check a site once: rhythm soundcheck run %s\n  to compare two sites: rhythm soundcheck <url> --against <url>", strings.Join(s.args, " ")))
+		return s.fail(cli.Usagef("to check a site once: %[1]s run %[2]s\n  to compare two sites: %[1]s <url> --against <url>", cmdName(), strings.Join(s.args, " ")))
 	}
 	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("--against compares one site with another: rhythm soundcheck staging.example.com --against example.com"))
+		return s.fail(cli.Usagef("--against compares one site with another: %s staging.example.com --against example.com", cmdName()))
 	}
-	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true)); err != nil {
+	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -331,6 +564,7 @@ func cmdAgainst(s *session) int {
 	s.view.Step("Against", s.o.against)
 	before, err := s.check(s.o.against, nil, true, "", beforeDir)
 	if err != nil {
+		s.discard(dir)
 		return s.fail(fmt.Errorf("%s: %w", s.o.against, err))
 	}
 	if err := store.SaveRun(beforeDir, before); err != nil {
@@ -348,6 +582,7 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	after, err := s.check(site, paths, false, "", dir)
 	if err != nil && after == nil {
+		s.discard(dir)
 		return s.fail(err)
 	}
 	if err := store.SaveRun(dir, after); err != nil {
@@ -361,25 +596,27 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	s.st.ExcludeFromGit()
 	if err := s.st.Prune(keepRuns); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: pruning old runs:", err)
+		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
 	return s.finish(report.Result{Run: after, Comparison: c, Dir: dir}, "")
 }
 
 func cmdRun(s *session) int {
-	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("run needs one site\n  try: rhythm soundcheck run example.test"))
+	site, err := s.site("run", "example.test")
+	if err != nil {
+		return s.fail(err)
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false)); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
 	if err != nil {
 		return s.fail(err)
 	}
-	s.start(s.args[0])
-	run, err := s.check(s.args[0], nil, false, "", dir)
+	s.start(site)
+	run, err := s.check(site, nil, false, "", dir)
 	if err != nil && run == nil {
+		s.discard(dir)
 		return s.fail(err)
 	}
 	if err := store.SaveRun(dir, run); err != nil {
@@ -387,7 +624,7 @@ func cmdRun(s *session) int {
 	}
 	s.st.ExcludeFromGit()
 	if err := s.st.Prune(keepRuns); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: pruning old runs:", err)
+		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
 	return s.finish(report.Result{Run: run, Dir: dir}, "")
 }
@@ -406,10 +643,16 @@ func cmdReport(s *session) int {
 			err = cli.UsageError{Msg: err.Error()}
 		}
 	default:
+		// Naming something that isn't there is a usage error (2), like no
+		// argument with nothing stored: CI reads 3 as "the site is down".
+		// A run.json that can't be read stays 3.
 		if fi, statErr := os.Stat(s.args[0]); statErr == nil && fi.IsDir() { //nolint:gosec // the user names a run folder to show
 			dir = s.args[0]
-		} else {
-			dir, err = s.st.Snapshot(s.args[0])
+			if _, statErr := os.Stat(filepath.Join(dir, "run.json")); errors.Is(statErr, fs.ErrNotExist) { //nolint:gosec // as above
+				err = cli.Usagef("no run in %s; name a run folder or a snapshot (see %s snapshots)", dir, cmdName())
+			}
+		} else if dir, err = s.st.Snapshot(s.args[0]); err != nil {
+			err = cli.UsageError{Msg: err.Error()} // not found, or not a valid name
 		}
 	}
 	if err != nil {
@@ -436,27 +679,35 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 2 && (args[0] == "delete" || args[0] == "rm") {
 		dir, err := st.Snapshot(args[1])
 		if err != nil {
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitUsage
 		}
 		if err := os.RemoveAll(dir); err != nil { //nolint:gosec // st.Snapshot validated the name
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
 		return exitOK
 	}
-	if len(args) > 0 {
-		fmt.Fprintln(stderr, "rhythm soundcheck: usage: rhythm soundcheck snapshots [delete <name>]")
+	asJSON := len(args) == 1 && (args[0] == "--json" || args[0] == "-json")
+	if len(args) > 0 && !asJSON {
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "snapshots [--json | delete <name>]")
 		return exitUsage
 	}
 	names, err := st.Snapshots()
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
+	if asJSON {
+		if err := snapshotsJSON(stdout, st, names); err != nil {
+			fmt.Fprintln(stderr, prefix(), err)
+			return exitError
+		}
+		return exitOK
+	}
 	if len(names) == 0 {
-		fmt.Fprintln(stdout, "No snapshots yet. Take one: rhythm soundcheck snapshot <url>")
+		fmt.Fprintln(stdout, "No snapshots yet. Take one:", cmdName(), "snapshot <url>")
 		return exitOK
 	}
 	latest, _ := st.Snapshot("")
@@ -477,6 +728,37 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// snapshotEntry is one snapshot in `snapshots --json`.
+type snapshotEntry struct {
+	Name    string `json:"name"`
+	Created string `json:"created,omitempty"` // UTC, RFC 3339
+	Site    string `json:"site,omitempty"`
+	Pages   int    `json:"pages"`
+	Version string `json:"version,omitempty"` // the Soundcheck that took it
+	Latest  bool   `json:"latest"`            // what compare uses by default
+	Error   string `json:"error,omitempty"`   // run.json couldn't be read
+}
+
+// snapshotsJSON prints the snapshots as a JSON array, oldest first, for
+// scripts: [] when there are none, never null.
+func snapshotsJSON(w io.Writer, st store.Store, names []string) error {
+	latest, _ := st.Snapshot("")
+	out := make([]snapshotEntry, 0, len(names))
+	for _, n := range names {
+		dir := filepath.Join(st.Root, "snapshots", n)
+		e := snapshotEntry{Name: n, Latest: dir == latest}
+		if r, err := store.LoadRun(dir); err != nil {
+			e.Error = err.Error()
+		} else {
+			e.Created, e.Site, e.Pages, e.Version = r.Started.UTC().Format(time.RFC3339), r.Target, len(r.Pages), r.Version
+		}
+		out = append(out, e)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
 // cmdUpdate installs the browser if needed, removes older downloaded
 // revisions, or with --clear deletes the download. `rhythm update` runs
 // it after updating the binary.
@@ -489,12 +771,12 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	}
 	dir, err := browser.DownloadDir()
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if *clear {
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Cleared", dir)
@@ -502,7 +784,7 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	}
 	bin, downloaded, err := browser.Find(browser.Options{Log: func(m string) { fmt.Fprintln(stdout, m) }})
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	removed, err := browser.Prune(!downloaded)
@@ -510,7 +792,7 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Removed unused Chromium", r)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 	}
 	if !downloaded {
 		fmt.Fprintln(stdout, "Browser: installed Chrome at", bin, "(updated with your system)")
