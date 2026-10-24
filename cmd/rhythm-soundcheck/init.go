@@ -54,7 +54,7 @@ login:
   flow: ""              # or a flow file that logs in, for other sites
 # Credentials come only from SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
 
-flows: .soundcheck/flows  # folder of YAML flows (rhythm soundcheck flows init)
+flows: .soundcheck/flows  # folder of YAML flows (the flows init command writes one)
 
 speed:
   slower: 25            # % slower before a page is reported SLOWER
@@ -83,18 +83,18 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 	}
 	path := filepath.Join(config.Dir, "config.yaml")
 	if _, err := os.Stat(path); err == nil && !*force {
-		fmt.Fprintf(stderr, "rhythm soundcheck: %s already exists (--force replaces it)\n", path)
+		fmt.Fprintf(stderr, "%s %s already exists (--force replaces it)\n", prefix(), path)
 		return exitUsage
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if err := os.MkdirAll(config.Dir, 0o750); err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if err := os.WriteFile(path, []byte(configTemplate), 0o644); err != nil { //nolint:gosec // a project file meant to be committed
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	store.Store{Root: config.Dir}.ExcludeFromGit()

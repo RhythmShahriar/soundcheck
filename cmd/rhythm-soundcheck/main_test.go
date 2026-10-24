@@ -25,6 +25,9 @@ func init() {
 	// No update checks or first-run notices from tests.
 	os.Setenv("RHYTHM_NO_UPDATE_CHECK", "1")
 	version = "1.0.0-test"
+	// The test binary is rhythm-soundcheck.test; name it as installed.
+	argv0 = "rhythm-soundcheck"
+	os.Unsetenv(invokedAs)
 }
 
 func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
@@ -42,7 +45,7 @@ func TestVersionAndHelp(t *testing.T) {
 		}
 	}
 	code, out, _ := runCLI(t, "--help")
-	if code != exitOK || !strings.Contains(out, "rhythm soundcheck snapshot <url>") {
+	if code != exitOK || !strings.Contains(out, "rhythm-soundcheck snapshot <url>") {
 		t.Errorf("help: %d", code)
 	}
 	if code, _, _ := runCLI(t, "frobnicate"); code != exitUsage {

@@ -62,14 +62,16 @@ irm https://rythm.sh/install.ps1 | iex
 go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 ```
 
+`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI.
+
 Soundcheck drives a real browser. It uses Chrome or Chromium if you have one, and otherwise downloads Chromium once, on first use, into your cache folder. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
 ## Check a change
 
 ```sh
-rhythm soundcheck snapshot staging.yoursite.com   # before: record how every page works
+rhythm-soundcheck snapshot staging.yoursite.com   # before: record how every page works
 # …update plugins, switch PHP, deploy…
-rhythm soundcheck compare --open                  # after: what changed, in a report
+rhythm-soundcheck compare --open                  # after: what changed, in a report
 ```
 
 Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, screenshots, and stores it all in `./.soundcheck`. `compare` checks the same pages again, with the snapshot's modules, levels and viewports unless you set others, and shows **only what's different**, most serious first:
@@ -86,12 +88,12 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 
 | You want to… | Run |
 |---|---|
-| Compare staging with production right now | `rhythm soundcheck staging.site.com --against site.com` |
-| Check a site once, no snapshot | `rhythm soundcheck run site.test` |
-| Test that forms still send (staging only) | `rhythm soundcheck snapshot staging.site.com --level inspect,click,submit` |
-| Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm soundcheck snapshot …` |
-| A report for the pull request | `rhythm soundcheck compare --md -o soundcheck.md` |
-| Fail CI when something broke | `rhythm soundcheck compare --fail-on broke` |
+| Compare staging with production right now | `rhythm-soundcheck staging.site.com --against site.com` |
+| Check a site once, no snapshot | `rhythm-soundcheck run site.test` |
+| Test that forms still send (staging only) | `rhythm-soundcheck snapshot staging.site.com --level inspect,click,submit` |
+| Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm-soundcheck snapshot …` |
+| A report for the pull request | `rhythm-soundcheck compare --md -o soundcheck.md` |
+| Fail CI when something broke | `rhythm-soundcheck compare --fail-on broke` |
 
 Every flag is in the [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference).
 

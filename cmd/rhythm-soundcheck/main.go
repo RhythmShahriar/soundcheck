@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-// rhythm-soundcheck is the Soundcheck binary, normally run as
-// `rhythm soundcheck`.
+// rhythm-soundcheck is the Soundcheck binary. It runs on its own, or as
+// `rhythm soundcheck` through the rhythm CLI.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/go-rod/rod/lib/defaults"
@@ -73,14 +74,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || looksLikeTarget(args[0]) {
 		return command(cmdAgainst, args, stdout, stderr)
 	}
-	fmt.Fprintf(stderr, "rhythm soundcheck: unknown command %q\n\n", args[0])
+	fmt.Fprintf(stderr, "%s unknown command %q\n\n", prefix(), args[0])
 	usage(stderr)
 	return exitUsage
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, kit.Banner("rhythm soundcheck", version))
-	fmt.Fprint(w, `Did my change break anything? Check your whole site before and after a
+	name := cmdName()
+	fmt.Fprintln(w, kit.Banner(name, version))
+	// help says "rhythm soundcheck" where the command goes; every such
+	// line starts with it, so the columns stay lined up for any name.
+	fmt.Fprint(w, strings.ReplaceAll(help, "rhythm soundcheck", name))
+}
+
+// help is the usage text.
+const help = `Did my change break anything? Check your whole site before and after a
 plugin update, theme change, PHP upgrade or deploy.
 
 Usage:
@@ -189,5 +197,4 @@ Examples:
   rhythm soundcheck staging.example.com --against example.com --fail-on broke
   rhythm soundcheck run example.test -k --level inspect,click,submit --md -o check.md
   rhythm soundcheck snapshot staging.shop.test --level inspect,click,submit --echo
-`)
-}
+`

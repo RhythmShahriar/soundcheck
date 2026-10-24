@@ -65,7 +65,7 @@ func pick(stdout, stderr io.Writer) int {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return exitCanceled
 		}
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	args := []string{action}

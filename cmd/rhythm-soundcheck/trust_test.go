@@ -95,7 +95,7 @@ func TestEchoToken(t *testing.T) {
 		{"config", "http://127.0.0.1:8025", "tok-123", "Echo turned on by .soundcheck/config.yaml (echo.url)\n"},
 		{"config", "http://localhost:8025", "tok-123", "Echo turned on by .soundcheck/config.yaml (echo.url)\n"},
 		{"config", "http://10.0.0.5:8025", "", "Echo turned on by .soundcheck/config.yaml (echo.url)\n" +
-			"rhythm soundcheck: not sending RHYTHM_ECHO_TOKEN to http://10.0.0.5:8025: the address came from the config; pass --echo=http://10.0.0.5:8025 to send it\n"},
+			"rhythm-soundcheck: not sending RHYTHM_ECHO_TOKEN to http://10.0.0.5:8025: the address came from the config; pass --echo=http://10.0.0.5:8025 to send it\n"},
 	} {
 		var errb bytes.Buffer
 		cfg := config.Default()

@@ -49,7 +49,7 @@ func command(fn func(*session) int, args []string, stdout, stderr io.Writer) int
 			usage(stdout)
 			return exitOK
 		}
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitUsage
 	}
 	s := p.begin(stdout, stderr)
@@ -93,10 +93,10 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 
 func (s *session) fail(err error) int {
 	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: canceled")
+		fmt.Fprintln(s.stderr, prefix(), "canceled")
 		return exitCanceled
 	}
-	fmt.Fprintln(s.stderr, "rhythm soundcheck:", err)
+	fmt.Fprintln(s.stderr, prefix(), named(err.Error()))
 	var ue cli.UsageError
 	if errors.As(err, &ue) {
 		return exitUsage
@@ -195,8 +195,8 @@ func (s *session) echoToken() string {
 	}
 	fmt.Fprintf(s.stderr, "Echo turned on by %s (echo.url)\n", s.configPath)
 	if u, err := url.Parse(s.cfg.Echo.URL); token != "" && (err != nil || !config.IsLoopback(u.Hostname())) {
-		fmt.Fprintf(s.stderr, "rhythm soundcheck: not sending %s to %s: the address came from the config; pass --echo=%s to send it\n",
-			s.cfg.Echo.TokenEnv, s.cfg.Echo.URL, s.cfg.Echo.URL)
+		fmt.Fprintf(s.stderr, "%s not sending %s to %s: the address came from the config; pass --echo=%s to send it\n",
+			prefix(), s.cfg.Echo.TokenEnv, s.cfg.Echo.URL, s.cfg.Echo.URL)
 		return ""
 	}
 	return token
@@ -235,7 +235,7 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 func (s *session) finish(res report.Result, hint string) int {
 	html := filepath.Join(res.Dir, "report.html")
 	if err := writeFile(html, func(w io.Writer) error { return report.HTML(w, res) }); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: writing the HTML report:", err)
+		fmt.Fprintln(s.stderr, prefix(), "writing the HTML report:", err)
 		html = ""
 	}
 	if s.format != "" {
@@ -257,7 +257,7 @@ func (s *session) finish(res report.Result, hint string) int {
 			err = write(s.stdout)
 		}
 		if err != nil {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: writing the report:", err)
+			fmt.Fprintln(s.stderr, prefix(), "writing the report:", err)
 			return exitError
 		}
 	}
@@ -276,7 +276,7 @@ func (s *session) finish(res report.Result, hint string) int {
 	}
 	if s.o.open && open != "" {
 		if err := openFile(open); err != nil {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: opening the report:", err, "\n  open it yourself:", open)
+			fmt.Fprintln(s.stderr, prefix(), "opening the report:", err, "\n  open it yourself:", open)
 		}
 	}
 	if s.notice != nil && s.live && !s.o.quiet {
@@ -289,7 +289,7 @@ func (s *session) finish(res report.Result, hint string) int {
 		}
 	}
 	if s.ctx.Err() != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: canceled; results are partial")
+		fmt.Fprintln(s.stderr, prefix(), "canceled; results are partial")
 		return exitCanceled
 	}
 	if report.FailOn(res, s.o.failOn) {
@@ -300,7 +300,7 @@ func (s *session) finish(res report.Result, hint string) int {
 
 func cmdSnapshot(s *session) int {
 	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("snapshot needs one site\n  try: rhythm soundcheck snapshot staging.example.com"))
+		return s.fail(cli.Usagef("snapshot needs one site\n  try: %s snapshot staging.example.com", cmdName()))
 	}
 	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
@@ -316,7 +316,7 @@ func cmdSnapshot(s *session) int {
 	run, err := s.check(s.args[0], nil, true, name, dir)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			fmt.Fprintln(s.stderr, "rhythm soundcheck: snapshot canceled; nothing was saved")
+			fmt.Fprintln(s.stderr, prefix(), "snapshot canceled; nothing was saved")
 			return exitCanceled
 		}
 		return s.fail(err)
@@ -337,7 +337,7 @@ func cmdSnapshot(s *session) int {
 		s.lighthouse(run.Target, final)
 	}
 	return s.finish(report.Result{Run: run, Dir: final},
-		"next: make your change (update a plugin, deploy…), then run: rhythm soundcheck compare")
+		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
 }
 
 func cmdCompare(s *session) int {
@@ -391,10 +391,10 @@ func cmdCompare(s *session) int {
 // and plays the snapshot's part.
 func cmdAgainst(s *session) int {
 	if s.o.against == "" {
-		return s.fail(cli.Usagef("to check a site once: rhythm soundcheck run %s\n  to compare two sites: rhythm soundcheck <url> --against <url>", strings.Join(s.args, " ")))
+		return s.fail(cli.Usagef("to check a site once: %[1]s run %[2]s\n  to compare two sites: %[1]s <url> --against <url>", cmdName(), strings.Join(s.args, " ")))
 	}
 	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("--against compares one site with another: rhythm soundcheck staging.example.com --against example.com"))
+		return s.fail(cli.Usagef("--against compares one site with another: %s staging.example.com --against example.com", cmdName()))
 	}
 	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict()); err != nil {
 		return s.fail(err)
@@ -438,14 +438,14 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	s.st.ExcludeFromGit()
 	if err := s.st.Prune(keepRuns); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: pruning old runs:", err)
+		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
 	return s.finish(report.Result{Run: after, Comparison: c, Dir: dir}, "")
 }
 
 func cmdRun(s *session) int {
 	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("run needs one site\n  try: rhythm soundcheck run example.test"))
+		return s.fail(cli.Usagef("run needs one site\n  try: %s run example.test", cmdName()))
 	}
 	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
@@ -464,7 +464,7 @@ func cmdRun(s *session) int {
 	}
 	s.st.ExcludeFromGit()
 	if err := s.st.Prune(keepRuns); err != nil {
-		fmt.Fprintln(s.stderr, "rhythm soundcheck: pruning old runs:", err)
+		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
 	return s.finish(report.Result{Run: run, Dir: dir}, "")
 }
@@ -489,7 +489,7 @@ func cmdReport(s *session) int {
 		if fi, statErr := os.Stat(s.args[0]); statErr == nil && fi.IsDir() { //nolint:gosec // the user names a run folder to show
 			dir = s.args[0]
 			if _, statErr := os.Stat(filepath.Join(dir, "run.json")); errors.Is(statErr, fs.ErrNotExist) { //nolint:gosec // as above
-				err = cli.Usagef("no run in %s; name a run folder or a snapshot (see rhythm soundcheck snapshots)", dir)
+				err = cli.Usagef("no run in %s; name a run folder or a snapshot (see %s snapshots)", dir, cmdName())
 			}
 		} else if dir, err = s.st.Snapshot(s.args[0]); err != nil {
 			err = cli.UsageError{Msg: err.Error()} // not found, or not a valid name
@@ -519,27 +519,27 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 2 && (args[0] == "delete" || args[0] == "rm") {
 		dir, err := st.Snapshot(args[1])
 		if err != nil {
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitUsage
 		}
 		if err := os.RemoveAll(dir); err != nil { //nolint:gosec // st.Snapshot validated the name
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
 		return exitOK
 	}
 	if len(args) > 0 {
-		fmt.Fprintln(stderr, "rhythm soundcheck: usage: rhythm soundcheck snapshots [delete <name>]")
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "snapshots [delete <name>]")
 		return exitUsage
 	}
 	names, err := st.Snapshots()
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if len(names) == 0 {
-		fmt.Fprintln(stdout, "No snapshots yet. Take one: rhythm soundcheck snapshot <url>")
+		fmt.Fprintln(stdout, "No snapshots yet. Take one:", cmdName(), "snapshot <url>")
 		return exitOK
 	}
 	latest, _ := st.Snapshot("")
@@ -572,12 +572,12 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	}
 	dir, err := browser.DownloadDir()
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	if *clear {
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Cleared", dir)
@@ -585,7 +585,7 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	}
 	bin, downloaded, err := browser.Find(browser.Options{Log: func(m string) { fmt.Fprintln(stdout, m) }})
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	removed, err := browser.Prune(!downloaded)
@@ -593,7 +593,7 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Removed unused Chromium", r)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "rhythm soundcheck:", err)
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 	}
 	if !downloaded {
 		fmt.Fprintln(stdout, "Browser: installed Chrome at", bin, "(updated with your system)")
