@@ -45,8 +45,9 @@ interactions:
   forms: []                 # forms that may be submitted on production sites, by CSS selector
 
 # Live sites. Form submits are refused on these unless the form is in
-# interactions.forms. URL prefixes:
-production: []          # e.g. ["https://example.com"]
+# interactions.forms. A host covers http and https, www and any port;
+# *.example.com covers subdomains, example.com/shop only that path.
+production: []          # e.g. ["example.com", "*.example.com"]
 
 login:
   url: ""               # login page; default /wp-login.php on WordPress

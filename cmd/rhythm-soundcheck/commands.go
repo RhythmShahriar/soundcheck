@@ -101,8 +101,8 @@ func (s *session) fail(err error) int {
 	return exitError
 }
 
-// start prints the header and the one-time notice, and looks for a new
-// release in the background.
+// start prints the header, the production guard and the one-time notice,
+// and looks for a new release in the background.
 func (s *session) start(target string) {
 	if kitconfig.FirstRun("soundcheck-authorised-use") && !s.o.quiet {
 		fmt.Fprint(s.stderr, "Note: check only sites you own or are authorised to test. Soundcheck browses\n"+
@@ -112,6 +112,17 @@ func (s *session) start(target string) {
 	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
+	s.view.Step("Production", production(s.cfg))
+}
+
+// production describes the production guard for the run header, so a
+// user can see an entry matched what they meant.
+func production(cfg config.Config) string {
+	sites := cfg.ProductionSites()
+	if len(sites) == 0 {
+		return "none listed: submit and flows run on any site"
+	}
+	return strings.Join(sites, ", ") + ": forms are not submitted there"
 }
 
 // connectEcho checks once that Echo is running, when it's on. Echo not

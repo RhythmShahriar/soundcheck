@@ -385,3 +385,26 @@ func TestFlagNameEcho(t *testing.T) {
 		t.Errorf("echo.url error not pointed at --echo: %q", got)
 	}
 }
+
+func TestProductionHeader(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	// A dead Echo stops the run right after the header, before any browsing.
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	_, out, _ := runCLI(t, "run", "127.0.0.1:20260", "--echo="+dead.URL, "--plain")
+	if !strings.Contains(out, "Production: none listed: submit and flows run on any site\n") {
+		t.Errorf("no production sites:\n%s", out)
+	}
+	_ = os.MkdirAll(".soundcheck", 0o755)
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("production: ['https://WWW.Example.com.:443/', '*.shop.test']\n"), 0o600)
+	_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--echo="+dead.URL, "--plain")
+	if !strings.Contains(out, "Production: example.com, *.shop.test: forms are not submitted there\n") {
+		t.Errorf("production sites:\n%s", out)
+	}
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("production: ['http://']\n"), 0o600)
+	code, _, errOut := runCLI(t, "run", "127.0.0.1:20260")
+	if code != exitUsage || !strings.Contains(errOut, `production: "http://" isn't a site`) {
+		t.Errorf("bad entry: exit %d, %q", code, errOut)
+	}
+}

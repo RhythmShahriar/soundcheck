@@ -42,7 +42,7 @@ type Config struct {
 	Modules      []string     `yaml:"modules"`
 	Visual       Visual       `yaml:"visual"`
 	Interactions Interactions `yaml:"interactions"`
-	Production   []string     `yaml:"production"` // URLs (prefixes) that are live sites: form submits refuse them
+	Production   []string     `yaml:"production"` // live sites (hosts, *.hosts or URLs with a path): form submits refuse them
 	Login        Login        `yaml:"login"`
 	Flows        string       `yaml:"flows"` // folder of YAML flows, relative to the project
 	Speed        Speed        `yaml:"speed"`
@@ -50,6 +50,11 @@ type Config struct {
 	Tabs         int          `yaml:"tabs"`
 	Timeout      int          `yaml:"timeout"` // seconds per page
 	Echo         Echo         `yaml:"echo"`
+
+	// prod is Production as Validate parsed it and prodFrom the entries
+	// it parsed, so IsProduction can tell when Production changed since.
+	prod     []prodSite
+	prodFrom []string
 }
 
 type Pages struct {
@@ -124,11 +129,14 @@ func Load(path string) (Config, error) {
 	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) { // EOF: an empty file
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	return c, c.Validate()
+	// Validate first: it stores the parsed production entries on c.
+	err = c.Validate()
+	return c, err
 }
 
-// Validate checks values a user could get wrong.
-func (c Config) Validate() error {
+// Validate checks values a user could get wrong and parses the
+// production entries for IsProduction.
+func (c *Config) Validate() error {
 	for _, v := range c.Viewports {
 		if v != "desktop" && v != "mobile" {
 			return fmt.Errorf("viewports: %q isn't desktop or mobile", v)
@@ -144,6 +152,11 @@ func (c Config) Validate() error {
 			return fmt.Errorf("interactions.levels: %q isn't one of %s", l, strings.Join(Levels, ", "))
 		}
 	}
+	prod, err := parseProductions(c.Production)
+	if err != nil {
+		return err
+	}
+	c.prod, c.prodFrom = prod, slices.Clone(c.Production)
 	switch {
 	case c.Pages.Limit < 1:
 		return errors.New("pages.limit must be at least 1")
@@ -183,12 +196,3 @@ func (c Config) Has(module string) bool { return slices.Contains(c.Modules, modu
 
 // Level reports whether an interaction level is enabled.
 func (c Config) Level(level string) bool { return slices.Contains(c.Interactions.Levels, level) }
-
-// IsProduction reports whether url is under one of the production URLs.
-func (c Config) IsProduction(url string) bool {
-	u := strings.TrimRight(strings.ToLower(url), "/")
-	return slices.ContainsFunc(c.Production, func(p string) bool {
-		p = strings.TrimRight(strings.ToLower(p), "/")
-		return p != "" && (u == p || strings.HasPrefix(u, p+"/"))
-	})
-}
