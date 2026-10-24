@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"time"
 
+	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -79,9 +82,24 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 	}
 	defer func() { _ = page.Close() }()
 	timeout := time.Duration(cc.Config.Timeout) * time.Second
-	fails := flow.Run(ctx, page, f, flow.Options{Base: cc.Base, Timeout: timeout, Save: cc.Save,
-		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction})
+	opts := flow.Options{Base: cc.Base, Timeout: timeout, Save: cc.Save,
+		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction}
 	start := orDefault(f.Start, "/")
+	act := model.EchoAction{Action: echolink.FlowAction(f.Name), Label: f.Name, Kind: "flow", Page: pathOnly(start)}
+	if cc.Echo != nil {
+		// The flow has its own session, so its tag (header and cookie)
+		// stays on for the whole flow without affecting other tabs.
+		untag, err := cc.Echo.Tag(ctx, page, cc.Base.String(), act.Action)
+		if err != nil {
+			cc.Warn(fmt.Sprintf("flow %q: echo: couldn't tag its requests: %v", f.Name, err))
+		}
+		defer untag()
+		opts.Messages = func(ctx context.Context) ([]echomodel.Message, error) { return cc.Echo.Messages(ctx, act.Action) }
+	}
+	fails := flow.Run(ctx, page, f, opts)
+	if cc.Echo != nil && ctx.Err() == nil {
+		m.flowMessages(ctx, cc, act)
+	}
 	for _, fl := range fails {
 		if fl.Refused {
 			m.warnOnce(cc, "flow-production", "Flow clicks and submits skipped on production URLs: set production: true in a flow to allow them")
@@ -99,6 +117,34 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 			Source: f.File, Pages: []string{start},
 			Fix: "Run the flow by hand from " + start + "; if the page changed on purpose, update " + f.File + "."})
 	}
+}
+
+// flowMessages records what a flow made the site send, and the problems
+// Echo finds in it, as site issues on the flow's start page. A flow that
+// sends nothing isn't reported: an expect: {message: …} step says when it
+// should.
+func (m *Module) flowMessages(ctx context.Context, cc *check.Context, act model.EchoAction) {
+	msgs, err := cc.Echo.Wait(ctx, act.Action)
+	if err != nil {
+		m.warnOnce(cc, "echo-wait", "echo: couldn't get the messages flows sent: "+err.Error())
+		return
+	}
+	act.Messages = msgs
+	cc.Lock()
+	cc.Run.Echo = append(cc.Run.Echo, act)
+	cc.Unlock()
+	for _, i := range echolink.Issues(act, cc.Base.Hostname()) {
+		i.Pages = []string{act.Page}
+		cc.AddIssue(i)
+	}
+}
+
+// pathOnly turns a flow's start (a path or a URL) into a path.
+func pathOnly(start string) string {
+	if u, err := url.Parse(start); err == nil && u.Host != "" {
+		return orDefault(u.RequestURI(), "/")
+	}
+	return start
 }
 
 // collectFileErrors finds every *flow.FileError in err (a joined error).

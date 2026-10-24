@@ -12,6 +12,7 @@ import (
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -196,10 +197,17 @@ func (m *Module) submitForm(ctx context.Context, cc *check.Context, tab *rod.Pag
 		record(fm, "skipped", err.Error())
 		return
 	}
-	o := m.send(ctx, tab, fm, prof, base)
+	act := model.EchoAction{Action: echolink.FormAction(p.Path, fm.Sel), Label: fm.Name, Kind: "form", Page: p.Path}
+	o := m.sendTagged(ctx, cc, tab, fm, prof, base, act.Action)
 	switch {
 	case o.kind == "success":
-		record(fm, "success", o.msg)
+		detail := o.msg
+		if cc.Echo != nil {
+			if sent, ok := m.messages(ctx, cc, p, base, act); ok {
+				detail = strings.TrimSpace(detail + " · " + sent)
+			}
+		}
+		record(fm, "success", detail)
 	case o.status >= 500:
 		record(fm, "failed", o.msg)
 		fail(o)
@@ -209,6 +217,42 @@ func (m *Module) submitForm(ctx context.Context, cc *check.Context, tab *rod.Pag
 			Title: "Form no longer submits: " + fm.Name, Detail: o.msg,
 			Fix: "Submit the form by hand and watch the browser's network tab; check the plugin's settings, mail setup and spam protection."})
 	}
+}
+
+// sendTagged is send with the submit's requests tagged for Echo, when it
+// runs. Tagged submits take turns across tabs: the tag's cookie is shared
+// by the browser session.
+func (m *Module) sendTagged(ctx context.Context, cc *check.Context, tab *rod.Page, fm formInfo, prof profile, base *url.URL, action string) outcome {
+	if cc.Echo == nil {
+		return m.send(ctx, tab, fm, prof, base)
+	}
+	defer cc.Echo.Turn()()
+	untag, err := cc.Echo.Tag(ctx, tab, base.String(), action)
+	if err != nil {
+		m.warnOnce(cc, "echo-tag", "echo: couldn't tag form submits, so their messages can't be told apart: "+err.Error())
+	}
+	defer untag()
+	return m.send(ctx, tab, fm, prof, base)
+}
+
+// messages asks Echo what a successful submit sent, records it on the
+// page with the problems Echo finds in it, and sums it up for the
+// interaction's detail. ok is false when Echo couldn't be asked.
+func (m *Module) messages(ctx context.Context, cc *check.Context, p *model.Page, base *url.URL, act model.EchoAction) (string, bool) {
+	msgs, err := cc.Echo.Wait(ctx, act.Action)
+	if err != nil {
+		m.warnOnce(cc, "echo-wait", "echo: couldn't get the messages form submits sent: "+err.Error())
+		return "", false
+	}
+	act.Messages = msgs
+	p.Echo = append(p.Echo, act)
+	for _, i := range echolink.Issues(act, base.Hostname()) {
+		check.Page(p, i)
+	}
+	if len(msgs) == 0 {
+		check.Page(p, echolink.NoMessage(act, cc.Echo.Quiet))
+	}
+	return echolink.Summary(msgs), true
 }
 
 // fill types fake data into a form's fields.
