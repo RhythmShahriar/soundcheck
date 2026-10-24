@@ -234,7 +234,7 @@ func PageID(url string) string {
 //
 // Lookups go through a map built on first use, so comparing two big runs
 // stays linear. The map is rebuilt when Pages grows, shrinks or is
-// replaced, and when a page it points at has moved; changing a page's
+// replaced and when a page it points at has moved; changing a page's
 // Path in place without that isn't seen. Concurrent readers are safe;
 // writers to Pages need their own lock, as before.
 func (r *Run) Page(path string) *Page {

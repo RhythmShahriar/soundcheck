@@ -236,7 +236,7 @@ func TestInterruptedRunDropsCanceledPages(t *testing.T) {
 		t.Error("Compare must not change the run it was given")
 	}
 
-	// A canceled page in the snapshot isn't compared either, but the
+	// A canceled page in the snapshot isn't compared either but the
 	// current run is complete.
 	before, after = interruptedRuns()
 	before.Pages, after.Pages = after.Pages, before.Pages

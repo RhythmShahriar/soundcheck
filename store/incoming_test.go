@@ -21,7 +21,7 @@ func TestNewDirRemovesStaleIncomingFolders(t *testing.T) {
 		at    time.Time
 		stays bool
 	}{
-		"two-days-old":    {os.Getppid(), old, false}, // live PID, but long ago
+		"two-days-old":    {os.Getppid(), old, false}, // live PID but long ago
 		"crashed":         {deadPID(t), time.Now(), false},
 		"running":         {os.Getppid(), time.Now(), true}, // another live process
 		"same-pid":        {os.Getpid(), time.Now(), false}, // a crashed run with our PID

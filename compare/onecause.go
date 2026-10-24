@@ -14,11 +14,11 @@ import (
 // cause, so a report counts breaks rather than their echoes.
 //
 // A page that is BROKE because it no longer loads or now answers 4xx/5xx
-// shows the server's error page, and whatever health notices that page
+// shows the server's error page and whatever health notices that page
 // raises (no favicon, a JS error in the error template) say nothing about
 // the site. They are dropped for that page: NEW and CHANGED health/*
-// changes lose it from their pages, and go away when no page is left.
-// Other BROKE changes stay, and so do site-level issues such as broken
+// changes lose it from their pages and go away when no page is left.
+// Other BROKE changes stay and so do site-level issues such as broken
 // links (site reports whether a change came from one).
 //
 // Then changes that read the same (same class, check, title, source,
@@ -54,7 +54,7 @@ func oneCause(cs []model.Change, site func(model.Change) bool) []model.Change {
 
 // merge folds changes that differ only in their pages, detail and score
 // into the first of them. The detail comes from the lowest page, as in
-// Issues, and the score is the highest, or the page count when every
+// Issues and the score is the highest, or the page count when every
 // part was scored by its page count.
 func merge(cs []model.Change) []model.Change {
 	type key struct{ class, check, title, source, before, after, fix string }

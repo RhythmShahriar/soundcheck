@@ -286,10 +286,10 @@ func TestAcceptSiteIssue(t *testing.T) {
 }
 
 func TestAcceptRefusesScreenshotLinkedOutsideTheRun(t *testing.T) {
-	t.Parallel() // each compares screenshots, which the race detector makes slow
 	if runtime.GOOS == "windows" { // symlinks need privileges there
 		t.Skip("no symlinks")
 	}
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := f.compareAgain(t)
 	private := filepath.Join(t.TempDir(), "private.png")

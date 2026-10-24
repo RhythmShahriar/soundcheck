@@ -77,9 +77,9 @@ func TestListSortsByTime(t *testing.T) {
 	localZone = ny
 	t.Cleanup(func() { localZone = zone })
 	s := Store{Root: t.TempDir()}
-	// Daylight saving time ends at 2:00 EDT on 1 November 2026, and the
+	// Daylight saving time ends at 2:00 EDT on 1 November 2026 and the
 	// clocks go back to 1:00. In local time, 1:50 EDT comes before
-	// 1:10 EST, but sorts after it by name.
+	// 1:10 EST but sorts after it by name.
 	edt := time.Date(2026, 11, 1, 5, 50, 0, 0, time.UTC) // 1:50 EDT
 	est := time.Date(2026, 11, 1, 6, 10, 0, 0, time.UTC) // 1:10 EST
 	if edt.In(ny).Format("15:04 MST") != "01:50 EDT" || est.In(ny).Format("15:04 MST") != "01:10 EST" {

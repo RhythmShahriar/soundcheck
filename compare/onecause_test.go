@@ -98,7 +98,7 @@ func TestOneCausePerLine(t *testing.T) {
 	}
 }
 
-// Without a broken page nothing is dropped, and different before/after
+// Without a broken page nothing is dropped and different before/after
 // values or files keep changes apart.
 func TestOneCauseKeepsDistinctChanges(t *testing.T) {
 	cs := []model.Change{
@@ -124,7 +124,7 @@ func TestOneCauseKeepsDistinctChanges(t *testing.T) {
 	}
 }
 
-// A broken page leaves health changes of other pages alone, and other
+// A broken page leaves health changes of other pages alone and other
 // modules' changes on it too.
 func TestOneCauseOnlyHealthOnBrokenPages(t *testing.T) {
 	cs := []model.Change{

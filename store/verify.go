@@ -24,7 +24,7 @@ const maxListed = 3
 // verifyShots checks that every screenshot run.json in dir refers to is
 // there: a local path inside dir to a file that starts like a PNG. A
 // full disk or a crashed writer leaves a run that names files it never
-// wrote, and promoting it would make later compares skip visual checks
+// wrote and promoting it would make later compares skip visual checks
 // on those pages without a word.
 func verifyShots(dir string) error {
 	r, err := LoadRun(dir)

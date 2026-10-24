@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// safe runs fn, one module's hook, and turns a panic in it into a
+// safe runs fn, one module's hook and turns a panic in it into a
 // warning, so a bug in one module costs its own changes, not the whole
 // comparison. The warning reads "<module>: panic in <hook>: <value>
 // (<top 3 frames>)", the format the runner uses for the other hooks.

@@ -14,17 +14,17 @@ import (
 // Site text (titles, console messages, URLs, labels) is written by
 // whoever controls the site, or a comment on it. Printed as it is, an
 // escape sequence moves the cursor and rewrites the summary, OSC 52 sets
-// the clipboard, and a right-to-left override makes "gnp.exe" read as
+// the clipboard and a right-to-left override makes "gnp.exe" read as
 // "exe.png". Every format runs such text through one of these first.
 
 // Term makes s safe to print in a terminal. Control characters other
 // than tab (C0, DEL, C1) and bytes that aren't UTF-8 are shown as text
-// like \x1b, and bidirectional overrides (U+202A to U+202E, U+2066 to
+// like \x1b and bidirectional overrides (U+202A to U+202E, U+2066 to
 // U+2069) are removed.
 func Term(s string) string { return escape(s, false) }
 
 // MarkdownText makes s plain text in Markdown, in a table cell too: newlines
-// become spaces, control characters are shown as with Term, and every
+// become spaces, control characters are shown as with Term and every
 // character Markdown or GitHub gives a meaning (links, emphasis, code,
 // HTML, headings, tables, strikethrough, images, mentions) is escaped
 // with a backslash. GitHub also links bare URLs, "www." names and email
@@ -56,8 +56,8 @@ func autolinks(s string, i int, r rune) bool {
 	return false
 }
 
-// xmlText makes s safe for JUnit XML: as Term, but newlines stay (a case's
-// text has several lines), and the noncharacters U+FFFE and U+FFFF, which
+// xmlText makes s safe for JUnit XML: as Term but newlines stay (a case's
+// text has several lines) and the noncharacters U+FFFE and U+FFFF, which
 // XML doesn't allow, are dropped. Everything else Term leaves is valid.
 func xmlText(s string) string {
 	return strings.Map(func(r rune) rune {

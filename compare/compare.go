@@ -23,7 +23,7 @@ import (
 // Compare diffs cc.Before and cc.After.
 //
 // Pages whose visit was canceled (the run was stopped) are left out:
-// they recorded nothing real, and comparing them would report the site
+// they recorded nothing real and comparing them would report the site
 // as broken. The comparison is then marked as interrupted.
 func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Module, version string) *model.Comparison {
 	// Settings and pages missing from the run are judged on the runs as
@@ -48,7 +48,7 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 }
 
 // start begins the comparison of cc's runs, of which the current one has
-// pages pages that were checked: the warnings about how the runs differ,
+// pages pages that were checked: the warnings about how the runs differ
 // and what was interrupted. droppedBefore and dropped count the canceled
 // pages left out of each run.
 func start(cc *check.CompareContext, version string, pages int, warnings []string, droppedBefore, dropped int) *model.Comparison {
@@ -125,7 +125,7 @@ func siteIssue(runs ...*model.Run) func(model.Change) bool {
 	return func(c model.Change) bool { return keys[c.Check+"|"+c.Title+"|"+c.Source] }
 }
 
-// withoutCanceled returns r without the pages whose visit was canceled,
+// withoutCanceled returns r without the pages whose visit was canceled
 // and how many it left out. r itself is returned when there are none.
 func withoutCanceled(r *model.Run) (*model.Run, int) {
 	n := 0

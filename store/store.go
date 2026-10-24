@@ -50,7 +50,7 @@ const maxSuffix = 1000
 // and so on instead.
 //
 // For Incoming it first removes snapshots that were never finished (see
-// cleanIncoming), and when it creates the Incoming folder itself it adds
+// cleanIncoming) and when it creates the Incoming folder itself it adds
 // the store to git's exclude list, so screenshots of a snapshot that
 // gets killed are never committed.
 func (s Store) NewDir(kind, name string) (string, error) {
@@ -121,7 +121,7 @@ func Saver(dir string) func(name string, data []byte) error {
 // Contained joins dir and rel, a slash-separated path from a run or
 // comparison file, when rel stays inside dir. Absolute paths, paths that
 // climb out with "..", empty ones and (on Windows) device names are
-// refused: run.json and comparison.json may come from someone else, and
+// refused: run.json and comparison.json may come from someone else and
 // following such a path would read or write any file on the machine.
 func Contained(dir, rel string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(rel))
@@ -255,7 +255,7 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 // replacing an older snapshot with that name, and returns its new folder.
 // It holds the store's lock, so two snapshots finishing at once each
 // leave a whole snapshot, never a mix of both. A snapshot whose
-// screenshots weren't all written (see verifyShots) is refused, and the
+// screenshots weren't all written (see verifyShots) is refused and the
 // previous one stays.
 func (s Store) Promote(dir, name string) (string, error) {
 	if !ValidName(name) {
@@ -312,7 +312,7 @@ var (
 	rename = os.Rename
 	// retryRenames is on where a rename can fail for a moment: on
 	// Windows, a virus scanner or the search indexer briefly opens the
-	// files of a folder that was just written, and moving it is then
+	// files of a folder that was just written and moving it is then
 	// denied until they let go.
 	retryRenames  = runtime.GOOS == "windows"
 	renameBackoff = 50 * time.Millisecond
@@ -348,7 +348,7 @@ func (s Store) SetLatest(name string) error {
 		return err
 	}
 	// The old pointer would otherwise name a stale snapshot to an older
-	// Soundcheck sharing this store, and look like a snapshot to no one.
+	// Soundcheck sharing this store and look like a snapshot to no one.
 	if legacy := s.legacyLatest(); isFile(legacy) {
 		_ = os.Remove(legacy)
 	}
@@ -440,7 +440,7 @@ func (s Store) list(kind string) ([]string, error) {
 }
 
 // Prune keeps the newest keep runs and deletes older ones. Snapshots are
-// never pruned, and neither is a run another process is still writing.
+// never pruned and neither is a run another process is still writing.
 func (s Store) Prune(keep int) error {
 	unlock, err := s.lock()
 	if err != nil {
@@ -469,7 +469,7 @@ func (s Store) Prune(keep int) error {
 // committed by accident and the project's .gitignore stays untouched.
 // The LATEST pointer and the lock are local state and are excluded too.
 // config.yaml and flows/ stay visible to git, to share with the team. It
-// does nothing outside a git repository, and adds only the lines that
+// does nothing outside a git repository and adds only the lines that
 // are missing, so stores excluded by an older version get the new ones.
 func (s Store) ExcludeFromGit() {
 	out, err := exec.Command("git", "rev-parse", "--git-path", "info/exclude").Output()

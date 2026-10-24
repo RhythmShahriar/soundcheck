@@ -17,7 +17,7 @@ import (
 
 // JSON writes the comparison, or the run when there's none, in the
 // versioned rhythm-soundcheck/v1 schema (model.Schemas describes both).
-// Lists are [] when empty, every change has an ID, and a summary counts
+// Lists are [] when empty, every change has an ID and a summary counts
 // what the terminal shows; a run also gets its issues grouped across
 // pages. The result itself isn't changed.
 func JSON(w io.Writer, r Result) error {
@@ -138,7 +138,7 @@ func writeNotes(b *strings.Builder, notes []string) {
 }
 
 // mdPages shows up to three paths as code, where Markdown is inert. A
-// code span can't escape a backtick, so backticks are dropped, and GitHub
+// code span can't escape a backtick, so backticks are dropped and GitHub
 // splits table cells on a pipe even inside one, so pipes are escaped.
 func mdPages(pages []string) string {
 	if len(pages) == 0 {
@@ -275,7 +275,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	pages := junitSuite{Name: "soundcheck.pages", Timestamp: stamp,
 		Cases: []junitCase{{Name: fmt.Sprintf("%d pages checked", len(r.Run.Pages)), Classname: "soundcheck"}}}
 	// A partial result is an error, not a pass or a failure: CI shows
-	// the check didn't finish, and --fail-on findings don't count.
+	// the check didn't finish and --fail-on findings don't count.
 	if Partial(r) {
 		pages.Properties = &junitProperties{List: []junitProperty{{Name: "interrupted", Value: "true"}}}
 		pages.Cases = append(pages.Cases, junitCase{Name: "Run was interrupted", Classname: "soundcheck",
