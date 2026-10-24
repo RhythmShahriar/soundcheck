@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+
+	echomodel "github.com/RhythmShahriar/echo/model"
 )
 
 // Options for running a flow.
@@ -24,6 +27,10 @@ type Options struct {
 	// Production reports URLs that are live sites. Click and submit steps
 	// there are refused (ErrProduction) unless the flow sets production.
 	Production func(url string) bool
+	// Messages returns what the flow has made the site send so far, as
+	// Echo captured it, for expect: {message: …}. Nil when Echo isn't
+	// running; such expects then fail with a hint.
+	Messages func(ctx context.Context) ([]echomodel.Message, error)
 }
 
 // ErrProduction is a click or submit refused on a production URL.
@@ -387,7 +394,97 @@ func (r *runner) check(e Expect) error {
 			return fmt.Errorf("the page returned HTTP %d", got)
 		}
 	}
+	if e.Message != nil {
+		return r.message(*e.Message, e.Absent)
+	}
 	return nil
+}
+
+// message checks what the flow made the site send against m.
+func (r *runner) message(m Message, absent bool) error {
+	if r.o.Messages == nil {
+		return errors.New("expect message needs Echo: start it (rhythm echo up) and run with --echo")
+	}
+	want := m
+	for _, f := range []*string{&want.To, &want.Subject, &want.Text} {
+		v, err := r.expand(*f)
+		if err != nil {
+			return err
+		}
+		*f = v
+	}
+	ctx, cancel := context.WithTimeout(r.ctx, 5*time.Second)
+	defer cancel()
+	msgs, err := r.o.Messages(ctx)
+	if err != nil {
+		return fmt.Errorf("asking Echo: %w", err)
+	}
+	n := 0
+	for _, got := range msgs {
+		if matches(want, got) {
+			n++
+		}
+	}
+	need := max(m.Count, 1)
+	switch {
+	case absent && n > 0:
+		return fmt.Errorf("the site sent %s (%s)", plural(n, "such message"), seen(msgs))
+	case !absent && n < need:
+		if n == 0 {
+			return fmt.Errorf("no such message was sent (%s)", seen(msgs))
+		}
+		return fmt.Errorf("only %d of %d such messages were sent (%s)", n, need, seen(msgs))
+	}
+	return nil
+}
+
+// matches reports whether got is the message want describes.
+func matches(want Message, got echomodel.Message) bool {
+	has := func(s, sub string) bool { return strings.Contains(strings.ToLower(s), strings.ToLower(sub)) }
+	if want.Channel != "" && string(got.Channel) != want.Channel {
+		return false
+	}
+	if want.To != "" {
+		to := strings.Join(append(append(append([]string{}, got.To...), got.CC...), got.BCC...), "\n") + "\n" + got.URL
+		if !has(to, want.To) {
+			return false
+		}
+	}
+	if want.Subject != "" && !has(got.Subject, want.Subject) {
+		return false
+	}
+	return want.Text == "" || has(got.Text+"\n"+got.HTML+"\n"+got.Body, want.Text)
+}
+
+// seen sums up what was sent, so a failed expect shows what to fix.
+func seen(msgs []echomodel.Message) string {
+	if len(msgs) == 0 {
+		return "Echo saw nothing from this flow"
+	}
+	var parts []string
+	for _, m := range msgs[:min(len(msgs), 3)] {
+		d := string(m.Channel)
+		if to := strings.Join(m.To, ", "); to != "" {
+			d += " to " + to
+		} else if m.URL != "" {
+			d += " to " + m.URL
+		}
+		if m.Subject != "" {
+			d += " " + strconv.Quote(m.Subject)
+		}
+		parts = append(parts, d)
+	}
+	if len(msgs) > 3 {
+		parts = append(parts, fmt.Sprintf("%d more", len(msgs)-3))
+	}
+	return "Echo saw: " + strings.Join(parts, "; ")
+}
+
+func plural(n int, what string) string {
+	if n == 1 {
+		return "1 " + what
+	}
+	return fmt.Sprintf("%d %ss", n, what)
 }
 
 var nonWord = regexp.MustCompile(`[^a-z0-9]+`)

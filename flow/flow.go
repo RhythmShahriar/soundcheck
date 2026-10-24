@@ -21,6 +21,12 @@
 // Values may use ${env:NAME} (read from the environment, never stored or
 // printed) and ${fake:kind} (test data such as email, name, phone, url,
 // message; see Fake.Value).
+//
+// With Echo running (--echo), expect: {message: …} checks what the flow
+// made the site send:
+//
+//	steps:
+//	  - expect: {message: {channel: email, to: "${fake:email}", subject: Thanks}}
 package flow
 
 import (
@@ -35,6 +41,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	echomodel "github.com/RhythmShahriar/echo/model"
 )
 
 // Flow is one scripted journey.
@@ -92,11 +100,60 @@ type Wait struct {
 
 // Expect asserts what the page shows. Every field set must hold.
 type Expect struct {
-	Text     string `yaml:"text"`     // visible somewhere on the page
-	Selector string `yaml:"selector"` // a visible element
-	URL      string `yaml:"url"`      // the current URL contains this
-	Status   int    `yaml:"status"`   // the last page load's HTTP status
-	Absent   bool   `yaml:"absent"`   // text and selector must NOT be present
+	Text     string   `yaml:"text"`     // visible somewhere on the page
+	Selector string   `yaml:"selector"` // a visible element
+	URL      string   `yaml:"url"`      // the current URL contains this
+	Status   int      `yaml:"status"`   // the last page load's HTTP status
+	Absent   bool     `yaml:"absent"`   // text, selector and message must NOT be present
+	Message  *Message `yaml:"message"`  // the flow made the site send this (needs Echo)
+}
+
+// Message describes a message the flow should have made the site send, as
+// Echo captured it. Text fields match substrings, ignoring case; every
+// field set must hold.
+type Message struct {
+	Channel string `yaml:"channel"` // email, sms, whatsapp, chat, webhook, analytics, payment, push, http
+	To      string `yaml:"to"`      // a recipient (an address, a number, or a webhook's URL)
+	Subject string `yaml:"subject"`
+	Text    string `yaml:"text"`  // in the message's text, HTML or payload
+	Count   int    `yaml:"count"` // at least this many such messages; default 1
+}
+
+func (m Message) validate(absent bool) error {
+	if m.Channel != "" && !slices.Contains(echomodel.Channels, echomodel.Channel(m.Channel)) {
+		names := make([]string, len(echomodel.Channels))
+		for i, c := range echomodel.Channels {
+			names[i] = string(c)
+		}
+		return fmt.Errorf("expect message: channel %q isn't one of %s", m.Channel, strings.Join(names, ", "))
+	}
+	switch {
+	case m.Count < 0:
+		return errors.New("expect message: count can't be negative")
+	case m.Count > 0 && absent:
+		return errors.New("expect message: count and absent don't mix; absent means no such message")
+	}
+	return nil
+}
+
+func (m Message) String() string {
+	parts := []string{"message"}
+	if m.Channel != "" {
+		parts = append(parts, m.Channel)
+	}
+	if m.To != "" {
+		parts = append(parts, "to "+strconv.Quote(m.To))
+	}
+	if m.Subject != "" {
+		parts = append(parts, "subject "+strconv.Quote(m.Subject))
+	}
+	if m.Text != "" {
+		parts = append(parts, "text "+strconv.Quote(m.Text))
+	}
+	if m.Count > 1 {
+		parts = append(parts, fmt.Sprintf("count %d", m.Count))
+	}
+	return strings.Join(parts, " ")
 }
 
 var actions = []string{"goto", "click", "fill", "select", "check", "submit", "wait", "expect", "screenshot"}
@@ -201,7 +258,9 @@ func (s Step) Validate() error {
 	case s.Wait != nil && s.Wait.MS > 60000:
 		return errors.New("wait is limited to 60000 ms")
 	case s.Expect != nil && *s.Expect == (Expect{}):
-		return errors.New("expect needs text, selector, url or status")
+		return errors.New("expect needs text, selector, url, status or message")
+	case s.Expect != nil && s.Expect.Message != nil:
+		return s.Expect.Message.validate(s.Expect.Absent)
 	case s.Goto == "" && s.Click == nil && s.Fill == nil && s.Select == nil && s.Check == nil &&
 		s.Submit == nil && s.Wait == nil && s.Expect == nil && s.Screenshot == "":
 		return errors.New("empty step")
@@ -266,6 +325,9 @@ func (e Expect) String() string {
 	if e.Status != 0 {
 		parts = append(parts, "status "+strconv.Itoa(e.Status))
 	}
+	if e.Message != nil {
+		parts = append(parts, not+e.Message.String())
+	}
 	return strings.Join(parts, ", ")
 }
 
@@ -303,6 +365,10 @@ func (s Step) values() []string {
 	}
 	if s.Select != nil {
 		out = append(out, s.Select.Value)
+	}
+	if s.Expect != nil && s.Expect.Message != nil {
+		m := s.Expect.Message
+		out = append(out, m.To, m.Subject, m.Text)
 	}
 	return append(out, s.Goto)
 }
@@ -387,6 +453,11 @@ steps:
   - wait: 1500
   - expect: {text: Thank you}
   - screenshot: contact-sent
+  # With Echo running (--echo), check what the form sent. Fields match
+  # substrings; channel is email, sms, webhook, chat, ...; count: n wants at
+  # least n; absent: true wants none.
+  # - expect: {message: {channel: email, to: "${fake:email}", subject: Thank}}
+  # - expect: {message: {channel: email, to: admin@, count: 1}}
 `
 
 // Init writes an example flow into dir, creating it. It never overwrites
