@@ -113,12 +113,39 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			frontier.Add(p, "snapshot", 0)
 		}
 	}
-	pages := frontier.Pages()
+	// The kit's frontier tells sites apart by hostname alone, so pages of
+	// a sibling site on another port (a sitemap listing both, a local
+	// setup) get in; they are dropped here and counted like the
+	// frontier's own "other site" skips.
+	var (
+		smu      sync.Mutex
+		offSite  int
+		sameSite = func(found []crawl.Page) []crawl.Page {
+			kept := slices.DeleteFunc(found, func(p crawl.Page) bool {
+				u, err := url.Parse(p.URL)
+				return err != nil || !check.SameSite(base, u)
+			})
+			smu.Lock()
+			offSite += len(found) - len(kept)
+			smu.Unlock()
+			return kept
+		}
+		skipped = func() map[string]int {
+			s := frontier.Skipped()
+			smu.Lock()
+			defer smu.Unlock()
+			if offSite > 0 {
+				s["other site"] += offSite
+			}
+			return s
+		}
+	)
+	pages := sameSite(frontier.Pages())
 	if len(pages) == 0 {
 		return nil, fmt.Errorf("found no pages to check at %s", base)
 	}
 	if opts.Hooks.Discovered != nil {
-		emit(func() { opts.Hooks.Discovered(len(pages), frontier.Skipped()) })
+		emit(func() { opts.Hooks.Discovered(len(pages), skipped()) })
 	}
 
 	b, err := browser.Launch(ctx, withLog(opts.Browser, log))
@@ -196,7 +223,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 				for _, l := range p.Links {
 					frontier.Add(l, "rendered", pg.Depth+1)
 				}
-				if added := frontier.Pages()[before:]; len(added) > 0 {
+				if added := sameSite(frontier.Pages()[before:]); len(added) > 0 {
 					qmu.Lock()
 					queue = append(queue, added...)
 					total += len(added)
@@ -219,7 +246,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			run.Pages = append(run.Pages, *p)
 		}
 	}
-	run.Skipped = frontier.Skipped()
+	run.Skipped = skipped()
 
 	if ctx.Err() == nil {
 		for _, m := range opts.Modules {
