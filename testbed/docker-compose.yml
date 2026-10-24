@@ -27,6 +27,7 @@ x-wp-mounts: &wp-mounts
   - ./wp/plugins/testbed-forms:/var/www/html/wp-content/plugins/testbed-forms:ro
   - ./wp/plugins/testbed-heavy:/var/www/html/wp-content/plugins/testbed-heavy:ro
   - ./state:/var/www/html/wp-content/testbed-state:ro
+  - ./wp/opcache.ini:/usr/local/etc/php/conf.d/zz-testbed-opcache.ini:ro
 
 services:
   db:

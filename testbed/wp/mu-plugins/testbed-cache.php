@@ -37,7 +37,15 @@ defined( 'ABSPATH' ) || exit;
 	}
 
 	$dir  = sys_get_temp_dir() . '/testbed-cache';
-	$file = $dir . '/' . md5( ( $_SERVER['HTTP_HOST'] ?? '' ) . $path . '|' . testbed_state_hash() ) . '.json';
+	// Cache plugins purge when a plugin is updated or switched; the key
+	// does the same with each active plugin's file and modification time,
+	// so wp-update (s47, s48) never reads a copy from before an update.
+	$plugins = '';
+	foreach ( (array) get_option( 'active_plugins', array() ) as $plugin ) {
+		$main     = WP_PLUGIN_DIR . '/' . $plugin;
+		$plugins .= $plugin . ':' . ( is_file( $main ) ? filemtime( $main ) : 0 ) . ',';
+	}
+	$file = $dir . '/' . md5( ( $_SERVER['HTTP_HOST'] ?? '' ) . $path . '|' . testbed_state_hash() . '|' . $plugins ) . '.json';
 	$ttl  = 600;
 	// s30 broken: this page's copy is kept for two days and was made a day
 	// and a half ago, before the roasting day changed. Nothing purges it.
