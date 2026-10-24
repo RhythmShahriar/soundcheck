@@ -32,16 +32,22 @@ var challengeWords = []string{
 	"checking if the site connection is secure", "bot protection", "automated access", "unusual traffic",
 }
 
-// challengeScripts are scripts and frames that only a challenge loads.
-var challengeScripts = []struct{ vendor, part string }{
-	{"Cloudflare", "/cdn-cgi/challenge-platform/"},
-	{"Cloudflare", "challenges.cloudflare.com/turnstile"},
-	{"Akamai", "/_sec/cp_challenge/"},
-	{"Imperva", "/_incapsula_resource"},
-	{"DataDome", "captcha-delivery.com"},
-	{"", "hcaptcha.com/"},
-	{"", "google.com/recaptcha/"},
-	{"", "recaptcha.net/recaptcha/"},
+// challengeScripts are scripts and frames that challenges load. Those
+// marked interstitial also run on ordinary pages (Turnstile on contact
+// forms, Imperva's per-page script), so they only count on a page that
+// looks like an interstitial: see interstitial.
+var challengeScripts = []struct {
+	vendor, part string
+	interstitial bool
+}{
+	{"Cloudflare", "/cdn-cgi/challenge-platform/", true},
+	{"Cloudflare", "challenges.cloudflare.com/turnstile", true},
+	{"Akamai", "/_sec/cp_challenge/", false},
+	{"Imperva", "/_incapsula_resource", true},
+	{"DataDome", "captcha-delivery.com", false},
+	{"", "hcaptcha.com/", false},
+	{"", "google.com/recaptcha/", false},
+	{"", "recaptcha.net/recaptcha/", false},
 }
 
 // blockedBy reports whether p is a firewall's block or challenge page
@@ -66,15 +72,24 @@ func blockedBy(p *model.Page) (challenge, bool) {
 	case refused && h["x-datadome"] != "":
 		return challenge{"DataDome", fmt.Sprintf("x-datadome header on a %d", p.Status)}, true
 	}
+	// A firewall's interstitial refuses the request or carries the
+	// vendor's challenge title. Cloudflare's challenge platform also
+	// serves invisible checks on the site's own error pages, so for it
+	// only the title counts.
+	cfTitle := strings.HasPrefix(title, "just a moment") || strings.Contains(title, "attention required")
+	interstitial := func(part string) bool {
+		if part == "/cdn-cgi/challenge-platform/" {
+			return strings.HasPrefix(title, "just a moment")
+		}
+		return refused || p.Status == 503 || cfTitle
+	}
 	script := ""
 	for _, u := range resourceURLs(p) {
 		lu := strings.ToLower(u)
 		for _, s := range challengeScripts {
 			if strings.Contains(lu, s.part) {
 				if s.vendor != "" {
-					// Cloudflare's challenge platform also serves invisible
-					// checks on normal pages; only its interstitial counts.
-					if s.part != "/cdn-cgi/challenge-platform/" || strings.HasPrefix(title, "just a moment") {
+					if !s.interstitial || interstitial(s.part) {
 						return challenge{s.vendor, "loads " + s.part}, true
 					}
 					continue
