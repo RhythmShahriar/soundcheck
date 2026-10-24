@@ -38,7 +38,16 @@ if [ -z "$line" ]; then
   echo "::error::verify-release: checksums.txt has no line for $archive"
   exit 1
 fi
-if ! printf '%s\n' "$line" | sha256sum -c -; then
+# macOS runners ship shasum, not always sha256sum.
+if command -v sha256sum > /dev/null; then
+  sum=(sha256sum -c -)
+elif command -v shasum > /dev/null; then
+  sum=(shasum -a 256 -c -)
+else
+  echo "::error::verify-release: neither sha256sum nor shasum is installed"
+  exit 1
+fi
+if ! printf '%s\n' "$line" | "${sum[@]}"; then
   echo "::error::verify-release: $archive doesn't match its signed checksum; refusing to install"
   exit 1
 fi

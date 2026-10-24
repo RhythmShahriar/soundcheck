@@ -15,7 +15,7 @@ mkdir "$work/bin" "$work/rel"
 cat > "$work/bin/cosign" <<FAKE
 #!/usr/bin/env bash
 printf '%s\n' "\$@" > "$work/cosign-args"
-sha256sum -c --status "$work/signed.sha256"
+$(command -v sha256sum) -c --status "$work/signed.sha256"
 FAKE
 chmod +x "$work/bin/cosign"
 export PATH="$work/bin:$PATH"
@@ -58,5 +58,29 @@ expect fail "an archive not in checksums.txt" rhythm-soundcheck_linux_arm64.tar.
 fresh
 rm checksums.txt.sigstore.json
 expect fail "a missing signature" rhythm-soundcheck_linux_amd64.tar.gz
+
+# macOS: no sha256sum on PATH, only shasum. The fake shasum stands in
+# for the real one and records that it was used.
+mkdir "$work/mac"
+for tool in bash awk cat; do ln -s "$(command -v "$tool")" "$work/mac/$tool"; done
+ln -s "$work/bin/cosign" "$work/mac/cosign"
+cat > "$work/mac/shasum" <<FAKE
+#!$(command -v bash)
+[ "\$1 \$2" = "-a 256" ] || exit 9
+shift 2
+: > "$work/shasum-used"
+exec $(command -v sha256sum) "\$@"
+FAKE
+chmod +x "$work/mac/shasum"
+mac() { # mac pass|fail NAME ARCHIVE
+  rm -f "$work/shasum-used"
+  if PATH="$work/mac" "$here/verify-release.sh" "$3" > "$work/out" 2>&1; then got=pass; else got=fail; fi
+  if [ "$got" = "$1" ] && [ -e "$work/shasum-used" ]; then echo "ok   $2"; else echo "FAIL $2: got $got"; cat "$work/out"; fail=1; fi
+}
+fresh
+mac pass "shasum when sha256sum is missing" rhythm-soundcheck_linux_amd64.tar.gz
+fresh
+printf 'tampered\n' >> rhythm-soundcheck_linux_amd64.tar.gz
+mac fail "shasum refuses a changed archive" rhythm-soundcheck_linux_amd64.tar.gz
 
 exit "$fail"
