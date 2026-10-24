@@ -393,6 +393,12 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 	}
 	run.Duration = float64(time.Since(start).Milliseconds())
+	// A cancel after the last page cut the site-wide checks short (or
+	// skipped them): the run isn't a full result even though every page
+	// finished.
+	if ctx.Err() != nil {
+		run.Interrupted = true
+	}
 	return run, ctx.Err()
 }
 
