@@ -74,3 +74,17 @@ func TestEligible(t *testing.T) {
 		t.Errorf("reason: %q", why)
 	}
 }
+
+func TestCarriesTestData(t *testing.T) {
+	for body, want := range map[string]bool{
+		"email=soundcheck-test%2B4264cf%40example.com&name=Soundcheck+Test": true,
+		`{"name":"Soundcheck Test"}`:                                        true,
+		"name=Soundcheck%20Test":                                            true,
+		"token":                                                             false,
+		"":                                                                  false,
+	} {
+		if got := carriesTestData(body); got != want {
+			t.Errorf("carriesTestData(%q) = %v", body, got)
+		}
+	}
+}

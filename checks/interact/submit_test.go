@@ -68,8 +68,8 @@ func TestSubmitSkipsOffSiteForms(t *testing.T) {
 }
 
 // A form whose submit button sends it to another site with formaction
-// is skipped, as is one whose script posts its data elsewhere: the
-// other site gets nothing and the run names what was held.
+// is skipped. One whose script posts its test data elsewhere is held:
+// the other site gets none of it and the run names what was held.
 func TestSubmitSkipsOffSiteFormAction(t *testing.T) {
 	needBrowser(t)
 	var mu sync.Mutex
@@ -92,10 +92,12 @@ func TestSubmitSkipsOffSiteFormAction(t *testing.T) {
 <button formaction="%[1]s/subscribe">Sign up</button></form>
 <form id="js" method="post" action="/join/"><h2>Club</h2><input type="email" name="email" required>
 <button>Join</button></form>
-<script>document.getElementById('js').addEventListener('submit', e => {
+<script>document.getElementById('js').addEventListener('submit', async e => {
   e.preventDefault();
+  // A CAPTCHA-like check elsewhere carries no test data and goes on.
+  const ok = await fetch('%[1]s/verify', {method: 'POST', body: 'token'}).then(r => r.ok).catch(() => false);
   fetch('%[1]s/collect', {method: 'POST', body: new FormData(e.target)}).catch(() => {});
-  document.body.insertAdjacentHTML('beforeend', '<p class="sent">Thanks</p>');
+  document.body.insertAdjacentHTML('beforeend', ok ? '<p class="sent">Thanks</p>' : '<p>Verification failed.</p>');
 });</script>
 </body></html>`, list.URL)
 	})
@@ -113,10 +115,13 @@ func TestSubmitSkipsOffSiteFormAction(t *testing.T) {
 	if got["form #fa"] != "skipped: posts to "+host {
 		t.Errorf("formaction: %q (all %v)", got["form #fa"], got)
 	}
+	if !strings.HasPrefix(got["form #js"], "success") {
+		t.Errorf("form #js: %q", got["form #js"])
+	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(elsewhere) != 0 {
-		t.Errorf("the other site got %v", elsewhere)
+	if strings.Join(elsewhere, ",") != "POST /verify" {
+		t.Errorf("the other site got %v, want only the verify call", elsewhere)
 	}
 	want := "interact /: kept a form's test data from going to another site: POST " + host + "/collect"
 	if !slices.Contains(run.Warnings, want) {

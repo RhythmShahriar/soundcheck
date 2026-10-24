@@ -39,7 +39,13 @@ type Request struct {
 	headers []*proto.FetchHeaderEntry
 	changed bool
 	blocked bool
+	body    string
+	partial bool // the request has a body Chrome didn't pass on (too long)
 }
+
+// Body returns the request's body. ok is false when it has one Chrome
+// didn't pass to the interceptor, as it does for long bodies and files.
+func (r *Request) Body() (body string, ok bool) { return r.body, !r.partial }
 
 // Header returns the value of the named request header, or "".
 func (r *Request) Header(name string) string {
@@ -194,6 +200,13 @@ func (st *tabState) handle(e *proto.FetchRequestPaused) {
 	st.mu.Unlock()
 	r := &Request{Method: e.Request.Method, Type: e.ResourceType}
 	r.URL, _ = url.Parse(e.Request.URL)
+	r.body = e.Request.PostData
+	if r.body == "" {
+		for _, p := range e.Request.PostDataEntries {
+			r.body += string(p.Bytes)
+		}
+	}
+	r.partial = e.Request.HasPostData && r.body == ""
 	for k, v := range e.Request.Headers {
 		r.headers = append(r.headers, &proto.FetchHeaderEntry{Name: k, Value: v.Str()})
 	}

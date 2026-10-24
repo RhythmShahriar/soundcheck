@@ -116,7 +116,7 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 	record := func(fm formInfo, outcome, detail string) {
 		p.Interact = append(p.Interact, model.Interaction{Kind: "submit", Selector: fm.Sel, Label: fm.Name, Outcome: outcome, Detail: detail})
 	}
-	// What a form's own script sends to another site (a newsletter
+	// Test data a form's own script sends to another site (a newsletter
 	// embed posting with fetch, a button's formaction the page changed)
 	// is held, as the click level holds every write.
 	release, offsite := holdOffSite(tab, base)
@@ -523,15 +523,22 @@ const gatewayJS = `(sel) => {
   return {ok: f.querySelector('input[name=payment_method]:checked') === pick, id: pick.value};
 }`
 
-// holdOffSite blocks every request on tab other than GET and HEAD that
-// goes to another site than base, until release is called. sent lists
-// what was held, as "POST host/path". When the hold can't be set up the
-// submit level still runs: eligible skips forms that post elsewhere.
+// holdOffSite blocks requests on tab that would carry the submit level's
+// test data to another site than base, until release is called: a
+// newsletter embed posting with fetch, a button's formaction the page
+// changed. sent lists what was held, as "POST host/path". Other requests
+// to other sites (a CAPTCHA's check, analytics) go on: blocking them
+// would fail forms that work. A body Chrome didn't pass on is held too,
+// since it can't be told apart. When the hold can't be set up the submit
+// level still runs: eligible skips forms that post elsewhere.
 func holdOffSite(tab *rod.Page, base *url.URL) (release func(), sent func() []string) {
 	var mu sync.Mutex
 	var held []string
 	remove, err := intercept.Add(tab, func(r *intercept.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL == nil || base == nil || check.SameSite(base, r.URL) {
+			return
+		}
+		if body, ok := r.Body(); ok && !carriesTestData(body) {
 			return
 		}
 		r.Block()
@@ -550,6 +557,19 @@ func holdOffSite(tab *rod.Page, base *url.URL) (release func(), sent func() []st
 		defer mu.Unlock()
 		return slices.Clone(held)
 	}
+}
+
+// carriesTestData reports whether a request body has the values the
+// submit level types: the marker in every email, URL and message, or the
+// test name, raw, form-encoded or JSON.
+func carriesTestData(body string) bool {
+	b := strings.ToLower(body)
+	for _, m := range []string{flow.Marker, "soundcheck test", "soundcheck+test", "soundcheck%20test"} {
+		if strings.Contains(b, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // offSite returns the host a form posts to when that's another site
