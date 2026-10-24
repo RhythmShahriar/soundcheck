@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDemo(t *testing.T) {
@@ -37,8 +38,29 @@ func TestDemo(t *testing.T) {
 	if _, err := os.Stat(".soundcheck"); !os.IsNotExist(err) {
 		t.Errorf("the demo wrote to the project's .soundcheck: %v", err)
 	}
-	if left, _ := os.ReadDir(tmp); len(left) > 0 {
-		t.Errorf("the demo left %s in the temp folder", left[0].Name())
+	if left := leftIn(tmp); left != "" {
+		t.Errorf("the demo left %s in the temp folder", left)
+	}
+}
+
+// leftIn is the first entry in dir that isn't Chrome's own, or "".
+// Chrome removes its com.google.Chrome.* files a moment after it exits,
+// so those get a short wait before they count.
+func leftIn(dir string) string {
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		entries, _ := os.ReadDir(dir)
+		chrome := false
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Name(), "com.google.Chrome.") {
+				return e.Name()
+			}
+			chrome = true
+		}
+		if !chrome || time.Now().After(deadline) {
+			return ""
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

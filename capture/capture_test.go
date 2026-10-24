@@ -150,7 +150,10 @@ func TestVisitUnreachable(t *testing.T) {
 }
 
 // slowFixture answers /slow?wait=N after N seconds. Its /busy is a page
-// whose script blocks the main thread for 8 seconds right after load.
+// whose script blocks the main thread for 12 seconds right after load.
+// The block starts from a MessageChannel task queued by the load handler:
+// a setTimeout can be throttled in a background tab and start after the
+// read is done, while a blocking load handler would hold back load.
 func slowFixture(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -165,7 +168,11 @@ func slowFixture(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/busy", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `<!doctype html><html><head><title>Busy</title></head><body><p>Busy.</p>
-<script>addEventListener('load', () => setTimeout(() => { const t = Date.now(); while (Date.now() - t < 8000) {} }, 50));</script></body></html>`)
+<script>addEventListener('load', () => {
+  const c = new MessageChannel();
+  c.port1.onmessage = () => { const t = Date.now(); while (Date.now() - t < 12000) {} };
+  c.port2.postMessage(0);
+});</script></body></html>`)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

@@ -451,7 +451,11 @@ func TestWPUpdateTestbed(t *testing.T) {
 		UpdateVersion string `json:"update_version"`
 	}
 	out := wp("plugin", "list", "--update=available", "--format=json", "--fields=name,version,update_version")
-	if err := json.Unmarshal([]byte(out[strings.Index(out, "["):]), &updates); err != nil {
+	at := strings.Index(out, "[")
+	if at < 0 {
+		t.Fatalf("plugin list printed no JSON list:\n%s", out)
+	}
+	if err := json.Unmarshal([]byte(out[at:]), &updates); err != nil {
 		t.Fatalf("plugin list: %v\n%s", err, out)
 	}
 	var names []string

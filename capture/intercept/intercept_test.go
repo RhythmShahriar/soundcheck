@@ -156,10 +156,15 @@ func TestUnsafeHeadersRefused(t *testing.T) {
 		n := name
 		mu.Unlock()
 		err := proto.FetchContinueRequest{RequestID: e.RequestID, Headers: []*proto.FetchHeaderEntry{{Name: n, Value: "x"}}}.Call(tab)
-		if err != nil {
+		// Only an "Unsafe header" error is a refusal. Under load a request
+		// of the previous page (its favicon) can arrive after the name
+		// moved on and fail for its own reasons.
+		if got := refusedHeader(err); got != "" {
 			mu.Lock()
-			refused[n] = refusedHeader(err)
+			refused[n] = got
 			mu.Unlock()
+		}
+		if err != nil {
 			_ = proto.FetchContinueRequest{RequestID: e.RequestID}.Call(tab)
 		}
 	})
