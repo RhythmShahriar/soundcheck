@@ -576,7 +576,7 @@ var (
 
 // flagError rewords a flag parse error the way every other value error
 // reads: "--tabs (tabs): "abc" isn't a whole number", and "unknown flag
-// --levle (did you mean --level?)".
+// --modlues (did you mean --modules?)".
 func flagError(fs *flag.FlagSet, err error) error {
 	msg := err.Error()
 	if m := flagUndefined.FindStringSubmatch(msg); m != nil {

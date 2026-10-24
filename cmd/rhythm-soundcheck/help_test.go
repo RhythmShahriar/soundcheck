@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
@@ -76,7 +79,7 @@ func TestValueErrorWording(t *testing.T) {
 		{[]string{"--name", "../x"}, `--name: "../x" isn't a snapshot name; use letters, digits, dots, dashes and underscores`},
 		{[]string{"--allow-env", "A=B"}, `--allow-env: "A=B" isn't an environment variable name`},
 		{[]string{"--allow-host", "://"}, `--allow-host: "://" isn't a host like example.com or localhost:8080`},
-		{[]string{"--levle", "submit"}, `unknown flag --levle (did you mean --level?)`},
+		{[]string{"--viewprot", "mobile"}, `unknown flag --viewprot (did you mean --viewport?)`},
 		{[]string{"--frobnicate"}, `unknown flag --frobnicate`},
 		{[]string{"-x"}, `unknown flag -x`},
 		{[]string{"--fail-on"}, `--fail-on needs a value`},

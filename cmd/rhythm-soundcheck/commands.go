@@ -318,7 +318,9 @@ func (s *session) browserInfo() string {
 
 // timing sums up how long a run took and its slowest pages, for -v.
 func timing(run *model.Run) string {
-	ms := func(v float64) string { return time.Duration(v * float64(time.Millisecond)).Round(10 * time.Millisecond).String() }
+	ms := func(v float64) string {
+		return time.Duration(v * float64(time.Millisecond)).Round(10 * time.Millisecond).String()
+	}
 	line := fmt.Sprintf("%s in %s", plural(len(run.Pages), "page"), ms(run.Duration))
 	pages := slices.Clone(run.Pages)
 	slices.SortStableFunc(pages, func(a, b model.Page) int { return cmp.Compare(b.Duration, a.Duration) })
