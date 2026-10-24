@@ -23,6 +23,7 @@ import (
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
+	"github.com/RhythmShahriar/rhythm/kit/httpx"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/capture"
@@ -116,7 +117,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
 	opts.Modules = check.SortByPhase(opts.Modules)
-	target, _, err := ratelimit.ParseTarget(opts.Target)
+	target, _, err := httpx.ParseTarget(opts.Target)
 	if err != nil {
 		return nil, err
 	}
@@ -176,33 +177,6 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			addListed(frontier, base, p, "snapshot", cfg.Pages.Exclude, log)
 		}
 	}
-	// The kit's frontier tells sites apart by hostname alone, so pages of
-	// a sibling site on another port (a sitemap listing both, a local
-	// setup) get in; they are dropped here and counted like the
-	// frontier's own "other site" skips.
-	var (
-		smu      sync.Mutex
-		offSite  int
-		sameSite = func(found []crawl.Page) []crawl.Page {
-			kept := slices.DeleteFunc(found, func(p crawl.Page) bool {
-				u, err := url.Parse(p.URL)
-				return err != nil || !check.SameSite(base, u)
-			})
-			smu.Lock()
-			offSite += len(found) - len(kept)
-			smu.Unlock()
-			return kept
-		}
-		skipped = func() map[string]int {
-			s := frontier.Skipped()
-			smu.Lock()
-			defer smu.Unlock()
-			if offSite > 0 {
-				s["other site"] += offSite
-			}
-			return s
-		}
-	)
 	// Pages a resumed run already finished are kept as they are. Their
 	// links go back into the frontier, so the pages only they led to are
 	// still found.
@@ -215,15 +189,15 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		finished[u] = true
 		if discover {
 			frontier.Add(p.URL, "rendered", 1)
-			addLinks(frontier, startURL, p.Links, 1)
+			addLinks(frontier, p.Links, 1)
 		}
 	}
-	pages := slices.DeleteFunc(sameSite(frontier.Pages()), func(p crawl.Page) bool { return finished[p.URL] })
+	pages := slices.DeleteFunc(frontier.Pages(), func(p crawl.Page) bool { return finished[p.URL] })
 	if len(pages) == 0 && len(opts.Done) == 0 {
 		return nil, fmt.Errorf("found no pages to check at %s", startURL)
 	}
 	if opts.Hooks.Discovered != nil {
-		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), skipped()) })
+		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), frontier.Skipped()) })
 	}
 
 	engine := cmpEngine(opts.Engine)
@@ -348,7 +322,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			defer func() { <-sem }()
 			p := visit(ctx, cc, opts, hosts, pg)
 			if discover {
-				if added := sameSite(addLinks(frontier, startURL, p.Links, pg.Depth+1)); len(added) > 0 {
+				if added := addLinks(frontier, p.Links, pg.Depth+1); len(added) > 0 {
 					qmu.Lock()
 					queue = append(queue, added...)
 					total += len(added)
@@ -379,7 +353,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			run.Pages = append(run.Pages, *p)
 		}
 	}
-	run.Skipped = skipped()
+	run.Skipped = frontier.Skipped()
 
 	if ctx.Err() == nil && !opts.revisit {
 		// Probing every link can take minutes after the last page.
@@ -447,13 +421,6 @@ func addListed(f *crawl.Frontier, start *url.URL, raw, source string, exclude []
 	}
 	before := f.Skipped()
 	if f.Add(raw, source, 0) {
-		// The frontier tells sites apart by hostname alone; the run drops
-		// pages of a sibling site on another port later.
-		if norm, ok := crawl.Normalize(start, raw); ok {
-			if u, err := url.Parse(norm); err == nil && !check.SameSite(start, u) {
-				log(fmt.Sprintf("!%s %s is on another site; not checked", name, raw))
-			}
-		}
 		return
 	}
 	for reason, n := range f.Skipped() {
@@ -501,39 +468,24 @@ func dropReason(start *url.URL, raw, reason string, exclude []string) string {
 // first. Taking the frontier's pages added since some earlier count
 // instead would let two visits that add links at the same time both
 // queue the other's pages and visit them twice.
-func addLinks(f *crawl.Frontier, start *url.URL, links []string, depth int) []crawl.Page {
+func addLinks(f *crawl.Frontier, links []string, depth int) []crawl.Page {
 	if addHook != nil {
 		addHook(false)
 	}
-	accepted := map[string]bool{}
+	var out []crawl.Page
 	for _, l := range links {
-		if f.Add(l, "rendered", depth) {
-			if norm, ok := crawl.Normalize(start, l); ok {
-				accepted[norm] = true
-			}
+		if p, ok := f.AddPage(l, "rendered", depth); ok {
+			out = append(out, p)
 		}
 	}
 	if addHook != nil {
 		addHook(true)
 	}
-	if len(accepted) == 0 {
-		return nil
-	}
-	// The frontier knows each page's group. They were just added, so
-	// they are among its last pages.
-	all := f.Pages()
-	var out []crawl.Page
-	for i := len(all) - 1; i >= 0 && len(out) < len(accepted); i-- {
-		if accepted[all[i].URL] {
-			out = append(out, all[i])
-		}
-	}
-	slices.Reverse(out)
 	return out
 }
 
 // addHook, when set by a test, runs before a visit adds its links and
-// again before it looks them up, to make visits interleave there.
+// again after, to make visits interleave there.
 var addHook func(added bool)
 
 // canceled is the Error of a page whose visit the run's cancel cut
@@ -683,7 +635,7 @@ func captureNeeds(modules []check.Module, snapshot bool) (shots, twice bool) {
 // when https is refused outright. A bad certificate or a timeout is a
 // reason to stop, not to downgrade.
 func resolve(ctx context.Context, client *http.Client, target, ua string, followHost bool, log func(string)) (*url.URL, error) {
-	u, explicit, err := ratelimit.ParseTarget(target)
+	u, explicit, err := httpx.ParseTarget(target)
 	if err != nil {
 		return nil, err
 	}

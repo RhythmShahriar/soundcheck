@@ -6,6 +6,8 @@ package check
 import (
 	"net/url"
 	"strings"
+
+	"github.com/RhythmShahriar/rhythm/kit/crawl"
 )
 
 // SameSite reports whether a and b are on one site: the same hostname
@@ -15,13 +17,24 @@ import (
 // all the time), while 127.0.0.1:8080 and 127.0.0.1:8081 are two, the
 // way local setups run sibling sites side by side.
 //
-// It replaces the kit's crawl.SameSite, which ignores ports, until a kit
-// release has the port check.
+// It is the kit's crawl.SameSite, without its scheme rule: the kit
+// allows only the upgrade from http to https, while a page here may also
+// link or post back to http, and a local server may answer both on one
+// port. Downgrade and Trusted tell those moves apart.
 func SameSite(a, b *url.URL) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return siteName(a.Hostname()) == siteName(b.Hostname()) && explicitPort(a) == explicitPort(b)
+	if crawl.SameSite(a, b) || crawl.SameSite(b, a) {
+		return true
+	}
+	// The same explicit port under the other scheme: compare it as a's.
+	if p := b.Port(); p != "" && p != "80" && p != "443" && !strings.EqualFold(a.Scheme, b.Scheme) {
+		c := *b
+		c.Scheme = a.Scheme
+		return crawl.SameSite(a, &c)
+	}
+	return false
 }
 
 // Downgrade reports whether a move from a to b drops https: a is https
@@ -35,15 +48,3 @@ func Downgrade(a, b *url.URL) bool {
 // cookie or token on an http link of an https site would cross the
 // network in cleartext.
 func Trusted(site, u *url.URL) bool { return SameSite(site, u) && !Downgrade(site, u) }
-
-func siteName(host string) string { return strings.TrimPrefix(strings.ToLower(host), "www.") }
-
-// explicitPort is u's port, or "" when it is the scheme's default.
-func explicitPort(u *url.URL) string {
-	p := u.Port()
-	switch {
-	case p == "80" && !strings.EqualFold(u.Scheme, "https"), p == "443" && !strings.EqualFold(u.Scheme, "http"):
-		return ""
-	}
-	return p
-}
