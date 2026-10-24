@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -26,10 +27,14 @@ func safe(module, hook string, warn func(string), fn func()) {
 // self is this package's import path, where a module's own frames end.
 const self = "github.com/RhythmShahriar/soundcheck/compare"
 
+// hookCallers are the functions of this package that call modules'
+// hooks, through closures named after them ("Compare.func3").
+var hookCallers = []string{".Compare.", ".finish.", ".Stream."}
+
 // frames describes up to n frames of a panicking goroutine's stack as
 // "function file:line", from where the panic happened down to the
 // module's hook. The runtime's frames (gopanic, a nil map write) are
-// skipped, and so are Compare and safe below the hook: they're the same
+// skipped, and so are hookCallers and safe below the hook: they're the same
 // for every panic. Called from the deferred recover, the stack still
 // holds the panicking frames.
 func frames(n int) string {
@@ -38,7 +43,7 @@ func frames(n int) string {
 	var out []string
 	for len(out) < n {
 		f, more := it.Next()
-		if f.Function == self+".safe" || strings.HasPrefix(f.Function, self+".Compare.") {
+		if f.Function == self+".safe" || slices.ContainsFunc(hookCallers, func(c string) bool { return strings.HasPrefix(f.Function, self+c) }) {
 			break
 		}
 		if !strings.HasPrefix(f.Function, "runtime.") && f.Function != self+".safe.func1" {
