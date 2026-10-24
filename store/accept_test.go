@@ -120,6 +120,7 @@ func onPage(c *model.Comparison, check, page string) []model.Change {
 }
 
 func TestAcceptVisualChangeOnOnePage(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := f.compareAgain(t)
 	if len(onPage(c, "visual/*", "/a/")) == 0 || len(onPage(c, "visual/*", "/b/")) == 0 {
@@ -174,6 +175,7 @@ func TestAcceptVisualChangeOnOnePage(t *testing.T) {
 }
 
 func TestAcceptNewIssueByID(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := f.compareAgain(t)
 	news := onPage(c, "health/php-error", "/a/")
@@ -197,6 +199,7 @@ func TestAcceptNewIssueByID(t *testing.T) {
 }
 
 func TestAcceptSpeedAndTitle(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := &model.Comparison{Changes: []model.Change{
 		{ID: "00000001", Class: model.Slower, Check: "speed/load", Title: "Load 5× slower", Pages: []string{"/c/"}},
@@ -215,6 +218,7 @@ func TestAcceptSpeedAndTitle(t *testing.T) {
 }
 
 func TestAcceptSelectors(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := f.compareAgain(t)
 	for _, tc := range []struct {
@@ -238,6 +242,7 @@ func TestAcceptSelectors(t *testing.T) {
 }
 
 func TestAcceptRefusesBrokenRunScreenshot(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	c := f.compareAgain(t)
 	if err := os.WriteFile(filepath.Join(f.run, "shots", model.PageID("/a/")+"-desktop.png"), []byte("not a png"), 0o600); err != nil {
@@ -258,6 +263,7 @@ func TestAcceptRefusesBrokenRunScreenshot(t *testing.T) {
 }
 
 func TestAcceptSiteIssue(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)
 	link := model.Issue{Check: "health/broken-link", Level: model.Warning, Title: "Broken link to /old (404)", Pages: []string{"/a/"}}
 	link.Identify()
@@ -280,6 +286,7 @@ func TestAcceptSiteIssue(t *testing.T) {
 }
 
 func TestAcceptRefusesScreenshotLinkedOutsideTheRun(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
 	if runtime.GOOS == "windows" { // symlinks need privileges there
 		t.Skip("no symlinks")
 	}

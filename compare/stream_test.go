@@ -266,7 +266,9 @@ func peakHeap(fn func()) uint64 {
 }
 
 func TestStreamKeepsBigRunsOutOfMemory(t *testing.T) {
-	if testing.Short() {
+	// Under the race detector it takes over a minute and its shadow
+	// memory skews the heap numbers; other Stream tests cover races.
+	if testing.Short() || raceEnabled {
 		t.Skip("writes two 20,000-page runs")
 	}
 	const n = 20000

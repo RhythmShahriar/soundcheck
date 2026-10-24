@@ -63,13 +63,12 @@ func timeCompare(n int) time.Duration {
 }
 
 func TestCompareIsLinear(t *testing.T) {
-	if testing.Short() {
+	// The race detector slows some steps far more than others, so the
+	// ratio below would measure it rather than Compare.
+	if testing.Short() || raceEnabled {
 		t.Skip("timing test")
 	}
 	budget := 2 * time.Second
-	if raceEnabled { // the race detector slows everything down several times
-		budget *= 10
-	}
 	small, big := timeCompare(1000), timeCompare(10000)
 	if big > budget {
 		t.Errorf("10,000 pages took %s, want under %s", big, budget)

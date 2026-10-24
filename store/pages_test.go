@@ -36,7 +36,11 @@ func synthPages(n int) []model.Page {
 
 func TestSaveRunRoundTripsBigRuns(t *testing.T) {
 	dir := t.TempDir()
-	pages := synthPages(20000)
+	n := 20000
+	if testing.Short() || raceEnabled {
+		n = 2000
+	}
+	pages := synthPages(n)
 	pages[7].Error = model.CanceledError
 	if err := SaveRun(dir, &model.Run{Target: "http://big.test/", Name: "big", Pages: pages, Issues: []model.Issue{{Check: "links/broken", Key: "k"}}}); err != nil {
 		t.Fatal(err)
@@ -64,7 +68,7 @@ func TestSaveRunRoundTripsBigRuns(t *testing.T) {
 	if len(head.Pages) != 0 || head.Name != "big" || p.Len() != len(pages) {
 		t.Fatalf("OpenRun: %d pages in the head, %d indexed", len(head.Pages), p.Len())
 	}
-	for _, i := range []int{0, 7, 12345, 19999} {
+	for _, i := range []int{0, 7, n/2 + 345, n - 1} {
 		got, err := p.Page(i)
 		if err != nil || !reflect.DeepEqual(*got, pages[i]) {
 			t.Errorf("Page(%d) = %v, %v", i, got.Path, err)
