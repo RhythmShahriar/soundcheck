@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -143,4 +144,44 @@ func (c Config) ProductionSites() []string {
 		out = append(out, p.String())
 	}
 	return out
+}
+
+// HostKey is how Soundcheck tells one site from another: the normalised
+// host (case, a trailing dot, www. and punycode don't matter), plus the
+// port when it isn't 80 or 443. The scheme is ignored, so an http site
+// that moves to https is the same site.
+func HostKey(u *url.URL) string {
+	key := normHost(u.Hostname())
+	if strings.Contains(key, ":") {
+		key = "[" + key + "]" // IPv6
+	}
+	if p := normPort(u.Port()); p != "" {
+		key += ":" + p
+	}
+	return key
+}
+
+// ParseHost reads a host as a user types it ("example.com",
+// "localhost:8080", "https://cdn.example.com/") and returns its HostKey.
+func ParseHost(s string) (string, error) {
+	raw := strings.TrimSpace(s)
+	if !strings.Contains(raw, "://") {
+		raw = "//" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("%q isn't a host like example.com or localhost:8080", s)
+	}
+	return HostKey(u), nil
+}
+
+// IsLoopback reports whether host (no port) is this machine: localhost,
+// 127.0.0.0/8 or ::1. Nothing sent there leaves the computer.
+func IsLoopback(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	if host == "localhost" { // not *.localhost: a resolver may send those anywhere
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }

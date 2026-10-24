@@ -33,6 +33,9 @@ var Modules = []string{"health", "visual", "interact", "cache", "speed", "echo"}
 // EchoURL is where `rhythm echo up` listens by default.
 const EchoURL = "http://127.0.0.1:8025"
 
+// EchoTokenPrefix starts every variable echo.token_env may name.
+const EchoTokenPrefix = "RHYTHM_ECHO_"
+
 // Interaction levels, from safest to most invasive.
 var Levels = []string{"inspect", "click", "submit", "flows"}
 
@@ -50,6 +53,9 @@ type Config struct {
 	Tabs         int          `yaml:"tabs"`
 	Timeout      int          `yaml:"timeout"` // seconds per page
 	Echo         Echo         `yaml:"echo"`
+
+	// Trust is set by command-line flags only, never by the file.
+	Trust Trust `yaml:"-"`
 
 	// prod is Production as Validate parsed it and prodFrom the entries
 	// it parsed, so IsProduction can tell when Production changed since.
@@ -76,6 +82,16 @@ type Interactions struct {
 	MaxClicks int      `yaml:"max_clicks"` // per page
 	Allow     []string `yaml:"allow"`      // selectors clickable even if they look destructive
 	Forms     []string `yaml:"forms"`      // forms that may be submitted on production, by CSS selector
+}
+
+// Trust holds what only the person running Soundcheck may allow. The
+// project folder and the site are untrusted (a pull request can change
+// .soundcheck/), so secrets, logins and flow navigation stay on the target
+// site unless a command-line flag says otherwise.
+type Trust struct {
+	AllowEnv      []string // --allow-env: variables flows may read besides SOUNDCHECK_*
+	AllowHosts    []string // --allow-host: hosts flows may open besides the target, as HostKey gives them
+	InsecureLogin bool     // --insecure-login: type the password over plain http to a public host
 }
 
 type Login struct {
@@ -167,7 +183,23 @@ func (c *Config) Validate() error {
 	case c.Timeout < 5:
 		return errors.New("timeout must be at least 5 seconds")
 	}
+	if err := c.Login.validate(); err != nil {
+		return err
+	}
 	return c.Echo.validate(c.Has("echo"))
+}
+
+// validate checks login.url is a path or an http(s) URL. Whether a URL is
+// on the target site is checked when logging in, once the site is known.
+func (l Login) validate() error {
+	if l.URL == "" {
+		return nil
+	}
+	u, err := url.Parse(l.URL)
+	if err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") || (u.Scheme != "" && u.Host == "") {
+		return fmt.Errorf("login.url: %q isn't a path like /wp-login.php", l.URL)
+	}
+	return nil
 }
 
 func (e Echo) validate(on bool) error {
@@ -187,6 +219,9 @@ func (e Echo) validate(on bool) error {
 		return errors.New("echo.timeout must be at least echo.quiet and at most 1m")
 	case strings.ContainsAny(e.TokenEnv, " =$"):
 		return fmt.Errorf("echo.token_env: %q isn't an environment variable name", e.TokenEnv)
+	case e.TokenEnv != "" && !strings.HasPrefix(e.TokenEnv, EchoTokenPrefix):
+		// A committed config must not pick which secret is sent where.
+		return fmt.Errorf("echo.token_env: %q must start with %s", e.TokenEnv, EchoTokenPrefix)
 	}
 	return nil
 }

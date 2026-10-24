@@ -59,16 +59,20 @@ func TestEcho(t *testing.T) {
 		t.Fatalf("echo override: %+v %v", c.Echo, err)
 	}
 	for body, want := range map[string]string{
-		"echo:\n  urll: x\n":                        "field urll not found",
-		"echo:\n  url: 127.0.0.1:8025\n":            "isn't an http(s) URL",
-		"echo:\n  url: ftp://x\n":                   "isn't an http(s) URL",
-		"echo:\n  quiet: 10ms\n":                    "echo.quiet",
-		"echo:\n  quiet: 5s\n  timeout: 2s\n":       "echo.timeout",
-		"echo:\n  timeout: 5m\n":                    "echo.timeout",
-		"echo:\n  quiet: 1500\n":                    "time.Duration",
-		"echo:\n  token_env: \"A B\"\n":             "token_env",
-		"modules: [health, echo]\n":                 "echo needs Echo's address",
-		"echo:\n  url: http://x\nmodules: [echo]\n": "",
+		"echo:\n  urll: x\n":                          "field urll not found",
+		"echo:\n  url: 127.0.0.1:8025\n":              "isn't an http(s) URL",
+		"echo:\n  url: ftp://x\n":                     "isn't an http(s) URL",
+		"echo:\n  quiet: 10ms\n":                      "echo.quiet",
+		"echo:\n  quiet: 5s\n  timeout: 2s\n":         "echo.timeout",
+		"echo:\n  timeout: 5m\n":                      "echo.timeout",
+		"echo:\n  quiet: 1500\n":                      "time.Duration",
+		"echo:\n  token_env: \"A B\"\n":               "token_env",
+		"echo:\n  token_env: AWS_SECRET_ACCESS_KEY\n": "must start with RHYTHM_ECHO_",
+		"echo:\n  token_env: GITHUB_TOKEN\n":          "must start with RHYTHM_ECHO_",
+		"echo:\n  token_env: RHYTHM_ECHO_CI\n":        "",
+		"echo:\n  token_env: \"\"\n":                  "",
+		"modules: [health, echo]\n":                   "echo needs Echo's address",
+		"echo:\n  url: http://x\nmodules: [echo]\n":   "",
 	} {
 		_, err := Load(write(t, body))
 		switch {
@@ -77,5 +81,26 @@ func TestEcho(t *testing.T) {
 		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
 			t.Errorf("%q: err = %v, want %q", body, err, want)
 		}
+	}
+}
+
+func TestLoginURL(t *testing.T) {
+	for body, want := range map[string]string{
+		"login:\n  url: /my-login/\n":                       "",
+		"login:\n  url: https://example.com/wp-login.php\n": "", // checked against the site when logging in
+		"login:\n  url: ftp://example.com/\n":               "login.url",
+		"login:\n  url: \"http://\"\n":                      "login.url",
+		"login:\n  url: \"://x\"\n":                         "login.url",
+	} {
+		_, err := Load(write(t, body))
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q: %v", body, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+	if _, err := Load(write(t, "trust:\n  allow_env: [GITHUB_TOKEN]\n")); err == nil {
+		t.Error("the config file must not set trust")
 	}
 }

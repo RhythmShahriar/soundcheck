@@ -116,3 +116,26 @@ func TestProductionInCode(t *testing.T) {
 		t.Error("a bad entry must not hide the good ones")
 	}
 }
+
+func TestHostKey(t *testing.T) {
+	for in, want := range map[string]string{
+		"example.com": "example.com", "https://WWW.Example.com.:443/x": "example.com", "http://example.com:80": "example.com",
+		"localhost:20261": "localhost:20261", "127.0.0.1:20260": "127.0.0.1:20260", "bücher.de": "xn--bcher-kva.de",
+		"[::1]:8080": "[::1]:8080", "https://cdn.example.com/": "cdn.example.com",
+	} {
+		if got, err := ParseHost(in); err != nil || got != want {
+			t.Errorf("ParseHost(%q) = %q %v, want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "http://", "://x"} {
+		if _, err := ParseHost(bad); err == nil {
+			t.Errorf("ParseHost(%q) accepted", bad)
+		}
+	}
+	for host, want := range map[string]bool{"localhost": true, "LOCALHOST.": true, "127.0.0.1": true, "127.9.9.9": true,
+		"::1": true, "[::1]": true, "foo.localhost": false, "127.0.0.1.example.com": false, "10.0.0.5": false, "example.com": false} {
+		if IsLoopback(host) != want {
+			t.Errorf("IsLoopback(%q) = %v", host, !want)
+		}
+	}
+}
