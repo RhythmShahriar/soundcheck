@@ -37,6 +37,8 @@ Optional interfaces tune how the runner treats the module:
   `CheckSite`.
 - `Configurable` decodes the module's own block of `config.yaml`.
 - `IssueOwner` is a `Comparer` that reports every change in its own issues itself.
+- `NeedsChrome` marks a module whose `TabPreparer` or `TabLive` hooks use `Tab.Rod()`. See
+  [Browser engines](#browser-engines).
 
 A module registers itself with `check.Register` from its package's `init`. The command then only
 blank-imports the package (until every module does, it also lists them in
@@ -68,6 +70,34 @@ A hook that panics doesn't end the run: the runner calls each one through `check
 panic becomes a warning naming the module, the hook and where it happened. Hooks of different
 pages run at the same time, so a module that keeps state between hooks guards it with a mutex,
 and one that changes `cc.Run` holds `cc.Lock()`.
+
+### Browser engines
+
+Pages are captured in Chrome by default and in Firefox or WebKit when a run asks for them. Chrome
+is driven through its DevTools protocol (rod); the other engines through WebDriver BiDi, or
+classic WebDriver for a WebKit driver without BiDi (package
+[`capture/webdriver`](capture/webdriver)). Every engine gives a `capture.Tab`, which is a
+`check.Tab` plus navigation, its settings and its network.
+
+`check.ChromeOnly` decides which modules run in the other engines. A module with a `Preparer` or
+`Live` hook (they get rod's tab) or with `NeedsChrome` returning true runs only in Chrome: in
+another engine the runner skips it with the warning `<module> was skipped in firefox: it needs
+Chrome`. A module written against `check.Tab` (`TabPreparer`, `TabLive`) and the
+recorded page runs everywhere, so prefer those hooks. `Tab.Rod()` is nil outside Chrome.
+
+The engines report the same facts in the same words where they can: resource types use Chrome's
+names (`Image`, `Script`, `Fetch`…), uncaught exceptions read `Uncaught <message> (<url>:<line>)`
+and console levels use Chrome's (`warning`, not `warn`). Some things differ: network errors keep
+the engine's own name (`net::ERR_…` in Chrome, `NS_ERROR_…` in Firefox), the mobile viewport is
+only a size outside Chrome (no phone emulation, so a page without a meta viewport isn't reported
+as not responsive) and classic WebDriver has no events, preload scripts or full-page shots.
+Screenshots of another engine are named after it (`shots/<page>-desktop-firefox.png`).
+
+A change to the engines runs the driver contract,
+[capture/drivertest](capture/drivertest/drivertest.go), against Chrome always and against Firefox
+and WebKit when they are installed (the tests skip otherwise).
+[runner/engine_test.go](runner/engine_test.go) checks that one broken site gives the same health
+issues in Chrome and Firefox.
 
 ### Issues and their key
 
