@@ -227,7 +227,7 @@ func wordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 // and port; www. and the scheme don't matter). what names u in the error.
 func onSite(base, u *url.URL, what string) error {
 	if site, host := config.HostKey(base), config.HostKey(u); site != host {
-		return fmt.Errorf("%s is on %s, not the site being checked (%s); the password is only typed there", what, host, site)
+		return fmt.Errorf("%s is on %s, not the site being checked (%s); the password is only typed on the site being checked", what, host, site)
 	}
 	return nil
 }

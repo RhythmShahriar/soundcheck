@@ -505,7 +505,7 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("snapshot", "confirm", "serve", "client", "brand"), s.hostHeader(site)); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("snapshot", "confirm", "serve", "client", "brand"), s.siteChecks(site)); err != nil {
 		return s.fail(err)
 	}
 	if s.o.resume && s.o.name == "" {
@@ -633,6 +633,41 @@ func (s *session) trend(run *model.Run) []float64 {
 	return out[max(0, len(out)-trendRuns):]
 }
 
+// siteChecks are the usage errors about each site found before anything
+// starts: -H Host and login.url naming another site.
+func (s *session) siteChecks(sites ...string) error {
+	return cmp.Or(s.hostHeader(sites...), s.loginHost(sites...))
+}
+
+// loginHost refuses a login.url on another site than each site the run
+// logs in to. The password is only typed on the site being checked, so
+// such a login would fail at the end of the run; it's a usage error
+// (exit 2) found before the run starts instead.
+func (s *session) loginHost(sites ...string) error {
+	if login, _ := loginFunc(s.cfg, s.o.noLogin); login == nil {
+		return nil
+	}
+	u, err := url.Parse(s.cfg.Login.URL)
+	if err != nil || u.Host == "" {
+		return nil // a path, as in the default: always on the site
+	}
+	for _, site := range sites {
+		t, _, err := ratelimit.ParseTarget(site)
+		if err != nil || s.untrusted(site) {
+			continue // target() words that error; an untrusted site gets no login
+		}
+		if config.HostKey(t) != config.HostKey(u) {
+			where := "login.url"
+			if s.configPath != "" {
+				where = s.configPath + ": login.url"
+			}
+			return cli.Usagef("%s is on %s, not the site being checked (%s); the password is only typed on the site being checked",
+				where, config.HostKey(u), config.HostKey(t))
+		}
+	}
+	return nil
+}
+
 // only refuses flags that belong to another command.
 // hostHeader refuses -H Host naming another host than each site: the
 // browser can't send it, so that's a usage error (exit 2) found before
@@ -694,7 +729,7 @@ func cmdCompare(s *session) int {
 		runJSON := rel(filepath.Join(snapDir, "run.json"))
 		s.siteFrom, s.siteKey, s.siteTrusted = runJSON, "target", !gitTracked(runJSON)
 	}
-	if err := s.hostHeader(site); err != nil {
+	if err := s.siteChecks(site); err != nil {
 		return s.fail(err)
 	}
 	changes := inherit(&s.cfg, before.Options, s.chosen, s.o.skip)
@@ -733,7 +768,7 @@ func cmdAgainst(s *session) int {
 		return s.fail(cli.Usagef("--against compares one site with another: %s staging.example.com --against example.com", cmdName()))
 	}
 	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict(), s.only("--against", "resume", "serve", "client", "brand"),
-		s.hostHeader(s.args[0], s.o.against)); err != nil {
+		s.siteChecks(s.args[0], s.o.against)); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -868,7 +903,7 @@ func cmdRun(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("run", "confirm", "resume", "serve", "client", "brand"), s.hostHeader(site)); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("run", "confirm", "resume", "serve", "client", "brand"), s.siteChecks(site)); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))

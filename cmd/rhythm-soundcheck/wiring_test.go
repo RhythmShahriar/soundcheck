@@ -588,3 +588,41 @@ func TestHostHeaderIsAUsageError(t *testing.T) {
 		}
 	}
 }
+
+// A login.url on another site than the one checked is a usage error
+// found before the run starts, naming login.url; a path or the site's
+// own host goes ahead.
+func TestLoginURLOnAnotherSite(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_USER", "admin")
+	t.Setenv("SOUNDCHECK_PASSWORD", "s3cret")
+	if err := os.MkdirAll(".soundcheck", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".soundcheck/config.yaml", []byte("login:\n  url: http://127.0.0.1:21201/wp-login.php\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := ".soundcheck/config.yaml: login.url is on 127.0.0.1:21201, not the site being checked (127.0.0.1:21200); the password is only typed on the site being checked"
+	for _, args := range [][]string{{"run", "127.0.0.1:21200"}, {"snapshot", "127.0.0.1:21200"}, {"127.0.0.1:21201", "--against", "127.0.0.1:21200"}} {
+		code, out, errOut := runCLI(t, append(args, "--plain")...)
+		if code != exitUsage || !strings.Contains(errOut, want) || strings.Contains(out+errOut, "using http") {
+			t.Errorf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	s := &session{plan: &plan{cfg: config.Default()}}
+	s.cfg.Login.URL = "http://www.127.0.0.1.nip.test:21200/wp-login.php"
+	for site, ok := range map[string]bool{"127.0.0.1:21200": false, "http://www.127.0.0.1.nip.test:21200/": true, "127.0.0.1.nip.test:21200": true} {
+		if err := s.loginHost(site); (err == nil) != ok {
+			t.Errorf("%s: %v", site, err)
+		}
+	}
+	s.cfg.Login.URL = "/wp-login.php"
+	if err := s.loginHost("127.0.0.1:21200"); err != nil {
+		t.Errorf("a path: %v", err)
+	}
+	s.o.noLogin = true
+	s.cfg.Login.URL = "http://elsewhere.test/wp-login.php"
+	if err := s.loginHost("127.0.0.1:21200"); err != nil {
+		t.Errorf("--no-login: %v", err)
+	}
+}
