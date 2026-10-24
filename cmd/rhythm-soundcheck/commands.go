@@ -132,7 +132,7 @@ func (s *session) untrusted(target string) bool {
 }
 
 // start prints the header, the effective settings, the production guard
-// and the one-time notice, and looks for a new release in the background.
+// and the one-time notice, then looks for a new release in the background.
 func (s *session) start(target string) {
 	if kitconfig.FirstRun("soundcheck-authorised-use") && !s.o.quiet {
 		fmt.Fprint(s.stderr, "Note: check only sites you own or are authorised to test. Soundcheck browses\n"+

@@ -267,7 +267,7 @@ var (
 )
 
 // validateHeaders checks the shape of headers. Whether a variable may be
-// read, and is set, is the CLI's to check: --allow-env is a flag.
+// read and is set is the CLI's to check: --allow-env is a flag.
 func (c Config) validateHeaders() error {
 	for _, name := range slices.Sorted(maps.Keys(c.Headers)) {
 		switch env := c.Headers[name]; {
