@@ -55,7 +55,7 @@ func LoadRules(dir string) (*rules.Set, error) { return rules.Load(dir, Checks..
 
 // errorScreen is the rule group of the pages a broken site shows instead
 // of its own (WordPress "critical error", database and framework error
-// pages): a page gets one of them, and none is a white screen.
+// pages): a page gets one of them and isn't also a white screen.
 const errorScreen = "error-screen"
 
 var (
