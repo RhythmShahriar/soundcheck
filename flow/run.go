@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	echomodel "github.com/RhythmShahriar/echo/model"
+	"github.com/RhythmShahriar/soundcheck/config"
 )
 
 // Options for running a flow.
@@ -34,7 +36,17 @@ type Options struct {
 	// Echo captured it, for expect: {message: …}. Nil when Echo isn't
 	// running; such expects then fail with a hint.
 	Messages func(ctx context.Context) ([]echomodel.Message, error)
+	// AllowEnv names variables ${env:…} may read besides SOUNDCHECK_*
+	// ones (--allow-env). A flow reading any other fails before it starts.
+	AllowEnv []string
+	// AllowHosts lists hosts besides Base's that goto and start may open
+	// (--allow-host), as config.HostKey gives them. Others are refused
+	// before the browser asks for them.
+	AllowHosts []string
 }
+
+// ErrOffSite is a goto or start refused because it leaves the site.
+var ErrOffSite = errors.New("isn't the site being checked")
 
 // ErrProduction is a click or submit refused on a production URL.
 var ErrProduction = errors.New("refused on a production URL (set production: true in the flow to allow it)")
@@ -73,6 +85,10 @@ func Run(ctx context.Context, page *rod.Page, f Flow, o Options) []Failure {
 	start := f.Start
 	if start == "" {
 		start = "/"
+	}
+	if err := f.CheckEnv(o.AllowEnv); err != nil {
+		fail(0, "read the environment", err)
+		return out
 	}
 	if err := r.gotoURL(start); err != nil {
 		fail(0, "open "+start, err)
@@ -131,6 +147,10 @@ func (r *runner) onProduction() bool {
 func (r *runner) t() *rod.Page { return r.page.Timeout(r.o.Timeout) }
 
 func (r *runner) expand(s string) (string, error) {
+	// Run checked the whole flow already; this keeps every read honest.
+	if err := envError(envRefs(s), r.o.AllowEnv); err != nil {
+		return "", err
+	}
 	v, secrets, err := Expand(s, r.o.Fake, r.o.Env)
 	r.secrets = append(r.secrets, secrets...)
 	return v, err
@@ -156,11 +176,35 @@ func (r *runner) gotoURL(raw string) error {
 	if err != nil {
 		return err
 	}
+	if err := r.onSite(target); err != nil {
+		return err
+	}
 	if err := r.t().Navigate(target); err != nil {
 		return err
 	}
 	r.settle()
 	return nil
+}
+
+// onSite refuses a URL on another host than Base, unless AllowHosts has
+// it, so a flow can't carry what it typed or read to someone else's
+// server. A different port is a different host; www. and the apex are one.
+func (r *runner) onSite(target string) error {
+	if r.o.Base == nil {
+		return nil
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%s: only http and https pages can be opened", u.Scheme)
+	}
+	site, host := config.HostKey(r.o.Base), config.HostKey(u)
+	if host == site || slices.Contains(r.o.AllowHosts, host) {
+		return nil
+	}
+	return fmt.Errorf("%s %w (%s); pass --allow-host %s to open it", host, ErrOffSite, site, host)
 }
 
 // settle waits for the page to finish loading after an action that may
