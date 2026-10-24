@@ -84,8 +84,22 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 			safe(m.Name(), "FilterChanges", warn, func() { out.Changes = f.FilterChanges(slices.Clone(out.Changes)) })
 		}
 	}
+	out.Changes = oneCause(out.Changes, siteIssue(cc.Before, cc.After))
 	Sort(out.Changes)
 	return out
+}
+
+// siteIssue reports whether a change comes from a site-level issue of
+// either run (a broken link, found once with the pages that link to it)
+// rather than from something on the pages it lists.
+func siteIssue(runs ...*model.Run) func(model.Change) bool {
+	keys := map[string]bool{}
+	for _, r := range runs {
+		for _, i := range r.Issues {
+			keys[i.Check+"|"+i.Title+"|"+i.Source] = true
+		}
+	}
+	return func(c model.Change) bool { return keys[c.Check+"|"+c.Title+"|"+c.Source] }
 }
 
 // withoutCanceled returns r without the pages whose visit was canceled,
