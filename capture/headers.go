@@ -20,6 +20,9 @@ var keptHeaders = map[string]bool{
 	"server": true, "content-type": true, "content-encoding": true, "content-length": true, "vary": true,
 	"expires": true, "etag": true, "last-modified": true, "location": true, "strict-transport-security": true,
 	"content-security-policy": true, "x-powered-by": true,
+	// The login challenge (scheme and realm) for health/auth-required; it
+	// names how to log in, not a credential.
+	"www-authenticate": true,
 }
 
 // secretName matches header names that carry credentials whatever their

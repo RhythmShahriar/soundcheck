@@ -30,9 +30,9 @@ func (twice) Compare(context.Context, *check.CompareContext) []model.Change {
 }
 
 // n5Runs rebuilds the compare of users.md N5 with the real health
-// checks: /promo.php became a 404 whose error page has no favicon and
-// throws a JS error, while / and /contact.php gained a PHP warning and
-// /contact.php also lost its favicon.
+// checks: /promo.php became a 404 whose error page throws a JS error,
+// while / and /contact.php gained a PHP warning and the favicon went
+// missing (a site-level issue listing the pages that asked for it).
 func n5Runs(t *testing.T) (before, after *model.Run) {
 	t.Helper()
 	base, _ := url.Parse("http://127.0.0.1:20300/")
@@ -63,6 +63,9 @@ func n5Runs(t *testing.T) (before, after *model.Run) {
 	link := model.Issue{Check: "health/broken-link", Level: model.Warning, Title: "Broken link to /old (404)", Pages: []string{"/promo.php"}}
 	link.Identify()
 	after.Issues = []model.Issue{link}
+	for _, r := range []*model.Run{before, after} {
+		health.Module{}.CheckSite(context.Background(), &check.Context{Base: base, Run: r})
+	}
 	return before, after
 }
 
@@ -80,9 +83,9 @@ func TestOneCausePerLine(t *testing.T) {
 	got := lines(cmp.Changes)
 	want := []string{
 		"broke Page not found (404) [/promo.php]",
+		"new No favicon [/contact.php /promo.php]",
 		"new PHP Warning: Undefined variable $x [/ /contact.php]",
 		"new Broken link to /old (404) [/promo.php]",
-		"new No favicon [/contact.php]",
 		"changed New block near the bottom [/ /contact.php]",
 	}
 	if !slices.Equal(got, want) {
@@ -92,8 +95,10 @@ func TestOneCausePerLine(t *testing.T) {
 		if c.Title == "New block near the bottom" && c.Score != 5 {
 			t.Errorf("merged score = %v, want the highest (5)", c.Score)
 		}
-		if c.Title == "No favicon" && c.Score != 1 {
-			t.Errorf("favicon score = %v, want the page count left (1)", c.Score)
+		// A site-level issue keeps every page, the error page too: the
+		// favicon is missing for the whole site, not for one page.
+		if c.Title == "No favicon" && c.Score != 2 {
+			t.Errorf("favicon score = %v, want the page count (2)", c.Score)
 		}
 	}
 }

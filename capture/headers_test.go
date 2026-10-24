@@ -23,6 +23,7 @@ func TestStoredHeader(t *testing.T) {
 	for _, c := range []struct{ name, in, want string }{
 		{"cache-control", "max-age=600, public", "max-age=600, public"},
 		{"x-robots-tag", "noindex", "noindex"},
+		{"www-authenticate", `Basic realm="Staging"`, `Basic realm="Staging"`},
 		{"x-api-key", "sk_live_4eC39HqLyjWDarjtT1zdp7dc", "•••••"},
 		{"x-debug-info", "stripe=sk_live_4eC39HqLyjWDarjtT1zdp7dc", "stripe=sk_live_•••••"},
 		{"x-debug", "Bearer abcdef123456", "Bearer abcdef123456"},
