@@ -56,12 +56,8 @@ func TestNamesThatDifferOnlyInCaseAreRefused(t *testing.T) {
 	if _, err := s.NewDir(Incoming, "before"); err == nil || err.Error() != want {
 		t.Errorf("NewDir: %v", err)
 	}
-	// A folder made before the check (or by hand) still can't replace it.
-	dir := filepath.Join(s.Root, Incoming, "manual")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Promote(dir, "before"); err == nil || err.Error() != want {
+	// A folder taken under another name still can't replace it.
+	if _, err := s.Promote(snapshot(t, s, "other", "y"), "before"); err == nil || err.Error() != want {
 		t.Errorf("Promote: %v", err)
 	}
 	if _, err := s.NewDir(Incoming, "Before"); err != nil {

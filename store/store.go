@@ -145,10 +145,15 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 // Promote moves a finished snapshot from Incoming into snapshots/name,
 // replacing an older snapshot with that name, and returns its new folder.
 // It holds the store's lock, so two snapshots finishing at once each
-// leave a whole snapshot, never a mix of both.
+// leave a whole snapshot, never a mix of both. A snapshot whose
+// screenshots weren't all written (see verifyShots) is refused, and the
+// previous one stays.
 func (s Store) Promote(dir, name string) (string, error) {
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
+	}
+	if err := verifyShots(dir); err != nil {
+		return "", err
 	}
 	unlock, err := s.lock()
 	if err != nil {
