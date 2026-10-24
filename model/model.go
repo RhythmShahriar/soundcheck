@@ -238,9 +238,26 @@ func PageID(url string) string {
 // Path in place without that isn't seen. Concurrent readers are safe;
 // writers to Pages need their own lock, as before.
 func (r *Run) Page(path string) *Page {
+	// The fast path only reads, so parallel comparers don't wait on
+	// each other once the index is built.
+	indexMu.RLock()
+	idx := r.index
+	if idx.valid(r.Pages) {
+		i, ok := idx.byPath[path]
+		if !ok {
+			indexMu.RUnlock()
+			return nil
+		}
+		if r.Pages[i].Path == path {
+			indexMu.RUnlock()
+			return &r.Pages[i]
+		}
+	}
+	indexMu.RUnlock()
+
 	indexMu.Lock()
 	defer indexMu.Unlock()
-	idx := r.index
+	idx = r.index
 	if !idx.valid(r.Pages) {
 		idx = newPageIndex(r.Pages)
 		r.index = idx
@@ -260,7 +277,7 @@ func (r *Run) Page(path string) *Page {
 // indexMu guards every run's page index. One lock for all runs keeps Run
 // free of a mutex, so runs can still be copied by value (a copy builds
 // its own index on first use).
-var indexMu sync.Mutex
+var indexMu sync.RWMutex
 
 // pageIndex maps paths to positions in the Pages slice it was built from.
 type pageIndex struct {
