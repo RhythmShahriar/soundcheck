@@ -40,3 +40,26 @@ func TestSameSite(t *testing.T) {
 		t.Error("nil is no site")
 	}
 }
+
+func TestTrusted(t *testing.T) {
+	for _, tc := range []struct {
+		site, u string
+		want    bool
+	}{
+		{"https://example.com/", "https://www.example.com/a", true},
+		{"http://example.com/", "https://example.com/", true},
+		{"http://example.com/", "http://example.com/", true},
+		{"https://example.com/", "http://example.com/", false},
+		{"https://example.com/", "HTTP://www.example.com/", false},
+		{"https://example.com/", "https://cdn.example.net/", false},
+	} {
+		site, _ := url.Parse(tc.site)
+		u, _ := url.Parse(tc.u)
+		if got := Trusted(site, u); got != tc.want {
+			t.Errorf("Trusted(%s, %s) = %v, want %v", tc.site, tc.u, got, tc.want)
+		}
+	}
+	if Downgrade(nil, &url.URL{Scheme: "http"}) {
+		t.Error("nil is no downgrade")
+	}
+}

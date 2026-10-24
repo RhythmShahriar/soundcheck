@@ -352,7 +352,7 @@ func (t *tab) continueRequest(e Event) {
 	if ua != "" {
 		set["User-Agent"] = ua
 	}
-	if u, err := url.Parse(r.Request.URL); err == nil && site != nil && check.SameSite(site, u) {
+	if u, err := url.Parse(r.Request.URL); err == nil && site != nil && check.Trusted(site, u) {
 		for k, v := range extra {
 			set[k] = v
 		}

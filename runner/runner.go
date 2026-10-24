@@ -739,7 +739,7 @@ type headerTransport struct {
 }
 
 func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if len(t.headers) == 0 || !check.SameSite(t.site, r.URL) {
+	if len(t.headers) == 0 || !check.Trusted(t.site, r.URL) {
 		return t.base.RoundTrip(r)
 	}
 	r = r.Clone(r.Context())

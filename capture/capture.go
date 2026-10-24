@@ -174,8 +174,10 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 		}
 		for _, c := range Cookies(v) {
 			// HttpOnly keeps them from the page's own scripts, third-party
-			// ones included.
-			_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/", HTTPOnly: true}.Call(tab)
+			// ones included. Secure keeps an https site's cookies off its
+			// http links.
+			_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/",
+				HTTPOnly: true, Secure: strings.EqualFold(site.Scheme, "https")}.Call(tab)
 			if err != nil {
 				return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
 			}
@@ -185,7 +187,7 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 		return release, nil
 	}
 	return intercept.Add(tab, func(q *intercept.Request) {
-		if q.URL != nil && check.SameSite(site, q.URL) {
+		if q.URL != nil && check.Trusted(site, q.URL) {
 			for k, v := range extra {
 				q.SetHeader(k, v)
 			}

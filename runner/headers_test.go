@@ -132,4 +132,18 @@ func TestHeaderTransportScope(t *testing.T) {
 	if h, _ := got.get("/theirs"); h != [2]string{} {
 		t.Errorf("another port: %q", h)
 	}
+
+	// An https site's headers stay off its http links: they would cross
+	// the network in cleartext.
+	secure := *site
+	secure.Scheme = "https"
+	c = httpClient(Options{Headers: map[string]string{"Authorization": "Bearer t", "Cookie": "a=1"}}, &secure)
+	resp, err := c.Get(srv.URL + "/plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if h, _ := got.get("/plain"); h != [2]string{} {
+		t.Errorf("http link of an https site: %q", h)
+	}
 }
