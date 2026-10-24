@@ -23,7 +23,7 @@ import (
 // warnings) with an empty pages list, names the file and says how many
 // pages it holds.
 const (
-	// PagesFile is where a run's pages are stored, and where PageWriter
+	// PagesFile is where a run's pages are stored and where PageWriter
 	// writes them while a snapshot is taken.
 	PagesFile = "pages.jsonl"
 	// altPagesFile takes the pages when run.json already names
@@ -154,7 +154,7 @@ func openPages(dir, name string) (*os.File, string, error) {
 }
 
 // nextLine reads the next line of r without its newline, reusing buf's
-// storage, and says whether it ended with a newline: one that doesn't is
+// storage and says whether it ended with a newline: one that doesn't is
 // the end of a file a crash cut short. It returns io.EOF when nothing is
 // left. Lines may be longer than r's buffer.
 func nextLine(r *bufio.Reader, buf []byte) (line []byte, complete bool, err error) {

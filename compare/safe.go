@@ -34,7 +34,7 @@ var hookCallers = []string{".Compare.", ".finish.", ".Stream."}
 // frames describes up to n frames of a panicking goroutine's stack as
 // "function file:line", from where the panic happened down to the
 // module's hook. The runtime's frames (gopanic, a nil map write) are
-// skipped, and so are hookCallers and safe below the hook: they're the same
+// skipped. So are hookCallers and safe below the hook: they're the same
 // for every panic. Called from the deferred recover, the stack still
 // holds the panicking frames.
 func frames(n int) string {

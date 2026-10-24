@@ -75,7 +75,7 @@ func start(cc *check.CompareContext, version string, pages int, warnings []strin
 }
 
 // compared drops the issue changes of modules that didn't run in both
-// runs, and of modules that report their own (check.IssueOwner).
+// runs and of modules that report their own (check.IssueOwner).
 func compared(changes []model.Change, cc *check.CompareContext, modules []check.Module) []model.Change {
 	// A module that ran only once has nothing to compare against: all its
 	// issues would look new (or fixed).
@@ -187,7 +187,7 @@ func Issues(before, after *model.Run) []model.Change {
 // issueDiff collects the changes Issues reports a path at a time, so
 // Stream can build them without holding either run. One PHP warning on
 // 14 pages is one change. The result doesn't depend on the order paths
-// come in: pages are a set, and the detail comes from the lowest page
+// come in: pages are a set; the detail comes from the lowest page
 // path (a page's issue before a site issue listing the same page).
 type issueDiff struct{ groups map[string]*issueGroup }
 

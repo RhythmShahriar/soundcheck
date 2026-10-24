@@ -81,7 +81,7 @@ func (p *panickySink) Changes() []model.Change {
 
 // messyRuns makes two runs with what Compare has to get right: pages in
 // one run only, a path twice, canceled pages, errors and warnings that
-// come and go, and site issues listing pages that have the same issue.
+// come and go plus site issues listing pages that have the same issue.
 func messyRuns(seed uint64, n int) (before, after *model.Run) {
 	rnd := rand.New(rand.NewPCG(seed, seed))
 	keys := []model.Issue{

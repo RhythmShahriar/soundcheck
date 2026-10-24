@@ -156,7 +156,7 @@ func SaveRun(dir string, r *model.Run) error {
 	stored.Summary, stored.Groups = nil, nil
 	stored.Pages = []model.Page{}
 	if stored.Schema == model.Schema {
-		// A run of another schema keeps it, and reads back as such.
+		// A run of another schema keeps it and reads back as such.
 		stored.Schema = SplitSchema
 	}
 	if err := cache.WriteJSON(filepath.Join(dir, "run.json"), storedRun{Run: &stored, PagesFile: name, PageCount: len(r.Pages)}); err != nil {
@@ -187,7 +187,7 @@ func LoadRun(dir string) (*model.Run, error) {
 }
 
 // loadHead reads run.json in dir. In the split layout the run comes back
-// without its pages, and the schema is set to model.Schema, the one the
+// without its pages; the schema is set to model.Schema, the one the
 // rest of Soundcheck knows.
 func loadHead(dir string) (*model.Run, storedRun, error) {
 	var r model.Run

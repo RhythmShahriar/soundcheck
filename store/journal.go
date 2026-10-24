@@ -197,7 +197,7 @@ func journal(path string) ([]model.Page, error) {
 // process is writing any more, claims it for this process and returns
 // its folder with the pages it finished (see Resume). When there are
 // several (name, name-2…), it takes the one that wrote a page last. It
-// returns "" when there's none, and the caller starts afresh with
+// returns "" when there's none; the caller then starts afresh with
 // NewDir.
 func (s Store) Resumable(name string) (string, []model.Page, error) {
 	if err := CheckName(name); err != nil {
@@ -252,7 +252,7 @@ func sameSnapshot(folder, name string) bool {
 }
 
 // resumable reports whether an Incoming folder has finished pages to
-// resume from, and when it wrote the last one.
+// resume from and when it wrote the last one.
 func resumable(dir string) (time.Time, bool) {
 	info, err := os.Stat(filepath.Join(dir, PagesFile))
 	if err != nil || info.Size() == 0 {
