@@ -6,8 +6,12 @@ on:
   push:
     branches: [master]
   pull_request:
+permissions:
+  contents: read
+# The shared workflows are pinned by commit so a push to the .github
+# repository can't change what runs here; Dependabot bumps the pins.
 jobs:
   go:
-    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@master
+    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@d296f34c9b6629211c68561504d938c404afaf74 # master
   commitlint:
-    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@master
+    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@d296f34c9b6629211c68561504d938c404afaf74 # master
