@@ -3,7 +3,7 @@ module github.com/RhythmShahriar/soundcheck
 go 1.27.3
 
 require (
-	github.com/RhythmShahriar/echo v0.0.0
+	github.com/RhythmShahriar/echo v1.0.0
 	github.com/RhythmShahriar/rhythm v0.4.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -48,7 +48,3 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
-
-// TEMPORARY: Echo isn't tagged yet. Remove this replace (and require the
-// real version above) when Echo v1.0.0 is tagged.
-replace github.com/RhythmShahriar/echo => ../echo
