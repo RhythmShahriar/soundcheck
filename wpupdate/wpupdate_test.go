@@ -42,6 +42,8 @@ type fakeState struct {
 	Plugins  []fakePlugin
 	Breaks   []string // plugins whose new version breaks the site
 	Stuck    []string // plugins whose install --force succeeds but changes nothing
+	Quiet    []string // plugins in Breaks whose break names no file (a page that's gone)
+	Flaky    []string // plugins whose new version breaks the site in the first compare only
 	WP       [][]string
 	Compares int
 	Snapshot []string // the snapshot's argv
@@ -116,7 +118,17 @@ func fakeSoundcheck(args []string) int {
 	}
 	st.Compares++
 	c := model.Comparison{Schema: model.Schema, Changes: []model.Change{}}
+	for _, f := range st.Flaky {
+		if p := st.plugin(f); p != nil && p.Installed == p.New && st.Compares == 1 {
+			c.Changes = append(c.Changes, model.Change{Class: model.Broke, Check: "health/php-error", Title: "PHP Warning: Undefined index",
+				Source: "plugins/" + f + "/flaky.php:7", Pages: []string{"/"}})
+		}
+	}
 	for _, b := range st.Breaks {
+		if p := st.plugin(b); p != nil && p.Installed == p.New && slices.Contains(st.Quiet, b) {
+			c.Changes = append(c.Changes, model.Change{Class: model.Broke, Check: "health/status", Title: "Page not found (404)", Pages: []string{"/shop/"}})
+			continue
+		}
 		if p := st.plugin(b); p != nil && p.Installed == p.New {
 			c.Changes = append(c.Changes,
 				model.Change{Class: model.Changed, Check: "visual/page", Title: "Looks different", Pages: []string{"/"}},
@@ -367,6 +379,31 @@ func TestBisectFindsEveryCulpritInFourCompares(t *testing.T) {
 				t.Errorf("works %v compares %d (search %d, fake %d)", l.Works, l.Compares, p.Compares, st.Compares)
 			}
 		})
+	}
+}
+
+// A culprit found by elimination is named from a compare that had more
+// updates than its own: its evidence leaves out what another plugin
+// there broke (here a flaky warning in p03's files), even when its own
+// change names no file.
+func TestBisectEvidenceIsTheCulprits(t *testing.T) {
+	o, path := setup(t, 10, "p10")
+	st := readState(t, path)
+	st.Quiet, st.Flaky = []string{"p10"}, []string{"p03"}
+	b, _ := json.Marshal(st)
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o.Bisect, o.Rollback = true, true
+	l, err := Run(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := byStatus(l, RolledBack); !slices.Equal(got, []string{"p10"}) {
+		t.Fatalf("rolled back %v", got)
+	}
+	if p := l.Plugins[9]; p.Evidence != "Page not found (404) on /shop/" {
+		t.Errorf("evidence %q", p.Evidence)
 	}
 }
 

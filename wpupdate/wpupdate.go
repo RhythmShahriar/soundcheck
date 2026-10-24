@@ -336,7 +336,7 @@ func (r *runner) oneByOne(todo []*Plugin) error {
 			fmt.Fprintf(r.out, "[%d/%d] %s %s → %s: %s\n", i+1, len(todo), p.Slug, p.Old, p.New, p.Verdict)
 			continue
 		}
-		p.Evidence = res.evidence(p.Slug, r.log.StopOn)
+		p.Evidence = res.evidence(p.Slug, nil, r.log.StopOn)
 		fmt.Fprintf(r.out, "[%d/%d] %s %s → %s: %s: %s\n", i+1, len(todo), p.Slug, p.Old, p.New, p.Verdict, p.Evidence)
 		if !r.o.Rollback {
 			p.Status, stopped = Kept, p.Slug
@@ -426,6 +426,9 @@ func (r *runner) bisect(todo []*Plugin) error {
 	fmt.Fprintf(r.out, "All %d updated: %s\n", len(todo), res.verdict())
 	var culprits, good []*Plugin
 	suspects := todo
+	// inRes are the plugins updated in res's compare, the narrowest one
+	// that broke: its evidence must not describe another one's change.
+	inRes := todo
 	for res.reaches(r.log.StopOn) {
 		before := r.log.Compares
 		for len(suspects) > 1 {
@@ -436,13 +439,19 @@ func (r *runner) bisect(todo []*Plugin) error {
 			}
 			fmt.Fprintf(r.out, "  %s: %s\n", names(half), try.verdict())
 			if try.reaches(r.log.StopOn) {
-				suspects, res = half, try
+				suspects, res, inRes = half, try, slices.Concat(good, half)
 			} else {
 				good, suspects = append(good, half...), suspects[len(suspects)/2:]
 			}
 		}
 		c := suspects[0]
-		c.Verdict, c.Evidence, c.Compares = res.verdict(), res.evidence(c.Slug, r.log.StopOn), r.log.Compares-before
+		var others []string
+		for _, p := range inRes {
+			if p != c {
+				others = append(others, p.Slug)
+			}
+		}
+		c.Verdict, c.Evidence, c.Compares = res.verdict(), res.evidence(c.Slug, others, r.log.StopOn), r.log.Compares-before
 		culprits = append(culprits, c)
 		fmt.Fprintf(r.out, "Culprit: %s %s → %s (%s), found in %d compares\n", c.Slug, c.Old, c.New, c.Evidence, c.Compares)
 		if !r.o.Rollback {
@@ -458,6 +467,7 @@ func (r *runner) bisect(todo []*Plugin) error {
 		if res, err = test(rest); err != nil {
 			return err
 		}
+		inRes = rest
 		fmt.Fprintf(r.out, "Without %s: %s\n", names(culprits), res.verdict())
 		suspects = slices.DeleteFunc(rest, func(p *Plugin) bool { return slices.Contains(good, p) })
 		if res.reaches(r.log.StopOn) && len(suspects) == 0 {
@@ -570,13 +580,24 @@ func (c result) reaches(stopOn string) bool {
 
 // evidence describes the change that best explains a bad update: one
 // whose source is in the plugin's folder, else one in a PHP file, else
-// the worst one.
-func (c result) evidence(slug, stopOn string) string {
-	var bad []model.Change
+// the worst one. Changes in the folder of one of others, the plugins
+// also updated in that compare, are left out while another is there:
+// they're those plugins' news (a bisect can name a culprit from a
+// compare that had more updates than its own).
+func (c result) evidence(slug string, others []string, stopOn string) string {
+	var bad, theirs []model.Change
 	for _, ch := range c.Changes {
-		if classRank[ch.Class] >= classRank[stopOn] {
-			bad = append(bad, ch)
+		if classRank[ch.Class] < classRank[stopOn] {
+			continue
 		}
+		if slices.ContainsFunc(others, func(o string) bool { return strings.Contains(ch.Source, "plugins/"+o+"/") }) {
+			theirs = append(theirs, ch)
+			continue
+		}
+		bad = append(bad, ch)
+	}
+	if len(bad) == 0 {
+		bad = theirs
 	}
 	if len(bad) == 0 {
 		return ""
