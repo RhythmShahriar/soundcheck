@@ -149,8 +149,8 @@ func validate(sites []Site, dir string) error {
 			return fmt.Errorf("%s: env_prefix %s is already used by site %q; give each site its own", where, s.EnvPrefix, other)
 		}
 		prefixes[s.EnvPrefix] = s.Name
-		for _, a := range s.Args {
-			name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		for j, a := range s.Args {
+			name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
 			if strings.HasPrefix(a, "-") && slices.Contains(reserved, name) {
 				return fmt.Errorf("%s: args can't set %s; the fleet sets it for every site", where, a)
 			}
@@ -159,9 +159,29 @@ func validate(sites []Site, dir string) error {
 			if strings.HasPrefix(a, "-") && name == "allow-exec" {
 				return fmt.Errorf("%s: args can't set %s; to let this site's exec commands run, set %s_SOUNDCHECK_ALLOW_EXEC=1", where, a, s.EnvPrefix)
 			}
+			// Nor run one as the browser: a site picks an engine by name.
+			if strings.HasPrefix(a, "-") && name == "browser" {
+				if !hasValue && j+1 < len(s.Args) {
+					value = s.Args[j+1]
+				}
+				if !engineName(value) {
+					return fmt.Errorf("%s: args can't set --browser %s; a site's args name an engine (chrome, firefox or webkit), "+
+						"since the file can't let a site run programs", where, value)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// engineName reports whether v names a browser engine, not a program:
+// chrome, firefox or webkit, or chromium and safari, in any case.
+func engineName(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "chrome", "firefox", "webkit", "chromium", "safari":
+		return true
+	}
+	return false
 }
 
 func checkURL(raw string) error {

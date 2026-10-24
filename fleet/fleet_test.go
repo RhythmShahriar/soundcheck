@@ -139,12 +139,24 @@ func TestLoadRejects(t *testing.T) {
 		"output arg":       {"- {name: acme, url: a.test, args: ['-o=x.html']}", "can't set -o=x.html"},
 		"config arg":       {"- {name: acme, url: a.test, args: [--config, x]}", "can't set --config"},
 		"allow-exec arg":   {"- {name: acme, url: a.test, args: [--allow-exec]}", "can't set --allow-exec; to let this site's exec commands run, set ACME_SOUNDCHECK_ALLOW_EXEC=1"},
+		"browser path":     {"- {name: acme, url: a.test, args: [--browser, ./evil.sh]}", "can't set --browser ./evil.sh; a site's args name an engine (chrome, firefox or webkit), since the file can't let a site run programs"},
+		"browser= path":    {"- {name: acme, url: a.test, args: ['--browser=/usr/bin/x']}", "can't set --browser /usr/bin/x"},
+		"engine= path":     {"- {name: acme, url: a.test, args: ['-browser=firefox=/tmp/x']}", "can't set --browser firefox=/tmp/x"},
 		"missing config":   {"- {name: acme, url: a.test, config: nosuch.yaml}", "nosuch.yaml"},
 		"not yaml":         {"- [", "yaml"},
 	} {
 		_, err := Load(writeSites(t, tc.yaml))
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want it to mention %q", name, err, tc.want)
+		}
+	}
+}
+
+// A site's args may pick a browser engine by name.
+func TestLoadTakesEngineNames(t *testing.T) {
+	for _, args := range []string{"[--browser, firefox]", "['--browser=WebKit']", "[--browser, chrome, --modules, health]"} {
+		if _, err := Load(writeSites(t, "- {name: acme, url: a.test, args: "+args+"}")); err != nil {
+			t.Errorf("%s: %v", args, err)
 		}
 	}
 }
