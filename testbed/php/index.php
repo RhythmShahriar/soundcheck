@@ -11,5 +11,10 @@ page_start( 'Home' );
 	<li><a href="/report.php">This month's report</a></li>
 	<li><a href="/about.php">About Ledger</a></li>
 </ul>
+<h2>More pages</h2>
+<ul>
+	<li><a href="/ttfb.php">Clients</a> · <a href="/late.php">Team</a> · <a href="/banner.php">Plans</a> · <a href="/slow.php">Yearly summary</a></li>
+	<li><a href="/archive.php">Archive</a> · <a href="/flaky.php">Payments</a> · <a href="/moved.php">Settings</a> · <a href="/mixed.php">Invoices</a></li>
+</ul>
 <?php
 page_end();

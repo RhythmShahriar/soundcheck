@@ -1,0 +1,40 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Keeps the pinned dependencies current: the actions pinned by commit in
+# action.yml and the workflows, the Go modules and the Unlighthouse tree
+# --lighthouse installs. Updates are grouped per ecosystem and use a
+# Conventional Commits prefix, so commitlint passes them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    groups:
+      go:
+        patterns: ["*"]
+
+  # A new unlighthouse-ci version must also change Package in
+  # lighthouse/lighthouse.go; TestLockfile fails until it does.
+  - package-ecosystem: npm
+    directory: /lighthouse/npm
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(lighthouse)
+    groups:
+      lighthouse:
+        patterns: ["*"]

@@ -57,7 +57,8 @@ func (t *Tool) Observe(ctx context.Context, timeout time.Duration, phase, url, d
 func (t *Tool) Judge(good, broken *Observation) Result { return t.judge(good, broken) }
 
 func (t *Tool) run(ctx context.Context, timeout time.Duration, dir string, env []string, args ...string) (string, error) {
-	return command(ctx, timeout, dir, env, t.cmd[0], append(slices.Clone(t.cmd[1:]), args...)...)
+	out, _, err := command(ctx, timeout, dir, env, t.cmd[0], append(slices.Clone(t.cmd[1:]), args...)...)
+	return out, err
 }
 
 var allTools = []*Tool{

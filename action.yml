@@ -3,6 +3,23 @@
 
 # Soundcheck as a GitHub Action. See the wiki page Soundcheck-CI for
 # examples: https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI
+#
+# Snapshot main after each deploy, compare every pull request with it
+# and comment there:
+#
+#   on: {push: {branches: [main]}}            # after the deploy job
+#     - uses: RhythmShahriar/soundcheck@v1.2.3
+#       with: {url: https://example.com, mode: snapshot, baseline: main}
+#
+#   on: deployment_status                     # a preview is ready
+#   permissions: {contents: read, pull-requests: write}
+#     - uses: RhythmShahriar/soundcheck@v1.2.3
+#       if: github.event.deployment_status.state == 'success'
+#       with:
+#         url: ${{ github.event.deployment_status.target_url }}
+#         mode: compare
+#         baseline: main
+#         comment: true
 name: Rhythm Soundcheck
 description: Did your change break anything? Compare a whole site before and after a deploy, in a real browser.
 author: Rhythm Shahriar
@@ -21,7 +38,8 @@ inputs:
   mode:
     description: >
       What to do: "against" (needs the against input), "snapshot" (record the site, for a later
-      compare step in the same job), "compare" (with the latest snapshot), or "run" (check once).
+      compare step in the same job, or with baseline for later runs), "compare" (with the latest
+      snapshot, or the baseline), or "run" (check once).
       Default: against when the against input is set, otherwise run.
     required: false
     default: ""
@@ -29,6 +47,33 @@ inputs:
     description: Snapshot name for mode snapshot.
     required: false
     default: ci
+  baseline:
+    description: >
+      Keep a snapshot between workflow runs, e.g. "main". With mode snapshot (on your main branch,
+      after each deploy) it saves .soundcheck/snapshots/<baseline> to the Actions cache; with mode
+      compare (on pull requests) it restores the newest one and compares with it. Pull requests can
+      restore caches saved on their base branch. Use the same working-directory in both workflows.
+      For Vercel or Netlify previews, run the compare on deployment_status with
+      url: github.event.deployment_status.target_url, when github.event.deployment_status.state is
+      success.
+    required: false
+    default: ""
+  comment:
+    description: >
+      "true" posts the result as one comment on the pull request and updates that same comment on
+      later runs: the counts, the top changes and a link to the full report. The job needs
+      "permissions: pull-requests: write"; on deployment_status it finds the open pull request of
+      the deployed commit. Other runs without a pull request (a push to main) post nothing. A token
+      that can't comment (a pull request from a fork) only gives a warning.
+    required: false
+    default: "false"
+  github-token:
+    description: >
+      Token for the pull request comment. Default the job's GITHUB_TOKEN. Only a comment this token's
+      own user posted is updated. A GitHub App token can't look up its bot's login, so set the
+      SOUNDCHECK_COMMENT_AUTHOR environment variable to it (e.g. "my-app[bot]").
+    required: false
+    default: ${{ github.token }}
   fail-on:
     description: >
       Fail the job on changes at or above broke, new, changed or slower (modes against and compare),
@@ -37,19 +82,47 @@ inputs:
     required: false
     default: ""
   args:
-    description: Extra flags, e.g. "--limit 100 --skip speed -k".
+    description: >
+      Extra flags, e.g. "--limit 100 --skip speed -k". Split on spaces with no glob expansion, so a value with spaces or
+      quotes can't go here: use the headers and config inputs for those.
     required: false
     default: ""
+  headers:
+    description: >
+      Extra request headers, one "Name: value" per line, each passed whole as its own -H, so spaces
+      and quotes are kept. For a staging site behind basic auth, "Authorization: Basic" and the
+      base64 of user:password, from a secret. Values of four or more characters are masked in the
+      log.
+    required: false
+    default: ""
+  config:
+    description: >
+      Settings file, passed as --config. Relative to working-directory. Default
+      .soundcheck/config.yaml there, when it exists.
+    required: false
+    default: ""
+  working-directory:
+    description: >
+      Folder every step runs in, e.g. apps/web in a monorepo. Soundcheck reads its config and keeps
+      its snapshots in .soundcheck/ there.
+    required: false
+    default: "."
   echo:
     description: >
-      Record what forms and flows send with Echo: "true" for Echo at http://127.0.0.1:8025, or its
-      URL. Start Echo first, e.g. with RhythmShahriar/echo@v1 and mode up. Default off.
+      Record with Echo the emails, SMS and webhooks each form submit and flow sends and compare
+      them with the snapshot's, so a form that says "sent" while no longer sending its email is caught.
+      "true" for Echo at http://127.0.0.1:8025, or Echo's URL. Start Echo in an earlier step, e.g.
+      with RhythmShahriar/echo@v1 and mode up. Point the site's mail at it. Default off.
     required: false
     default: ""
   version:
-    description: Soundcheck version to install, e.g. 1.0.0. Default the latest release.
+    description: >
+      Soundcheck version to install, e.g. 1.2.3, or latest. Default the release that matches the
+      action's tag (RhythmShahriar/soundcheck@v1.2.3 installs 1.2.3), so results only change when
+      you move the tag. At a branch or a major tag such as @v1 it installs the latest release and
+      warns. Later Soundcheck steps in the same job reuse the install.
     required: false
-    default: latest
+    default: ""
   upload:
     description: Upload the HTML and JUnit reports as a workflow artifact.
     required: false
@@ -59,6 +132,9 @@ outputs:
   exit-code:
     description: Soundcheck's exit code (0 ok, 1 --fail-on hit, 2 usage error, 3 couldn't check).
     value: ${{ steps.check.outputs.exit-code }}
+  version:
+    description: The Soundcheck version that ran, e.g. 1.2.3.
+    value: ${{ steps.version.outputs.version }}
   report:
     description: Path of the standalone HTML report.
     value: ${{ steps.check.outputs.report }}
@@ -66,32 +142,55 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install Soundcheck
+    # Every action is pinned by commit, so a moved tag can't change what
+    # runs in your job. Dependabot keeps the pins current.
+    - name: Pick the Soundcheck version
+      id: version
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         VERSION: ${{ inputs.version }}
-      run: |
-        set -euo pipefail
-        case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "unsupported CPU $(uname -m)"; exit 1 ;; esac
-        os=$(uname -s | tr '[:upper:]' '[:lower:]')
-        if [ "$VERSION" = latest ]; then
-          base=https://github.com/RhythmShahriar/soundcheck/releases/latest/download
-        else
-          base=https://github.com/RhythmShahriar/soundcheck/releases/download/v${VERSION#v}
-        fi
-        dir="$RUNNER_TEMP/soundcheck-bin"
-        mkdir -p "$dir" && cd "$dir"
-        archive="rhythm-soundcheck_${os}_${arch}.tar.gz"
-        curl -fsSLO "$base/$archive"
-        curl -fsSLO "$base/checksums.txt"
-        grep " $archive\$" checksums.txt | sha256sum -c -
-        tar -xzf "$archive" rhythm-soundcheck
-        echo "$dir" >> "$GITHUB_PATH"
-        ./rhythm-soundcheck --version
+        ACTION_REF: ${{ github.action_ref }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-install.sh" check'
+
+    - name: Install cosign
+      if: steps.version.outputs.skip != 'true'
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Install Soundcheck
+      if: steps.version.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-install.sh" install'
+
+    - name: Check the inputs
+      id: prep
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        URL: ${{ inputs.url }}
+        AGAINST: ${{ inputs.against }}
+        MODE: ${{ inputs.mode }}
+        NAME: ${{ inputs.name }}
+        BASELINE: ${{ inputs.baseline }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" prepare'
+
+    # The newest cache whose key starts with soundcheck-<baseline>-. The
+    # key itself never matches, since this run hasn't saved one.
+    - name: Restore the baseline
+      if: inputs.baseline != '' && steps.prep.outputs.mode == 'compare'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/${{ steps.prep.outputs.snapshots }}
+        key: soundcheck-${{ inputs.baseline }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: soundcheck-${{ inputs.baseline }}-
 
     - name: Run Soundcheck
       id: check
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         URL: ${{ inputs.url }}
         AGAINST: ${{ inputs.against }}
@@ -99,59 +198,46 @@ runs:
         NAME: ${{ inputs.name }}
         FAIL_ON: ${{ inputs.fail-on }}
         ARGS: ${{ inputs.args }}
+        HEADERS: ${{ inputs.headers }}
+        CONFIG: ${{ inputs.config }}
         ECHO: ${{ inputs.echo }}
-      run: |
-        set -uo pipefail
-        mode=$MODE
-        [ -n "$mode" ] || { [ -n "$AGAINST" ] && mode=against || mode=run; }
-        level=$FAIL_ON
-        if [ -z "$level" ]; then
-          case "$mode" in against|compare) level=broke ;; *) level=error ;; esac
-        fi
-        fail=()
-        [ "$level" = none ] || fail=(--fail-on "$level")
-        # shellcheck disable=SC2206 # ARGS is a flag string to split
-        extra=($ARGS)
-        case "$ECHO" in
-          ""|false) ;;
-          true) extra+=(--echo) ;;
-          *) extra+=("--echo=$ECHO") ;;
-        esac
-        case "$mode" in
-          against)  [ -n "$AGAINST" ] || { echo "::error::mode against needs the against input"; exit 2; }
-                    cmd=(rhythm-soundcheck "$URL" --against "$AGAINST") ;;
-          snapshot) cmd=(rhythm-soundcheck snapshot "$URL" --name "$NAME") ;;
-          compare)  cmd=(rhythm-soundcheck compare "$URL") ;;
-          run)      cmd=(rhythm-soundcheck run "$URL") ;;
-          *) echo "::error::unknown mode $mode"; exit 2 ;;
-        esac
-        "${cmd[@]}" "${fail[@]}" "${extra[@]}" --plain
-        code=$?
-        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        [ "$code" -ge 2 ] && exit "$code"
+        BASELINE: ${{ inputs.baseline }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
-        # Reports: the job summary, JUnit and the standalone HTML.
-        which=()
-        [ "$mode" = snapshot ] && which=("$NAME")
-        out="$RUNNER_TEMP/soundcheck-report"
-        mkdir -p "$out"
-        rhythm-soundcheck report "${which[@]}" --md >> "$GITHUB_STEP_SUMMARY" || true
-        rhythm-soundcheck report "${which[@]}" "${fail[@]}" --junit -o "$out/soundcheck-junit.xml" -q || true
-        rhythm-soundcheck report "${which[@]}" --html -o "$out/soundcheck-report.html" -q || true
-        echo "report=$out/soundcheck-report.html" >> "$GITHUB_OUTPUT"
-        exit 0
+    # A snapshot with issues (exit 1) is still the baseline; one that
+    # couldn't be taken (2 or 3) is not saved.
+    - name: Save the baseline
+      if: >-
+        always() && inputs.baseline != '' && steps.prep.outputs.mode == 'snapshot' &&
+        (steps.check.outputs.exit-code == '0' || steps.check.outputs.exit-code == '1')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/${{ steps.prep.outputs.snapshots }}
+        key: soundcheck-${{ inputs.baseline }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     - name: Upload reports
+      id: upload
       if: always() && inputs.upload == 'true' && steps.check.outputs.report != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: soundcheck-report
         path: ${{ runner.temp }}/soundcheck-report/
         if-no-files-found: ignore
 
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && steps.check.outputs.markdown != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        MARKDOWN: ${{ steps.check.outputs.markdown }}
+        REPORT_URL: ${{ steps.upload.outputs.artifact-url }}
+      run: '"$GITHUB_ACTION_PATH/scripts/comment.sh" post "$MARKDOWN" "$REPORT_URL"'
+
     - name: Fail on changes
       if: steps.check.outputs.exit-code == '1'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         FAIL_ON: ${{ inputs.fail-on }}
       run: |

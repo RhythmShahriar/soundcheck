@@ -1,6 +1,7 @@
+<?php
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
-
+?>
 <!doctype html>
 <html <?php language_attributes(); ?>>
 <head>

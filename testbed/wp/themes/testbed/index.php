@@ -1,6 +1,7 @@
+<?php
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
-
+?>
 <?php get_header(); ?>
 <?php if ( is_home() ) : ?>
 	<h1 class="entry-title">Blog</h1>

@@ -4,7 +4,7 @@
 
 /**
  * Plugin Name: Testbed Shop
- * Description: A stand-in for WooCommerce: [testbed_products] lists products with add-to-cart links, [testbed_cart] shows the cart kept in a cookie. The cart is private, so the page cache must bypass it (scenario s18 breaks that in the testbed-cache mu-plugin).
+ * Description: A stand-in for WooCommerce: [testbed_products] lists products with add-to-cart links, [testbed_cart] shows the cart kept in a cookie, [testbed_checkout] takes the order. The cart is private, so the page cache must bypass it (scenario s18 breaks that in the testbed-cache mu-plugin). Scenario s31 broken: placing an order hits a fatal error in the payment step.
  * Version: 1.0.0
  */
 
@@ -68,5 +68,64 @@ add_shortcode(
 			$out   .= $p ? sprintf( '<tr><td>%s</td><td>£%.2f</td></tr>', esc_html( $p[0] ), $p[1] ) : '';
 		}
 		return $out . sprintf( '<tr><th>Total</th><th>£%.2f</th></tr></table>', $total );
+	}
+);
+
+// Placing an order: the checkout form posts back to /checkout/.
+add_action(
+	'template_redirect',
+	function () {
+		if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || ! isset( $_POST['tb_checkout'] ) ) {
+			return;
+		}
+		$back = home_url( '/checkout/' );
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_tb_checkout_nonce'] ?? '' ) ), 'tb_checkout' ) ) {
+			wp_safe_redirect( add_query_arg( 'order', 'expired', $back ) );
+			exit;
+		}
+		$name    = sanitize_text_field( wp_unslash( $_POST['tb_billing_name'] ?? '' ) );
+		$email   = sanitize_email( wp_unslash( $_POST['tb_billing_email'] ?? '' ) );
+		$address = sanitize_textarea_field( wp_unslash( $_POST['tb_billing_address'] ?? '' ) );
+		if ( '' === $name || ! is_email( $email ) || '' === $address ) {
+			wp_safe_redirect( add_query_arg( 'order', 'invalid', $back ) );
+			exit;
+		}
+		if ( testbed_broken( 's31' ) ) {
+			// s31: a payment gateway update calls a class its new version
+			// renamed, so placing an order is a fatal error (WordPress's
+			// critical error screen, 500).
+			$gateway = 'Testbed_Gateway_Pay_On_Delivery';
+			( new $gateway() )->process_payment( $name );
+		}
+		update_option( 'testbed_order_count', (int) get_option( 'testbed_order_count', 0 ) + 1, false );
+		wp_safe_redirect( add_query_arg( 'order', 'received', $back ) );
+		exit;
+	},
+	5
+);
+
+add_shortcode(
+	'testbed_checkout',
+	function () {
+		$state = sanitize_key( $_GET['order'] ?? '' ); // phpcs:ignore WordPress.Security.NonceVerification
+		$notes = array(
+			'received' => array( 'order-received', 'status', 'Thank you. Your order has been received.' ),
+			'invalid'  => array( 'order-error', 'alert', 'Please fill in your name, email and address.' ),
+			'expired'  => array( 'order-error', 'alert', 'Your session expired. Please try again.' ),
+		);
+		$out = '';
+		if ( isset( $notes[ $state ] ) ) {
+			[ $class, $role, $text ] = $notes[ $state ];
+			$out .= sprintf( '<div class="%s" role="%s">%s</div>', $class, $role, esc_html( $text ) );
+		}
+		return $out . '<form class="tb-checkout" method="post" action="">'
+			. wp_nonce_field( 'tb_checkout', '_tb_checkout_nonce', true, false )
+			. '<input type="hidden" name="tb_checkout" value="1">'
+			. '<label for="tb_billing_name">Full name</label><input id="tb_billing_name" name="tb_billing_name" type="text" required autocomplete="name">'
+			. '<label for="tb_billing_email">Email address</label><input id="tb_billing_email" name="tb_billing_email" type="email" required autocomplete="email">'
+			. '<label for="tb_billing_address">Delivery address</label><textarea id="tb_billing_address" name="tb_billing_address" rows="3" required></textarea>'
+			. '<p>Payment: pay on delivery.</p>'
+			. '<button type="submit" name="tb_place_order">Place order</button>'
+			. '</form>';
 	}
 );

@@ -1,0 +1,282 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Runs the Action itself against a small local site (headers, config,
+# working-directory, reused installs, a site that is down), checks that
+# a release with a changed checksums.txt is refused and lints the
+# workflows. Everything is pinned by commit.
+name: action-test
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20340
+
+      - name: Check once
+        id: run
+        uses: ./
+        with:
+          url: http://127.0.0.1:20340/
+          fail-on: none
+          upload: "false"
+      - name: Remember the installed binary
+        run: stat -c %i:%Y "$RUNNER_TEMP/soundcheck-bin/rhythm-soundcheck" > "$RUNNER_TEMP/first-install"
+      - name: Snapshot
+        uses: ./
+        with:
+          url: http://127.0.0.1:20340/
+          mode: snapshot
+          fail-on: none
+          upload: "false"
+      - name: Compare with the snapshot
+        id: compare
+        uses: ./
+        with:
+          url: http://127.0.0.1:20340/
+          mode: compare
+          upload: "false"
+
+      - name: Check the outputs
+        env:
+          RUN_CODE: ${{ steps.run.outputs.exit-code }}
+          RUN_REPORT: ${{ steps.run.outputs.report }}
+          RUN_VERSION: ${{ steps.run.outputs.version }}
+          COMPARE_CODE: ${{ steps.compare.outputs.exit-code }}
+          COMPARE_VERSION: ${{ steps.compare.outputs.version }}
+        run: |
+          set -x
+          case "$RUN_CODE" in 0|1) ;; *) exit 1 ;; esac
+          test -s "$RUN_REPORT"
+          test "$COMPARE_CODE" = 0
+          test -n "$RUN_VERSION"
+          test "$RUN_VERSION" = "$COMPARE_VERSION"
+      - name: Later steps reused the first install
+        run: |
+          # The same inode and time stamp: nothing was downloaded again.
+          test "$(stat -c %i:%Y "$RUNNER_TEMP/soundcheck-bin/rhythm-soundcheck")" = "$(cat "$RUNNER_TEMP/first-install")"
+
+  inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20341
+      - name: A folder with its own settings file
+        run: |
+          mkdir -p site-dir
+          printf 'pages:\n  limit: 1\n' > site-dir/one-page.yaml
+
+      - name: Headers, config and working-directory
+        id: check
+        uses: ./
+        with:
+          url: http://127.0.0.1:20341/
+          working-directory: site-dir
+          config: one-page.yaml
+          fail-on: none
+          upload: "false"
+          headers: |
+            X-Soundcheck-Test: a "quoted" value with 'single' quotes and  two spaces
+            Authorization: Basic dXNlcjpwYXNz
+
+      - name: The headers arrived whole
+        run: |
+          python3 - "$RUNNER_TEMP/headers.jsonl" <<'PY'
+          import json, sys
+          want = {"X-Soundcheck-Test": "a \"quoted\" value with 'single' quotes and  two spaces",
+                  "Authorization": "Basic dXNlcjpwYXNz"}
+          seen = [json.loads(line)["headers"] for line in open(sys.argv[1])]
+          got = [h for h in seen if all(h.get(k) == v for k, v in want.items())]
+          print(f"{len(got)} of {len(seen)} requests carried both headers")
+          sys.exit(0 if got else 1)
+          PY
+      - name: It ran in working-directory with that config
+        working-directory: site-dir
+        run: |
+          set -x
+          test -d .soundcheck/runs
+          test ! -d "$GITHUB_WORKSPACE/.soundcheck"
+          test "$(rhythm-soundcheck report --json | jq '.pages | length')" = 1
+
+  unreachable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check a site that isn't there
+        id: check
+        continue-on-error: true
+        uses: ./
+        with:
+          url: http://127.0.0.1:20349/
+          upload: "false"
+      - name: The summary says why
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          set -x
+          test "$OUTCOME" = failure
+          cat "$RUNNER_TEMP/soundcheck-summary.md"
+          grep -q "Soundcheck could not check:" "$RUNNER_TEMP/soundcheck-summary.md"
+          grep -q "127.0.0.1:20349" "$RUNNER_TEMP/soundcheck-summary.md"
+
+  # A baseline saved in one job (as on main after a deploy) and compared
+  # in another (as on a pull request), through the Actions cache.
+  baseline-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20342
+      - name: Snapshot into the cache
+        id: snap
+        uses: ./
+        with:
+          url: http://127.0.0.1:20342/
+          mode: snapshot
+          baseline: action-test-${{ github.run_id }}
+          fail-on: none
+          upload: "false"
+      - name: The snapshot was taken under the baseline's name
+        run: test -f ".soundcheck/snapshots/action-test-${{ github.run_id }}/run.json"
+
+  baseline-compare:
+    needs: baseline-snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20342
+      - name: Compare with the cached baseline
+        id: compare
+        uses: ./
+        with:
+          url: http://127.0.0.1:20342/
+          mode: compare
+          baseline: action-test-${{ github.run_id }}
+          upload: "false"
+      - name: The baseline came from the other job
+        env:
+          CODE: ${{ steps.compare.outputs.exit-code }}
+        run: |
+          set -x
+          test -f ".soundcheck/snapshots/action-test-${{ github.run_id }}/run.json"
+          test "$CODE" = 0
+
+  # One comment on the pull request, updated in place on the second run.
+  # Pull requests from forks get a read-only token, so they skip this.
+  comment:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20343
+      - name: Snapshot
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: snapshot
+          fail-on: none
+          upload: "false"
+      - name: Compare and comment
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: compare
+          comment: "true"
+      - name: Compare and comment again
+        uses: ./
+        with:
+          url: http://127.0.0.1:20343/
+          mode: compare
+          comment: "true"
+      - name: There is exactly one Soundcheck comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          n=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.body | startswith("<!-- rhythm-soundcheck -->")) | .id' | wc -l)
+          echo "$n Soundcheck comments"
+          test "$n" = 1
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Test the Action's helper scripts offline
+        run: |
+          scripts/action-test.sh
+          scripts/comment-test.sh
+          scripts/verify-pins-test.sh
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh testbed/toggle.sh testbed/wp/seed.sh .github/action-test/*.sh
+
+  # The testbed's manifest, scoring and php -S state test need no Docker.
+  testbed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Manifest, scoring and TESTBED_STATE
+        run: go test -tags testbed -run 'TestManifest|TestLoadManifestRejects|TestEvaluate|TestExpectString|TestScoreboardPendingAndControl|TestStateFromEnv' -v ./testbed/bench/
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Test verify-release.sh offline
+        run: scripts/verify-release-test.sh
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download the latest release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release" && cd "$RUNNER_TEMP/release"
+          base=https://github.com/RhythmShahriar/soundcheck/releases/latest/download
+          for f in rhythm-soundcheck_linux_amd64.tar.gz checksums.txt checksums.txt.sigstore.json; do
+            curl -fsSLO "$base/$f"
+          done
+      - name: The real release verifies
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          "$GITHUB_WORKSPACE/scripts/verify-release.sh" rhythm-soundcheck_linux_amd64.tar.gz
+      - name: A changed checksums.txt is refused
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          cp checksums.txt checksums.orig
+          sum=$(sha256sum rhythm-soundcheck_linux_amd64.tar.gz | cut -d' ' -f1)
+          # Swap in a line that matches the archive, as someone replacing
+          # both files in a release would.
+          grep -v ' rhythm-soundcheck_linux_amd64.tar.gz$' checksums.orig > checksums.txt
+          echo "$sum  rhythm-soundcheck_linux_amd64.tar.gz" >> checksums.txt
+          if "$GITHUB_WORKSPACE/scripts/verify-release.sh" rhythm-soundcheck_linux_amd64.tar.gz; then
+            echo "::error::verify-release.sh accepted a changed checksums.txt"
+            exit 1
+          fi
+      - name: A changed archive is refused
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          cp checksums.orig checksums.txt
+          printf 'x' >> rhythm-soundcheck_linux_amd64.tar.gz
+          if "$GITHUB_WORKSPACE/scripts/verify-release.sh" rhythm-soundcheck_linux_amd64.tar.gz; then
+            echo "::error::verify-release.sh accepted a changed archive"
+            exit 1
+          fi
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0

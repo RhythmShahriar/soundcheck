@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Samples for elementor-missing-widget.yaml: the rule must match every
+# positive and none of the negatives.
+positive:
+  - 'Widget "tb-carousel" not found.'
+  - Widget testbed-slider not found
+negative:
+  - Kenya Nyeri · Guatemala Huehuetenango · Decaf Colombia
+  - The widget was found and loaded.

@@ -7,6 +7,16 @@
 version: 2
 project_name: rhythm-soundcheck
 
+# The release must carry valid Chrome for Testing pins: hash the committed
+# version's archives again (about 1 GB of downloads) and stop if they
+# differ or nothing is pinned. It never moves to a newer Stable, so a tag
+# pushed after Google's weekly Stable change still releases. Bump the
+# pins with `go generate ./browser` and commit browser/cft_pins.go before
+# tagging.
+before:
+  hooks:
+    - scripts/verify-pins.sh
+
 builds:
   - main: ./cmd/rhythm-soundcheck
     binary: rhythm-soundcheck
@@ -33,10 +43,13 @@ checksum:
 release:
   prerelease: auto
 
-# Keyless Sigstore signature over checksums.txt. Verify with:
+# Keyless Sigstore signature over checksums.txt. The release workflow is
+# pinned by commit, so the identity is matched up to the ref. Verify with
+# scripts/verify-release.sh, which runs:
 #   cosign verify-blob --bundle checksums.txt.sigstore.json \
-#     --certificate-identity https://github.com/RhythmShahriar/.github/.github/workflows/release-go.yml@refs/heads/master \
-#     --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github\.com/RhythmShahriar/\.github/\.github/workflows/release-go\.yml@' \
+#     --certificate-github-workflow-repository RhythmShahriar/soundcheck checksums.txt
 signs:
   - cmd: cosign
     artifacts: checksum

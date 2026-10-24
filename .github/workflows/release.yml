@@ -5,9 +5,13 @@ name: release
 on:
   push:
     tags: ["v*"]
+# Pinned by commit: this workflow can write releases and sign them, so
+# only a reviewed bump of the pin changes what it runs. The signature
+# still verifies, since scripts/verify-release.sh accepts any ref of
+# release-go.yml.
 jobs:
   release:
-    uses: RhythmShahriar/.github/.github/workflows/release-go.yml@master
+    uses: RhythmShahriar/.github/.github/workflows/release-go.yml@d296f34c9b6629211c68561504d938c404afaf74 # master
     permissions:
       contents: write
       id-token: write

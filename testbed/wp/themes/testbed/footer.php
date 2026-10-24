@@ -1,6 +1,7 @@
+<?php
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
-
+?>
 </main>
 <footer class="site-footer">
 	<p>&copy; Brew &amp; Co &middot; Roasted in small batches &middot; <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>">Contact us</a></p>
