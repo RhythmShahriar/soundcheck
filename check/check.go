@@ -101,8 +101,20 @@ type Context struct {
 	// Echo records the messages form submits and flows make the site
 	// send. Nil unless Echo is configured and running.
 	Echo *echolink.Link
+	// OnProgress, set by the runner, shows how far a long step has got.
+	// Modules call Progress rather than this.
+	OnProgress func(label string, done, total int)
 
 	mu sync.Mutex
+}
+
+// Progress reports that a long step, such as a SiteChecker probing every
+// link, has done of total items. label names the step ("Checking
+// links"). It does nothing when the run shows no progress.
+func (c *Context) Progress(label string, done, total int) {
+	if c.OnProgress != nil {
+		c.OnProgress(label, done, total)
+	}
 }
 
 // Lock serializes access to Run from hooks running in parallel.

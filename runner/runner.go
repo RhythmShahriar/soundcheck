@@ -68,6 +68,9 @@ type Hooks struct {
 	// Log gets progress notes; a leading "!" marks one to show even
 	// without --verbose (see report.Pretty.Log).
 	Log func(msg string)
+	// Progress gets a module's progress through a long step, from
+	// check.Context.Progress.
+	Progress func(label string, done, total int)
 }
 
 // Run checks the site. When ctx is canceled it starts no more pages and
@@ -125,13 +128,13 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			return nil, ctx.Err()
 		}
 		for _, p := range cfg.Pages.Extra {
-			frontier.Add(p, "config", 0)
+			addListed(frontier, startURL, p, "config", cfg.Pages.Exclude, log)
 		}
 	} else {
 		copts.PerGroup, copts.Limit, copts.IgnoreRobots = -1, len(opts.Paths)+1, true
 		frontier = crawl.NewFrontier(base, copts)
 		for _, p := range opts.Paths {
-			frontier.Add(p, "snapshot", 0)
+			addListed(frontier, base, p, "snapshot", cfg.Pages.Exclude, log)
 		}
 	}
 	// The kit's frontier tells sites apart by hostname alone, so pages of
@@ -182,6 +185,11 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	cc := &check.Context{
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Browser: sess, NewSession: b.Session, Save: store.Saver(opts.Dir),
+	}
+	if opts.Hooks.Progress != nil {
+		cc.OnProgress = func(label string, done, total int) {
+			emit(func() { opts.Hooks.Progress(label, done, total) })
+		}
 	}
 	if opts.Login != nil {
 		cc.Login = opts.Login(base)
@@ -283,6 +291,10 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	run.Skipped = skipped()
 
 	if ctx.Err() == nil {
+		// Probing every link can take minutes after the last page.
+		if slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.SiteChecker); return ok }) {
+			log("!Checking site-wide issues (links, sitemap)...")
+		}
 		for _, m := range opts.Modules {
 			if s, ok := m.(check.SiteChecker); ok {
 				check.Safe(m.Name(), "CheckSite", cc.Warn, func() { s.CheckSite(ctx, cc) })
@@ -291,6 +303,66 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 	run.Duration = float64(time.Since(start).Milliseconds())
 	return run, ctx.Err()
+}
+
+// addListed adds a page the user named to f: one from --page (source
+// "config") or a path to re-check ("snapshot"). When f leaves it out, a
+// note says why, shown even without --verbose: a page asked for by name
+// mustn't vanish into the skip counts.
+func addListed(f *crawl.Frontier, start *url.URL, raw, source string, exclude []string, log func(string)) {
+	name := "page"
+	if source == "config" {
+		name = "--page"
+	}
+	before := f.Skipped()
+	if f.Add(raw, source, 0) {
+		// The frontier tells sites apart by hostname alone; the run drops
+		// pages of a sibling site on another port later.
+		if norm, ok := crawl.Normalize(start, raw); ok {
+			if u, err := url.Parse(norm); err == nil && !check.SameSite(start, u) {
+				log(fmt.Sprintf("!%s %s is on another site; not checked", name, raw))
+			}
+		}
+		return
+	}
+	for reason, n := range f.Skipped() {
+		if n > before[reason] {
+			log(fmt.Sprintf("!%s %s %s; not checked", name, raw, dropReason(start, raw, reason, exclude)))
+		}
+	}
+}
+
+// dropReason words the frontier's reason for leaving raw out, naming the
+// exclude pattern it matched.
+func dropReason(start *url.URL, raw, reason string, exclude []string) string {
+	switch reason {
+	case "excluded":
+		norm, _ := crawl.Normalize(start, raw)
+		if u, err := url.Parse(norm); err == nil {
+			for _, p := range crawl.DefaultExcludes {
+				if crawl.Excluded(u, []string{p}) {
+					return "matches the default exclude " + p
+				}
+			}
+			for _, p := range exclude {
+				if crawl.Excluded(u, []string{p}) {
+					return "matches the exclude " + p
+				}
+			}
+		}
+		return "is excluded"
+	case "other site":
+		return "is on another site"
+	case "not a page":
+		return "isn't a page"
+	case "not included":
+		return "doesn't match pages.include"
+	case "robots.txt":
+		return "is disallowed by robots.txt"
+	case "page limit":
+		return "is past the page limit"
+	}
+	return "was left out (" + reason + ")"
 }
 
 // addLinks offers a page's rendered links to f and returns the pages it
