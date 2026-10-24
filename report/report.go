@@ -106,8 +106,8 @@ const partialNote = "stopped before it finished; these results are partial"
 
 // FailOn reports whether a result should fail a CI build at threshold.
 // For a comparison the threshold is a change class: "new" fails on BROKE
-// or NEW, "changed" also on CHANGED, and so on (FIXED and UNSTABLE never
-// fail, and neither do ignored changes, which aren't in Changes). For a
+// or NEW, "changed" also on CHANGED and so on (FIXED and UNSTABLE never
+// fail; neither do ignored changes, which aren't in Changes). For a
 // single run it's an issue level: "warning" fails on errors or warnings.
 // A partial result never fails: what it lacks isn't a finding.
 func FailOn(r Result, threshold string) bool {

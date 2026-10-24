@@ -6,7 +6,7 @@ package model
 import "strings"
 
 // Glob reports whether s matches pattern, where * stands for any run of
-// characters, "/" included, and everything else matches itself. It's the
+// characters, "/" included; everything else matches itself. It's the
 // rule --include and --exclude use for pages, so "/team/*" matches
 // "/team/alice/" in an ignore rule as it does there. An empty pattern
 // matches only "".

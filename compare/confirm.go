@@ -10,14 +10,14 @@ import (
 )
 
 // Confirm checks the BROKE and NEW changes of c against again, a second
-// visit of their pages (the engine's re-visit), and moves the ones that
+// visit of their pages (the engine's re-visit) and moves the ones that
 // didn't show again to UNSTABLE. A flaky 500, a timeout under load or a
 // script that failed once then doesn't fail a build.
 //
 // Only page issues can be confirmed this way (see
 // model.Change.FromPageIssue); other changes stay as they are. A change
 // is judged page by page, against the snapshot's page (before) and the
-// re-visited one: where it reproduced it keeps its class, and the pages
+// re-visited one: where it reproduced it keeps its class; the pages
 // where it didn't become a separate UNSTABLE change. Pages that weren't
 // re-visited, or whose second visit was canceled or failed to load, say
 // nothing and keep the change.

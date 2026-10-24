@@ -15,7 +15,7 @@ import (
 //
 // Patch releases don't change detectors, so only the major and minor
 // numbers count. Two dev builds aren't compared (their numbers say
-// nothing), and neither is a run that recorded no version.
+// nothing) and neither is a run that recorded no version.
 func versionNote(snapshot, now string) string {
 	if snapshot == "" || now == "" {
 		return ""

@@ -48,7 +48,7 @@ type Accepted struct {
 
 // Selector picks the changes of a comparison to accept: by ID, or by a
 // page glob and a check glob (see model.Glob). Either glob may be left
-// empty to match everything, but not both. Only the pages a page glob
+// empty to match everything; not both. Only the pages a page glob
 // matches are accepted, so "/team/*" accepts a change on /team/ and
 // /shop/ for /team/ alone.
 type Selector struct {
@@ -88,11 +88,11 @@ type target struct {
 // so comparing the same site again doesn't report them. c is the
 // comparison they come from and afterDir the folder of its current run.
 //
-// Only the accepted pages' baselines change, and only in what the change
+// Only the accepted pages' baselines change, only in what the change
 // is about: a visual change copies that page's screenshots from the run,
 // an issue change replaces the page's issues with its key (the site's,
 // for a site-wide issue such as a broken link), a speed change copies
-// the page's metrics and resources, and title, text, redirect, cache and
+// the page's metrics and resources; title, text, redirect, cache and
 // Echo changes copy that one record. Every other page and baseline stays.
 // Each accepted change and page is recorded with who and when in
 // snapshot.json.
@@ -163,7 +163,7 @@ func Accept(snapshotDir, afterDir string, c *model.Comparison, sel Selector, who
 	if err := cache.WriteJSON(filepath.Join(snapshotDir, SnapshotFile), info); err != nil {
 		// run.json already holds the accepted baselines; only the record
 		// of who accepted them is missing, which is worth saying.
-		return done, fmt.Errorf("accepted, but couldn't record it in %s: %w", SnapshotFile, err)
+		return done, fmt.Errorf("accepted; couldn't record it in %s: %w", SnapshotFile, err)
 	}
 	a.removeReplaced()
 	return done, nil
@@ -259,7 +259,7 @@ func replaceKey(in, from []model.Issue, k string) []model.Issue {
 }
 
 // site replaces the snapshot's site-level issues with the change's key
-// by the run's, when the change is about one, and reports whether it was.
+// by the run's when the change is about one. It reports whether it was.
 func (a *acceptor) site(ch model.Change) bool {
 	k := issueKey(ch)
 	if a.siteDone[k] {

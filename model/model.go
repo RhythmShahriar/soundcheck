@@ -365,7 +365,7 @@ type Comparison struct {
 	After   RunRef   `json:"after"`
 	Changes []Change `json:"changes"`
 	// Ignored holds the changes ignore rules matched. They're kept so a
-	// report can say what was left out, and never pass or fail a build.
+	// report can say what was left out; they never pass or fail a build.
 	Ignored  []Change  `json:"ignored"`
 	Pages    int       `json:"pages"`
 	Warnings []string  `json:"warnings"`
