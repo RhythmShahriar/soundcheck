@@ -116,7 +116,7 @@ func TestTiming(t *testing.T) {
 // help wp-update lists every exit code wp-update gives, 130 included.
 func TestWPUpdateHelpExitCodes(t *testing.T) {
 	_, out, _ := runCLI(t, "help", "wp-update")
-	if text := strings.Join(strings.Fields(out), " "); !strings.Contains(text, "Exit codes: 0 the site works, 1 an update broke it, 2 usage error, 3 an update or check failed, 130 interrupted.") {
+	if text := strings.Join(strings.Fields(out), " "); !strings.Contains(text, "Exit codes: 0 every update worked, 1 an update broke the site (also when --rollback put it back and the site works now), 2 usage error, 3 an update or check failed, 130 interrupted.") {
 		t.Errorf("help wp-update:\n%s", out)
 	}
 }

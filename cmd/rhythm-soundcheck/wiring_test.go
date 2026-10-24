@@ -24,6 +24,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/store"
+	"github.com/RhythmShahriar/soundcheck/wpupdate"
 )
 
 // config.Modules, the registry and the builders name the same modules,
@@ -419,6 +420,18 @@ func TestFleetCommand(t *testing.T) {
 
 func TestWPUpdateCommand(t *testing.T) {
 	t.Chdir(t.TempDir())
+	for _, tc := range []struct {
+		log  wpupdate.Log
+		want int
+	}{
+		{wpupdate.Log{Works: true, Plugins: []wpupdate.Plugin{{Slug: "a", Status: wpupdate.Updated}}}, exitOK},
+		{wpupdate.Log{Works: true, Plugins: []wpupdate.Plugin{{Slug: "a", Status: wpupdate.RolledBack}}}, exitFindings},
+		{wpupdate.Log{Works: false, Plugins: []wpupdate.Plugin{{Slug: "a", Status: wpupdate.Kept}}}, exitFindings},
+	} {
+		if got := wpUpdateExit(&tc.log); got != tc.want {
+			t.Errorf("exit for %+v = %d, want %d", tc.log.Plugins, got, tc.want)
+		}
+	}
 	if code, out, _ := runCLI(t, "wp-update", "--help"); code != exitOK || !strings.Contains(out, "wp-update <url> --wp") {
 		t.Errorf("--help: %d %q", code, out)
 	}

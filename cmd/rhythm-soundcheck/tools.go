@@ -224,9 +224,9 @@ under production: in the config.
       --config <file>        settings file (default .soundcheck/config.yaml)
 
 Flags after -- go to every snapshot and compare, e.g. -- --limit 50.
-Logs go to .soundcheck/wp-update/. Exit codes: 0 the site works, 1 an
-update broke it, 2 usage error, 3 an update or check failed, 130
-interrupted.
+Logs go to .soundcheck/wp-update/. Exit codes: 0 every update worked, 1 an
+update broke the site (also when --rollback put it back and the site works
+now), 2 usage error, 3 an update or check failed, 130 interrupted.
 `
 
 // cmdWPUpdate runs the WordPress update loop.
@@ -290,7 +290,15 @@ func cmdWPUpdate(args []string, stdout, stderr io.Writer) int {
 		return failed(stderr, cli.UsageError{Msg: err.Error()})
 	case err != nil:
 		return failed(stderr, err)
-	case !log.Works:
+	}
+	return wpUpdateExit(log)
+}
+
+// wpUpdateExit is the exit code of an update night that ran to the end:
+// 1 when an update broke the site, even one --rollback put back, so CI
+// learns of it.
+func wpUpdateExit(l *wpupdate.Log) int {
+	if !l.Works || l.Broke() {
 		return exitFindings
 	}
 	return exitOK

@@ -127,6 +127,13 @@ type Log struct {
 	Files []string `json:"files,omitempty"` // the text and Markdown logs
 }
 
+// Broke reports whether an update broke the site, whether it was rolled
+// back or is still installed: the night found a bad update even when
+// the site works now.
+func (l *Log) Broke() bool {
+	return slices.ContainsFunc(l.Plugins, func(p Plugin) bool { return p.Status == RolledBack || p.Status == Kept })
+}
+
 // Modes.
 const (
 	ModeOneByOne = "one-by-one"
@@ -453,7 +460,7 @@ func (r *runner) bisect(todo []*Plugin) error {
 		}
 		c.Verdict, c.Evidence, c.Compares = res.verdict(), res.evidence(c.Slug, others, r.log.StopOn), r.log.Compares-before
 		culprits = append(culprits, c)
-		fmt.Fprintf(r.out, "Culprit: %s %s → %s (%s), found in %d compares\n", c.Slug, c.Old, c.New, c.Evidence, c.Compares)
+		fmt.Fprintf(r.out, "Culprit: %s %s → %s (%s), found in %s\n", c.Slug, c.Old, c.New, c.Evidence, count(c.Compares, "compare"))
 		if !r.o.Rollback {
 			c.Status = Kept
 			// Leave every update in place, as asked for.

@@ -233,8 +233,8 @@ func TestOneByOneRollsBackTheCulprit(t *testing.T) {
 		t.Errorf("installed %v", inst)
 	}
 	// One compare per plugin and one to check the rollback.
-	if st.Compares != 11 || l.Compares != 11 || !l.Works {
-		t.Errorf("compares %d/%d works %v", st.Compares, l.Compares, l.Works)
+	if st.Compares != 11 || l.Compares != 11 || !l.Works || !l.Broke() {
+		t.Errorf("compares %d/%d works %v broke %v", st.Compares, l.Compares, l.Works, l.Broke())
 	}
 	// The snapshot and compares run fast, against the snapshot taken.
 	snap := strings.Join(st.Snapshot, " ")
@@ -355,9 +355,14 @@ func TestBisectFindsEveryCulpritInFourCompares(t *testing.T) {
 		t.Run(culprit, func(t *testing.T) {
 			o, path := setup(t, 10, culprit)
 			o.Bisect, o.Rollback = true, true
+			var out bytes.Buffer
+			o.Out = &out
 			l, err := Run(context.Background(), o)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if strings.Contains(out.String(), " 1 compares") {
+				t.Errorf("not pluralised right:\n%s", out.String())
 			}
 			got := byStatus(l, RolledBack)
 			if !slices.Equal(got, []string{culprit}) {
@@ -415,7 +420,7 @@ func TestBisectClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := readState(t, path)
-	if st.Compares != 1 || len(byStatus(l, Updated)) != 10 || !l.Works {
+	if st.Compares != 1 || len(byStatus(l, Updated)) != 10 || !l.Works || l.Broke() {
 		t.Errorf("compares %d, %+v", st.Compares, l.Plugins)
 	}
 	// One WP-CLI call updates them all.
