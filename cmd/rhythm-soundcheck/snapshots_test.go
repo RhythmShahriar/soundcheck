@@ -75,7 +75,11 @@ func TestSnapshotsJSON(t *testing.T) {
 	}
 
 	if code, _, errOut := runCLI(t, "snapshots", "--jsn"); code != exitUsage ||
-		errOut != "rhythm-soundcheck: usage: rhythm-soundcheck snapshots [--json | delete <name>]\n" {
+		errOut != "rhythm-soundcheck: unknown flag --jsn (did you mean --json?)\n" {
 		t.Errorf("bad flag: exit %d %q", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "snapshots", "list"); code != exitUsage ||
+		errOut != "rhythm-soundcheck: usage: rhythm-soundcheck snapshots [--json | delete <name>]\n" {
+		t.Errorf("bad argument: exit %d %q", code, errOut)
 	}
 }

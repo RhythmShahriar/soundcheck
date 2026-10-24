@@ -97,9 +97,13 @@ exec: []                # e.g. [{name: laravel-log, run: ["./bin/check-log"], ti
 // cmdInit writes .soundcheck/config.yaml.
 func cmdInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	force := flags.Bool("force", false, "replace an existing config.yaml")
-	if err := flags.Parse(args); err != nil {
+	force := flags.Bool("force", false, "")
+	pos, code, ok := subFlags(flags, args, initUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
+	if len(pos) > 0 {
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "init [--force]")
 		return exitUsage
 	}
 	path := filepath.Join(config.Dir, "config.yaml")

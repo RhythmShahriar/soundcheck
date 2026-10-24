@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/url"
@@ -143,6 +144,10 @@ func (s *session) lighthouse(site, dir string) {
 
 // cmdFlows handles `flows init`.
 func cmdFlows(args []string, stdout, stderr io.Writer) int {
+	args, code, ok := subFlags(flag.NewFlagSet("flows", flag.ContinueOnError), args, flowsUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
 	if len(args) != 1 || args[0] != "init" {
 		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "flows init")
 		return exitUsage

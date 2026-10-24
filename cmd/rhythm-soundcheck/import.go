@@ -34,9 +34,11 @@ func cmdImport(args []string, stdout, stderr io.Writer) int {
 	force := fset.Bool("force", false, "")
 	pagesOnly := fset.Bool("pages-only", false, "")
 	site := fset.String("site", "", "")
+	apply := colorFlags(fset)
 	pos, err := cli.ParseInterspersed(fset, args)
+	apply()
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(stdout, importUsage())
+		fmt.Fprint(stdout, named(importTopic))
 		return exitOK
 	}
 	if err == nil && len(pos) != 1 {

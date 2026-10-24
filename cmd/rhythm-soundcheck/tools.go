@@ -51,12 +51,17 @@ func subFlags(fs *flag.FlagSet, args []string, usage string, stdout, stderr io.W
 	return pos, 0, true
 }
 
-// colorFlags adds --plain and --no-color to a subcommand's flags, as every
-// command takes them. The returned func, called after parsing, turns color
-// off when either is set.
+// colorFlags adds --plain, --no-color and -q (--quiet) to a subcommand's
+// flags, as every command takes them. The returned func, called after
+// parsing, turns color off when either color flag is set. A subcommand
+// prints only results anyway; one with progress lines reads -q with
+// boolFlag(fs, "quiet").
 func colorFlags(fs *flag.FlagSet) (apply func()) {
 	plain := fs.Bool("plain", false, "")
 	noColor := fs.Bool("no-color", false, "")
+	quiet := new(bool)
+	fs.BoolVar(quiet, "q", false, "")
+	fs.BoolVar(quiet, "quiet", false, "")
 	return func() {
 		if *plain || *noColor {
 			lipgloss.SetColorProfile(termenv.Ascii)
@@ -422,7 +427,40 @@ func (s *session) clientReport(res report.Result) int {
 // that `help <command>` describes before the full list of flags.
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
 	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage,
+	"snapshots": snapshotsUsage, "flows": flowsUsage, "update": updateUsage, "init": initUsage,
 	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic}
+
+const snapshotsUsage = `Usage:
+  rhythm soundcheck snapshots [--json]
+  rhythm soundcheck snapshots delete <name>
+
+Lists the snapshots in .soundcheck/snapshots with their pages, age and site,
+marking the one compare uses by default. --json prints them as a JSON array
+for scripts. delete removes one.
+`
+
+const initUsage = `Usage:
+  rhythm soundcheck init [--force]
+
+Writes .soundcheck/config.yaml with every setting described and asks git to
+ignore the snapshot folders. --force replaces a config that's already there.
+`
+
+const flowsUsage = `Usage:
+  rhythm soundcheck flows init
+
+Writes an example flow to the flows folder (.soundcheck/flows unless the
+config sets flows:). Edit it, then run flows with --level flows, which
+submits forms too.
+`
+
+const updateUsage = `Usage:
+  rhythm soundcheck update [--clear]
+
+Installs the browser if there's none (Chrome for Testing, when no Chrome is
+installed) and removes older downloaded revisions. --clear deletes the
+downloaded browser instead.
+`
 
 const snapshotUsage = `Usage:
   rhythm soundcheck snapshot <url> [flags]

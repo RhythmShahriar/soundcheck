@@ -1020,8 +1020,14 @@ func cmdReport(s *session) int {
 
 // cmdSnapshots lists snapshots, or deletes one.
 func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("snapshots", flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "")
+	args, code, ok := subFlags(fs, args, snapshotsUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
 	st := store.Store{Root: config.Dir}
-	if len(args) == 2 && (args[0] == "delete" || args[0] == "rm") {
+	if len(args) == 2 && !*asJSON && (args[0] == "delete" || args[0] == "rm") {
 		dir, err := st.Snapshot(args[1])
 		if err != nil {
 			fmt.Fprintln(stderr, prefix(), named(err.Error()))
@@ -1034,8 +1040,7 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
 		return exitOK
 	}
-	asJSON := len(args) == 1 && (args[0] == "--json" || args[0] == "-json")
-	if len(args) > 0 && !asJSON {
+	if len(args) > 0 {
 		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "snapshots [--json | delete <name>]")
 		return exitUsage
 	}
@@ -1044,7 +1049,7 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
-	if asJSON {
+	if *asJSON {
 		if err := snapshotsJSON(stdout, st, names); err != nil {
 			fmt.Fprintln(stderr, prefix(), err)
 			return exitError
@@ -1109,11 +1114,16 @@ func snapshotsJSON(w io.Writer, st store.Store, names []string) error {
 // it after updating the binary.
 func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	clear := fs.Bool("clear", false, "delete the downloaded Chrome for Testing")
-	if err := fs.Parse(args); err != nil {
+	clear := fs.Bool("clear", false, "")
+	pos, code, ok := subFlags(fs, args, updateUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
+	if len(pos) > 0 {
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "update [--clear]")
 		return exitUsage
 	}
+	quiet := boolFlag(fs, "quiet")
 	dir, err := browser.DownloadDir()
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
@@ -1130,7 +1140,12 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	// Ctrl+C stops a download too.
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
 	defer stop()
-	bin, downloaded, err := browser.FindContext(ctx, browser.Options{Log: func(m string) { fmt.Fprintln(stdout, m) }})
+	logf := func(m string) {
+		if !quiet {
+			fmt.Fprintln(stdout, m)
+		}
+	}
+	bin, downloaded, err := browser.FindContext(ctx, browser.Options{Log: logf})
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError

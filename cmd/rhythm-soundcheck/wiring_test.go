@@ -555,14 +555,34 @@ func TestSubcommandsTakeColorFlags(t *testing.T) {
 		{"accept", "c1", "--plain"}, {"accept", "--no-color", "c1"},
 		{"review", "--plain"}, {"review", "--no-color"},
 		{"rules", "list", "--plain"}, {"rules", "--no-color", "list"}, {"rules", "test", "--plain"},
+		{"snapshots", "--plain"}, {"snapshots", "--no-color"}, {"snapshots", "-q"}, {"snapshots", "--json", "--plain"},
+		{"import", "missing.json", "--plain"}, {"import", "-q", "missing.json"},
+		{"init", "--plain", "--force"}, {"history", "-q"}, {"rules", "list", "--quiet"},
+		{"update", "--plain", "stray"}, {"update", "-q", "stray"},
 	} {
 		_, _, errOut := runCLI(t, args...)
 		if strings.Contains(errOut, "unknown flag") {
 			t.Errorf("%v: %s", args, errOut)
 		}
 	}
-	if code, _, errOut := runCLI(t, "review", "--frobnicate"); code != exitUsage || !strings.Contains(errOut, "unknown flag --frobnicate") {
-		t.Errorf("review --frobnicate: exit %d %s", code, errOut)
+	for _, cmd := range [][]string{{"review"}, {"snapshots"}, {"flows", "init"}, {"import"}, {"update"}, {"init"},
+		{"history"}, {"accept"}, {"rules"}, {"fleet"}, {"wp-update"}} {
+		code, _, errOut := runCLI(t, append(cmd, "--frobnicate")...)
+		if code != exitUsage || !strings.HasPrefix(errOut, "rhythm-soundcheck: unknown flag --frobnicate") {
+			t.Errorf("%v --frobnicate: exit %d %s", cmd, code, errOut)
+		}
+		code, out, errOut := runCLI(t, cmd[0], "--help")
+		if code != exitOK || !strings.Contains(out, "Usage:") || errOut != "" {
+			t.Errorf("%s --help: exit %d\n%s\n%s", cmd[0], code, out, errOut)
+		}
+	}
+	for _, args := range [][]string{{"snapshots", "--plain"}, {"snapshots", "-q"}, {"flows", "init", "--plain"}} {
+		if code, out, errOut := runCLI(t, args...); code != exitOK || strings.Contains(out, "Usage") {
+			t.Errorf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	if code, out, _ := runCLI(t, "snapshots", "--json", "--plain"); code != exitOK || strings.TrimSpace(out) != "[]" {
+		t.Errorf("snapshots --json --plain: exit %d %q", code, out)
 	}
 	for _, args := range [][]string{{"rules", "list", "--plain"}, {"rules", "test", "--plain"}} {
 		if code, out, errOut := runCLI(t, args...); code != exitOK || strings.Contains(errOut, "--plain") || strings.Contains(out, "Usage") {
