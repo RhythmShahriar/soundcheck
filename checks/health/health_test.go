@@ -211,8 +211,49 @@ func TestCheckSiteLinks(t *testing.T) {
 	if len(titles) != 1 || titles[0] != "Broken link to /gone/ (404)" {
 		t.Errorf("issues = %v; want only the missing /gone/, keeping its slash", titles)
 	}
+	if len(run.Issues) == 1 && run.Issues[0].Detail != "" {
+		t.Errorf("every link was checked, yet the detail says %q", run.Issues[0].Detail)
+	}
 	if cartHit.Load() {
 		t.Error("an add-to-cart link must never be requested")
+	}
+}
+
+// A big site has more links than CheckSite requests; a broken one says
+// how many were checked, so the rest aren't taken for fine.
+func TestCheckSiteLinksSampled(t *testing.T) {
+	var asked atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		if r.URL.Path == "/a/0007/" {
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base, _ := url.Parse(srv.URL + "/")
+	home := model.Page{URL: srv.URL + "/", Path: "/", Status: 200}
+	for i := range 1240 {
+		home.Links = append(home.Links, fmt.Sprintf("%s/a/%04d/", srv.URL, i))
+	}
+	run := &model.Run{Pages: []model.Page{home}}
+	cc := &check.Context{Config: config.Default(), Base: base, Run: run, HTTP: srv.Client(), Hosts: ratelimit.NewHosts(0)}
+	Module{}.CheckSite(context.Background(), cc)
+	if len(run.Issues) != 1 || run.Issues[0].Title != "Broken link to /a/0007/ (404)" {
+		t.Fatalf("issues = %+v", run.Issues)
+	}
+	if got, want := run.Issues[0].Detail, "Checked 300 of 1,240 links found on the visited pages; the rest weren't requested."; got != want {
+		t.Errorf("detail = %q, want %q", got, want)
+	}
+	if n := asked.Load(); n != 300 {
+		t.Errorf("requested %d links, want 300", n)
+	}
+}
+
+func TestThousands(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 300: "300", 1240: "1,240", 999999: "999,999", 1234567: "1,234,567", -1240: "-1,240"} {
+		if got := thousands(n); got != want {
+			t.Errorf("thousands(%d) = %q, want %q", n, got, want)
+		}
 	}
 }
 

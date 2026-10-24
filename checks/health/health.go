@@ -192,7 +192,14 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 		}
 	}
 	slices.Sort(todo)
-	todo = todo[:min(len(todo), 300)] // a bounded sample keeps big sites fast
+	// A bounded sample keeps big sites fast; the detail says so, or a
+	// clean result would read as every link checked.
+	var sampled string
+	if found := len(todo); found > maxLinks {
+		todo = todo[:maxLinks]
+		sampled = fmt.Sprintf("Checked %s of %s links found on the visited pages; the rest weren't requested.",
+			thousands(maxLinks), thousands(found))
+	}
 	status := map[string]int{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -217,9 +224,21 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 			slices.Sort(pages)
 			cc.AddIssue(model.Issue{Check: "health/broken-link", Level: model.Warning,
 				Title: fmt.Sprintf("Broken link to %s (%d)", shortURL(cc.Base, cmp.Or(orig[l], l)), code), Pages: pages,
-				Fix: "Update or remove the link, or redirect the old URL."})
+				Detail: sampled, Fix: "Update or remove the link, or redirect the old URL."})
 		}
 	}
+}
+
+// maxLinks is how many links to unvisited pages CheckSite requests.
+const maxLinks = 300
+
+// thousands writes n with comma separators, e.g. 1,240.
+func thousands(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0 && s[i-1] != '-'; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // favicon adds one site-level "No favicon" when any page saw the
