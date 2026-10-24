@@ -41,12 +41,23 @@ type Options struct {
 	AllowEnv []string
 	// AllowHosts lists hosts besides Base's that goto and start may open
 	// (--allow-host), as config.HostKey gives them. Others are refused
-	// before the browser asks for them.
+	// before the browser asks for them. A click or submit that lands on
+	// another host stops the flow too.
 	AllowHosts []string
+	// PlainHTTP lets a flow on an https site send what it read from the
+	// environment to a plain http page (--insecure-login). Otherwise fill
+	// and select steps with ${env:…}, and clicks and submits after them,
+	// refuse an http page unless it's this machine.
+	PlainHTTP bool
 }
 
-// ErrOffSite is a goto or start refused because it leaves the site.
+// ErrOffSite is a goto or start refused because it leaves the site, or
+// a click or submit that left it.
 var ErrOffSite = errors.New("isn't the site being checked")
+
+// ErrPlainHTTP is a value from the environment kept from a plain http
+// page of an https site.
+var ErrPlainHTTP = errors.New("is plain http on an https site (--insecure-login allows it)")
 
 // ErrProduction is a click or submit refused on a production URL.
 var ErrProduction = errors.New("refused on a production URL (set production: true in the flow to allow it)")
@@ -156,6 +167,17 @@ func (r *runner) expand(s string) (string, error) {
 	return v, err
 }
 
+// expandToType expands a value a fill or select step is about to type,
+// checking the page first when it reads the environment.
+func (r *runner) expandToType(s string) (string, error) {
+	n := len(r.secrets)
+	v, err := r.expand(s)
+	if err != nil || len(r.secrets) == n {
+		return v, err
+	}
+	return v, r.typeSecret()
+}
+
 func (r *runner) resolve(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -205,6 +227,96 @@ func (r *runner) onSite(target string) error {
 		return nil
 	}
 	return fmt.Errorf("%s %w (%s); pass --allow-host %s to open it", host, ErrOffSite, site, host)
+}
+
+// secretSafe checks that target may get what the flow read from the
+// environment: it's on the site and, when the site uses https, not plain
+// http unless it's this machine or PlainHTTP is set.
+func (r *runner) secretSafe(target string) error {
+	if err := r.onSite(target); err != nil || r.o.Base == nil || r.o.PlainHTTP {
+		return err
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return err
+	}
+	if r.o.Base.Scheme == "https" && u.Scheme == "http" && !config.IsLoopback(u.Hostname()) {
+		return fmt.Errorf("%s %w", u.Host, ErrPlainHTTP)
+	}
+	return nil
+}
+
+// typeSecret checks the current page before a fill or select types a
+// value from the environment into it. The page may have moved since the
+// last goto: a script redirect, or a click that a check let through.
+func (r *runner) typeSecret() error {
+	info, err := r.page.Timeout(5 * time.Second).Info()
+	if err != nil {
+		return fmt.Errorf("couldn't tell which page this is, so nothing from the environment is typed: %w", err)
+	}
+	if err := r.secretSafe(info.URL); err != nil {
+		return fmt.Errorf("not typing what the flow read from the environment: %w", err)
+	}
+	return nil
+}
+
+// sendSecret refuses a click or submit that would send the page, with
+// what the flow read from the environment typed into it, off the site or
+// down to plain http. It reads where a plain link or form goes; a script
+// on the page can still send the value anywhere, which no check here can
+// see.
+func (r *runner) sendSecret(el *rod.Element, submit bool) error {
+	if len(r.secrets) == 0 {
+		return nil
+	}
+	res, err := el.Timeout(r.o.Timeout).Eval(destJS, submit)
+	if err != nil {
+		return err
+	}
+	dest := res.Value.Str()
+	if u, err := url.Parse(dest); dest == "" || err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil // nothing to follow, or a javascript: or mailto: link
+	}
+	if err := r.secretSafe(dest); err != nil {
+		return fmt.Errorf("not sending what the flow typed: %w", err)
+	}
+	return nil
+}
+
+// destJS returns where clicking or submitting this element sends the
+// page: a link's href, or its form's action (a submit button's
+// formaction first). It returns "" for anything else. The formAction
+// property is the page's own URL when the attribute is missing, so it's
+// read only when the attribute is there.
+const destJS = `function(submit) {
+  const a = !submit && this.closest && this.closest('a[href]');
+  if (a) return a.href;
+  const form = this.tagName === 'FORM' ? this : this.form || (this.closest && this.closest('form'));
+  if (!form) return '';
+  let btn = this;
+  if (this.tagName === 'FORM') btn = form.querySelector('[type=submit],button:not([type])');
+  else if (!submit && !(this.type === 'submit' || this.type === 'image' || (this.tagName === 'BUTTON' && !this.getAttribute('type')))) return '';
+  return btn && btn.hasAttribute('formaction') ? btn.formAction : form.action;
+}`
+
+// stayed checks the page is still on the site after a click or submit,
+// so a link or form that led to another host stops the flow before it
+// types anything there.
+func (r *runner) stayed() error {
+	if r.o.Base == nil {
+		return nil
+	}
+	info, err := r.page.Timeout(5 * time.Second).Info()
+	if err != nil {
+		return nil // can't tell; a fill with a value from the environment checks again
+	}
+	if u, err := url.Parse(info.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil
+	}
+	if err := r.onSite(info.URL); err != nil {
+		return fmt.Errorf("it led off the site: %w", err)
+	}
+	return nil
 }
 
 // settle waits for the page to finish loading after an action that may
@@ -258,12 +370,16 @@ func (r *runner) step(n int, s Step) error {
 		if err != nil {
 			return err
 		}
+		if err := r.sendSecret(el, false); err != nil {
+			return err
+		}
 		if err := el.Timeout(r.o.Timeout).Click(proto.InputMouseButtonLeft, 1); err != nil {
 			return fmt.Errorf("couldn't click: %w", err)
 		}
 		r.settle()
+		return r.stayed()
 	case s.Fill != nil:
-		v, err := r.expand(s.Fill.Value)
+		v, err := r.expandToType(s.Fill.Value)
 		if err != nil {
 			return err
 		}
@@ -279,7 +395,7 @@ func (r *runner) step(n int, s Step) error {
 			return fmt.Errorf("couldn't type into it: %w", err)
 		}
 	case s.Select != nil:
-		v, err := r.expand(s.Select.Value)
+		v, err := r.expandToType(s.Select.Value)
 		if err != nil {
 			return err
 		}
@@ -316,6 +432,7 @@ func (r *runner) step(n int, s Step) error {
 			return err
 		}
 		r.settle()
+		return r.stayed()
 	case s.Wait != nil:
 		if s.Wait.Selector != "" {
 			el, err := r.element(Target{Selector: s.Wait.Selector})
@@ -364,6 +481,9 @@ func (r *runner) submit(t Target) error {
 	}
 	el, err := r.element(t)
 	if err != nil {
+		return err
+	}
+	if err := r.sendSecret(el, true); err != nil {
 		return err
 	}
 	res, err := el.Eval(`function() {

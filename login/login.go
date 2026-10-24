@@ -94,8 +94,8 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 	if err != nil {
 		return fmt.Errorf("login flow: %w", err)
 	}
-	// The flow's goto and start steps stay on the site (flow.Options), so
-	// the scheme is the one thing left to check before it types.
+	// The flow stays on the site (flow.Options) and keeps the password
+	// from plain http pages of an https site; this checks the site itself.
 	if err := secure(o.Base, o.Config.Trust.InsecureLogin); err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 	}
 	defer func() { _ = page.Close() }()
 	fails := flow.Run(ctx, page, f, flow.Options{Base: o.Base, Env: env, Timeout: 15 * time.Second,
-		AllowEnv: o.Config.Trust.AllowEnv, AllowHosts: o.Config.Trust.AllowHosts})
+		AllowEnv: o.Config.Trust.AllowEnv, AllowHosts: o.Config.Trust.AllowHosts, PlainHTTP: o.Config.Trust.InsecureLogin})
 	if len(fails) > 0 {
 		return fmt.Errorf("login flow %q failed at %w", f.Name, fails[0])
 	}
