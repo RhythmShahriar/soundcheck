@@ -215,6 +215,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		sem     = make(chan struct{}, cfg.Tabs)
 		results = map[string]*model.Page{}
 		order   []string
+		ordered = map[string]bool{} // a guard: each page is visited once
 	)
 	queue = append(queue, pages...)
 	for ctx.Err() == nil {
@@ -230,6 +231,13 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 		pg := queue[0]
 		queue = queue[1:]
+		if ordered[pg.URL] {
+			total-- // queued twice: visit it once
+			qmu.Unlock()
+			continue
+		}
+		ordered[pg.URL] = true
+		order = append(order, pg.URL)
 		qmu.Unlock()
 		// Once the run is canceled no page starts: it would only be
 		// recorded as canceled.
@@ -245,18 +253,11 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			}
 			break
 		}
-		qmu.Lock()
-		order = append(order, pg.URL)
-		qmu.Unlock()
 		wg.Go(func() {
 			defer func() { <-sem }()
 			p := visit(ctx, cc, opts, hosts, pg)
 			if discover {
-				before := len(frontier.Pages())
-				for _, l := range p.Links {
-					frontier.Add(l, "rendered", pg.Depth+1)
-				}
-				if added := sameSite(frontier.Pages()[before:]); len(added) > 0 {
+				if added := sameSite(addLinks(frontier, startURL, p.Links, pg.Depth+1)); len(added) > 0 {
 					qmu.Lock()
 					queue = append(queue, added...)
 					total += len(added)
@@ -291,6 +292,46 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	run.Duration = float64(time.Since(start).Milliseconds())
 	return run, ctx.Err()
 }
+
+// addLinks offers a page's rendered links to f and returns the pages it
+// accepted, so each new page is queued by the one visit that found it
+// first. Taking the frontier's pages added since some earlier count
+// instead would let two visits that add links at the same time both
+// queue the other's pages, and visit them twice.
+func addLinks(f *crawl.Frontier, start *url.URL, links []string, depth int) []crawl.Page {
+	if addHook != nil {
+		addHook(false)
+	}
+	accepted := map[string]bool{}
+	for _, l := range links {
+		if f.Add(l, "rendered", depth) {
+			if norm, ok := crawl.Normalize(start, l); ok {
+				accepted[norm] = true
+			}
+		}
+	}
+	if addHook != nil {
+		addHook(true)
+	}
+	if len(accepted) == 0 {
+		return nil
+	}
+	// The frontier knows each page's group. They were just added, so
+	// they are among its last pages.
+	all := f.Pages()
+	var out []crawl.Page
+	for i := len(all) - 1; i >= 0 && len(out) < len(accepted); i-- {
+		if accepted[all[i].URL] {
+			out = append(out, all[i])
+		}
+	}
+	slices.Reverse(out)
+	return out
+}
+
+// addHook, when set by a test, runs before a visit adds its links and
+// again before it looks them up, to make visits interleave there.
+var addHook func(added bool)
 
 // canceled is the Error of a page whose visit the run's cancel cut
 // short (Ctrl+C). Such a page has no facts, issues or shots: what it
@@ -371,6 +412,11 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		if c, ok := m.(check.PageChecker); ok {
 			check.Safe(m.Name(), "CheckPage", cc.Warn, func() { c.CheckPage(cc, p) })
 		}
+	}
+	// The text can run to 200,000 characters a page, and nothing past the
+	// page's own checks reads it unless a module says so.
+	if !slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.NeedsText); return ok }) {
+		p.Text = ""
 	}
 	return p
 }

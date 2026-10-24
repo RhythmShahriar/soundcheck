@@ -52,6 +52,14 @@ type SiteChecker interface {
 	CheckSite(ctx context.Context, cc *Context)
 }
 
+// NeedsText is a module that reads Page.Text after the page's
+// PageCheckers ran, e.g. in CheckSite. The text can be 200,000
+// characters a page, so without such a module the runner drops it from
+// each page as soon as its PageCheckers are done.
+type NeedsText interface {
+	NeedsText()
+}
+
 // Comparer reports differences between two runs beyond new and fixed
 // issues: visual changes, slowdowns, lost content.
 type Comparer interface {
