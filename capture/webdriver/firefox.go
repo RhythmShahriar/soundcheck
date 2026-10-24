@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,7 +41,8 @@ type Options struct {
 var firefoxNames = []string{"firefox", "firefox-esr", "firefox-developer-edition", "firefox-nightly"}
 
 // FindFirefox returns the Firefox binary to run: bin when set, or the
-// first Firefox on PATH. Soundcheck never downloads one.
+// first Firefox on PATH, in /Applications or, on Windows, under Program
+// Files. Soundcheck never downloads one.
 func FindFirefox(bin string) (string, error) {
 	if bin != "" {
 		if _, err := os.Stat(bin); err != nil {
@@ -56,7 +58,29 @@ func FindFirefox(bin string) (string, error) {
 	if p := macApp("Firefox"); p != "" {
 		return p, nil
 	}
+	if runtime.GOOS == "windows" {
+		if p := windowsFirefox(os.Getenv); p != "" {
+			return p, nil
+		}
+	}
 	return "", errors.New("no Firefox found; install it or pass the path to its binary")
+}
+
+// windowsFirefox is firefox.exe where its installer puts it, under
+// Program Files (64-bit first), or "". The installer doesn't add it to
+// PATH.
+func windowsFirefox(getenv func(string) string) string {
+	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)"} {
+		dir := getenv(env)
+		if dir == "" {
+			continue
+		}
+		p := filepath.Join(dir, "Mozilla Firefox", "firefox.exe")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 // macApp is the binary of a macOS app in /Applications, or "".

@@ -77,3 +77,20 @@ func TestFindBinaries(t *testing.T) {
 		t.Error("hostPort")
 	}
 }
+
+func TestWindowsFirefox(t *testing.T) {
+	x64, x86 := t.TempDir(), t.TempDir()
+	env := map[string]string{"ProgramFiles": x64, "ProgramFiles(x86)": x86}
+	if got := windowsFirefox(func(k string) string { return env[k] }); got != "" {
+		t.Errorf("no Firefox installed: %q", got)
+	}
+	want := filepath.Join(x86, "Mozilla Firefox", "firefox.exe")
+	_ = os.MkdirAll(filepath.Dir(want), 0o750)
+	_ = os.WriteFile(want, nil, 0o600)
+	if got := windowsFirefox(func(k string) string { return env[k] }); got != want {
+		t.Errorf("32-bit Firefox: %q", got)
+	}
+	if got := windowsFirefox(func(string) string { return "" }); got != "" {
+		t.Errorf("no Program Files: %q", got)
+	}
+}
