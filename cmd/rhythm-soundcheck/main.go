@@ -109,7 +109,8 @@ What to check:
       --exclude <globs>      skip pages matching
       --page <path>          always check this page too (repeatable)
       --ignore-robots        crawl pages robots.txt disallows (your own site)
-      --modules <list>       health, visual, interact, cache, speed (default all)
+      --modules <list>       health, visual, interact, cache, speed (default
+                             all), echo (on with --echo)
       --skip <list>          leave these modules out
       --level <list>         interactions: inspect, click, submit, flows
                              (default inspect,click; submit sends test data)
@@ -117,6 +118,10 @@ What to check:
       --no-login             skip the login (leak test, login flows) even if
                              SOUNDCHECK_USER is set
       --lighthouse           also run Unlighthouse (needs Node.js and npx)
+      --echo[=<url>]         record the emails, SMS and webhooks each form
+                             submit and flow sends, and compare them, through
+                             Echo (default http://127.0.0.1:8025; start it with
+                             rhythm echo up). Also SOUNDCHECK_ECHO=<url>
 
 Requests and browser:
       --rate <n>             page loads per second per site (default 5)
@@ -142,6 +147,12 @@ set login: true. Pages themselves are checked as a visitor. Credentials are
 read only from the environment and never written to reports. Uses
 /wp-login.php, or the login flow in .soundcheck/config.yaml.
 
+Messages: with Echo running (rhythm echo up) and its connector on the site,
+--echo ties each form submit and flow to what it sent, so a form that says
+"sent" but emails nobody is caught, and a lost or changed email, SMS or
+webhook shows up in the comparison. Flows can check them with
+expect: {message: ...}. A token comes from RHYTHM_ECHO_TOKEN (echo.token_env).
+
 Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check · 130 interrupted
 
@@ -150,5 +161,6 @@ Examples:
   rhythm soundcheck compare --open
   rhythm soundcheck staging.example.com --against example.com --fail-on broke
   rhythm soundcheck run example.test -k --level inspect,click,submit --md -o check.md
+  rhythm soundcheck snapshot staging.shop.test --level inspect,click,submit --echo
 `)
 }

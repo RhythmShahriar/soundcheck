@@ -87,7 +87,7 @@ func TestConfigTemplateLoads(t *testing.T) {
 	}
 	def := config.Default()
 	if got.Pages.Limit != def.Pages.Limit || got.Rate != def.Rate || got.Visual.Threshold != def.Visual.Threshold ||
-		len(got.Modules) != len(def.Modules) || got.Flows != def.Flows {
+		len(got.Modules) != len(def.Modules) || got.Flows != def.Flows || got.Echo != def.Echo {
 		t.Errorf("the template's values must match the defaults:\n%+v\n%+v", got, def)
 	}
 }
@@ -122,6 +122,75 @@ func TestFlagsOverrideConfig(t *testing.T) {
 	}
 	if !strings.HasPrefix(p.ua, "rhythm-soundcheck/1.0.0-test") {
 		t.Errorf("ua = %q", p.ua)
+	}
+}
+
+func TestEchoFlag(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	for _, tc := range []struct {
+		env  string
+		args []string
+		url  string // "" means Echo stays off
+	}{
+		{"", []string{"a.test"}, ""},
+		{"", []string{"a.test", "--echo"}, config.EchoURL},
+		{"", []string{"--echo", "a.test"}, config.EchoURL}, // a bare --echo never eats the site
+		{"", []string{"a.test", "--echo=http://127.0.0.1:9025"}, "http://127.0.0.1:9025"},
+		{"", []string{"a.test", "--modules", "health", "--echo"}, config.EchoURL},
+		{"1", []string{"a.test"}, config.EchoURL},
+		{"http://10.0.0.5:8025", []string{"a.test"}, "http://10.0.0.5:8025"},
+		{"off", []string{"a.test"}, ""},
+		{"1", []string{"a.test", "--echo=false"}, ""},
+		{"1", []string{"a.test", "--skip", "echo"}, ""},
+		{"1", []string{"a.test", "--echo=http://127.0.0.1:9"}, "http://127.0.0.1:9"},
+	} {
+		t.Setenv("SOUNDCHECK_ECHO", tc.env)
+		p, err := parse(tc.args)
+		if err != nil {
+			t.Errorf("%q %v: %v", tc.env, tc.args, err)
+			continue
+		}
+		if p.cfg.Echo.URL != tc.url || p.cfg.Has("echo") != (tc.url != "") || len(p.args) != 1 || p.args[0] != "a.test" {
+			t.Errorf("%q %v: url %q, modules %v, args %v; want %q", tc.env, tc.args, p.cfg.Echo.URL, p.cfg.Modules, p.args, tc.url)
+		}
+	}
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	for args, want := range map[string]string{
+		"a.test --modules echo":                "--echo",
+		"a.test --echo=127.0.0.1:80":           "--echo (echo.url)",
+		"compare --echo http://127.0.0.1:8025": `--echo takes its address with "=": --echo=http://127.0.0.1:8025`,
+	} {
+		if _, err := parse(strings.Fields(args)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v, want %q", args, err, want)
+		}
+	}
+
+	// Configured in the file, Echo is on even when modules lists the others.
+	_ = os.MkdirAll(".soundcheck", 0o755)
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("modules: [health, interact]\necho:\n  url: http://127.0.0.1:9100\n"), 0o600)
+	p, err := parse([]string{"a.test"})
+	if err != nil || strings.Join(p.cfg.Modules, ",") != "health,interact,echo" {
+		t.Errorf("from the config: %v %v", p.cfg.Modules, err)
+	}
+}
+
+func TestEchoNotRunning(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "<html></html>") }))
+	defer srv.Close()
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	code, _, errOut := runCLI(t, "snapshot", srv.URL, "--echo="+dead.URL, "--plain")
+	if code != exitUsage || !strings.Contains(errOut, "start it with: rhythm echo up") {
+		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+	if _, err := os.Stat(".soundcheck/snapshots"); err == nil {
+		entries, _ := os.ReadDir(".soundcheck/snapshots")
+		if len(entries) > 0 {
+			t.Errorf("a snapshot was saved without Echo: %v", entries)
+		}
 	}
 }
 

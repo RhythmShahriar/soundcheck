@@ -13,6 +13,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/cache"
+	echomod "github.com/RhythmShahriar/soundcheck/checks/echo"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/checks/interact"
 	"github.com/RhythmShahriar/soundcheck/checks/speed"
@@ -36,6 +37,7 @@ func modules(cfg config.Config) []check.Module {
 		"interact": interact.New(),
 		"cache":    cache.Module{},
 		"speed":    speedModule,
+		"echo":     echomod.Module{},
 	}
 	var out []check.Module
 	order := append(slices.DeleteFunc(slices.Clone(config.Modules), func(m string) bool { return m == "interact" }), "interact")

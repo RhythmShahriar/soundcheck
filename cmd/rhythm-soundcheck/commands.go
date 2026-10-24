@@ -26,6 +26,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/runner"
@@ -61,6 +62,7 @@ type session struct {
 	view           *report.Pretty
 	st             store.Store
 	notice         <-chan string
+	echo           *echolink.Link // connected on the first check, when Echo is on
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -109,8 +111,38 @@ func (s *session) start(target string) {
 	s.view.Header(version, target)
 }
 
+// connectEcho checks once that Echo is running, when it's on. Echo not
+// answering is a usage error: the user asked for it, and a run without it
+// would silently record no messages.
+func (s *session) connectEcho() error {
+	if !s.cfg.Has("echo") || s.echo != nil {
+		return nil
+	}
+	token := ""
+	if s.cfg.Echo.TokenEnv != "" {
+		token = os.Getenv(s.cfg.Echo.TokenEnv)
+	}
+	link, err := echolink.Connect(s.ctx, s.cfg.Echo, token)
+	if err != nil {
+		if s.ctx.Err() != nil {
+			return s.ctx.Err()
+		}
+		return cli.UsageError{Msg: err.Error()}
+	}
+	s.echo = link
+	what := "recording what each form submit and flow sends"
+	if !s.cfg.Level("submit") && !s.cfg.Level("flows") {
+		what = "on, but forms are only submitted with --level submit (and flows with flows)"
+	}
+	s.view.Step("Echo", fmt.Sprintf("%s, %s mode: %s", link.URL, link.Mode, what))
+	return nil
+}
+
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
+	if err := s.connectEcho(); err != nil {
+		return nil, err
+	}
 	login, who := loginFunc(s.cfg, s.o.noLogin)
 	if who != "" {
 		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
@@ -118,6 +150,7 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	opts := runner.Options{
 		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,
 		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: modules(s.cfg), Login: login,
+		Echo: s.echo,
 		Browser: browser.Options{Bin: s.o.browser, NoDownload: s.o.noDownload, Proxy: s.o.proxy, Insecure: s.o.insecure,
 			Visible: s.o.show, Log: func(msg string) { s.view.Log("!" + msg) }},
 		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log},

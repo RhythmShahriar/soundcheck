@@ -29,7 +29,7 @@ pages:
   extra: []             # always check these, even if no link points to them, e.g. ["/checkout/"]
 
 viewports: [desktop, mobile]
-modules: [health, visual, interact, cache, speed]
+modules: [health, visual, interact, cache, speed]  # echo is added when Echo is on
 
 visual:
   threshold: 0.5        # % of a page's pixels that must change to report it
@@ -54,6 +54,15 @@ flows: .soundcheck/flows  # folder of YAML flows (rhythm soundcheck flows init)
 
 speed:
   slower: 25            # % slower before a page is reported SLOWER
+
+# Echo (rhythm echo up) records the emails, SMS and webhooks each form submit
+# and flow sends, so comparisons catch lost or changed messages. Off while url
+# is empty; --echo or SOUNDCHECK_ECHO turn it on too.
+echo:
+  url: ""               # e.g. http://127.0.0.1:8025
+  token_env: RHYTHM_ECHO_TOKEN  # environment variable with Echo's token, if it has one
+  quiet: 1500ms         # after a submit, wait until nothing new arrives for this long
+  timeout: 10s          # but no longer than this
 
 rate: 5                 # page loads per second per site
 tabs: 8                 # pages checked at once; politeness comes from rate

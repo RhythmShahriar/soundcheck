@@ -43,7 +43,62 @@ type options struct {
 	insecure               bool
 	noDownload, show       bool
 
+	echo echoFlag
+
 	failOn string
+}
+
+// echoFlag is --echo with an optional value: a bare --echo means Echo at
+// its default address, --echo=<url> another one. Like --color[=when] in
+// other tools, the value must be attached with "=": a separate argument
+// would be read as the site to check.
+type echoFlag struct {
+	set bool
+	url string
+}
+
+func (f *echoFlag) String() string { return f.url }
+
+func (f *echoFlag) Set(v string) error {
+	f.set = true
+	switch strings.ToLower(v) {
+	case "true", "":
+		f.url = config.EchoURL
+	case "false": // off, even when SOUNDCHECK_ECHO or echo.url is set
+		f.url = ""
+	default:
+		f.url = v
+	}
+	return nil
+}
+
+// IsBoolFlag lets --echo stand alone.
+func (f *echoFlag) IsBoolFlag() bool { return true }
+
+// echoSpaced catches `--echo http://127.0.0.1:8025`: the URL would be
+// taken as the site to check. Echo's own port gives it away.
+func echoSpaced(args []string) error {
+	for i, a := range args[:max(len(args)-1, 0)] {
+		if a != "--echo" && a != "-echo" {
+			continue
+		}
+		if u, err := url.Parse(args[i+1]); err == nil && u.Host != "" && u.Port() == "8025" {
+			return cli.Usagef("--echo takes its address with \"=\": --echo=%s", args[i+1])
+		}
+	}
+	return nil
+}
+
+// echoFromEnv reads SOUNDCHECK_ECHO: a URL, or 1/true/on for the default
+// address. Empty, 0, false and off leave Echo off.
+func echoFromEnv(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "off", "no":
+		return ""
+	case "1", "true", "on", "yes":
+		return config.EchoURL
+	}
+	return strings.TrimSpace(v)
 }
 
 func flagSet(o *options) *flag.FlagSet {
@@ -92,6 +147,8 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.BoolVar(&o.noDownload, "no-download", false, "")
 	fs.BoolVar(&o.show, "show-browser", false, "")
 
+	fs.Var(&o.echo, "echo", "")
+
 	fs.StringVar(&o.failOn, "fail-on", "", "")
 	return fs
 }
@@ -111,6 +168,9 @@ type plan struct {
 func parse(args []string) (*plan, error) {
 	p := &plan{}
 	o := &p.o
+	if err := echoSpaced(args); err != nil {
+		return nil, err
+	}
 	fs := flagSet(o)
 	pos, err := cli.ParseInterspersed(fs, args)
 	if err != nil {
@@ -151,6 +211,20 @@ func parse(args []string) (*plan, error) {
 			return nil, cli.Usagef("--skip %q isn't one of %s", m, strings.Join(config.Modules, ", "))
 		}
 		cfg.Modules = slices.DeleteFunc(cfg.Modules, func(x string) bool { return x == m })
+	}
+	// Echo: --echo, then SOUNDCHECK_ECHO, then echo.url. It's on whenever
+	// it's configured, unless --skip echo.
+	if env := echoFromEnv(os.Getenv("SOUNDCHECK_ECHO")); env != "" {
+		cfg.Echo.URL = env
+	}
+	if o.echo.set {
+		cfg.Echo.URL = o.echo.url
+	}
+	switch {
+	case slices.Contains(o.skip, "echo"):
+		cfg.Echo.URL = ""
+	case cfg.Echo.URL != "" && !cfg.Has("echo"):
+		cfg.Modules = append(cfg.Modules, "echo")
 	}
 	if len(o.levels) > 0 {
 		cfg.Interactions.Levels = o.levels
@@ -254,7 +328,7 @@ func looksLikeTarget(s string) bool {
 
 // flagName points config errors at the flag that sets the same value.
 func flagName(msg string) string {
-	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "viewports:", "--viewport (viewports):",
+	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "echo.url", "--echo (echo.url)", "viewports:", "--viewport (viewports):",
 		"pages.limit", "--limit (pages.limit)", "tabs must", "--tabs must", "timeout must", "--timeout must")
 	return r.Replace(msg)
 }
