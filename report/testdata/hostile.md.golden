@@ -1,6 +1,6 @@
 ## ♪ Soundcheck
 
-**Something broke.** 1 page of http://127.0.0.1:20300/ compared with snapshot "t".
+**Something broke.** 1 page of http\://127.0.0.1:20300/ compared with snapshot "t".
 
 | Broke | New | Changed | Slower | Fixed |
 |---:|---:|---:|---:|---:|
@@ -20,7 +20,7 @@ _Looks or reads differently; check it's intended._
 
 | Change | Where | Before → after | Fix |
 |---|---|---|---|
-| Page title changed | `/b\|` | B → Sale \| 50% \`off\` \*\*now\*\* \[click\]\(http://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe￾ |  |
+| Page title changed | `/b\|` | B → Sale \| 50% \`off\` \*\*now\*\* \[click\]\(http\://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe￾ |  |
 
 <details><summary>1 note</summary>
 

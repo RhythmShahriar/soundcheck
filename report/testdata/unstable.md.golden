@@ -1,6 +1,6 @@
 ## ♪ Soundcheck
 
-**Something broke.** 3 pages of http://brew.test/ compared with snapshot "good".
+**Something broke.** 3 pages of http\://brew.test/ compared with snapshot "good".
 
 | Broke | New | Changed | Slower | Fixed | Unstable |
 |---:|---:|---:|---:|---:|---:|

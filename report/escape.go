@@ -26,19 +26,34 @@ func Term(s string) string { return escape(s, false) }
 // MarkdownText makes s plain text in Markdown, in a table cell too: newlines
 // become spaces, control characters are shown as with Term, and every
 // character Markdown or GitHub gives a meaning (links, emphasis, code,
-// HTML, headings, tables, strikethrough, images) is escaped with a
-// backslash.
+// HTML, headings, tables, strikethrough, images, mentions) is escaped
+// with a backslash. GitHub also links bare URLs, "www." names and email
+// addresses without any of those, so the ":" of "://", the "." after
+// "www" and every "@" are escaped too.
 func MarkdownText(s string) string {
 	s = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
 	s = Term(s)
 	var b strings.Builder
-	for _, r := range s {
-		if strings.ContainsRune("\\`*_[]()<>#|~!", r) {
+	for i, r := range s {
+		if strings.ContainsRune("\\`*_[]()<>#|~!@", r) || autolinks(s, i, r) {
 			b.WriteByte('\\')
 		}
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// autolinks reports whether r at byte i of s is where GitHub would start
+// a link of its own: the ":" of "http://" (any scheme) or the "." of
+// "www.".
+func autolinks(s string, i int, r rune) bool {
+	switch r {
+	case ':':
+		return strings.HasPrefix(s[i+1:], "//")
+	case '.':
+		return i >= 3 && strings.EqualFold(s[i-3:i], "www")
+	}
+	return false
 }
 
 // xmlText makes s safe for JUnit XML: as Term, but newlines stay (a case's

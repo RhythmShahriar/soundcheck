@@ -43,12 +43,25 @@ func TestTerm(t *testing.T) {
 
 func TestMarkdownText(t *testing.T) {
 	got := MarkdownText(hostileTitle + "\nline two")
-	want := `Sale \| 50% \` + "`" + `off\` + "`" + ` \*\*now\*\* \[click\]\(http://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe line two`
+	want := `Sale \| 50% \` + "`" + `off\` + "`" + ` \*\*now\*\* \[click\]\(http\://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe line two`
 	if got != want {
 		t.Errorf("MarkdownText =\n%s\nwant\n%s", got, want)
 	}
 	if got := MarkdownText(`# h ~~s~~ ![i](u) _e_ a\b`); got != `\# h \~\~s\~\~ \!\[i\]\(u\) \_e\_ a\\b` {
 		t.Errorf("MarkdownText = %s", got)
+	}
+	// GitHub links these without any Markdown around them.
+	for in, want := range map[string]string{
+		"see http://127.0.0.1:20300/x": `see http\://127.0.0.1:20300/x`,
+		"or ftp://host":                `or ftp\://host`,
+		"WWW.example.test now":         `WWW\.example.test now`,
+		"mail ops@example.test":        `mail ops\@example.test`,
+		"ping @owner":                  `ping \@owner`,
+		"time 10:30 and a.b":           "time 10:30 and a.b",
+	} {
+		if got := MarkdownText(in); got != want {
+			t.Errorf("MarkdownText(%q) = %s, want %s", in, got, want)
+		}
 	}
 }
 

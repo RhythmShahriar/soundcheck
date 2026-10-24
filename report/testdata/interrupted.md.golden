@@ -3,7 +3,7 @@
 > [!WARNING]
 > **Interrupted.** Stopped before it finished; these results are partial.
 
-**Nothing changed.** 1 page of http://brew.test/ compared with snapshot "good".
+**Nothing changed.** 1 page of http\://brew.test/ compared with snapshot "good".
 
 | Broke | New | Changed | Slower | Fixed |
 |---:|---:|---:|---:|---:|
