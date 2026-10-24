@@ -189,6 +189,11 @@ func TestBrowserFlag(t *testing.T) {
 		{"/usr/bin/google-chrome", "", "/usr/bin/google-chrome", ""},
 		{"opera=/x", "", "", `--browser: "opera" isn't chrome, firefox or webkit`},
 		{"firefox=", "", "", "firefox= needs the path to its binary"},
+		{"opera", "", "", `--browser: "opera" isn't chrome, firefox or webkit`},
+		{"firefx", "", "", `--browser: "firefx" isn't chrome, firefox or webkit (did you mean firefox?)`},
+		{"Chrom=/x", "", "", `isn't chrome, firefox or webkit (did you mean chrome?)`},
+		{"sh", "", "sh", ""},                     // a program on PATH, as a Chrome binary
+		{"./chrome-bin", "", "./chrome-bin", ""}, // a path, checked when the browser starts
 	} {
 		p, err := parse([]string{"a.test", "--browser", tc.arg})
 		switch {

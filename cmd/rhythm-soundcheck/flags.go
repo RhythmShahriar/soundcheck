@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -458,10 +459,36 @@ func (p *plan) browserFlag() error {
 		return nil
 	}
 	if hasBin {
-		return cli.Usagef("--browser: %q isn't chrome, firefox or webkit", name)
+		return cli.Usagef("--browser: %q isn't chrome, firefox or webkit%s", name, engineHint(name))
+	}
+	// A bare word that names no program is a mistyped engine, not a
+	// Chrome binary: say so now rather than after the run has started.
+	if !strings.ContainsAny(v, `/\`) && !isProgram(v) {
+		return cli.Usagef("--browser: %q isn't chrome, firefox or webkit%s", v, engineHint(v))
 	}
 	p.bin = v // a path to Chrome, as before
 	return nil
+}
+
+// engineNames are the names --browser takes for an engine.
+var engineNames = []string{"chrome", "firefox", "webkit", "chromium", "safari"}
+
+// engineHint is " (did you mean firefox?)" for a near miss of an engine
+// name, else "".
+func engineHint(name string) string {
+	if s := config.Suggest(strings.ToLower(name), engineNames); s != "" {
+		return fmt.Sprintf(" (did you mean %s?)", s)
+	}
+	return ""
+}
+
+// isProgram reports whether name is a file here or a program on PATH.
+func isProgram(name string) bool {
+	if info, err := os.Stat(name); err == nil && !info.IsDir() {
+		return true
+	}
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // Quick is what --quick checks: one viewport and the modules that find
