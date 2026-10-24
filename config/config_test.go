@@ -36,7 +36,7 @@ func TestLoad(t *testing.T) {
 		t.Errorf("empty file: %v", err)
 	}
 	for body, want := range map[string]string{
-		"pagez:\n  limit: 5\n":           "field pagez not found",
+		"pagez:\n  limit: 5\n":           `line 1: unknown setting "pagez" (did you mean "pages"?)`,
 		"viewports: [tablet]\n":          "tablet",
 		"modules: [health, magic]\n":     "magic",
 		"interactions:\n  levels: [x]\n": "interactions.levels",
@@ -59,13 +59,13 @@ func TestEcho(t *testing.T) {
 		t.Fatalf("echo override: %+v %v", c.Echo, err)
 	}
 	for body, want := range map[string]string{
-		"echo:\n  urll: x\n":                          "field urll not found",
+		"echo:\n  urll: x\n":                          `line 2: unknown setting "echo.urll" (did you mean "echo.url"?)`,
 		"echo:\n  url: 127.0.0.1:8025\n":              "isn't an http(s) URL",
 		"echo:\n  url: ftp://x\n":                     "isn't an http(s) URL",
 		"echo:\n  quiet: 10ms\n":                      "echo.quiet",
 		"echo:\n  quiet: 5s\n  timeout: 2s\n":         "echo.timeout",
 		"echo:\n  timeout: 5m\n":                      "echo.timeout",
-		"echo:\n  quiet: 1500\n":                      "time.Duration",
+		"echo:\n  quiet: 1500\n":                      `line 2: echo.quiet: "1500" isn't a duration like 1500ms or 10s`,
 		"echo:\n  token_env: \"A B\"\n":               "token_env",
 		"echo:\n  token_env: AWS_SECRET_ACCESS_KEY\n": "must start with RHYTHM_ECHO_",
 		"echo:\n  token_env: GITHUB_TOKEN\n":          "must start with RHYTHM_ECHO_",
@@ -115,7 +115,7 @@ func TestRate(t *testing.T) {
 		switch {
 		case ok && err != nil:
 			t.Errorf("%q: %v", body, err)
-		case !ok && (err == nil || !strings.HasPrefix(err.Error(), "rate: ") || !strings.Contains(err.Error(), "between 0.01 and 1000")):
+		case !ok && (err == nil || !strings.Contains(err.Error(), "config.yaml line 1: rate: ") || !strings.Contains(err.Error(), "between 0.01 and 1000")):
 			t.Errorf("%q: err = %v, want a rate error", body, err)
 		}
 	}

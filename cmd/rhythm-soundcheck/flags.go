@@ -8,16 +8,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/report"
 )
 
@@ -42,7 +44,7 @@ type options struct {
 	insecureLogin          bool
 	rate                   float64
 	tabs                   int
-	timeout                time.Duration
+	timeout                secondsFlag
 	userAgent              string
 	headers                cli.RepeatFlag
 	cookie, proxy, browser string
@@ -147,7 +149,7 @@ func flagSet(o *options) *flag.FlagSet {
 
 	fs.Float64Var(&o.rate, "rate", 0, "")
 	fs.IntVar(&o.tabs, "tabs", 0, "")
-	fs.DurationVar(&o.timeout, "timeout", 0, "")
+	fs.Var(&o.timeout, "timeout", "")
 	both("A", "user-agent", func(n string) { fs.StringVar(&o.userAgent, n, "", "") })
 	both("H", "header", func(n string) { fs.Var(&o.headers, n, "") })
 	fs.StringVar(&o.cookie, "cookie", "", "")
@@ -174,8 +176,14 @@ type plan struct {
 	ua       string
 	storeDir string
 
-	configPath string // the config file read, for messages
-	chosen     chosen // settings the user set, which compare keeps
+	configPath string   // the config file read, for messages
+	failOnFrom string   // the config file, when fail_on gave --fail-on's value
+	envHeaders []string // headers the config file read from the environment
+	// siteFrom is the config file when its site: is the site being
+	// checked. Such a site is as untrusted as the file, so nothing from
+	// the environment is sent to it.
+	siteFrom string
+	chosen   chosen // settings the user set, which compare keeps
 	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.
@@ -229,7 +237,7 @@ func parse(args []string) (*plan, error) {
 	}
 	for _, m := range o.skip {
 		if !slices.Contains(config.Modules, m) {
-			return nil, cli.Usagef("--skip %q isn't one of %s", m, strings.Join(config.Modules, ", "))
+			return nil, cli.Usagef("--skip: %v", config.OneOf(m, config.Modules))
 		}
 		cfg.Modules = slices.DeleteFunc(cfg.Modules, func(x string) bool { return x == m })
 	}
@@ -270,7 +278,10 @@ func parse(args []string) (*plan, error) {
 		cfg.Tabs = o.tabs
 	}
 	if set["timeout"] {
-		cfg.Timeout = int(o.timeout.Round(time.Second) / time.Second)
+		cfg.Timeout = config.Seconds(o.timeout)
+	}
+	if !set["fail-on"] && cfg.FailOn != "" {
+		o.failOn, p.failOnFrom = cfg.FailOn, path
 	}
 	if cfg.Echo.URL == "" {
 		p.echoFrom = ""
@@ -279,7 +290,7 @@ func parse(args []string) (*plan, error) {
 		return nil, err
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, cli.UsageError{Msg: flagName(err.Error())}
+		return nil, cli.UsageError{Msg: flagName(err)}
 	}
 	if len(cfg.Modules) == 0 {
 		return nil, cli.Usagef("no modules left to run")
@@ -315,6 +326,9 @@ func parse(args []string) (*plan, error) {
 	}
 	if o.cookie != "" {
 		p.headers["Cookie"] = o.cookie
+	}
+	if err := p.configHeaders(); err != nil {
+		return nil, err
 	}
 	if o.proxy != "" {
 		u, err := url.Parse(o.proxy)
@@ -363,14 +377,66 @@ func (p *plan) notStrict() error {
 	return nil
 }
 
+// configHeaders adds the config file's headers, each read from the
+// environment variable it names. -H and --cookie win over them. The file
+// is untrusted, so it may name only variables a flow could read: SOUNDCHECK_*
+// ones, or ones --allow-env lets through.
+func (p *plan) configHeaders() error {
+	for _, name := range slices.Sorted(maps.Keys(p.cfg.Headers)) {
+		if hasHeader(p.headers, name) {
+			continue
+		}
+		env := p.cfg.Headers[name]
+		if !flow.EnvAllowed(env, p.cfg.Trust.AllowEnv) {
+			return cli.Usagef("%s: headers: %s reads %s; headers read only %s* variables unless you pass --allow-env %s",
+				p.configPath, name, env, flow.EnvPrefix, env)
+		}
+		// Empty counts as missing: CI fills in an unset secret with "".
+		v := os.Getenv(env)
+		if v == "" {
+			return cli.Usagef("%s: headers: %s reads %s, which isn't set", p.configPath, name, env)
+		}
+		p.headers[name] = v
+		p.envHeaders = append(p.envHeaders, name)
+	}
+	return nil
+}
+
+func hasHeader(h map[string]string, name string) bool {
+	for k := range h {
+		if strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // failOn validates --fail-on now that the command knows whether it
-// compares.
-func (p *plan) failOn(compared bool) error {
-	if p.o.failOn == "" {
+// compares. A fail_on from the config file that fits the other kind of
+// command (broke for a run, error for a compare) is left out with a note,
+// so one file can serve both.
+func (s *session) failOn(compared bool) error {
+	v := s.o.failOn
+	if v == "" {
 		return nil
 	}
-	if err := report.ValidFailOn(p.o.failOn, compared); err != nil {
+	if err := config.OneOf(v, config.FailOnValues); err != nil {
+		return cli.Usagef("--fail-on (fail_on): %v", err)
+	}
+	err := report.ValidFailOn(v, compared)
+	if err == nil {
+		return nil
+	}
+	if s.failOnFrom == "" {
 		return cli.UsageError{Msg: err.Error()}
+	}
+	s.o.failOn = ""
+	if !s.o.quiet {
+		kind := "comparisons"
+		if compared {
+			kind = "run and snapshot"
+		}
+		fmt.Fprintf(s.stderr, "Note: fail_on: %s in %s is for %s, so it doesn't apply here\n", v, s.failOnFrom, kind)
 	}
 	return nil
 }
@@ -389,11 +455,35 @@ func looksLikeTarget(s string) bool {
 	return strings.Contains(s, ".") || strings.Contains(s, "://") || strings.HasPrefix(s, "localhost")
 }
 
-// flagName points config errors at the flag that sets the same value.
-func flagName(msg string) string {
-	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "echo.url:", "--echo (echo.url):", "viewports:", "--viewport (viewports):",
-		"pages.limit", "--limit (pages.limit)", "tabs must", "--tabs must", "timeout must", "--timeout must")
-	return r.Replace(msg)
+// settingFlags are the flags that set the same value as a config key.
+var settingFlags = map[string]string{
+	"modules": "--modules", "interactions.levels": "--level", "viewports": "--viewport", "pages.limit": "--limit",
+	"tabs": "--tabs", "timeout": "--timeout", "rate": "--rate", "echo.url": "--echo", "fail_on": "--fail-on",
+}
+
+// flagName points a config error at the flag that sets the same value,
+// "--level (interactions.levels): ...", when a flag could have caused it:
+// errors from the file itself already name the file and line.
+func flagName(err error) string {
+	var se *config.SettingError
+	if errors.As(err, &se) && se.File == "" {
+		if f, ok := settingFlags[se.Key]; ok {
+			return fmt.Sprintf("%s (%s): %s", f, se.Key, se.Msg)
+		}
+	}
+	return err.Error()
+}
+
+// secondsFlag is --timeout: a duration like 30s or 1m, or a number of
+// seconds as in the config file.
+type secondsFlag int
+
+func (f *secondsFlag) String() string { return strconv.Itoa(int(*f)) + "s" }
+
+func (f *secondsFlag) Set(v string) error {
+	n, err := config.ParseSeconds(v)
+	*f = secondsFlag(n)
+	return err
 }
 
 func formatFromExt(path string) string {

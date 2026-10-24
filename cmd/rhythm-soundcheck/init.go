@@ -23,6 +23,8 @@ const configTemplate = `# Soundcheck settings. Everything here is optional: dele
 # Commit this file (and flows/) to share them with your team; snapshots and
 # runs are kept out of git automatically.
 
+site: ""                # checked by snapshot and run when no URL is given, e.g. staging.example.com
+
 pages:
   limit: 300            # most pages to check
   per_group: 3          # pages checked per URL pattern (/blog/{slug}/ …); -1 checks all
@@ -70,7 +72,16 @@ echo:
 
 rate: 5                 # page loads per second per site, 0.01 to 1000
 tabs: 8                 # pages checked at once; politeness comes from rate
-timeout: 30             # seconds per page
+timeout: 30s            # per page: 30s, 1m or a number of seconds
+
+# Extra request headers, each read from an environment variable so no
+# secret is committed: {X-Staging-Auth: SOUNDCHECK_STAGING_AUTH}. Only
+# SOUNDCHECK_* variables, unless --allow-env names another.
+headers: {}
+
+# Exit 1 at or above this, when --fail-on isn't given: broke, new, changed
+# or slower for compare; error, warning or notice for run and snapshot.
+fail_on: ""
 `
 
 // cmdInit writes .soundcheck/config.yaml.

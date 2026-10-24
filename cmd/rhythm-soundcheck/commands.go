@@ -25,6 +25,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	kitconfig "github.com/RhythmShahriar/rhythm/kit/config"
+	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/rhythm/kit/update"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -104,6 +105,31 @@ func (s *session) fail(err error) int {
 	return exitError
 }
 
+// site returns the one site snapshot or run checks: the argument, or the
+// config file's site when there is none.
+func (s *session) site(cmd, example string) (string, error) {
+	switch {
+	case len(s.args) == 1:
+		return s.args[0], target(s.args[0])
+	case len(s.args) == 0 && s.cfg.Site != "":
+		s.siteFrom = s.configPath
+		return s.cfg.Site, nil // Validate checked it
+	}
+	return "", cli.Usagef("%[1]s needs one site\n  try: %[2]s %[1]s %[3]s", cmd, cmdName(), example)
+}
+
+// untrusted reports whether target is the config file's site on another
+// machine. Nothing from the environment goes there: a pull request could
+// point site at its own server and collect the test password, the
+// headers' secrets or what flows type.
+func (s *session) untrusted(target string) bool {
+	if s.siteFrom == "" {
+		return false
+	}
+	u, _, err := ratelimit.ParseTarget(target)
+	return err != nil || !config.IsLoopback(u.Hostname())
+}
+
 // start prints the header, the effective settings, the production guard
 // and the one-time notice, and looks for a new release in the background.
 func (s *session) start(target string) {
@@ -115,6 +141,9 @@ func (s *session) start(target string) {
 	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
+	if s.siteFrom != "" {
+		s.view.Step("Site", "from "+s.siteFrom+" (site)")
+	}
 	// What will run, after the config file, flags and (for compare) the
 	// snapshot had their say, so nothing is dropped silently.
 	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
@@ -171,7 +200,7 @@ func (s *session) connectEcho() error {
 // before any runs) and refuses a flow that reads one it may not.
 // Unreadable flow files are left to the interact module, which reports
 // them as issues.
-func (s *session) checkFlows(loggingIn bool) error {
+func (s *session) checkFlows(target string, loggingIn bool) error {
 	if s.flowsChecked {
 		return nil
 	}
@@ -191,6 +220,10 @@ func (s *session) checkFlows(loggingIn bool) error {
 			continue
 		}
 		s.view.Step("Flows", fmt.Sprintf("%q reads %s", f.Name, strings.Join(names, ", ")))
+		if s.untrusted(target) {
+			return cli.Usagef("%s: not letting it read %s on %s: the site came from %s (site); name it on the command line",
+				f.File, strings.Join(names, ", "), target, s.siteFrom)
+		}
 		if err := f.CheckEnv(s.cfg.Trust.AllowEnv); err != nil {
 			return cli.UsageError{Msg: fmt.Sprintf("%s: %v", f.File, err)}
 		}
@@ -221,7 +254,18 @@ func (s *session) echoToken() string {
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
 	login, who := loginFunc(s.cfg, s.o.noLogin)
-	if err := s.checkFlows(login != nil); err != nil {
+	if s.untrusted(target) {
+		if len(s.envHeaders) > 0 {
+			return nil, cli.Usagef("not sending the headers %s to %s: the site came from %s (site); name it on the command line to send them",
+				strings.Join(s.envHeaders, ", "), target, s.siteFrom)
+		}
+		if login != nil {
+			fmt.Fprintf(s.stderr, "%s not logging in to %s: the site came from %s (site); name it on the command line to log in\n",
+				prefix(), target, s.siteFrom)
+			login, who = nil, ""
+		}
+	}
+	if err := s.checkFlows(target, login != nil); err != nil {
 		return nil, err
 	}
 	if err := s.connectEcho(); err != nil {
@@ -315,10 +359,11 @@ func (s *session) finish(res report.Result, hint string) int {
 }
 
 func cmdSnapshot(s *session) int {
-	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("snapshot needs one site\n  try: %s snapshot staging.example.com", cmdName()))
+	site, err := s.site("snapshot", "staging.example.com")
+	if err != nil {
+		return s.fail(err)
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	name := cmp.Or(s.o.name, store.Stamp(time.Now()))
@@ -327,9 +372,9 @@ func cmdSnapshot(s *session) int {
 		return s.fail(err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }() //nolint:gosec // our own incoming folder; gone once promoted, cleans up a failed snapshot
-	s.start(s.args[0])
+	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q", name))
-	run, err := s.check(s.args[0], nil, true, name, dir)
+	run, err := s.check(site, nil, true, name, dir)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintln(s.stderr, prefix(), "snapshot canceled; nothing was saved")
@@ -460,18 +505,19 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 }
 
 func cmdRun(s *session) int {
-	if len(s.args) != 1 {
-		return s.fail(cli.Usagef("run needs one site\n  try: %s run example.test", cmdName()))
+	site, err := s.site("run", "example.test")
+	if err != nil {
+		return s.fail(err)
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
 	if err != nil {
 		return s.fail(err)
 	}
-	s.start(s.args[0])
-	run, err := s.check(s.args[0], nil, false, "", dir)
+	s.start(site)
+	run, err := s.check(site, nil, false, "", dir)
 	if err != nil && run == nil {
 		return s.fail(err)
 	}

@@ -82,8 +82,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 func usage(w io.Writer) {
 	name := cmdName()
 	fmt.Fprintln(w, kit.Banner(name, version))
-	// help says "rhythm soundcheck" where the command goes; every such
-	// line starts with it, so the columns stay lined up for any name.
+	// help says "rhythm soundcheck" where the command goes. The lined-up
+	// rows start with it, so their columns stay lined up for any name.
 	fmt.Fprint(w, strings.ReplaceAll(help, "rhythm soundcheck", name))
 }
 
@@ -161,7 +161,7 @@ Requests and browser:
       --rate <n>             page loads per second per site, 0.01 to 1000
                              (default 5)
       --tabs <n>             pages checked at once (default 8)
-      --timeout <d>          per page (default 30s)
+      --timeout <d>          per page, e.g. 45s, 1m or 45 (default 30s)
   -A, --user-agent <ua>      User-Agent header
   -H, --header <h>           extra header, "Name: value" (repeatable)
       --cookie <c>           Cookie header, e.g. "staging_auth=abc"
@@ -192,6 +192,9 @@ which must start with RHYTHM_ECHO_). It goes to an Echo on another machine
 only when --echo or SOUNDCHECK_ECHO names it, not echo.url alone.
 
 Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
+Settings: .soundcheck/config.yaml (rhythm soundcheck init writes one) can set
+most flags, plus site (checked when no URL is given), fail_on and headers
+(each read from a SOUNDCHECK_* variable).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check · 130 interrupted
 
 Examples:

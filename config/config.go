@@ -7,19 +7,19 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 )
 
 // Dir is the project folder Soundcheck keeps snapshots and reports in.
@@ -39,7 +39,12 @@ const EchoTokenPrefix = "RHYTHM_ECHO_"
 // Interaction levels, from safest to most invasive.
 var Levels = []string{"inspect", "click", "submit", "flows"}
 
+// Config is every project setting. The file is untrusted (a pull request
+// can change it), so nothing in it can pick a secret to send or a host to
+// send one to; Trust holds what only command-line flags may allow.
 type Config struct {
+	// Site is the site snapshot and run check when no URL is given.
+	Site         string       `yaml:"site"`
 	Pages        Pages        `yaml:"pages"`
 	Viewports    []string     `yaml:"viewports"` // desktop, mobile
 	Modules      []string     `yaml:"modules"`
@@ -51,8 +56,16 @@ type Config struct {
 	Speed        Speed        `yaml:"speed"`
 	Rate         float64      `yaml:"rate"` // page loads per second per host
 	Tabs         int          `yaml:"tabs"`
-	Timeout      int          `yaml:"timeout"` // seconds per page
+	Timeout      Seconds      `yaml:"timeout"` // per page
 	Echo         Echo         `yaml:"echo"`
+	// FailOn is --fail-on's value when the flag isn't given: a class
+	// (broke, new, changed, slower) for comparisons or a level (error,
+	// warning, notice) for run and snapshot.
+	FailOn string `yaml:"fail_on"`
+	// Headers are extra request headers, each read from an environment
+	// variable (header name -> variable name), so the file holds no
+	// secret and the CLI decides which variables it may read.
+	Headers map[string]string `yaml:"headers"`
 
 	// Trust is set by command-line flags only, never by the file.
 	Trust Trust `yaml:"-"`
@@ -62,26 +75,29 @@ type Config struct {
 	prod     []prodSite
 	prodFrom []string
 
-	// inFile holds the keys the file set, for InFile.
-	inFile map[string]bool
+	// inFile holds the line of each key the file set, for InFile.
+	inFile map[string]int
 }
 
+// Pages chooses which pages are checked.
 type Pages struct {
 	Limit        int      `yaml:"limit"`
-	PerGroup     int      `yaml:"per_group"`
-	Include      []string `yaml:"include"`
-	Exclude      []string `yaml:"exclude"`
+	PerGroup     int      `yaml:"per_group"` // pages per URL pattern (/blog/{slug}/); -1 checks all
+	Include      []string `yaml:"include"`   // only pages matching these globs
+	Exclude      []string `yaml:"exclude"`   // skip pages matching these globs
 	IgnoreRobots bool     `yaml:"ignore_robots"`
 	Extra        []string `yaml:"extra"` // paths to always check, e.g. /checkout/
 }
 
+// Visual tunes the screenshot comparison.
 type Visual struct {
 	Threshold float64  `yaml:"threshold"` // % of pixels that must change to report a page
 	Ignore    []string `yaml:"ignore"`    // CSS selectors hidden before screenshots
 }
 
+// Interactions tunes what the interact module clicks and submits.
 type Interactions struct {
-	Levels    []string `yaml:"levels"`     // which of inspect, click, submit, flows run
+	Levels    []string `yaml:"levels"`     // which of inspect, click, submit, flows run; each brings the ones before it
 	MaxClicks int      `yaml:"max_clicks"` // per page
 	Allow     []string `yaml:"allow"`      // selectors clickable even if they look destructive
 	Forms     []string `yaml:"forms"`      // forms that may be submitted on production, by CSS selector
@@ -97,6 +113,7 @@ type Trust struct {
 	InsecureLogin bool     // --insecure-login: type the password over plain http to a public host
 }
 
+// Login says how to log in with SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
 type Login struct {
 	URL  string `yaml:"url"`  // login page; default /wp-login.php for WordPress
 	Flow string `yaml:"flow"` // a YAML flow that logs in, for non-WordPress sites
@@ -111,6 +128,7 @@ type Echo struct {
 	Timeout  time.Duration `yaml:"timeout"`   // …or at most this long
 }
 
+// Speed tunes when a page counts as slower.
 type Speed struct {
 	Slower float64 `yaml:"slower"` // % slower before a page is reported SLOWER
 }
@@ -119,7 +137,7 @@ type Speed struct {
 func Default() Config {
 	return Config{
 		Pages:        Pages{Limit: 300, PerGroup: 3},
-		Viewports:    []string{"desktop", "mobile"},
+		Viewports:    slices.Clone(Viewports),
 		Modules:      slices.Clone(Modules[:len(Modules)-1]), // not echo: it needs Echo.URL
 		Visual:       Visual{Threshold: 0.5},
 		Interactions: Interactions{Levels: []string{"inspect", "click"}, MaxClicks: 15},
@@ -133,7 +151,8 @@ func Default() Config {
 }
 
 // Load reads path over the defaults. A missing file is not an error.
-// Unknown keys are, so a typo fails loudly instead of being ignored.
+// Unknown keys are, so a typo fails loudly instead of being ignored, and
+// every error names the file and, when it can, the line.
 func Load(path string) (Config, error) {
 	c := Default()
 	data, err := os.ReadFile(path) //nolint:gosec // the user's own project config
@@ -143,73 +162,73 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) { // EOF: an empty file
-		return c, fmt.Errorf("%s: %w", path, err)
+	inFile := func(err error) error {
+		var se *SettingError
+		if !errors.As(err, &se) {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		se.File = path
+		if se.Line == 0 {
+			se.Line = c.inFile[se.Key]
+		}
+		return se
 	}
-	c.inFile = fileKeys(data)
+	if c.inFile, err = decode(data, &c); err != nil {
+		return c, inFile(err)
+	}
 	// The file takes the same list syntax as --modules and --level.
 	def := Default()
 	if c.Modules, err = AddList(def.Modules, c.Modules); err != nil {
-		return c, fmt.Errorf("%s: modules: %w", path, err)
+		return c, inFile(&SettingError{Key: "modules", Msg: err.Error()})
 	}
 	levels, err := AddList(def.Interactions.Levels, c.Interactions.Levels)
 	if err != nil {
-		return c, fmt.Errorf("%s: interactions.levels: %w", path, err)
+		return c, inFile(&SettingError{Key: "interactions.levels", Msg: err.Error()})
 	}
 	c.Interactions.Levels = Cumulative(levels)
 	// Validate first: it stores the parsed production entries on c.
-	err = c.Validate()
-	return c, err
+	if err := c.Validate(); err != nil {
+		return c, inFile(err)
+	}
+	return c, nil
 }
 
 // InFile reports whether the config file set key, written with dots for
 // nested keys ("modules", "interactions.levels"), even to its default
 // value. compare uses it to tell a setting the user chose from one it
-// may take from the snapshot.
-func (c Config) InFile(key string) bool { return c.inFile[key] }
+// may take from the snapshot. Keys are known two levels deep.
+func (c Config) InFile(key string) bool { _, ok := c.inFile[key]; return ok }
 
-// fileKeys lists the keys in a YAML document two levels deep: "pages",
-// "pages.limit" and so on. The document has already decoded once, so a
-// parse error here can only mean an empty file.
-func fileKeys(data []byte) map[string]bool {
-	var doc yaml.Node
-	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 {
-		return nil
-	}
-	keys := map[string]bool{}
-	var walk func(n *yaml.Node, prefix string, depth int)
-	walk = func(n *yaml.Node, prefix string, depth int) {
-		if n.Kind != yaml.MappingNode || depth == 0 {
-			return
-		}
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			key := prefix + n.Content[i].Value
-			keys[key] = true
-			walk(n.Content[i+1], key+".", depth-1)
-		}
-	}
-	walk(doc.Content[0], "", 2)
-	return keys
-}
+// FailOnValues are the values fail_on and --fail-on take: the comparison
+// classes, then the issue levels.
+var FailOnValues = []string{"broke", "new", "changed", "slower", "error", "warning", "notice"}
 
 // Validate checks values a user could get wrong and parses the
-// production entries for IsProduction.
+// production entries for IsProduction. Its errors are *SettingError.
 func (c *Config) Validate() error {
+	if c.Site != "" {
+		if _, _, err := ratelimit.ParseTarget(c.Site); err != nil {
+			return settingErr("site", "%q isn't a site like staging.example.com", c.Site)
+		}
+	}
 	for _, v := range c.Viewports {
-		if v != "desktop" && v != "mobile" {
-			return fmt.Errorf("viewports: %q isn't desktop or mobile", v)
+		if err := OneOf(v, Viewports); err != nil {
+			return &SettingError{Key: "viewports", Msg: err.Error()}
 		}
 	}
 	for _, m := range c.Modules {
-		if !slices.Contains(Modules, m) {
-			return fmt.Errorf("modules: %q isn't one of %s", m, strings.Join(Modules, ", "))
+		if err := OneOf(m, Modules); err != nil {
+			return &SettingError{Key: "modules", Msg: err.Error()}
 		}
 	}
 	for _, l := range c.Interactions.Levels {
-		if !slices.Contains(Levels, l) {
-			return fmt.Errorf("interactions.levels: %q isn't one of %s", l, strings.Join(Levels, ", "))
+		if err := OneOf(l, Levels); err != nil {
+			return &SettingError{Key: "interactions.levels", Msg: err.Error()}
+		}
+	}
+	if c.FailOn != "" {
+		if err := OneOf(c.FailOn, FailOnValues); err != nil {
+			return &SettingError{Key: "fail_on", Msg: err.Error()}
 		}
 	}
 	prod, err := parseProductions(c.Production)
@@ -219,21 +238,46 @@ func (c *Config) Validate() error {
 	c.prod, c.prodFrom = prod, slices.Clone(c.Production)
 	switch {
 	case c.Pages.Limit < 1:
-		return errors.New("pages.limit must be at least 1")
+		return settingErr("pages.limit", "must be at least 1")
 	case c.Tabs < 1 || c.Tabs > 16:
-		return errors.New("tabs must be between 1 and 16")
+		return settingErr("tabs", "must be between 1 and 16")
 	case c.Visual.Threshold < 0 || c.Visual.Threshold > 100:
-		return errors.New("visual.threshold is a percentage, 0 to 100")
+		return settingErr("visual.threshold", "is a percentage, 0 to 100")
 	case c.Timeout < 5:
-		return errors.New("timeout must be at least 5 seconds")
+		return settingErr("timeout", "must be at least 5 seconds")
 	}
 	if err := CheckRate(c.Rate); err != nil {
-		return fmt.Errorf("rate: %w", err)
+		return settingErr("rate", "%v", err)
+	}
+	if err := c.validateHeaders(); err != nil {
+		return err
 	}
 	if err := c.Login.validate(); err != nil {
 		return err
 	}
 	return c.Echo.validate(c.Has("echo"))
+}
+
+// Viewports Soundcheck can check at.
+var Viewports = []string{"desktop", "mobile"}
+
+var (
+	headerName = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+	envName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
+
+// validateHeaders checks the shape of headers. Whether a variable may be
+// read, and is set, is the CLI's to check: --allow-env is a flag.
+func (c Config) validateHeaders() error {
+	for _, name := range slices.Sorted(maps.Keys(c.Headers)) {
+		switch env := c.Headers[name]; {
+		case !headerName.MatchString(name):
+			return settingErr("headers", "%q isn't a header name like X-Staging-Auth", name)
+		case !envName.MatchString(env):
+			return settingErr("headers", "%s: %q isn't the name of an environment variable; header values come only from the environment, e.g. %s: SOUNDCHECK_STAGING_AUTH", name, env, name)
+		}
+	}
+	return nil
 }
 
 // validate checks login.url is a path or an http(s) URL. Whether a URL is
@@ -244,31 +288,31 @@ func (l Login) validate() error {
 	}
 	u, err := url.Parse(l.URL)
 	if err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") || (u.Scheme != "" && u.Host == "") {
-		return fmt.Errorf("login.url: %q isn't a path like /wp-login.php", l.URL)
+		return settingErr("login.url", "%q isn't a path like /wp-login.php", l.URL)
 	}
 	return nil
 }
 
 func (e Echo) validate(on bool) error {
 	if on && e.URL == "" {
-		return errors.New("modules: echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url")
+		return settingErr("modules", "echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url")
 	}
 	if e.URL != "" {
 		u, err := url.Parse(e.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("echo.url: %q isn't an http(s) URL like %s", e.URL, EchoURL)
+			return settingErr("echo.url", "%q isn't an http(s) URL like %s", e.URL, EchoURL)
 		}
 	}
 	switch {
 	case e.Quiet < 100*time.Millisecond || e.Quiet > 30*time.Second:
-		return errors.New("echo.quiet must be between 100ms and 30s")
+		return settingErr("echo.quiet", "must be between 100ms and 30s")
 	case e.Timeout < e.Quiet || e.Timeout > time.Minute:
-		return errors.New("echo.timeout must be at least echo.quiet and at most 1m")
+		return settingErr("echo.timeout", "must be at least echo.quiet and at most 1m")
 	case strings.ContainsAny(e.TokenEnv, " =$"):
-		return fmt.Errorf("echo.token_env: %q isn't an environment variable name", e.TokenEnv)
+		return settingErr("echo.token_env", "%q isn't an environment variable name", e.TokenEnv)
 	case e.TokenEnv != "" && !strings.HasPrefix(e.TokenEnv, EchoTokenPrefix):
 		// A committed config must not pick which secret is sent where.
-		return fmt.Errorf("echo.token_env: %q must start with %s", e.TokenEnv, EchoTokenPrefix)
+		return settingErr("echo.token_env", "%q must start with %s", e.TokenEnv, EchoTokenPrefix)
 	}
 	return nil
 }

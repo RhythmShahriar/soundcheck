@@ -381,10 +381,10 @@ func TestLoginOnlyFromEnv(t *testing.T) {
 }
 
 func TestFlagNameEcho(t *testing.T) {
-	if got := flagName("modules: echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url"); strings.Count(got, "--echo") != 1 {
-		t.Errorf("flag named twice: %q", got)
+	if got := flagName(&config.SettingError{Key: "modules", Msg: "echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url"}); got != "--modules (modules): echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url" {
+		t.Errorf("modules: %q", got)
 	}
-	if got := flagName(`echo.url: "x" isn't an http(s) URL`); !strings.HasPrefix(got, "--echo (echo.url):") {
+	if got := flagName(&config.SettingError{Key: "echo.url", Msg: `"x" isn't an http(s) URL`}); !strings.HasPrefix(got, "--echo (echo.url):") {
 		t.Errorf("echo.url error not pointed at --echo: %q", got)
 	}
 }

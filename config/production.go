@@ -52,7 +52,7 @@ func (p prodSite) matches(u *url.URL) bool {
 // parseProduction parses one production entry. A bare host stands for
 // both schemes, since the scheme is ignored when matching.
 func parseProduction(entry string) (prodSite, error) {
-	bad := fmt.Errorf("production: %q isn't a site like example.com, *.example.com or https://example.com/shop/", entry)
+	bad := settingErr("production", "%q isn't a site like example.com, *.example.com or https://example.com/shop/", entry)
 	raw := strings.TrimSpace(entry)
 	if !strings.Contains(raw, "://") {
 		raw = "//" + raw
