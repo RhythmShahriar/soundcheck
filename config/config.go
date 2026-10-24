@@ -310,7 +310,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.Has("exec") && len(c.Exec) == 0 {
-		return settingErr("modules", "exec runs the commands listed under exec: in the config, and there are none")
+		return settingErr("modules", "exec runs the commands listed under exec: in the config; there are none")
 	}
 	return c.Echo.validate(c.Has("echo"))
 }

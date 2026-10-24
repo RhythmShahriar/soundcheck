@@ -74,7 +74,7 @@ func changedPages(c *model.Comparison) map[string]string {
 
 // The plan's end-to-end test: snapshot, change two pages, compare, accept
 // one by id, compare again: that one is clean, the other still reports.
-// Then an ignore rule hides it until its date, and not after.
+// Then an ignore rule hides it until its date. After that it counts again.
 func TestAcceptAndIgnore(t *testing.T) {
 	needBrowser(t)
 	t.Chdir(t.TempDir())

@@ -219,8 +219,8 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	out := junitSuites{Name: "soundcheck", Time: r.Run.Duration / 1000}
 	stamp := r.Run.Started.UTC().Format(time.RFC3339)
 	// A partial result's findings are written as output, never as
-	// failures: FailOn doesn't fail it either, and the one error case
-	// below says the run didn't finish.
+	// failures: FailOn doesn't fail it either. The one error case below
+	// says the run didn't finish.
 	partial := Partial(r)
 	if r.Compared() {
 		limit := slices.Index(model.Classes, failOn)

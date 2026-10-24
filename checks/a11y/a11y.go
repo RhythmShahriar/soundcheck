@@ -261,10 +261,9 @@ var linked = regexp.MustCompile(`(?i)(\s(?:href|src|action|formaction)\s*=\s*)("
 // opaque is a path segment long and random enough to be a token.
 var opaque = regexp.MustCompile(`/[A-Za-z0-9_-]{24,}`)
 
-// snippet shortens the element's HTML to its opening tag, with the values
-// of filled attributes replaced by "***", the query of every link and
-// any long opaque path segment in it masked, and credentials the kit
-// knows redacted.
+// snippet shortens the element's HTML to its opening tag. The values of
+// filled attributes become "***". So do the query of every link and any
+// long opaque path segment in it. Credentials the kit knows are redacted.
 func snippet(html string) string {
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
 	html = filled.ReplaceAllStringFunc(html, func(m string) string {

@@ -10,7 +10,7 @@ import (
 )
 
 // A slug or version WP-CLI reported is quoted in the copy-paste rollback
-// hint, and control characters from the site never reach the terminal.
+// hint. Control characters from the site never reach the terminal.
 func TestSummaryQuotesAndCleans(t *testing.T) {
 	l := &Log{Target: "https://staging.test", Plugins: []Plugin{{Slug: "evil;rm -rf ~", Old: "1.0 $(id)", New: "1.1",
 		Status: Kept, Verdict: "broke", Evidence: "Fatal \x1b[31merror\x1b[0m on /x/"}}}

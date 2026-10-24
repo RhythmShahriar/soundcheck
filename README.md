@@ -64,7 +64,7 @@ go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 
 `rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag.
 
-Soundcheck drives a real browser. It uses Chrome or Chromium if you have one. Otherwise it downloads Chrome for Testing once, on first use, into your cache folder, and checks the download against the SHA-256 pinned in the binary. `--browser firefox` or `--browser webkit` captures pages in those engines instead. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
+Soundcheck drives a real browser. It uses Chrome or Chromium if you have one. Otherwise it downloads Chrome for Testing once, on first use, into your cache folder. The download is checked against the SHA-256 pinned in the binary. `--browser firefox` or `--browser webkit` captures pages in those engines instead. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
 ## Check a change
 
@@ -120,7 +120,7 @@ rhythm-soundcheck review                                   # a: accept, i: ignor
 rhythm-soundcheck report --serve                           # the same, with buttons in the HTML report
 ```
 
-Changes that are known and shouldn't count go under `ignore:` in `.soundcheck/config.yaml`. They are listed as ignored, never fail a build, and a rule with `until` counts again after that day:
+Changes that are known and shouldn't count go under `ignore:` in `.soundcheck/config.yaml`. They are listed as ignored and never fail a build. A rule with `until` stops applying after that day:
 
 ```yaml
 ignore:
@@ -130,7 +130,7 @@ ignore:
     reason: photos change weekly
 ```
 
-Before reporting BROKE or NEW, `compare` visits those pages once more. A change that doesn't come back is UNSTABLE: shown, but it doesn't fail `--fail-on`. `--confirm=off` skips the second visit.
+Before reporting BROKE or NEW, `compare` visits those pages once more. A change that doesn't come back is UNSTABLE: it is shown, yet it doesn't fail `--fail-on`. `--confirm=off` skips the second visit.
 
 ### More checks
 
@@ -140,7 +140,7 @@ Before reporting BROKE or NEW, `compare` visits those pages once more. A change 
 
 ### For agencies
 
-- `rhythm-soundcheck fleet sites.yaml snapshot|compare` checks every site in the file, a few at a time, and ranks them worst first in `.soundcheck-fleet/fleet.html`.
+- `rhythm-soundcheck fleet sites.yaml snapshot|compare` checks every site in the file, a few at a time. It ranks them worst first in `.soundcheck-fleet/fleet.html`.
 - `rhythm-soundcheck report --client --brand agency.yaml -o client.html` writes a plain-language report with your name, logo and color, for a client.
 - `rhythm-soundcheck history` lists every snapshot, run and comparison with the site's LCP trend; the HTML report draws it too.
 - `rhythm-soundcheck wp-update <url> --wp "<wp-cli command>"` updates plugins with WP-CLI, compares after each (or halves the suspects with `--bisect`), names the plugin that broke the site and can roll it back with `--rollback`. It never runs on a site listed as production.

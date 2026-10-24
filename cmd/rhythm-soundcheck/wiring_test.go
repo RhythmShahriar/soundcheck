@@ -119,7 +119,7 @@ func TestA11yAndSEOModules(t *testing.T) {
 	}
 }
 
-// The project's own rules are loaded for health, and a broken rule file
+// The project's own rules are loaded for health. A broken rule file
 // stops the command before anything runs.
 func TestProjectRules(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -251,7 +251,7 @@ func TestHeaderFlagsNotSentToConfigSite(t *testing.T) {
 }
 
 // writeComparison stores a finished comparison of snapshot good in the
-// store, as compare would, and returns its run folder.
+// store as compare would. It returns the run folder.
 func writeComparison(t *testing.T, c *model.Comparison) string {
 	t.Helper()
 	st := store.Store{Root: config.Dir}

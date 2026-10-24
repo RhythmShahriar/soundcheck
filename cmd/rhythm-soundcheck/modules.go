@@ -58,8 +58,8 @@ var builders = map[string]func(p *plan) check.Module{
 
 // modules returns the enabled modules in config.Modules order. The runner
 // runs interact's hooks last on each page (it declares check.PhaseMutate):
-// its clicks and submits change the page, and the other modules' Live
-// hooks must measure it as loaded.
+// its clicks and submits change the page. The other modules' Live hooks
+// must measure it as loaded.
 func (p *plan) modules(cfg config.Config) []check.Module {
 	var out []check.Module
 	for _, name := range config.Modules {
