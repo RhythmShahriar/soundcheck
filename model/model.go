@@ -8,6 +8,8 @@ import (
 	"crypto/sha1" //nolint:gosec // short stable IDs for file names, not security
 	"encoding/hex"
 	"time"
+
+	echomodel "github.com/RhythmShahriar/echo/model"
 )
 
 // Schema identifies the JSON layout of a stored run.
@@ -138,9 +140,23 @@ type Page struct {
 	Error      string            `json:"error,omitempty"` // the page couldn't be visited at all
 	Duration   float64           `json:"duration_ms"`
 
+	// Echo lists the messages each successful form submit on the page
+	// made the site send, when Echo ran (the echo module).
+	Echo []EchoAction `json:"echo,omitempty"`
+
 	// Text is the rendered page's visible text, for checks during this
 	// run. It isn't stored: snapshots keep TextHash and TextLength.
 	Text string `json:"-"`
+}
+
+// EchoAction is one thing Soundcheck did (a form submit, a flow) and the
+// messages Echo saw the site send because of it.
+type EchoAction struct {
+	Action   string              `json:"action"` // stable across runs: "form:/contact/#form.wpcf7-form", "flow:Checkout"
+	Label    string              `json:"label"`  // the form's or flow's name
+	Kind     string              `json:"kind"`   // form or flow
+	Page     string              `json:"page"`   // the page submitted on, or the flow's start
+	Messages []echomodel.Message `json:"messages"`
 }
 
 // Run is one check of a site.
@@ -160,6 +176,9 @@ type Run struct {
 	// Cache is the cache module's site summary (hit rate, layers, cached
 	// and uncached TTFB); see checks/cache for the keys.
 	Cache map[string]string `json:"cache,omitempty"`
+	// Echo lists the messages each flow made the site send (form submits
+	// are on their pages).
+	Echo []EchoAction `json:"echo,omitempty"`
 }
 
 // Options records what a run did, so a comparison can warn when two runs
@@ -170,6 +189,9 @@ type Options struct {
 	Modules   []string `json:"modules"`
 	Limit     int      `json:"limit"`
 	LoggedIn  bool     `json:"logged_in,omitempty"`
+	Echo      bool     `json:"echo,omitempty"`      // messages were recorded through Echo
+	EchoMode  string   `json:"echo_mode,omitempty"` // Echo's mode: seal or observe
+	EchoURL   string   `json:"echo_url,omitempty"`  // where Echo ran, for its live view
 }
 
 // PageID returns a short stable ID for a URL, used in file names.
@@ -186,6 +208,16 @@ func (r *Run) Page(path string) *Page {
 		}
 	}
 	return nil
+}
+
+// EchoActions returns every recorded action: form submits page by page,
+// then flows.
+func (r *Run) EchoActions() []EchoAction {
+	var out []EchoAction
+	for _, p := range r.Pages {
+		out = append(out, p.Echo...)
+	}
+	return append(out, r.Echo...)
 }
 
 // AllIssues returns page issues (with the page path in Pages) followed by

@@ -3,7 +3,8 @@ module github.com/RhythmShahriar/soundcheck
 go 1.27.3
 
 require (
-	github.com/RhythmShahriar/rhythm v0.2.1
+	github.com/RhythmShahriar/echo v0.0.0
+	github.com/RhythmShahriar/rhythm v0.4.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.2
@@ -26,6 +27,9 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/emersion/go-message v0.18.2 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
+	github.com/emersion/go-smtp v0.25.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -44,3 +48,7 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
+
+// TEMPORARY: Echo isn't tagged yet. Remove this replace (and require the
+// real version above) when Echo v1.0.0 is tagged.
+replace github.com/RhythmShahriar/echo => ../echo
