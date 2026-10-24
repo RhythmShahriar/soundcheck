@@ -195,7 +195,7 @@ func TestInstallGivesUpOnAStalledDownload(t *testing.T) {
 	}
 }
 
-func TestFindContextStopsTheDownloadWhenCancelled(t *testing.T) {
+func TestFindContextStopsTheDownloadWhenCanceled(t *testing.T) {
 	platform := Platform()
 	if platform == "" {
 		t.Skip("no Chrome for Testing build for this platform")

@@ -76,12 +76,12 @@ func DownloadDir() (string, error) {
 
 // Find returns the browser binary to use: opts.Bin, an installed Chrome,
 // or the pinned Chrome for Testing (downloading it unless NoDownload is
-// set). It is FindContext with a context that is never cancelled.
+// set). It is FindContext with a context that is never canceled.
 func Find(opts Options) (bin string, downloaded bool, err error) {
 	return FindContext(context.Background(), opts)
 }
 
-// FindContext is Find with a context: cancelling ctx stops a Chrome for
+// FindContext is Find with a context: canceling ctx stops a Chrome for
 // Testing download.
 func FindContext(ctx context.Context, opts Options) (bin string, downloaded bool, err error) {
 	if opts.Bin != "" {
