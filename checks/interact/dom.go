@@ -155,13 +155,21 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
   // Forms.
   for (const f of document.forms) {
     const profile = profileOf(f);
-    const method = (f.getAttribute('method') || 'get').toLowerCase();
+
     const rawAction = f.getAttribute('action');
+    // The button the submit level presses (as submitJS picks it) can send
+    // the form elsewhere with formaction and formmethod.
+    const btn = f.querySelector('[type=submit],button:not([type])');
+    const btnAction = btn ? btn.getAttribute('formaction') : null;
+    const btnMethod = btn ? btn.getAttribute('formmethod') : null;
     const fields = [...f.elements].filter(e => e.matches('input,select,textarea') && !['hidden', 'submit', 'button', 'reset', 'image'].includes(e.type));
     const names = [...f.elements].map(e => e.name || '');
+    const method = (btnMethod || f.getAttribute('method') || 'get').toLowerCase();
+    let action = rawAction && !/^\s*javascript:/i.test(rawAction) ? f.action : '';
+    if (btnAction && !/^\s*javascript:/i.test(btnAction)) action = btn.formAction;
     out.forms.push({
       sel: selectorOf(f), name: formName(f, profile), profile, method,
-      action: rawAction && !/^\s*javascript:/i.test(rawAction) ? f.action : '',
+      action,
       nonce: names.some(n => /nonce|_token|csrf|security|^_wpcf7|^gform_|^wpforms|^form_id$|^_wp_http_referer$/i.test(n)),
       password: fields.some(e => e.type === 'password'),
       search: f.getAttribute('role') === 'search' || fields.some(e => e.type === 'search' || e.name === 's') && fields.length <= 2,

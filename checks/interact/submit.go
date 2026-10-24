@@ -7,13 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/flow"
@@ -112,6 +116,16 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 	record := func(fm formInfo, outcome, detail string) {
 		p.Interact = append(p.Interact, model.Interaction{Kind: "submit", Selector: fm.Sel, Label: fm.Name, Outcome: outcome, Detail: detail})
 	}
+	// What a form's own script sends to another site (a newsletter
+	// embed posting with fetch, a button's formaction the page changed)
+	// is held, as the click level holds every write.
+	release, offsite := holdOffSite(tab, base)
+	defer func() {
+		release()
+		for _, sent := range offsite() {
+			m.warnOnce(cc, "offsite "+p.Path+" "+sent, fmt.Sprintf("interact %s: kept a form's test data from going to another site: %s", p.Path, sent))
+		}
+	}()
 	done := 0
 	for _, fm := range f.Forms {
 		if ctx.Err() != nil || done >= 5 {
@@ -508,6 +522,35 @@ const gatewayJS = `(sel) => {
   if (!pick.checked) { pick.checked = true; pick.dispatchEvent(new Event('change', {bubbles: true})); }
   return {ok: f.querySelector('input[name=payment_method]:checked') === pick, id: pick.value};
 }`
+
+// holdOffSite blocks every request on tab other than GET and HEAD that
+// goes to another site than base, until release is called. sent lists
+// what was held, as "POST host/path". When the hold can't be set up the
+// submit level still runs: eligible skips forms that post elsewhere.
+func holdOffSite(tab *rod.Page, base *url.URL) (release func(), sent func() []string) {
+	var mu sync.Mutex
+	var held []string
+	remove, err := intercept.Add(tab, func(r *intercept.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL == nil || base == nil || check.SameSite(base, r.URL) {
+			return
+		}
+		r.Block()
+		s := r.Method + " " + r.URL.Host + r.URL.Path
+		mu.Lock()
+		if !slices.Contains(held, s) {
+			held = append(held, s)
+		}
+		mu.Unlock()
+	})
+	if err != nil {
+		remove = func() {}
+	}
+	return remove, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(held)
+	}
+}
 
 // offSite returns the host a form posts to when that's another site
 // than base, else "". A form without an action posts to its own page.

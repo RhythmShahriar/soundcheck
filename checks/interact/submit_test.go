@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +64,63 @@ func TestSubmitSkipsOffSiteForms(t *testing.T) {
 	}
 	if len(here) == 0 || here[len(here)-1] != "/join/" {
 		t.Errorf("this site got %v", here)
+	}
+}
+
+// A form whose submit button sends it to another site with formaction
+// is skipped, as is one whose script posts its data elsewhere: the
+// other site gets nothing and the run names what was held.
+func TestSubmitSkipsOffSiteFormAction(t *testing.T) {
+	needBrowser(t)
+	var mu sync.Mutex
+	var elsewhere []string
+	list := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		elsewhere = append(elsewhere, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}))
+	defer list.Close()
+	fx := newFixture(t)
+	fx.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			fmt.Fprint(w, `<!doctype html><title>Thanks</title><p>Thanks for joining.</p>`)
+			return
+		}
+		fmt.Fprintf(w, `<!doctype html><html><head><title>News</title></head><body>
+<form id="fa" method="post" action=""><h2>Newsletter</h2><input type="email" name="email" required><input name="name" required>
+<button formaction="%[1]s/subscribe">Sign up</button></form>
+<form id="js" method="post" action="/join/"><h2>Club</h2><input type="email" name="email" required>
+<button>Join</button></form>
+<script>document.getElementById('js').addEventListener('submit', e => {
+  e.preventDefault();
+  fetch('%[1]s/collect', {method: 'POST', body: new FormData(e.target)}).catch(() => {});
+  document.body.insertAdjacentHTML('beforeend', '<p class="sent">Thanks</p>');
+});</script>
+</body></html>`, list.URL)
+	})
+	cfg := config.Default()
+	cfg.Interactions.Levels = []string{"submit"}
+	run := fx.run(t, cfg, "/")
+	p := run.Page("/")
+	got := map[string]string{}
+	for _, i := range p.Interact {
+		if i.Kind == "submit" {
+			got[i.Label] = i.Outcome + ": " + i.Detail
+		}
+	}
+	host := strings.TrimPrefix(list.URL, "http://")
+	if got["form #fa"] != "skipped: posts to "+host {
+		t.Errorf("formaction: %q (all %v)", got["form #fa"], got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(elsewhere) != 0 {
+		t.Errorf("the other site got %v", elsewhere)
+	}
+	want := "interact /: kept a form's test data from going to another site: POST " + host + "/collect"
+	if !slices.Contains(run.Warnings, want) {
+		t.Errorf("warnings %q, want %q", run.Warnings, want)
 	}
 }
 
