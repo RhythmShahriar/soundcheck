@@ -61,6 +61,14 @@ func TestLoginStaysOnSite(t *testing.T) {
 	if got := posted(); len(got) != 0 {
 		t.Errorf("the other host was asked: %v", got)
 	}
+	// Soundcheck's own words aren't masked: only text from the site can
+	// hold the password, so one that is "site" leaves the note readable.
+	sess, _ = b.Session()
+	err = New(Options{Base: base, Config: cfg, Env: env("a", "site")})(context.Background(), sess)
+	_ = sess.Close()
+	if err == nil || !strings.Contains(err.Error(), "not the site being checked") || !strings.Contains(err.Error(), "login.url") {
+		t.Errorf("the note was masked: %v", err)
+	}
 
 	// The site's login page redirects away: nothing is typed there.
 	mux := http.NewServeMux()

@@ -96,6 +96,30 @@ func TestExpandAndMask(t *testing.T) {
 	}
 }
 
+// Mask hides a value where it stands alone and leaves the words it's
+// part of, so a short secret doesn't mangle the message around it.
+func TestMaskWholeValues(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		vals []string
+		want string
+	}{
+		{"set login.url for user a", []string{"a"}, "set login.url for user •••••"},
+		{"typed into a field", []string{"a", "t"}, "typed into ••••• field"},
+		{"WordPress said: wrong password p@ss!", []string{"p@ss!"}, "WordPress said: wrong password •••••"},
+		{"token=hunter2&x", []string{"hunter2"}, "token=•••••&x"},
+		{"aaa a aa", []string{"aa"}, "aaa a •••••"},
+		{"hunter2hunter2", []string{"hunter2"}, "hunter2hunter2"},
+		{"xcorrect-horse-batteryx", []string{"correct-horse-battery"}, "x•••••x"},
+		{"<hunter2>", []string{"hunter2"}, "<•••••>"},
+		{"é1é", []string{"1"}, "é1é"},
+	} {
+		if got := Mask(tc.in, tc.vals...); got != tc.want {
+			t.Errorf("Mask(%q, %q) = %q, want %q", tc.in, tc.vals, got, tc.want)
+		}
+	}
+}
+
 func TestFakeFor(t *testing.T) {
 	f := Fake{Seed: "x"}
 	for _, c := range []struct {

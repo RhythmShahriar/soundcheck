@@ -45,3 +45,36 @@ func TestRedact(t *testing.T) {
 		t.Errorf("Redact changed its input or the recipients: %+v %+v", msgs[0], got[0])
 	}
 }
+
+func TestRedactURLAndHeaders(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://hooks.test/in?token=ab12&channel=sales":  "https://hooks.test/in?token=•••••&channel=sales",
+		"https://hooks.test/in?sig=x9&ts=1700000000":      "https://hooks.test/in?sig=•••••&ts=1700000000",
+		"https://hooks.test/in?api_key=k&page=2":          "https://hooks.test/in?api_key=•••••&page=2",
+		"https://hooks.test/T0/B0/abcdefghijklmnopqrstuv": "https://hooks.test/T0/B0/abcdefghijklmnopqrstuv",
+		"https://hooks.test/in?id=4":                      "https://hooks.test/in?id=4",
+	} {
+		if got := RedactURL(in); got != want {
+			t.Errorf("%q\n got %q\nwant %q", in, got, want)
+		}
+	}
+	msgs := []echomodel.Message{{URL: "https://hooks.test/in?token=ab12", Headers: map[string]string{
+		"Authorization": "Bearer abc", "X-Hook-Signature": "deadbeef", "Content-Type": "application/json",
+		"Referer": "https://shop.test/wp-login.php?action=rp&key=Xk3pQ9vLm2Ab7Cd1Ef4G",
+	}}}
+	got := Redact(msgs)[0]
+	if got.URL != "https://hooks.test/in?token=•••••" {
+		t.Errorf("URL = %q", got.URL)
+	}
+	for name, want := range map[string]string{
+		"Authorization": "•••••", "X-Hook-Signature": "•••••", "Content-Type": "application/json",
+		"Referer": "https://shop.test/wp-login.php?action=rp&key=•••••",
+	} {
+		if got.Headers[name] != want {
+			t.Errorf("header %s = %q, want %q", name, got.Headers[name], want)
+		}
+	}
+	if msgs[0].Headers["Authorization"] != "Bearer abc" {
+		t.Error("Redact changed its input's headers")
+	}
+}

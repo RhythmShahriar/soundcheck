@@ -82,10 +82,11 @@ func New(o Options) func(ctx context.Context, sess *rod.Browser) error {
 		} else {
 			err = wordPress(ctx, sess, o.Base, o.Config.Login.URL, user, pass, o.Config.Trust.InsecureLogin)
 		}
-		if err != nil {
-			return errors.New(flow.Mask(err.Error(), pass, user))
-		}
-		return nil
+		// Only text from the site can hold what was typed, so that is what
+		// gets masked (the WordPress error below, a flow's failures):
+		// masking the whole message would also hide Soundcheck's own
+		// words, "not the ••••• being checked" with a password of "site".
+		return err
 	}
 }
 
@@ -203,7 +204,7 @@ func wordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 			msg = strings.Join(strings.Fields(res.Value.Str()), " ")
 		}
 		if msg != "" {
-			return fmt.Errorf("WordPress refused the login: %s", msg)
+			return fmt.Errorf("WordPress refused the login: %s", flow.Mask(msg, pass, user))
 		}
 		return errors.New("WordPress didn't log in (no wordpress_logged_in cookie was set)")
 	}
@@ -217,7 +218,7 @@ func wordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 		return err
 	}
 	if !res.Value.Bool() {
-		return errors.New("logged in, but the site doesn't show the admin bar or the logged-in body class (a cache may be serving anonymous pages to logged-in users)")
+		return errors.New("logged in, yet the site doesn't show the admin bar or the logged-in body class (a cache may be serving anonymous pages to logged-in users)")
 	}
 	return nil
 }

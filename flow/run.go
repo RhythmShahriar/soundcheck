@@ -20,6 +20,7 @@ import (
 
 	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 )
 
 // Options for running a flow.
@@ -623,13 +624,16 @@ func matches(want Message, got echomodel.Message) bool {
 	return want.Text == "" || has(got.Text+"\n"+got.HTML+"\n"+got.Body, want.Text)
 }
 
-// seen sums up what was sent, so a failed expect shows what to fix.
+// seen sums up what was sent, so a failed expect shows what to fix. The
+// summary goes into the run and its reports, so subjects and webhook URLs
+// are masked as echolink.Redact masks stored messages: a one-time code
+// in a subject or a token in a webhook's query stays out of them.
 func seen(msgs []echomodel.Message) string {
 	if len(msgs) == 0 {
 		return "Echo saw nothing from this flow"
 	}
 	var parts []string
-	for _, m := range msgs[:min(len(msgs), 3)] {
+	for _, m := range echolink.Redact(msgs[:min(len(msgs), 3)]) {
 		d := string(m.Channel)
 		if to := strings.Join(m.To, ", "); to != "" {
 			d += " to " + to

@@ -98,3 +98,18 @@ func TestExpectMessage(t *testing.T) {
 		t.Errorf("without echo: %v", err)
 	}
 }
+
+// A failed expect's summary is stored in the run, so it masks one-time
+// codes in subjects and tokens in webhook URLs as stored messages are.
+func TestSeenMasks(t *testing.T) {
+	got := seen([]echomodel.Message{
+		{Channel: "email", To: []string{"sam@shop.test"}, Subject: "Your login code 551234"},
+		{Channel: "webhook", URL: "https://hooks.test/in?token=ab12&channel=sales"},
+		{Channel: "sms", To: []string{"+15550100"}},
+		{Channel: "sms", To: []string{"+15550101"}},
+	})
+	want := `Echo saw: email to sam@shop.test "Your login code •••••"; webhook to https://hooks.test/in?token=•••••&channel=sales; sms to +15550100; 1 more`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}

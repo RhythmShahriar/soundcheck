@@ -48,6 +48,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -596,12 +598,48 @@ func Expand(s string, fake Fake, env func(string) string) (string, []string, err
 }
 
 // Mask replaces every secret in s with the kit's mask, which hides the
-// whole value and its length.
+// whole value and its length. A value of 8 characters or more is masked
+// wherever it is. A shorter one is masked where it stands alone, not
+// inside a longer word: with a one-letter user "a", "login.url" keeps its
+// letters while "user a" becomes "user •••••".
 func Mask(s string, values ...string) string {
 	for _, v := range values {
-		if v != "" {
+		switch {
+		case v == "":
+		case utf8.RuneCountInString(v) >= 8:
 			s = strings.ReplaceAll(s, v, secrets.Mask(v, 0))
+		default:
+			s = maskWord(s, v, secrets.Mask(v, 0))
 		}
 	}
 	return s
 }
+
+// maskWord replaces v in s with mask wherever v isn't joined to a letter
+// or digit on a side where v itself starts or ends with one.
+func maskWord(s, v, mask string) string {
+	first, _ := utf8.DecodeRuneInString(v)
+	last, _ := utf8.DecodeLastRuneInString(v)
+	var b strings.Builder
+	done := 0 // s[:done] is written
+	for from := 0; ; {
+		j := strings.Index(s[from:], v)
+		if j < 0 {
+			b.WriteString(s[done:])
+			return b.String()
+		}
+		i, end := from+j, from+j+len(v)
+		before, _ := utf8.DecodeLastRuneInString(s[:i])
+		after, _ := utf8.DecodeRuneInString(s[end:])
+		if (wordRune(first) && i > 0 && wordRune(before)) || (wordRune(last) && end < len(s) && wordRune(after)) {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			from = i + size
+			continue
+		}
+		b.WriteString(s[done:i])
+		b.WriteString(mask)
+		done, from = end, end
+	}
+}
+
+func wordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
