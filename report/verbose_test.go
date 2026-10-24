@@ -6,6 +6,7 @@ package report
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -120,5 +121,49 @@ func TestVerboseCapsConsole(t *testing.T) {
 	}
 	if !strings.Contains(s, "  console: …and 3 more\n") {
 		t.Errorf("no count of the rest:\n%s", s)
+	}
+}
+
+// Plain mode prints a long step's progress at the start and at every
+// tenth, not once per link.
+func TestProgressPlain(t *testing.T) {
+	var out bytes.Buffer
+	p := NewPretty(&out, io.Discard, PrettyOptions{Plain: true})
+	for i := 0; i <= 50; i++ {
+		p.Progress("Checking 50 links", i, 50)
+	}
+	got := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(got) != 11 || got[0] != "Checking 50 links: 0/50" || got[1] != "Checking 50 links: 5/50" || got[10] != "Checking 50 links: 50/50" {
+		t.Errorf("progress lines:\n%s", out.String())
+	}
+	out.Reset()
+	q := NewPretty(&out, io.Discard, PrettyOptions{Plain: true, Quiet: true})
+	q.Progress("Checking 50 links", 10, 50)
+	if out.Len() != 0 {
+		t.Errorf("quiet printed %q", out.String())
+	}
+}
+
+// CHANGED lines of a comparison with a snapshot say how to accept them;
+// BROKE ones and comparisons with another site don't.
+func TestAcceptHint(t *testing.T) {
+	c := &model.Comparison{Before: model.RunRef{Name: "good"}, Changes: []model.Change{
+		{ID: "c1", Class: model.Changed, Check: "visual/page", Title: "Page looks different", Pages: []string{"/"}},
+		{ID: "b1", Class: model.Broke, Check: "health/status", Title: "Page not found (404)", Pages: []string{"/x/"}},
+	}}
+	res := Result{Run: &model.Run{}, Comparison: c}
+	var out bytes.Buffer
+	NewPretty(&out, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm-soundcheck accept"}).Summary(res, "")
+	if !strings.Contains(out.String(), "[CHANGED] Page looks different - /\n  rhythm-soundcheck accept c1 if this is expected\n") {
+		t.Errorf("no hint:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "accept b1") {
+		t.Errorf("BROKE got a hint:\n%s", out.String())
+	}
+	out.Reset()
+	c.Before.Name = ""
+	NewPretty(&out, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm-soundcheck accept"}).Summary(res, "")
+	if strings.Contains(out.String(), "if this is expected") {
+		t.Errorf("--against got a hint:\n%s", out.String())
 	}
 }

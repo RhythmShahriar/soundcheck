@@ -224,3 +224,22 @@ func TestHTMLEmbedsShots(t *testing.T) {
 		t.Error("run report lacks its issues")
 	}
 }
+
+// The HTML report draws the site's LCP trend when the history has one.
+func TestHTMLTrend(t *testing.T) {
+	r := Result{Run: sampleRun(), Trend: []float64{1400, 1600, 2100}}
+	var b bytes.Buffer
+	if err := HTML(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	if out := b.String(); !strings.Contains(out, `aria-label="trend"`) || !strings.Contains(out, "LCP 1.4 s to 2.1 s over the last 3 runs") {
+		t.Error("no trend in the report")
+	}
+	b.Reset()
+	if err := HTML(&b, Result{Run: sampleRun(), Trend: []float64{1400}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), `class="trend"`) {
+		t.Error("one value is no trend")
+	}
+}

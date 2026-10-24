@@ -35,6 +35,10 @@ type PrettyOptions struct {
 	// Name is the command the header shows. Empty means the name the
 	// user typed; see InvokedAs.
 	Name string
+	// Accept, when set, is the command that accepts a change ("rhythm
+	// soundcheck accept"). CHANGED lines of a comparison with a snapshot
+	// then end with how to accept them.
+	Accept string
 }
 
 // InvokedAs is the name the user ran Soundcheck by, for the header and
@@ -71,6 +75,9 @@ type Pretty struct {
 	start   time.Time
 	drawn   bool
 	errors  int // pages with errors so far, for the progress line
+	// step is the last tenth of a long step's progress printed in plain
+	// mode, by label.
+	step map[string]int
 }
 
 // NewPretty returns a view that writes results to w and progress notes
@@ -219,6 +226,40 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 	p.drawn = true
 }
 
+// Progress shows how far a long step has got, such as the link probe
+// after the last page: a live line in a terminal, or in plain mode a
+// line at the start and at every tenth.
+func (p *Pretty) Progress(label string, done, total int) {
+	if p.o.Quiet || total <= 0 {
+		return
+	}
+	label = Term(label)
+	if p.o.Plain || !p.o.Progress {
+		if !p.o.Plain {
+			return // a log or pipe: the step's own line said it started
+		}
+		tenth := done * 10 / total
+		if p.step == nil {
+			p.step = map[string]int{}
+		}
+		if last, ok := p.step[label]; ok && tenth <= last {
+			return
+		}
+		p.step[label] = tenth
+		fmt.Fprintf(p.w, "%s: %d/%d\n", label, done, total)
+		return
+	}
+	if done >= total {
+		p.clear()
+		return
+	}
+	fmt.Fprintf(p.w, "\r\x1b[2K  %s %s %s",
+		ui.Brand.Render(spinner[done%len(spinner)]),
+		muted.Bold(true).Render(label),
+		muted.Render(fmt.Sprintf("%d/%d", done, total)))
+	p.drawn = true
+}
+
 // maxConsole caps the browser log lines shown per page: a page that logs
 // in a loop would otherwise bury the run.
 const maxConsole = 20
@@ -332,6 +373,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 				if fix := firstLine(ch.Fix); fix != "" && class != model.Fixed {
 					fmt.Fprintf(p.w, "  fix: %s\n", fix)
 				}
+				if hint := p.acceptHint(c, ch); hint != "" {
+					fmt.Fprintf(p.w, "  %s\n", hint)
+				}
 			}
 		}
 		if p.o.Quiet {
@@ -366,6 +410,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 				fmt.Fprintln(p.w)
 			} else {
 				fmt.Fprintln(p.w, changeLine(ch))
+				if hint := p.acceptHint(c, ch); hint != "" {
+					fmt.Fprintln(p.w, "       "+muted.Render(hint))
+				}
 			}
 		}
 		if class != model.Broke && class != model.New {
@@ -382,6 +429,15 @@ func (p *Pretty) comparison(r Result, hint string) {
 		fmt.Fprintf(p.w, "\n  %s %s\n", ui.Brand.Render("→"), muted.Render(hint))
 	}
 	fmt.Fprintln(p.w)
+}
+
+// acceptHint says how to accept a CHANGED change of a comparison with a
+// snapshot: "rhythm soundcheck accept 3f2a9c01 if this is expected".
+func (p *Pretty) acceptHint(c *model.Comparison, ch model.Change) string {
+	if p.o.Accept == "" || ch.Class != model.Changed || ch.ID == "" || c.Before.Name == "" {
+		return ""
+	}
+	return p.o.Accept + " " + Term(ch.ID) + " if this is expected"
 }
 
 func (p *Pretty) run(r Result, hint string) {

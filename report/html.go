@@ -22,6 +22,7 @@ import (
 
 	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -50,6 +51,8 @@ type htmlData struct {
 	Pages                                  []htmlPage
 	Notes                                  []string
 	Echo                                   *htmlEcho
+	Trend                                  template.HTML // a sparkline of the site's LCP over its latest runs
+	TrendLabel                             string
 }
 
 // htmlEcho lists what each form submit and flow sent, when Echo ran.
@@ -103,6 +106,11 @@ func HTML(w io.Writer, r Result) error {
 	}
 	if Partial(r) {
 		d.Partial = capitalize(partialNote) + "."
+	}
+	if len(r.Trend) > 1 {
+		d.Trend = history.SVG(r.Trend)
+		first, last := r.Trend[0], r.Trend[len(r.Trend)-1]
+		d.TrendLabel = fmt.Sprintf("LCP %s to %s over the last %d runs", seconds(first), seconds(last), len(r.Trend))
 	}
 	if r.Compared() {
 		c := r.Comparison
@@ -332,3 +340,6 @@ func bytesLabel(n int64) string {
 	}
 	return fmt.Sprintf("%.1f MB", float64(n)/1024/1024)
 }
+
+// seconds writes a millisecond LCP as "1.4 s".
+func seconds(ms float64) string { return fmt.Sprintf("%.1f s", ms/1000) }

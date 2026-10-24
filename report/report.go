@@ -28,6 +28,10 @@ type Result struct {
 	// FailOn is the --fail-on threshold, when there is one; JSON output
 	// then says in summary.failed whether the result fails at it.
 	FailOn string
+	// Trend is the site's median LCP over its latest runs in milliseconds,
+	// oldest first, from the history; the HTML report draws it when it
+	// has two or more values.
+	Trend []float64
 }
 
 // Compared reports whether the result is a comparison.

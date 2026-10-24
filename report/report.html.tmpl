@@ -44,6 +44,7 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .verdict::before { content: ""; display: inline-block; width: .42em; height: .42em; border-radius: 50%; margin-right: .32em; vertical-align: .14em; background: var(--tone); }
 .tone-broke { --tone: var(--broke); } .tone-new { --tone: var(--new); } .tone-changed { --tone: var(--changed); } .tone-ok { --tone: var(--ok); }
 .sub { color: var(--muted); margin: 0; }
+.trend { color: var(--muted); margin: .4rem 0 0; display: flex; gap: .5rem; align-items: center; font-size: .9em; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
 .chip { --c: var(--muted); display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 14px 6px 10px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; transition: border-color .15s, opacity .15s; }
 .chip .n { font-weight: 700; color: var(--c); font-variant-numeric: tabular-nums; }
@@ -134,6 +135,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     <div class="eyebrow">{{if .Compared}}Did the change break anything?{{else}}Site check{{end}}</div>
     <h1 class="verdict">{{.Verdict}}</h1>
     <p class="sub">{{.Stats}}</p>
+    {{if .Trend}}<p class="trend" title="{{.TrendLabel}}">{{.Trend}} <span>{{.TrendLabel}}</span></p>{{end}}
     <div class="chips" role="group" aria-label="Filter by kind">
       {{range .Chips}}<button type="button" class="chip k-{{.Key}}{{if eq .N 0}} zero{{end}}" data-filter="{{.Key}}" aria-pressed="true"{{if eq .N 0}} disabled{{end}}><span class="g">{{.Glyph}}</span><span class="n">{{.N}}</span> {{.Label}}</button>
       {{end}}
