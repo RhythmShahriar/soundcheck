@@ -218,7 +218,7 @@ func (s site) oversizedImages() []model.Issue {
 				return fmt.Sprintf("%s (%s, %s)", x.key, x.detail, size(x.bytes))
 			})),
 		Fix: "Serve images at the size they're shown: insert them at a matching size (WordPress adds srcset for media-library images), " +
-			"regenerate thumbnails after changing the theme, and compress them (WebP or AVIF, e.g. with an image optimization plugin).",
+			"regenerate thumbnails after changing the theme and compress them (WebP or AVIF, e.g. with an image optimization plugin).",
 		Pages: pages}}
 }
 
@@ -290,9 +290,9 @@ func (s site) unused() []model.Issue {
 	var out []model.Issue
 	for _, kind := range []struct{ typ, name, check, fix string }{
 		{"Stylesheet", "CSS", "speed/unused-css",
-			"Load stylesheets only on the pages that use them (many plugins have a setting for this, or use an asset manager plugin), and remove unused CSS (e.g. a theme's \"load only used blocks' styles\" option)."},
+			"Load stylesheets only on the pages that use them (many plugins have a setting for this, or use an asset manager plugin) and remove unused CSS (e.g. a theme's \"load only used blocks' styles\" option)."},
 		{"Script", "JavaScript", "speed/unused-js",
-			"Load scripts only on the pages that use them (plugin settings or an asset manager plugin), and drop libraries the site no longer needs."},
+			"Load scripts only on the pages that use them (plugin settings or an asset manager plugin) and drop libraries the site no longer needs."},
 	} {
 		t := tallies{}
 		for _, p := range s.pages {
@@ -558,7 +558,7 @@ func (s site) thirdParties() []model.Issue {
 		out = append(out, model.Issue{Check: "speed/third-party", Level: c.level(), Title: "Heavy third party: " + c.name,
 			Source: c.name, Detail: c.describe(c.name, len(s.pages)),
 			Fix: "Check the site still needs it. Load it later (defer, or on first interaction for chat widgets and embeds), " +
-				"self-host fonts, and use a lightweight placeholder for videos and maps.",
+				"self-host fonts and use a lightweight placeholder for videos and maps.",
 			Pages: c.pages})
 	}
 	return out

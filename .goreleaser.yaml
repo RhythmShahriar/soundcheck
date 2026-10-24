@@ -33,7 +33,14 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    files: [README.md, LICENSE*]
+    # The binary embeds axe-core (MPL-2.0), so its license and the notices
+    # of what it bundles ship beside it; the README names its source.
+    files:
+      - README.md
+      - LICENSE*
+      - src: checks/a11y/vendor/LICENSE*
+        dst: THIRD_PARTY/axe-core
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt

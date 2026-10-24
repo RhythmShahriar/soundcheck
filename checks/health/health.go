@@ -97,7 +97,7 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 	if len(p.Redirects) > 2 {
 		check.Page(p, model.Issue{Check: "health/redirect-chain", Level: model.Notice,
 			Title: fmt.Sprintf("Redirects %d times before loading", len(p.Redirects)), Detail: strings.Join(p.Redirects, " → "),
-			Fix: "Link to the final URL, and collapse the chain into one redirect."})
+			Fix: "Link to the final URL and collapse the chain into one redirect."})
 	}
 	text := p.Text
 
@@ -113,7 +113,7 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 		check.Page(p, model.Issue{Check: "health/php-error", Level: level,
 			Title:  "PHP " + titleCase(m[1]) + ": " + trimMessage(m[2]),
 			Source: shortPath(m[3]) + ":" + m[4],
-			Fix:    "Fix the code at the source line, and turn display_errors off in production so visitors never see these."})
+			Fix:    "Fix the code at the source line and turn display_errors off in production so visitors never see these."})
 	}
 	set := m.rules()
 	screen := false

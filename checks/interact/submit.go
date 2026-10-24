@@ -394,7 +394,7 @@ func (m *Module) send(ctx context.Context, tab *rod.Page, fm formInfo, prof prof
 		return outcome{kind: "failed", msg: describe(q, base)}
 	}
 	if !ajaxOK.IsZero() {
-		return outcome{kind: "none", msg: "the server answered, but no confirmation appeared within 10 s"}
+		return outcome{kind: "none", msg: "the server answered; no confirmation appeared within 10 s"}
 	}
 	return outcome{kind: "none", msg: "nothing happened within 10 s"}
 }

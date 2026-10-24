@@ -29,7 +29,7 @@
 <br>
 
 <p align="center">
-  <img alt="A Soundcheck comparison after a plugin update: a new PHP warning and a JavaScript error on five pages, new blocks at the top and bottom of every page at desktop and mobile size, and the verdict panel" src="docs/assets/compare.svg" width="720">
+  <img alt="A Soundcheck comparison after a plugin update: a new PHP warning and a JavaScript error on five pages, new blocks at the top and bottom of every page at desktop and mobile size and the verdict panel" src="docs/assets/compare.svg" width="720">
 </p>
 
 <br>
@@ -76,7 +76,7 @@ rhythm-soundcheck snapshot staging.yoursite.com   # before: record how every pag
 rhythm-soundcheck compare --open                  # after: what changed, in a report
 ```
 
-Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, takes screenshots and stores it all in `./.soundcheck`. `compare` checks the same pages again with the snapshot's modules, levels and viewports unless you set others. It shows **only what's different**, most serious first:
+Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, takes screenshots and stores it all in `./.soundcheck`. `compare` checks the same pages again with the snapshot's modules, levels, viewports and browser unless you set others. It shows **only what's different**, most serious first:
 
 | Class | Means |
 |---|---|
@@ -148,7 +148,7 @@ Before reporting BROKE or NEW, `compare` visits those pages once more. A change 
 `rhythm-soundcheck help <command>` explains each one.
 
 > [!IMPORTANT]
-> Check only sites you own or have permission to test. Soundcheck browses like a visitor at 5 page loads a second; it only submits forms when you turn the `submit` level on, and refuses to on sites you list as production. See [Responsible use](#responsible-use--disclaimer).
+> Check only sites you own or have permission to test. Soundcheck browses like a visitor at 5 page loads a second. It only submits forms when you turn the `submit` level on and refuses to on sites you list as production. See [Responsible use](#responsible-use--disclaimer).
 
 ## What it catches
 
@@ -163,7 +163,7 @@ PHP fatals, warnings, notices and deprecations with **file and line**, the WordP
 <td width="50%" valign="top">
 
 ### 🖱️ Interactions
-Menus, tabs, accordions and modals that stopped responding (**dead clicks**), clicks that throw, and forms that lost their nonce, labels or action. Opt in to submit forms with test data: Contact Form 7, WPForms, Gravity Forms, Elementor and WooCommerce, plus your own YAML flows.
+Menus, tabs, accordions and modals that stopped responding (**dead clicks**), clicks that throw and forms that lost their nonce, labels or action. Opt in to submit forms with test data: Contact Form 7, WPForms, Gravity Forms, Elementor and WooCommerce, plus your own YAML flows.
 
 </td>
 </tr>
@@ -217,7 +217,7 @@ How it compares with other tools is measured, not claimed: see the [benchmark](h
     fail-on: broke
 ```
 
-The Markdown report goes in the job summary, and the HTML report and a JUnit file are attached as the `soundcheck-report` artifact. More in the [CI guide](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI).
+The Markdown report goes in the job summary. The HTML report and a JUnit file are attached as the `soundcheck-report` artifact. More in the [CI guide](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI).
 
 ## Docs
 
@@ -243,15 +243,15 @@ make test-short # the quick pass: tests that honour -short skip slow browser wor
 make testbed # 20 broken sites in Docker, for end-to-end tests and the benchmark
 ```
 
-See [CONTRIBUTING](https://github.com/RhythmShahriar/.github/blob/master/CONTRIBUTING.md).
+See [CONTRIBUTING](https://github.com/RhythmShahriar/.github/blob/master/CONTRIBUTING.md) for the Rhythm-wide rules. Writing a check module? [CONTRIBUTING.md](CONTRIBUTING.md) in this repository covers how a module plugs into a run.
 
 ## Responsible use & disclaimer
 
 Soundcheck is built to help people **check their own websites** before and after changes.
 
-- **Use it only on sites you own, or have explicit permission to test.** Automated browsing, and especially submitting forms, on systems you aren't authorized to test may be illegal or break their terms of service.
+- **Use it only on sites you own, or have explicit permission to test.** Automated browsing (especially submitting forms) on systems you aren't authorized to test may be illegal or break their terms of service.
 - **You are responsible for how you use it.** The authors and contributors are not responsible for misuse, or for any damage, data, messages or orders created by tests you run, or any other loss arising from its use.
-- **Test data is real data.** With the `submit` level on, forms really send: messages arrive, sign-ups are created. Use it on staging, route mail to a catcher such as Mailpit, and list your live site under `production` in the config.
+- **Test data is real data.** With the `submit` level on, forms really send: messages arrive, sign-ups are created. Use it on staging, route mail to a catcher such as Mailpit and list your live site under `production` in the config.
 - **No warranty.** Soundcheck is provided "as is", without warranty of any kind, as set out in the [license](LICENSE). Lab measurements and screenshots vary; verify before acting.
 
 Found a vulnerability in Soundcheck itself? Please [report it privately](https://github.com/RhythmShahriar/soundcheck/security/advisories/new).
@@ -259,5 +259,9 @@ Found a vulnerability in Soundcheck itself? Please [report it privately](https:/
 ## License
 
 [MIT](LICENSE).
+
+### Third-party
+
+The binary embeds [axe-core](https://github.com/dequelabs/axe-core) 4.14.0 by Deque Systems for the `a11y` module, unmodified. axe-core is under the [Mozilla Public License 2.0](checks/a11y/vendor/LICENSE); its source is at [github.com/dequelabs/axe-core](https://github.com/dequelabs/axe-core) and in this repository at [checks/a11y/vendor/axe.min.js](checks/a11y/vendor/axe.min.js). The libraries it bundles are listed in [LICENSE-3RD-PARTY.txt](checks/a11y/vendor/LICENSE-3RD-PARTY.txt). Release archives carry both files under `THIRD_PARTY/axe-core/`.
 
 <p align="center"><sub>Part of <a href="https://github.com/RhythmShahriar/rhythm"><b>rhythm</b></a> · Useful ideas. Working systems.</sub></p>

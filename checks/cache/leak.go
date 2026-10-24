@@ -88,7 +88,7 @@ func identify(ctx context.Context, sess *rod.Browser, base string) (Identity, er
 		Login: strings.TrimSpace(res.Value.Get("login").Str()),
 	}
 	if id.Email == "" && id.Login == "" {
-		return id, errors.New("couldn't read the test user's details (is the login working, and is this WordPress?)")
+		return id, errors.New("couldn't read the test user's details (is the login working and is this WordPress?)")
 	}
 	return id, nil
 }
@@ -238,7 +238,7 @@ func leak(ctx context.Context, cc *check.Context, results []*result) {
 			Detail: "Anonymous visitors get a page rendered for the logged-in test user, served by " + served + ": " + strings.Join(hits, ", "),
 			Source: anon.read.Layer,
 			Fix: "Purge the page cache now. Then make every cache layer (" + orDefault(strings.Join(anon.read.Layers, ", "), "plugin, server and CDN") +
-				") bypass requests carrying wordpress_logged_in_* or other session cookies, and never store responses rendered for a logged-in user."}
+				") bypass requests carrying wordpress_logged_in_* or other session cookies and never store responses rendered for a logged-in user."}
 		cc.Lock()
 		if r.idx < len(cc.Run.Pages) {
 			check.Page(&cc.Run.Pages[r.idx], issue)

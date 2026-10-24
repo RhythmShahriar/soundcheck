@@ -46,7 +46,7 @@ func (m *Module) CheckSite(ctx context.Context, cc *check.Context) {
 		return
 	}
 	if len(flows) == 0 {
-		cc.Warn("interactions.levels includes flows, but " + cc.Config.Flows + " has none (run `flows init` for an example)")
+		cc.Warn("interactions.levels includes flows; " + cc.Config.Flows + " has none (run `flows init` for an example)")
 		return
 	}
 	if cc.NewSession == nil {

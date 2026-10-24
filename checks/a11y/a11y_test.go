@@ -38,6 +38,28 @@ func TestVendoredAxe(t *testing.T) {
 	}
 }
 
+// The MPL-2.0 asks that people who get the binary can find axe-core's
+// license and source: the release archives carry the license and the
+// README names the source and the version embedded.
+func TestAxeShipsItsLicense(t *testing.T) {
+	rel, err := os.ReadFile("../../.goreleaser.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rel), "src: checks/a11y/vendor/LICENSE*") || !strings.Contains(string(rel), "dst: THIRD_PARTY/axe-core") {
+		t.Error(".goreleaser.yaml doesn't put checks/a11y/vendor/LICENSE* in the archives")
+	}
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"### Third-party", "axe-core](https://github.com/dequelabs/axe-core) " + axeVersion, "Mozilla Public License 2.0"} {
+		if !strings.Contains(string(readme), want) {
+			t.Errorf("README.md has no %q", want)
+		}
+	}
+}
+
 // el parses "tag#id[name]:n" shorthand into an Elem.
 func el(s string) Elem {
 	var e Elem

@@ -72,13 +72,13 @@ func (*Module) CheckPage(_ *check.Context, p *model.Page) {
 	}
 	band(m.LCP, lcpWarn, lcpError, "lcp", "Largest Contentful Paint over 2.5 s (lab)", "Largest Contentful Paint over 4 s (lab)",
 		"LCP "+ms(m.LCP),
-		"Make the largest element (usually the hero image or heading) load first: serve it at its displayed size, don't lazy-load it, preload it, and cut render-blocking CSS/JS.")
+		"Make the largest element (usually the hero image or heading) load first: serve it at its displayed size, don't lazy-load it, preload it and cut render-blocking CSS/JS.")
 	band(m.CLS, clsWarn, clsError, "cls", "Layout shift (CLS) over 0.1 (lab)", "Layout shift (CLS) over 0.25 (lab)",
 		"CLS "+fmt.Sprintf("%.2f", m.CLS),
-		"Give images, embeds and ads a width and height (or aspect-ratio), and don't insert banners above content after it has rendered.")
+		"Give images, embeds and ads a width and height (or aspect-ratio) and don't insert banners above content after it has rendered.")
 	band(m.TBT, tbtWarn, tbtError, "tbt", "Total Blocking Time over 200 ms (lab)", "Total Blocking Time over 600 ms (lab)",
 		"TBT "+ms(m.TBT),
-		"Long JavaScript tasks block clicks and typing: defer scripts the page doesn't need at first, and remove plugins that add heavy JS to every page.")
+		"Long JavaScript tasks block clicks and typing: defer scripts the page doesn't need at first and remove plugins that add heavy JS to every page.")
 	if m.TTFB > ttfbError {
 		check.Page(p, model.Issue{Check: "speed/ttfb", Level: model.Warning, Title: "Server response (TTFB) over 1.8 s (lab)",
 			Detail: "TTFB " + ms(m.TTFB) + " (lab: " + lab + ")", Fix: ttfbFix})
@@ -89,16 +89,16 @@ func (*Module) CheckPage(_ *check.Context, p *model.Page) {
 	if m.Bytes > heavyPage {
 		check.Page(p, model.Issue{Check: "speed/weight", Level: model.Warning, Title: "Page weighs over 3 MB",
 			Detail: fmt.Sprintf("%s in %d requests", size(m.Bytes), m.Requests),
-			Fix:    "Resize and compress images (WebP/AVIF), and drop scripts, fonts and videos the page doesn't need."})
+			Fix:    "Resize and compress images (WebP/AVIF) and drop scripts, fonts and videos the page doesn't need."})
 	}
 	if m.Requests > manyRequests {
 		check.Page(p, model.Issue{Check: "speed/requests", Level: model.Notice, Title: "Page makes over 100 requests",
 			Detail: fmt.Sprintf("%d requests", m.Requests),
-			Fix:    "Combine or remove small files, and stop plugins from loading assets on pages that don't use them."})
+			Fix:    "Combine or remove small files and stop plugins from loading assets on pages that don't use them."})
 	}
 }
 
-const ttfbFix = "The server takes long to build the page: turn on page caching (a caching plugin or the host's cache), use a persistent object cache, and look for slow plugins or queries (Query Monitor)."
+const ttfbFix = "The server takes long to build the page: turn on page caching (a caching plugin or the host's cache), use a persistent object cache and look for slow plugins or queries (Query Monitor)."
 
 // ms formats milliseconds the way people read load times.
 func ms(v float64) string {

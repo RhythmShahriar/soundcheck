@@ -397,7 +397,7 @@ func analyze(r *result) {
 				Detail: evidence(rd),
 				Source: rd.Layer,
 				Fix: "Exclude cart, checkout, account and login pages from every cache layer (" + orDefault(strings.Join(rd.Layers, ", "), "page cache") +
-					"), and bypass the cache for requests with woocommerce_items_in_cart, wp_woocommerce_session_* or wordpress_logged_in_* cookies. " +
+					") and bypass the cache for requests with woocommerce_items_in_cart, wp_woocommerce_session_* or wordpress_logged_in_* cookies. " +
 					"WooCommerce marks these pages no-cache; a cache rule is overriding that. Purge the cache afterwards."})
 		}
 	}
@@ -598,7 +598,7 @@ func summarize(cc *check.Context, results []*result) {
 		if kinds[Server] || kinds[Plugin] {
 			level = model.Warning
 			fix = "The page cache is installed but never answers with a cached page. Check that it's enabled, that its rules don't bypass every request " +
-				"(cookies, query strings, a Cache-Control: no-cache/private from a plugin or theme), and that nothing purges it on every request."
+				"(cookies, query strings, a Cache-Control: no-cache/private from a plugin or theme) and that nothing purges it on every request."
 		}
 		var seen []string
 		for h, n := range answers {
@@ -606,7 +606,7 @@ func summarize(cc *check.Context, results []*result) {
 		}
 		slices.Sort(seen)
 		cc.AddIssue(model.Issue{Check: "cache/never-cached", Level: level, Title: "Pages are never served from the page cache",
-			Detail: fmt.Sprintf("%s present, but 0 of %d pages came from the cache on a second fetch. Seen: %s",
+			Detail: fmt.Sprintf("%s present, yet 0 of %d pages came from the cache on a second fetch. Seen: %s",
 				strings.Join(layers, ", "), pages, orDefault(strings.Join(seen, ", "), "no status")),
 			Source: strings.Join(layers, ", "), Fix: fix})
 	}
@@ -647,7 +647,7 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 	}
 	return []model.Change{{Class: model.Changed, Check: "cache/stopped", Title: "Page cache stopped working", Source: layer,
 		Detail: "Pages that came from the cache in the snapshot are now rendered on every request.",
-		Fix:    "Check the cache plugin or server cache is still enabled, and that the change didn't add a cookie, a no-cache header or a rule that bypasses it.",
+		Fix:    "Check the cache plugin or server cache is still enabled and that the change didn't add a cookie, a no-cache header or a rule that bypasses it.",
 		Pages:  pages, Before: fmt.Sprintf("%d of %d pages cached", before, n), After: fmt.Sprintf("0 of %d pages cached", n), Score: 100}}
 }
 

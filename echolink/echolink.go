@@ -224,7 +224,7 @@ func Issues(a model.EchoAction, siteHost string) []model.Issue {
 // the echo module's comparison reports as BROKE.
 func NoMessage(a model.EchoAction, wait time.Duration) model.Issue {
 	i := model.Issue{Check: "echo/no-message", Level: model.Notice, Title: "Form says sent, but no message went out",
-		Detail: fmt.Sprintf("%s showed success, and Echo saw no email, SMS or webhook from it within %s", a.Label, wait),
+		Detail: fmt.Sprintf("%s showed success and Echo saw no email, SMS or webhook from it within %s", a.Label, wait),
 		Source: a.Label,
 		Fix: "If the form should notify someone, check its notification settings and the site's mailer; " +
 			"check the site has Echo's connector (rhythm echo doctor). Forms meant to send nothing can ignore this."}
