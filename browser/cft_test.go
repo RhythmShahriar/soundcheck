@@ -181,17 +181,58 @@ func TestUnzipRefusesEscapes(t *testing.T) {
 			w, _ := zw.CreateHeader(h)
 			_, _ = w.Write([]byte("../../.."))
 		},
+		// x -> "." then c -> "x/.." passes a lexical check but c is the
+		// parent of dest, so c/evil would land outside it.
+		"link chain": func(zw *zip.Writer) {
+			for _, l := range [][2]string{{"x", "."}, {"c", "x/.."}} {
+				h := &zip.FileHeader{Name: l[0]}
+				h.SetMode(os.ModeSymlink | 0o777)
+				w, _ := zw.CreateHeader(h)
+				_, _ = w.Write([]byte(l[1]))
+			}
+			w, _ := zw.Create("c/evil")
+			_, _ = w.Write([]byte("x"))
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			zipPath := filepath.Join(t.TempDir(), "a.zip")
 			if err := os.WriteFile(zipPath, fakeArchive(t, "linux64", extra), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			dest := t.TempDir()
+			dest := filepath.Join(t.TempDir(), "dest")
+			if err := os.Mkdir(dest, 0o750); err != nil {
+				t.Fatal(err)
+			}
 			if err := unzip(zipPath, dest); err == nil {
 				t.Error("unpacked an entry outside the folder")
 			}
+			if fileExists(filepath.Join(filepath.Dir(dest), "evil")) {
+				t.Error("wrote a file next to dest")
+			}
 		})
+	}
+}
+
+// A partial folder from an earlier install (no Chrome in it) is
+// replaced instead of failing every later run.
+func TestInstallReplacesAPartialFolder(t *testing.T) {
+	good := fakeArchive(t, "linux64", nil)
+	serve(t, "153.0.1.2", "linux64", good)
+	rel := Release{Version: "153.0.1.2", Archives: map[string]Archive{"linux64": {SHA256: sum(good), Size: int64(len(good))}}}
+	dir := t.TempDir()
+	stale := filepath.Join(installDir(dir, rel.Version), "chrome-linux64", "leftover")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin, err := install(t.Context(), rel, "linux64", dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(bin) || fileExists(stale) {
+		t.Errorf("bin %s exists = %v, stale file kept = %v", bin, fileExists(bin), fileExists(stale))
 	}
 }
 

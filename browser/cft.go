@@ -130,7 +130,14 @@ func install(ctx context.Context, rel Release, platform, dir string, log func(st
 	if err := os.Rename(tmp, final); err != nil {
 		// Another run may have finished the same install first.
 		if _, statErr := os.Stat(binPath(final, platform)); statErr != nil {
-			return "", err
+			// Or a broken one is in the way (Chrome deleted, a copy cut
+			// short): it has no browser, so replace it.
+			if rmErr := os.RemoveAll(final); rmErr != nil {
+				return "", fmt.Errorf("%s is left from an earlier install and has no Chrome; delete it and try again: %w", final, rmErr)
+			}
+			if err := os.Rename(tmp, final); err != nil {
+				return "", fmt.Errorf("installing Chrome for Testing into %s: %w", final, err)
+			}
 		}
 	}
 	return binPath(final, platform), nil
@@ -183,8 +190,8 @@ func download(ctx context.Context, url, dir string, pin Archive) (path string, e
 }
 
 // unzip unpacks src into dest, keeping file modes (Chrome must stay
-// executable) and the symlinks inside a macOS app bundle. Entries that
-// would land outside dest are refused.
+// executable) and the symlinks inside a macOS app bundle. It refuses
+// entries that would land outside dest and symlinks that point up or out.
 func unzip(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -213,9 +220,18 @@ func unzipOne(f *zip.File, dest string) error {
 		if err != nil {
 			return err
 		}
-		// A link may point anywhere inside the archive, never out of it.
-		if filepath.IsAbs(link) {
+		// A link may only point down from its own folder. A lexical check
+		// of ".." isn't enough: with x -> "." the link c -> "x/.." looks
+		// like dest but is its parent, so a later c/file lands outside.
+		// The links in a macOS app bundle (Versions/Current and the
+		// framework's top-level names) never need "..".
+		if filepath.IsAbs(link) || strings.HasPrefix(link, "/") || strings.HasPrefix(link, `\`) {
 			return fmt.Errorf("%s: absolute symlink %s", f.Name, link)
+		}
+		for _, part := range strings.FieldsFunc(link, func(r rune) bool { return r == '/' || r == '\\' }) {
+			if part == ".." {
+				return fmt.Errorf("%s: symlink %s points up out of its folder", f.Name, link)
+			}
 		}
 		if _, err := inside(dest, filepath.Join(filepath.Dir(f.Name), link)); err != nil {
 			return err
