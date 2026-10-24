@@ -28,3 +28,25 @@ func TestLogQuietHidesStatusLines(t *testing.T) {
 		}
 	}
 }
+
+// The closing Skipped line gives the final counts, largest first, so
+// pages left out after the Pages line still show in the terminal.
+func TestSkippedLine(t *testing.T) {
+	for _, tc := range []struct {
+		skipped map[string]int
+		quiet   bool
+		want    string
+	}{
+		{map[string]int{"other site": 3, "robots-unavailable": 12}, false, "Skipped: 12 (robots unavailable), 3 (other site)\n"},
+		{map[string]int{"other site": 2, "grouped": 2, "page limit": 0}, false, "Skipped: 2 (grouped), 2 (other site)\n"},
+		{map[string]int{}, false, ""},
+		{map[string]int{"other site": 1}, true, ""},
+	} {
+		var out, errOut bytes.Buffer
+		p := NewPretty(&out, &errOut, PrettyOptions{Plain: true, Quiet: tc.quiet})
+		p.Skipped(tc.skipped)
+		if out.String() != tc.want {
+			t.Errorf("%v (quiet %v): %q, want %q", tc.skipped, tc.quiet, out.String(), tc.want)
+		}
+	}
+}

@@ -174,6 +174,24 @@ func (p *Pretty) Discovered(pages int, skipped map[string]int) {
 	p.Step("Pages", line)
 }
 
+// Skipped reports the final skip counts once every page is visited, for
+// links the pages led to that were left out after the Pages line: with
+// robots.txt unavailable or a link to another site. The largest count
+// comes first: "Skipped: 12 (robots unavailable), 3 (other site)".
+func (p *Pretty) Skipped(skipped map[string]int) {
+	keys := sortedKeys(skipped)
+	keys = slices.DeleteFunc(keys, func(k string) bool { return skipped[k] <= 0 })
+	if len(keys) == 0 {
+		return
+	}
+	slices.SortStableFunc(keys, func(a, b string) int { return skipped[b] - skipped[a] })
+	why := make([]string, len(keys))
+	for i, k := range keys {
+		why[i] = fmt.Sprintf("%d (%s)", skipped[k], strings.ReplaceAll(k, "-", " "))
+	}
+	p.Step("Skipped", strings.Join(why, ", "))
+}
+
 var spinner = []string{"◐", "◓", "◑", "◒"}
 
 // Page reports a visited page.

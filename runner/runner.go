@@ -98,7 +98,11 @@ type Options struct {
 // Hooks report progress. Calls are serialized.
 type Hooks struct {
 	Discovered func(pages int, skipped map[string]int)
-	Page       func(p *model.Page, done, total int)
+	// Skipped gets the final skip counts once every page is visited, when
+	// links found on the pages were left out after Discovered (robots.txt
+	// unavailable, another site...), so the terminal shows them too.
+	Skipped func(skipped map[string]int)
+	Page    func(p *model.Page, done, total int)
 	// Log gets progress notes; a leading "!" marks one to show even
 	// without --verbose and a leading "~" a status line that -q hides
 	// (see report.Pretty.Log).
@@ -196,8 +200,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if len(pages) == 0 && len(opts.Done) == 0 {
 		return nil, fmt.Errorf("found no pages to check at %s", startURL)
 	}
+	discovered := frontier.Skipped()
 	if opts.Hooks.Discovered != nil {
-		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), frontier.Skipped()) })
+		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), discovered) })
 	}
 
 	engine := cmpEngine(opts.Engine)
@@ -359,6 +364,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 	}
 	run.Skipped = frontier.Skipped()
+	if opts.Hooks.Skipped != nil && !maps.Equal(run.Skipped, discovered) {
+		emit(func() { opts.Hooks.Skipped(maps.Clone(run.Skipped)) })
+	}
 
 	if ctx.Err() == nil && !opts.revisit {
 		// Probing every link can take minutes after the last page.
