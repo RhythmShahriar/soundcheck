@@ -67,6 +67,7 @@ blog=$(page blog "Blog" "")
 page about "About us" "<p>We started roasting in a garage in 2014. Today six of us roast, pack and ship every order by hand.</p><p>Read about the <a href=\"/s17-title/\">history of the roastery</a>.</p>" >/dev/null
 page shop "Shop" "<p>Whole beans, roasted this week.</p>[testbed_products]<p><a href=\"/cart/\">View cart</a></p>" >/dev/null
 page cart "Cart" "[testbed_cart]" >/dev/null
+page checkout "Checkout" "<p>Check your details and place the order.</p>[testbed_checkout]" >/dev/null
 page contact "Contact" "<p>Questions about an order? Write to us and we'll answer within a day.</p>[testbed_contact_form]" >/dev/null
 
 # One page per WordPress scenario; testbed/scenarios.yaml lists them.
@@ -90,11 +91,25 @@ page s16-noindex "Press" "<p>For press enquiries and images, contact press@brew.
 page s17-title "Our history" "<p>From a garage roaster in 2014 to a team of six.</p>" >/dev/null
 page s19-account "Members" "<p>Members get early access to new roasts and 10% off every order.</p>" >/dev/null
 page s20-heavy "Events" "<p>Cupping sessions every first Saturday of the month.</p>" >/dev/null
+page s21-maintenance "Delivery" "<p>We ship on Wednesdays and Fridays with Royal Mail.</p>" >/dev/null
+page s22-database "Returns" "<p>Unopened bags can be returned within 30 days.</p>" >/dev/null
+page s23-fatal "Brew ratios" "<p>Start with 1:16 for filter and 1:2 for espresso.</p>" >/dev/null
+page s24-styles "Cafés we supply" "<p>Twelve cafés in the city pour our coffee.</p>" >/dev/null
+page s26-robots "Recipes" "<p>Cold brew, affogato and a proper flat white.</p>" >/dev/null
+page s27-seo "Origins" "<p>Ethiopia, Colombia, Kenya and Guatemala.</p>" >/dev/null
+page s28-sitemap "Glossary" "<p>Bloom, crema, extraction and other words baristas use.</p>" >/dev/null
+page s29-redirect "Old offers" "<p>Last season's offers, kept for reference.</p>" >/dev/null
+page s30-stale "Roasting days" "[testbed_roast_day]<p>Questions about a roast? Ask us.</p>[testbed_contact_form]" >/dev/null
+page s32-captcha "Trade accounts" "<p>Apply for a trade account.</p>[testbed_contact_form captcha=\"1\"]" >/dev/null
+page s33-mail "Corporate gifts" "<p>Gift boxes for your team or clients.</p>[testbed_contact_form mail=\"1\"]" >/dev/null
+page s46-widgets "Featured roasts" "<p>This month's featured roasts:</p><div class=\"tb-carousel\">Kenya Nyeri · Guatemala Huehuetenango · Decaf Colombia</div>" >/dev/null
 
 {
 	echo "<p>Every page below is one benchmark scenario (testbed/scenarios.yaml).</p><ul>"
 	for slug in s01-fatal s02-warning s04-blank s05-js-error s06-jquery s07-ajax s08-rest s09-links s10-image \
-		s11-form s12-menu s13-button s14-layout s15-mobile s16-noindex s17-title s19-account s20-heavy shop cart; do
+		s11-form s12-menu s13-button s14-layout s15-mobile s16-noindex s17-title s19-account s20-heavy \
+		s21-maintenance s22-database s23-fatal s24-styles s26-robots s27-seo s28-sitemap s29-redirect s30-stale \
+		s32-captcha s33-mail s46-widgets shop cart checkout; do
 		echo "<li><a href=\"/$slug/\">/$slug/</a></li>"
 	done
 	echo "</ul>"

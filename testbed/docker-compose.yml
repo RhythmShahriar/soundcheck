@@ -57,6 +57,11 @@ services:
         define('DISABLE_WP_CRON', true);
         define('AUTOMATIC_UPDATER_DISABLED', true);
         define('WP_ENVIRONMENT_TYPE', 'local');
+      # s33: send mail to Echo's SMTP port, e.g. host.docker.internal:1025
+      # (see README). Empty: PHP's mail(), which delivers nothing.
+      TESTBED_SMTP: ${TESTBED_SMTP:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes: *wp-mounts
 
   # Seeds the site (pages, posts, menu, users). Run by `make up`:
@@ -84,10 +89,23 @@ services:
       - ./wp/seed.sh:/seed.sh:ro
     entrypoint: ["sh", "/seed.sh"]
 
+  # Plain PHP over http and, for s25 (mixed content), https. The
+  # certificate is a throwaway self-signed one made at start, so the
+  # repository holds no key; Soundcheck needs -k for the https site.
   php:
     image: php:8.3.27-apache
     ports:
       - "127.0.0.1:${TESTBED_PHP_PORT:-18810}:80"
+      - "127.0.0.1:${TESTBED_PHP_HTTPS_PORT:-18811}:443"
+    environment:
+      TESTBED_HTTP_ORIGIN: http://localhost:${TESTBED_PHP_PORT:-18810}
+    command:
+      - sh
+      - -c
+      - >-
+        openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=localhost
+        -keyout /etc/ssl/private/ssl-cert-snakeoil.key -out /etc/ssl/certs/ssl-cert-snakeoil.pem 2>/dev/null
+        && a2enmod -q ssl && a2ensite -q default-ssl && exec apache2-foreground
     volumes:
       - ./php:/var/www/html:ro
       - ./state:/var/www/state:ro

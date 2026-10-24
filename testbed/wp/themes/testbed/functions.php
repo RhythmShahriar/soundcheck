@@ -26,7 +26,10 @@ add_action(
 	'wp_enqueue_scripts',
 	function () {
 		$v = wp_get_theme()->get( 'Version' );
-		wp_enqueue_style( 'testbed', get_stylesheet_uri(), array(), $v );
+		// s24 broken: theme 2.0 enqueues a renamed stylesheet that wasn't
+		// deployed, so every page loads unstyled.
+		$css = testbed_broken( 's24' ) ? get_theme_file_uri( 'style-2.0.css' ) : get_stylesheet_uri();
+		wp_enqueue_style( 'testbed', $css, array(), $v );
 		wp_enqueue_script( 'jquery' ); // footer.php runs inline jQuery code (s06)
 
 		// s12 broken: menu.js 2.0 looks for .js-menu-toggle, but the header

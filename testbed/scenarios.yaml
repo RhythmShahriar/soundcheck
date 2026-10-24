@@ -19,13 +19,42 @@
 #             comparison has a change with that class whose check starts
 #             with `check` and whose title contains `title` (case-insensitive)
 #   tools     third-party tools in the benchmark that could catch it
+#   args      extra rhythm-soundcheck flags for both runs, e.g. [--timeout, 6s]
+#   modules   run exactly these modules (--modules), e.g. to add seo or a11y
+#   limit     page limit (default 20)
+#   per_group pages.per_group: pages per URL pattern (-1 for all)
+#   echo      the run needs Echo (bench -echo URL); "not run" without it
+#   rules     YAML rule files (relative to testbed/) copied into .soundcheck/rules/
+#   harness   what the benchmark does besides switching the state:
+#               interrupt     sends Ctrl+C (SIGINT) to compare after interrupt_after
+#               parallel      runs two compares in the same folder at once
+#               delete-shots  deletes the snapshot's screenshots before comparing
+#               stress        keeps every CPU busy while compare runs
+#   pending   the detector the expectation needs isn't merged yet; the
+#             scoreboard counts these separately (see note)
+#   forbid    changes that must not be reported (false alarms), same
+#             matchers as expect
 #
-# Checks for modules that aren't merged yet (visual, interact, cache, speed)
-# are matched by module prefix only, e.g. "interact/".
+# An expect entry is one of:
+#   {class: …, check: …, title: …}   a change (class may be left out: any class)
+#   {warning: "text"}                 a comparison warning containing the text
+#   {interrupted: true}               the comparison is marked interrupted
+#   {clean: true}                     nothing at or above NEW was reported
+#   {exit: N}                         compare exited with N
+#
+# Checks for modules that aren't merged yet are matched by module prefix
+# only, e.g. "interact/".
 
 sites:
   wp: http://localhost:18800
   php: http://localhost:18810
+  php-https: https://localhost:18811
+
+# The control pass: with every scenario good, snapshot each site and
+# compare twice; anything at or above NEW is a false alarm.
+control:
+  sites: [wp, php]
+  limit: 40
 
 scenarios:
   - id: s01
@@ -258,3 +287,355 @@ scenarios:
     expect:
       - {class: slower, check: speed/}
     tools: [unlighthouse]
+
+  # Site failures from qa.md ("Testbed and benchmark coverage gaps").
+
+  - id: s21
+    name: Maintenance mode left on after a failed update
+    site: wp
+    path: /s21-maintenance/
+    include: ["/s21-maintenance*"]
+    module: health
+    toggle: "every request gets WordPress's 503 \"Briefly unavailable for scheduled maintenance\" screen (wp/mu-plugins/01-testbed-early.php)"
+    expect:
+      - {class: broke, check: health/status, title: "Server error 503"}
+    tools: [lychee, unlighthouse]
+
+  - id: s22
+    name: Database connection error
+    site: wp
+    path: /s22-database/
+    include: ["/s22-database*"]
+    module: health
+    toggle: "every request gets \"Error establishing a database connection\" with a 500 (wp/mu-plugins/01-testbed-early.php)"
+    expect:
+      - {class: broke, check: health/database}
+    tools: [lychee, unlighthouse]
+
+  - id: s23
+    name: Fatal error on every page (memory exhausted)
+    site: wp
+    path: /s23-fatal/
+    include: ["/s23-fatal*", "/about*"]
+    module: health
+    toggle: "every front-end page runs out of memory, so WordPress shows its critical error screen everywhere (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: broke, check: health/wp-critical, title: critical error}
+    tools: [lychee, unlighthouse]
+
+  - id: s24
+    name: Stylesheet 404, the site renders unstyled
+    site: wp
+    path: /s24-styles/
+    include: ["/s24-styles*"]
+    module: health
+    toggle: "theme 2.0 enqueues style-2.0.css, which wasn't deployed (wp/themes/testbed/functions.php)"
+    expect:
+      - {class: new, check: health/broken-asset, title: "Broken stylesheet"}
+      - {class: changed, check: visual/}
+    tools: [lychee, backstop, unlighthouse]
+
+  - id: s25
+    name: Mixed content after a move to https
+    site: php-https
+    path: /mixed.php
+    include: ["/mixed.php*"]
+    module: health
+    args: [-k]
+    toggle: "the https page still loads its logo from the old http:// URL (php/mixed.php)"
+    expect:
+      - {class: new, check: health/mixed-content}
+    tools: [unlighthouse]
+
+  - id: s26
+    name: robots.txt switched to Disallow /
+    site: wp
+    path: /s26-robots/
+    include: ["/s26-robots*"]
+    module: seo
+    modules: [health, seo]
+    pending: true
+    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
+    toggle: "a staging robots.txt reaches the site: \"Disallow: /\" (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: broke, check: seo/robots-txt}
+    tools: []
+
+  - id: s27
+    name: Canonical, hreflang, Open Graph and JSON-LD lost
+    site: wp
+    path: /s27-seo/
+    include: ["/s27-seo*"]
+    module: seo
+    modules: [health, seo]
+    pending: true
+    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
+    toggle: "an SEO plugin update drops the canonical, hreflang, og: tags and the JSON-LD (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {check: seo/canonical}
+      - {check: seo/hreflang}
+      - {check: seo/og}
+      - {check: seo/jsonld}
+    tools: [unlighthouse]
+
+  - id: s28
+    name: Sitemap answers 500
+    site: wp
+    path: /s28-sitemap/
+    include: ["/s28-sitemap*"]
+    module: seo
+    modules: [health, seo]
+    pending: true
+    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
+    toggle: "/wp-sitemap.xml and its sub-sitemaps answer 500 (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {check: seo/sitemap}
+    tools: []
+
+  - id: s29
+    name: A page now redirects to the home page
+    site: wp
+    path: /s29-redirect/
+    include: ["/s29-redirect*"]
+    module: health
+    toggle: "a redirect plugin's new rule sends the page to / with a 301 (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: changed, check: health/redirect, title: ends somewhere else}
+      - {check: seo/redirect}
+    tools: [lychee]
+
+  - id: s30
+    name: Stale cached page with an expired nonce
+    site: wp
+    path: /s30-stale/
+    include: ["/s30-stale*"]
+    module: cache
+    toggle: "the page cache serves a 36-hour-old copy with the old roasting day and an expired form nonce (wp/mu-plugins/testbed-cache.php)"
+    expect:
+      - {class: new, check: cache/stale}
+      - {class: new, check: cache/expired-nonce}
+    tools: []
+
+  - id: s31
+    name: Checkout breaks when placing an order
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: interact
+    levels: [inspect, click, submit]
+    toggle: "the payment step calls a renamed gateway class, so Place order is a fatal error (wp/plugins/testbed-shop)"
+    expect:
+      - {class: broke, check: interact/}
+    tools: []
+
+  - id: s32
+    name: A form gains a reCAPTCHA
+    site: wp
+    path: /s32-captcha/
+    include: ["/s32-captcha*"]
+    module: interact
+    levels: [inspect, click, submit]
+    pending: true
+    note: "Soundcheck should say it can't submit a form behind a CAPTCHA instead of calling the form broken; no detector for that is planned yet."
+    toggle: "a security plugin adds reCAPTCHA markup; without a solved challenge the form refuses (wp/plugins/testbed-forms)"
+    expect:
+      - {warning: captcha}
+    forbid:
+      - {class: broke, check: interact/}
+    tools: []
+
+  - id: s33
+    name: Form says sent, but no email goes out
+    site: wp
+    path: /s33-mail/
+    include: ["/s33-mail*"]
+    module: echo
+    levels: [inspect, click, submit]
+    echo: true
+    toggle: "an SMTP plugin update fails silently: the form still says sent, no email is sent (wp/plugins/testbed-forms)"
+    expect:
+      - {class: broke, check: echo/}
+      - {class: new, check: echo/no-message}
+    tools: []
+
+  - id: s34
+    name: Slower server response only (TTFB)
+    site: php
+    path: /ttfb.php
+    include: ["/ttfb.php*"]
+    module: speed
+    toggle: "a slow database query: the page waits 1.5 s before it answers; size and requests don't change (php/ttfb.php)"
+    expect:
+      - {class: slower, check: speed/ttfb}
+      - {class: slower, check: speed/}
+    tools: [unlighthouse]
+
+  - id: s35
+    name: A break inside content that loads late
+    site: php
+    path: /late.php
+    include: ["/late.php*"]
+    module: health
+    toggle: "the section a script loads 1.5 s after the page shows a photo that doesn't exist (php/late.php)"
+    expect:
+      - {class: new, check: health/broken-asset, title: team-photo-2.svg}
+    tools: [backstop, unlighthouse]
+
+  - id: s36
+    name: Firewall bot challenge (Cloudflare style)
+    site: php
+    path: /about.php
+    include: ["/about.php*"]
+    module: health
+    pending: true
+    note: "Needs health/blocked (checks lane)."
+    toggle: "the whole site answers 403 with cf-mitigated: challenge and \"Just a moment...\" (php/layout.php)"
+    expect:
+      - {class: broke, check: health/blocked, title: Cloudflare}
+    tools: []
+
+  - id: s37
+    name: Staging put behind basic auth (401)
+    site: php
+    path: /about.php
+    include: ["/about.php*"]
+    module: health
+    pending: true
+    note: "Needs health/auth-required (checks lane); today it shows as Page blocked (401)."
+    toggle: "the whole site answers 401 with WWW-Authenticate: Basic (php/layout.php)"
+    expect:
+      - {class: broke, check: health/auth-required, title: "Password required (401)"}
+    tools: [lychee]
+
+  # Soundcheck's own failure modes (qa.md findings 1 to 5 and more).
+
+  - id: s38
+    name: Ctrl+C during compare
+    site: php
+    path: /archive.php
+    include: ["/archive.php*"]
+    module: health
+    harness: interrupt
+    interrupt_after: 5s
+    pending: true
+    note: "Needs the results lane's interrupted marker (Comparison.Interrupted)."
+    toggle: "each archive page takes 3 s, so the interrupt lands mid-run (php/archive.php)"
+    expect:
+      - {interrupted: true}
+    forbid:
+      - {class: broke}
+      - {class: new}
+    tools: []
+
+  - id: s39
+    name: Two compares at once in one folder
+    site: php
+    path: /
+    include: ["/", "/about.php*", "/report.php*"]
+    module: health
+    harness: parallel
+    pending: true
+    note: "Needs unique run folders (results lane); today both runs share one folder."
+    toggle: "none: the site doesn't change; the benchmark starts two compares in one folder at the same time"
+    expect:
+      - {clean: true}
+    tools: []
+
+  - id: s40
+    name: Snapshot with its screenshots missing
+    site: php
+    path: /banner.php
+    include: ["/banner.php*"]
+    module: visual
+    harness: delete-shots
+    pending: true
+    note: "Needs the checks lane's missing-screenshot warning to reach the comparison."
+    toggle: "a large red banner appears; the benchmark deletes the snapshot's shots/ first (php/banner.php)"
+    expect:
+      - {warning: screenshots from the snapshot are missing}
+      - {class: changed, check: visual/}
+    tools: [backstop]
+
+  - id: s41
+    name: A page that answers just under the timeout
+    site: php
+    path: /slow.php
+    include: ["/slow.php*"]
+    module: speed
+    args: [--timeout, 6s]
+    pending: true
+    note: "Needs the engine lane's fix that treats a timed-out page read as a page error, not a blank page."
+    toggle: "the page waits 5 s before it answers; the run's timeout is 6 s (php/slow.php)"
+    expect:
+      - {class: slower, check: speed/}
+    forbid:
+      - {class: broke, check: health/white-screen}
+      - {class: new, check: health/no-title}
+    tools: []
+
+  - id: s42
+    name: Flaky server, one load in five answers 500
+    site: php
+    path: /flaky.php
+    include: ["/flaky.php*"]
+    module: health
+    pending: true
+    note: "Needs the UNSTABLE class and the re-visit of BROKE and NEW changes (results and engine lanes)."
+    toggle: "every fifth request to the payment pages answers 500 (php/flaky.php)"
+    expect:
+      - {class: unstable}
+    tools: []
+
+  - id: s43
+    name: Start page redirects to another host
+    site: php
+    path: /moved.php
+    include: ["/moved.php*"]
+    module: health
+    pending: true
+    note: "Needs the engine lane's cross-host check, which stops with exit 3 instead of checking the other host."
+    toggle: "the page answers 302 to the same path on another host name, localhost and 127.0.0.1 swapped (php/moved.php)"
+    expect:
+      - {exit: 3}
+    tools: []
+
+  - id: s44
+    name: Busy machine (every CPU loaded)
+    site: php
+    path: /
+    include: ["/", "/about.php*", "/report.php*"]
+    module: health
+    harness: stress
+    toggle: "none: the site doesn't change; the benchmark keeps every CPU busy while compare runs"
+    expect:
+      - {clean: true}
+    tools: []
+
+  - id: s45
+    name: A break on page 317 of a 320-page site
+    site: php
+    path: /catalog.php
+    include: ["/catalog.php*"]
+    module: health
+    limit: 330
+    per_group: -1
+    toggle: "item 317 prints a PHP warning (php/catalog.php)"
+    expect:
+      - {class: new, check: health/php-error, title: "PHP Warning: Undefined array key"}
+    tools: [backstop]
+
+  # The YAML rule example from product.md (F8).
+
+  - id: s46
+    name: "Elementor widget missing (YAML rule)"
+    site: wp
+    path: /s46-widgets/
+    include: ["/s46-widgets*"]
+    module: health
+    rules: [rules/elementor-missing-widget.yaml]
+    pending: true
+    note: "Needs YAML rules (checks lane); the rule comes from testbed/rules/."
+    toggle: "an Elementor add-on is deactivated, so its widget shows \"Widget ... not found\" (wp/mu-plugins/testbed-scenarios.php)"
+    expect:
+      - {class: new, check: health/elementor-missing-widget, title: Elementor widget missing}
+    tools: []

@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# The YAML rule example from the roadmap (product.md F8), used by testbed
+# scenario s46. The benchmark copies it into the run's .soundcheck/rules/.
+id: health/elementor-missing-widget
+match: text
+pattern: 'Widget .* not found'
+level: error
+title: Elementor widget missing
+fix: Reinstall or reactivate the Elementor add-on that provides this widget.

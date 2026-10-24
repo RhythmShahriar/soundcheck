@@ -154,7 +154,7 @@ func runScenario(ctx context.Context, dir string, m *Manifest, s Scenario, cfg c
 	}
 	cmp := compare.Compare(ctx, &check.CompareContext{Config: cfg, Before: before, After: after,
 		BeforeDir: snapDir, AfterDir: runDir}, modules, "testbed")
-	res := Evaluate(s, cmp)
+	res := Evaluate(s, Observed{Comparison: cmp})
 	if res.Outcome != Caught {
 		// What the broken run saw, to tell a testbed problem from a check's blind spot.
 		for _, p := range after.Pages {
@@ -328,5 +328,68 @@ func TestStateFromEnv(t *testing.T) {
 		if !strings.Contains(body, "Monthly report") {
 			t.Errorf("s03 %s: not the report page:\n%s", step.state, body)
 		}
+	}
+}
+
+// TestManifest checks scenarios.yaml without the testbed: every scenario
+// has a unique id toggle.sh accepts, a known site, a toggle and at least
+// one well-formed expectation (LoadManifest), and every scenario whose
+// broken state changes the site is implemented behind testbed_broken().
+func TestManifest(t *testing.T) {
+	dir, err := Testbed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest(filepath.Join(dir, "scenarios.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Scenarios) < 46 {
+		t.Errorf("%d scenarios, want at least 46", len(m.Scenarios))
+	}
+	if len(m.Control.Sites) == 0 || m.Control.Limit <= 0 {
+		t.Errorf("control pass not configured: %+v", m.Control)
+	}
+
+	var code strings.Builder
+	for _, sub := range []string{"wp", "php"} {
+		err := filepath.WalkDir(filepath.Join(dir, sub), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".php") && !strings.HasSuffix(path, ".js") {
+				return err
+			}
+			data, err := os.ReadFile(path) //nolint:gosec // the testbed's own files
+			code.Write(data)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, s := range m.Scenarios {
+		if s.ChangesSite() && !strings.Contains(code.String(), "testbed_broken( '"+s.ID+"' )") {
+			t.Errorf("%s: no testbed_broken( '%s' ) in testbed/wp or testbed/php", s.ID, s.ID)
+		}
+		if s.Pending && s.Note == "" {
+			t.Errorf("%s: pending without a note saying what it waits for", s.ID)
+		}
+		for _, r := range s.Rules {
+			if _, err := os.Stat(filepath.Join(dir, r)); err != nil {
+				t.Errorf("%s: rule file: %v", s.ID, err)
+			}
+		}
+	}
+	// toggle.sh knows every scenario.
+	state := t.TempDir()
+	t.Setenv("TESTBED_STATE", state)
+	if err := Toggle(dir, "all", "broken"); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range m.Scenarios {
+		if _, err := os.Stat(filepath.Join(state, s.ID)); err != nil {
+			t.Errorf("toggle.sh all broken didn't break %s", s.ID)
+		}
+	}
+	if err := Toggle(dir, "all", "good"); err != nil {
+		t.Fatal(err)
 	}
 }

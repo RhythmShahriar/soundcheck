@@ -1,8 +1,8 @@
 # Soundcheck testbed
 
-Twenty broken sites in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
+46 broken-site scenarios in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
 
-Each scenario breaks one thing the way a plugin update, a theme update, a PHP upgrade or a setting would. Every scenario has a **good** and a **broken** state. `toggle.sh` switches between them right away, without a rebuild or restart.
+Each scenario breaks one thing the way a plugin update, a theme update, a PHP upgrade, a host or a setting would, or puts Soundcheck itself in a hard spot (Ctrl+C, two runs at once, a busy machine). Every scenario has a **good** and a **broken** state. `toggle.sh` switches between them right away, without a rebuild or restart.
 
 ## Start
 
@@ -13,9 +13,10 @@ make -C testbed up      # about 30 s once the images are pulled
 | Site | URL | What it is |
 |---|---|---|
 | WordPress | http://localhost:18800/ | WordPress 6.8.3 on PHP 8.3 with MariaDB 11.4: a coffee roaster's site with pages, posts, a menu, a contact form, a shop and a cart. Each WordPress scenario has its own page (`/s01-fatal/`, `/s02-warning/`…), and `/scenarios/` lists them. |
-| Plain PHP | http://localhost:18810/ | "Ledger", three pages of plain PHP 8.3 (no framework), for scenario s03 |
+| Plain PHP | http://localhost:18810/ | "Ledger", a few pages of plain PHP 8.3 (no framework), for s03 and s34 to s45 |
+| Plain PHP, https | https://localhost:18811/ | the same site over https with a self-signed certificate made at start (use `-k`), for s25 |
 
-Every `make up` installs and seeds a fresh site. The database lives in tmpfs and `make down` deletes the WordPress volume, so every run starts from the same state. Ports are bound to 127.0.0.1. Set `TESTBED_WP_PORT` / `TESTBED_PHP_PORT` to move them. If you do, pass `-wp`/`-php` to the benchmark too.
+Every `make up` installs and seeds a fresh site. The database lives in tmpfs and `make down` deletes the WordPress volume, so every run starts from the same state. Ports are bound to 127.0.0.1. Set `TESTBED_WP_PORT` / `TESTBED_PHP_PORT` / `TESTBED_PHP_HTTPS_PORT` to move them. If you do, pass `-wp`/`-php`/`-php-https` to the benchmark too.
 
 Accounts (local test accounts only):
 
@@ -86,8 +87,40 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s18 | `/cart/` | the page cache caches the cart (`X-Cache: HIT`, public) | cache: private page cached |
 | s19 | `/s19-account/` | the page cache stores pages rendered for logged-in users and serves them, with the admin bar and the user's name, to visitors | cache: leak (needs login) |
 | s20 | `/s20-heavy/` | a "slider" plugin adds a 2 MB image and a render-blocking script that takes 1.5 s | SLOWER speed |
+| s21 | `/s21-maintenance/` | maintenance mode left on: every request gets WordPress's 503 "Briefly unavailable" screen | BROKE health |
+| s22 | `/s22-database/` | "Error establishing a database connection" on every page | BROKE health |
+| s23 | `/s23-fatal/` | every front-end page runs out of memory, so WordPress shows its critical error screen site-wide | BROKE health |
+| s24 | `/s24-styles/` | theme 2.0 enqueues a stylesheet that wasn't deployed, so the site renders unstyled | NEW health (broken stylesheet) / CHANGED visual |
+| s25 | `:18811/mixed.php` | over https, the logo still loads from the old http:// URL | NEW health (mixed content) |
+| s26 | `/s26-robots/` | robots.txt says `Disallow: /` | BROKE seo (pending) |
+| s27 | `/s27-seo/` | canonical, hreflang, Open Graph and JSON-LD are gone | seo (pending) |
+| s28 | `/s28-sitemap/` | `/wp-sitemap.xml` answers 500 | seo (pending) |
+| s29 | `/s29-redirect/` | a new redirect rule sends the page to the home page | CHANGED health (redirect) |
+| s30 | `/s30-stale/` | the page cache serves a 36-hour-old copy with old content and an expired nonce | NEW cache (stale, expired nonce) |
+| s31 | `/checkout/` | Place order hits a fatal error in the payment step | BROKE interact (submit level) |
+| s32 | `/s32-captcha/` | the form gains a reCAPTCHA that automated submits can't pass | a "can't submit" warning, not BROKE (pending) |
+| s33 | `/s33-mail/` | the form still says sent, but no email goes out | BROKE echo (needs Echo) |
+| s34 | `:18810/ttfb.php` | the server waits 1.5 s before answering; nothing else changes | SLOWER speed (TTFB) |
+| s35 | `:18810/late.php` | the section a script loads 1.5 s after load shows a missing photo | NEW health (broken image) |
+| s36 | `:18810/about.php` | the whole site answers with a Cloudflare-style bot challenge (403) | BROKE health/blocked (pending) |
+| s37 | `:18810/about.php` | the whole site asks for basic auth (401) | BROKE health/auth-required (pending) |
+| s38 | `:18810/archive.php` | each page takes 3 s; the benchmark presses Ctrl+C during compare | marked interrupted, no false BROKE (pending) |
+| s39 | `:18810/` | nothing; the benchmark runs two compares in one folder at once | both clean, separate folders (pending) |
+| s40 | `:18810/banner.php` | a red banner appears; the benchmark deletes the snapshot's screenshots | a "screenshots missing" warning (pending) |
+| s41 | `:18810/slow.php` | the page answers after 5 s with a 6 s timeout | SLOWER speed, no white screen (pending) |
+| s42 | `:18810/flaky.php` | one request in five answers 500 | UNSTABLE (pending) |
+| s43 | `:18810/moved.php` | the page redirects to another host name | exit 3 (pending) |
+| s44 | `:18810/` | nothing; the benchmark keeps every CPU busy during compare | nothing at or above NEW |
+| s45 | `:18810/catalog.php` | page 317 of 320 prints a PHP warning | NEW health |
+| s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | NEW health (pending) |
 
-Site-wide breakage (s02, s06, s12, s14, s16, s17, s20) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
+Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
+
+**Pending** scenarios expect a detector or fix that another part of the roadmap is building (the seo module, `health/blocked`, the interrupted marker, unique run folders, the UNSTABLE class, YAML rules). They run like the others, and the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
+
+### Mail through Echo (s33)
+
+s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers, start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up`, and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run".
 
 ### Page cache
 
@@ -115,10 +148,12 @@ make -C testbed down
 For each scenario, the harness in [`bench/`](bench/) does the following:
 
 1. sets the good state
-2. runs `rhythm-soundcheck snapshot <url> --name good --json -o good.json` in `testbed/bench/work/<id>/`, limited to the scenario's pages by a `.soundcheck/config.yaml` it writes (`--config`), with `--level` when the scenario needs it
+2. runs `rhythm-soundcheck snapshot <url> --name good --json -o good.json` in `testbed/bench/work/<id>/`, limited to the scenario's pages by a `.soundcheck/config.yaml` it writes (`--config`), with the scenario's `args`, `--level` and `--modules` when it has them
 3. breaks the scenario
-4. runs `rhythm-soundcheck compare --against-snapshot good --json -o compare.json`
-5. passes when the comparison has a change matching one of the scenario's `expect` entries
+4. runs `rhythm-soundcheck compare --against-snapshot good --json -o compare.json`, the way the scenario's `harness` says: Ctrl+C after `interrupt_after` (`interrupt`), two compares at once (`parallel`), after deleting the snapshot's screenshots (`delete-shots`) or with every CPU busy (`stress`)
+5. passes when the result matches one of the scenario's `expect` entries (a change, a warning, the interrupted marker, nothing at or above NEW, or an exit code) and has none of its `forbid` changes
+
+Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm, and the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given.
 
 Scenarios with `login: true` get `SOUNDCHECK_USER=soundcheck` and `SOUNDCHECK_PASSWORD=soundcheck-testbed` unless you set them yourself.
 
@@ -139,7 +174,9 @@ Flags:
 | `-tools` | `auto` | `auto`, `none`, `all`, or a list |
 | `-out` | `docs/benchmark.md` | the scoreboard |
 | `-work` | `testbed/bench/work` | runs and `results.json` |
-| `-wp`, `-php` | from `scenarios.yaml` | site URLs |
+| `-wp`, `-php`, `-php-https` | from `scenarios.yaml` | site URLs |
+| `-control` | `10` | control pass rounds; `0` skips it (and so does `-only`, unless `-control` is set) |
+| `-echo` | none | Echo's URL, for the scenarios that need it (s33) |
 | `-timeout` | `5m` | per command |
 
 The bench package has the `testbed` build tag, so a plain `go test ./...` never needs Docker. With the testbed up, its tests check the sites themselves with the packages directly (health module, runner and compare):
@@ -151,11 +188,12 @@ go test -tags testbed -v ./testbed/bench/
 - `TestHealthScenarios`: snapshot, break and compare for the health scenarios (s01–s10, s16, s17, plus s15 through health's "not responsive" check). It prints the score.
 - `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
+- `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
 - `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder, and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario
 
 1. Add a page in `wp/seed.sh`, or a file in `php/`.
-2. Implement the broken state behind `testbed_broken('sNN')`, next to the code it breaks (theme, plugin or `wp/mu-plugins/testbed-scenarios.php`).
-3. Add it to `scenarios.yaml` with a precise `expect`.
+2. Implement the broken state behind `testbed_broken( 'sNN' )`, next to the code it breaks (theme, plugin or `wp/mu-plugins/testbed-scenarios.php`). `TestManifest` checks that every scenario that changes the site has one.
+3. Add it to `scenarios.yaml` with a precise `expect` (and `forbid` for the false alarm it must not cause). Mark it `pending: true` with a `note` when its detector isn't merged yet.
 4. Check both states with curl or the tests, and make sure the good state stays clean (`TestGoodStateIsClean`).
