@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed Widgets
  * Description: Front-end widgets that load data in the browser: a store locator (s05), a stock checker over admin-ajax (s07) and reviews over the REST API (s08).

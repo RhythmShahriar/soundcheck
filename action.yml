@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Soundcheck as a GitHub Action. See the wiki page Soundcheck-CI for
 # examples: https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI
 name: Rhythm Soundcheck

@@ -1,13 +1,24 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 version: "2"
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
+    - goheader
     - bodyclose
     - errorlint
     - gosec
     - misspell
     - unconvert
   settings:
+    goheader:
+      values:
+        regexp:
+          YEARS: '20\d\d(-20\d\d)?'
+      template: |-
+        Copyright (c) {{ YEARS }} Rhythm Shahriar <me@rhy.io>
+        SPDX-License-Identifier: MIT
     errcheck:
       exclude-functions: # terminal output; nothing useful to do if stdout is gone
         - fmt.Fprint

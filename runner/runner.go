@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package runner checks a whole site: it finds the pages, visits each in
 // a pool of browser tabs at a polite pace, runs every module's hooks, and
 // returns the recorded run.

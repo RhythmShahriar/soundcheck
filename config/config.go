@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package config loads Soundcheck's optional project settings from
 // .soundcheck/config.yaml. Everything has a sensible default, so most
 // sites need no config at all.

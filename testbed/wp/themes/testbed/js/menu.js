@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Opens and closes the Browse panel from the header button.
 (function () {
 	var button = document.querySelector('.menu-toggle');

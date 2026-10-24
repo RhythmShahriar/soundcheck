@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package capture visits one page in a browser tab and records what a
 // careful tester would notice: the response and redirects, console
 // errors, failed requests, every resource, lab speed metrics, the links

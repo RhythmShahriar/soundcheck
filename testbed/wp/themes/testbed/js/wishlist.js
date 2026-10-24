@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // "Add to wishlist" buttons: remember the product and confirm.
 (function () {
 	document.querySelectorAll('.tb-wishlist').forEach(function (button) {

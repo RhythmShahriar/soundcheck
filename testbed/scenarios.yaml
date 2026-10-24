@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Soundcheck testbed scenarios: the benchmark's manifest.
 #
 # Each scenario breaks one thing on the testbed sites. Switch it with

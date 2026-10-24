@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed Heavy Slider
  * Description: Scenario s20: "installing" a slider plugin that adds a 2 MB uncompressed image to the top of every page and a render-blocking script that answers slowly and then busies the main thread. In the good state the plugin does nothing, as if it weren't installed.

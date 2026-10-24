@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 require __DIR__ . '/layout.php';
 page_start( 'About' );
 ?>

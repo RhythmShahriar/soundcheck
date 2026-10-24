@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package cache checks that a site's page cache works and is safe: which
 // layer serves pages (Cloudflare, Varnish, nginx, LiteSpeed, a WordPress
 // plugin…) and how often, that private pages (cart, checkout, account,

@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 require __DIR__ . '/layout.php';
 
 // Scenario s03, "after a PHP upgrade". The good state is the code as it

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package store keeps Soundcheck's files in the project's .soundcheck/
 // folder: named snapshots, recent runs and comparisons, each a directory
 // with run.json (or comparison.json) and its screenshots.

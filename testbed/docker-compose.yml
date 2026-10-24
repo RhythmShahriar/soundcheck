@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Soundcheck "broken sites" testbed: one WordPress site that hosts the
 # WordPress scenarios as separate pages, and a plain-PHP site. Each
 # scenario is broken while testbed/state/<id> exists (see toggle.sh), so

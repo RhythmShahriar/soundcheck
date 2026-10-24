@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // A render-blocking slider script: the server takes 1.5 s to answer, then
 // the script keeps the main thread busy for 400 ms.
 usleep( 1500000 );

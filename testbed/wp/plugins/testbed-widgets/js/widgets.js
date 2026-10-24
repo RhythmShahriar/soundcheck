@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Stock checker (admin-ajax) and reviews (REST API) widgets.
 (function () {
 	document.querySelectorAll('.tb-stock').forEach(function (el) {

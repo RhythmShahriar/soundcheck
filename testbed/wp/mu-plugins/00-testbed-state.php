@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed state
  * Description: Tells the testbed's theme and plugins which scenarios are broken. A scenario is broken while wp-content/testbed-state/<id> exists; testbed/toggle.sh creates and removes those files.

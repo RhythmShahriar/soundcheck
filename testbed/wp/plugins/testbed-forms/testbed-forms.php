@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed Forms
  * Description: A contact form, [testbed_contact_form]. It posts to the page it's on, checks the fields and the nonce, and shows a success or error message after redirecting back. Nothing is emailed: a good submission is only counted. Scenario s11 broken: the mail step fails, so every valid message gets "could not be sent".

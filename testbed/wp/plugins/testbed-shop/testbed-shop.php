@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed Shop
  * Description: A stand-in for WooCommerce: [testbed_products] lists products with add-to-cart links, [testbed_cart] shows the cart kept in a cookie. The cart is private, so the page cache must bypass it (scenario s18 breaks that in the testbed-cache mu-plugin).

@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed Pricing Tables
  * Description: The [testbed_pricing] shortcode. Scenario s01 broken: version 2.0 calls a renderer it no longer defines, a PHP fatal error on the one page that uses the shortcode.

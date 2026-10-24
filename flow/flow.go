@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package flow runs scripted journeys through a site, written as small
 // YAML files: open a page, click, fill fields, submit, wait and check
 // what the visitor should see. Soundcheck uses flows for interaction

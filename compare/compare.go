@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package compare turns two runs into a ranked list of what changed: new
 // errors are BROKE, other new problems NEW, problems that went away
 // FIXED, plus whatever the modules' comparers report (visual changes,

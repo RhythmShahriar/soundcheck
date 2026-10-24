@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // A 1000×700 PNG of random pixels, stored uncompressed: about 2 MB that no
 // encoder can shrink, like an unoptimized photo. Generated once per
 // container and kept in /tmp, so the repository stays free of binaries.

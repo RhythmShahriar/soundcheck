@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Switches testbed scenarios between their good and broken state.
 #
 #   ./toggle.sh <id|all> good|broken    e.g. ./toggle.sh s05 broken, ./toggle.sh 5 good

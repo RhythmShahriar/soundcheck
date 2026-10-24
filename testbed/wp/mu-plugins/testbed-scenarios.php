@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Testbed scenarios
  * Description: The broken states that would come from a setting, a host change or a bad deploy rather than from one plugin. Each block names its scenario; theme and plugin scenarios live next to the code they break.

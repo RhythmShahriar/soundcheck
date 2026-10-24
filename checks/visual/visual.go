@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package visual compares screenshots of each page before and after a
 // change. A pure-Go pixel diff (pixelmatch's YIQ distance and
 // anti-aliasing test) finds what changed; ignore selectors and regions

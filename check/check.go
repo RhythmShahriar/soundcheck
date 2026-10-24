@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package check defines how Soundcheck's modules plug into a run. A
 // module implements any of the hook interfaces below; the runner calls
 // each hook at its point in a page visit or at the end of the run.

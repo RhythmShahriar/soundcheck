@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package lighthouse hands a site to Unlighthouse (Lighthouse run on
 // every page) for people who want Google's full audit next to
 // Soundcheck's change report. It runs through npx, so it needs Node.js;

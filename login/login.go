@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package login signs the test account in to the site in a private
 // browser session: through WordPress's own login form, or through a YAML
 // login flow for other sites. Credentials come only from the

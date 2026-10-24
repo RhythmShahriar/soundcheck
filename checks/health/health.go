@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package health checks that every page loads and renders without errors:
 // HTTP status, redirects, PHP errors printed into the page, the WordPress
 // "critical error" screen, white screens, framework error pages, JS

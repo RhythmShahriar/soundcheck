@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package browser runs headless Chrome for Soundcheck. It uses the Chrome
 // or Chromium already installed when there is one, and otherwise
 // downloads a pinned Chromium into Rhythm's cache on first use.

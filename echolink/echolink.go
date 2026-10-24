@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package echolink ties a Soundcheck run to Echo (`rhythm echo up`), which
 // captures every email, SMS and webhook a site sends. While Soundcheck
 // submits a form or plays a flow, the requests it makes to the site carry

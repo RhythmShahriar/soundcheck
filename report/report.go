@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package report renders Soundcheck results: the live terminal view,
 // plain text for logs and screen readers, JSON, Markdown, JUnit XML and a
 // standalone HTML report with before/after sliders.

@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Shared page frame for the plain-PHP site (no framework, no WordPress).
 function page_start( string $title ): void {
 	?><!doctype html>

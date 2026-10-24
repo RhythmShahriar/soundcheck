@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package model holds what Soundcheck records about a site: one Run per
 // check of the site, a Page per visited URL, and the Issues the checks
 // find. Runs are stored as JSON (schema rhythm-soundcheck/v1) so a later

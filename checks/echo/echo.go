@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package echo is the echo module: with Echo running (--echo), every
 // successful form submit and every flow records the emails, SMS and
 // webhooks it made the site send (see checks/interact and echolink). This

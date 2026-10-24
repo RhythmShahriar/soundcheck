@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Store locator: lists the shops in #store-locator.
 (function () {
 	var el = document.getElementById('store-locator');

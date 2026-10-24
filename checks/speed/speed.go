@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Package speed measures how fast pages load and finds what slows them
 // down. Each page gets lab Core Web Vitals checks (LCP, CLS, TBT) plus
 // TTFB, weight and request count; a comparison reports pages that got

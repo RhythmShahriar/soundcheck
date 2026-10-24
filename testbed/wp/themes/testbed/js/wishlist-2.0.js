@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 // Wishlist 2.0 moved storage into a WishlistStore helper that this
 // release forgot to ship, so every click throws (scenario s13).
 (function () {

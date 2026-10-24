@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Seeds the testbed WordPress site: install, theme, plugins, users, pages
 # for every scenario, a few posts and the menu. Run by `make up` through
 # `docker compose run --rm cli`; does nothing if the site is installed.
