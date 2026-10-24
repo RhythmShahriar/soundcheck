@@ -464,7 +464,13 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 	for _, id := range r.order {
 		q := r.reqs[id]
 		if id == r.doc {
-			p.Status, p.Headers = q.status, q.headers
+			p.Status = q.status
+			if q.headers != nil {
+				p.Headers = map[string]string{}
+				for k, v := range q.headers {
+					p.Headers[k] = storedHeader(k, v)
+				}
+			}
 			if xr := q.headers["x-robots-tag"]; xr != "" {
 				p.Robots = strings.Trim(p.Robots+", "+xr, ", ")
 			}
