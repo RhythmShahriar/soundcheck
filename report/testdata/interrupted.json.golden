@@ -15,6 +15,7 @@
     "started": "2026-10-23T09:00:00Z"
   },
   "changes": [],
+  "ignored": [],
   "pages": 1,
   "warnings": [
     "interrupted: 2 pages were not checked"

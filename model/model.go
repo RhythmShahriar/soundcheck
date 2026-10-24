@@ -341,17 +341,23 @@ type Change struct {
 	After  string            `json:"after,omitempty"`
 	Score  float64           `json:"score,omitempty"` // ranking within the class: % changed, % slower
 	Files  map[string]string `json:"files,omitempty"` // e.g. before/after/diff images, relative to the comparison
+	// Reason says why an ignored change was ignored: the reason its
+	// ignore rule gives. Changes that count leave it empty.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Comparison is the result of `compare`: what changed between two runs.
 type Comparison struct {
-	Schema   string    `json:"schema"`
-	Kind     string    `json:"kind"` // always KindComparison; see Complete
-	Tool     string    `json:"tool"`
-	Version  string    `json:"version"`
-	Before   RunRef    `json:"before"`
-	After    RunRef    `json:"after"`
-	Changes  []Change  `json:"changes"`
+	Schema  string   `json:"schema"`
+	Kind    string   `json:"kind"` // always KindComparison; see Complete
+	Tool    string   `json:"tool"`
+	Version string   `json:"version"`
+	Before  RunRef   `json:"before"`
+	After   RunRef   `json:"after"`
+	Changes []Change `json:"changes"`
+	// Ignored holds the changes ignore rules matched. They're kept so a
+	// report can say what was left out, and never pass or fail a build.
+	Ignored  []Change  `json:"ignored"`
 	Pages    int       `json:"pages"`
 	Warnings []string  `json:"warnings"`
 	Summary  Summary   `json:"summary"`

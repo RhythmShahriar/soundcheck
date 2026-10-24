@@ -4,7 +4,7 @@
   "title": "Soundcheck comparison",
   "description": "What changed between a snapshot and the current run: compare --json, comparison.json and report --json on a comparison. Fields are only added within rhythm-soundcheck/v1.",
   "type": "object",
-  "required": ["schema", "kind", "tool", "version", "before", "after", "changes", "pages", "warnings", "summary", "created"],
+  "required": ["schema", "kind", "tool", "version", "before", "after", "changes", "ignored", "pages", "warnings", "summary", "created"],
   "properties": {
     "schema": {"const": "rhythm-soundcheck/v1"},
     "kind": {"const": "comparison"},
@@ -15,6 +15,11 @@
     "changes": {
       "type": "array",
       "description": "Most urgent first: by class, then score. Empty when nothing changed.",
+      "items": {"$ref": "#/$defs/change"}
+    },
+    "ignored": {
+      "type": "array",
+      "description": "Changes that ignore rules matched, each with the rule's reason. They never pass or fail a build. Empty when none.",
       "items": {"$ref": "#/$defs/change"}
     },
     "pages": {"type": "integer", "minimum": 0, "description": "Pages compared."},
@@ -49,7 +54,8 @@
         "before": {"type": "string"},
         "after": {"type": "string"},
         "score": {"type": "number", "description": "Ranks changes within a class: percent changed or slower, or the page count."},
-        "files": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Images such as before, after and diff, relative to the comparison's folder."}
+        "files": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Images such as before, after and diff, relative to the comparison's folder."},
+        "reason": {"type": "string", "description": "Why an ignored change was ignored: its rule's reason."}
       }
     },
     "summary": {

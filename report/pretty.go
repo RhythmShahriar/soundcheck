@@ -498,6 +498,9 @@ func (r Result) stats() string {
 	if canceled > 0 {
 		parts = append(parts, fmt.Sprintf("%d not checked (interrupted)", canceled))
 	}
+	if r.Compared() && len(r.Comparison.Ignored) > 0 {
+		parts = append(parts, plural(len(r.Comparison.Ignored), "change ignored", "changes ignored"))
+	}
 	if r.Run.Options.Echo {
 		parts = append(parts, echoSummary(r.Run))
 	}

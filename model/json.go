@@ -74,7 +74,7 @@ type Group struct {
 // for the caller, which knows the threshold.
 func (c *Comparison) Summarize() Summary {
 	s := Summary{Broke: c.Count(Broke), New: c.Count(New), Changed: c.Count(Changed), Slower: c.Count(Slower),
-		Fixed: c.Count(Fixed), Unstable: c.Count(Unstable)}
+		Fixed: c.Count(Fixed), Unstable: c.Count(Unstable), Ignored: len(c.Ignored)}
 	switch {
 	case c.Interrupted:
 		s.Verdict = VerdictInterrupted
@@ -99,15 +99,20 @@ func (c *Comparison) Complete() {
 	if c.Changes == nil {
 		c.Changes = []Change{}
 	}
+	if c.Ignored == nil {
+		c.Ignored = []Change{}
+	}
 	if c.Warnings == nil {
 		c.Warnings = []string{}
 	}
-	for i := range c.Changes {
-		if c.Changes[i].Pages == nil {
-			c.Changes[i].Pages = []string{}
+	for _, cs := range [][]Change{c.Changes, c.Ignored} {
+		for i := range cs {
+			if cs[i].Pages == nil {
+				cs[i].Pages = []string{}
+			}
 		}
 	}
-	identify(c.Changes)
+	identify(c.Changes, c.Ignored)
 	failed := c.Summary.Failed
 	c.Summary = c.Summarize()
 	c.Summary.Failed = failed
@@ -141,31 +146,36 @@ func shortHash(parts ...string) string {
 	return hex.EncodeToString(sum[:4])
 }
 
-// identify gives every change without an ID one that is unique in cs.
-// Two changes that ChangeID can't tell apart (the same title on the same
+// identify gives every change without an ID one that is unique across
+// all the lists (a comparison's changes and its ignored ones). Two
+// changes that ChangeID can't tell apart (the same title on the same
 // page with other values) are told apart by class, before and after,
 // then by their order, which Sort makes deterministic.
-func identify(cs []Change) {
+func identify(lists ...[]Change) {
 	seen := map[string]bool{}
-	for _, c := range cs {
-		if c.ID != "" {
-			seen[c.ID] = true
+	for _, cs := range lists {
+		for _, c := range cs {
+			if c.ID != "" {
+				seen[c.ID] = true
+			}
 		}
 	}
-	for i := range cs {
-		c := &cs[i]
-		if c.ID != "" {
-			continue
+	for _, cs := range lists {
+		for i := range cs {
+			c := &cs[i]
+			if c.ID != "" {
+				continue
+			}
+			id := ChangeID(*c)
+			if seen[id] {
+				id = shortHash(id, c.Class, c.Before, c.After)
+			}
+			for n := 2; seen[id]; n++ {
+				id = shortHash(ChangeID(*c), fmt.Sprint(n))
+			}
+			c.ID = id
+			seen[id] = true
 		}
-		id := ChangeID(*c)
-		if seen[id] {
-			id = shortHash(id, c.Class, c.Before, c.After)
-		}
-		for n := 2; seen[id]; n++ {
-			id = shortHash(ChangeID(*c), fmt.Sprint(n))
-		}
-		c.ID = id
-		seen[id] = true
 	}
 }
 
