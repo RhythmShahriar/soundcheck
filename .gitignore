@@ -7,3 +7,8 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Local environment files: never commit secrets
+.env
+.env.*
+!.env.example
