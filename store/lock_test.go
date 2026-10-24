@@ -177,6 +177,7 @@ func TestLockBreaksStaleLocks(t *testing.T) {
 	}{
 		"dead pid":         {deadPID(t), time.Now()},
 		"live but too old": {os.Getppid(), time.Now().Add(-2 * time.Hour)},
+		"this pid":         {os.Getpid(), time.Now()}, // a crashed run with our PID
 	} {
 		ownerFile(t, path, at.pid, at.at)
 		if err := s.SetLatest("good"); err != nil {

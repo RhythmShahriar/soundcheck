@@ -225,6 +225,28 @@ func TestResumableClaimsAStoppedSnapshot(t *testing.T) {
 	}
 }
 
+func TestResumableClaimsACrashedRunWithThisPID(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	dir := filepath.Join(s.Root, Incoming, "big")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	// In a container every run may be PID 1, so a crashed one's owner
+	// file can name this process.
+	ownerFile(t, filepath.Join(dir, owner), os.Getpid(), time.Now())
+	if err := os.WriteFile(filepath.Join(dir, PagesFile), []byte(`{"path":"/"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, pages, err := s.Resumable("big")
+	if err != nil || got != dir || len(pages) != 1 {
+		t.Fatalf("Resumable = %q with %d pages, %v", got, len(pages), err)
+	}
+	// Claimed now: a second look must leave it to this process.
+	if again, _, err := s.Resumable("big"); err != nil || again != "" {
+		t.Errorf("claimed twice: %q %v", again, err)
+	}
+}
+
 func TestCleanIncomingKeepsResumableSnapshotsForADay(t *testing.T) {
 	s := Store{Root: t.TempDir()}
 	in := filepath.Join(s.Root, Incoming)

@@ -65,8 +65,11 @@ func (s Store) lock() (func(), error) {
 			lockMu.Unlock()
 			return nil, err
 		}
+		// lockMu is held, so no goroutine of this process holds the lock:
+		// a file naming this PID was left by a crashed process that had
+		// the same PID (PID 1 in a container, for one).
 		pid, alive := holder(path, staleLock)
-		if !alive {
+		if !alive || pid == os.Getpid() {
 			// Two processes may both find the same stale lock; the
 			// window is a few microseconds after a crash, so it's
 			// accepted rather than solved with a second lock.
@@ -81,8 +84,14 @@ func (s Store) lock() (func(), error) {
 	}
 }
 
+// claimed holds the folders this process wrote an owner file into (see
+// writeOwner), so an owner file naming this PID can be told apart from
+// one a crashed process with the same PID left behind.
+var claimed sync.Map
+
 // writeOwner records this process as the owner in path.
 func writeOwner(path string) error {
+	claimed.Store(folderKey(filepath.Dir(path)), struct{}{})
 	return os.WriteFile(path, fmt.Appendf(nil, "%d\n%s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339)), 0o600)
 }
 
@@ -145,13 +154,28 @@ func (s Store) cleanIncoming() {
 	}
 }
 
-// held reports whether a folder NewDir made may still be in use.
+// held reports whether a folder NewDir made may still be in use. An
+// owner file naming this PID counts only for folders this process
+// claimed: the others were left by a crashed process that had the same
+// PID, which is common in containers where every run is PID 1.
 func held(dir string) bool {
 	path := filepath.Join(dir, owner)
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		info, err := os.Stat(dir)
 		return err != nil || time.Since(info.ModTime()) < staleOwner
 	}
-	_, alive := holder(path, staleOwner)
+	pid, alive := holder(path, staleOwner)
+	if alive && pid == os.Getpid() {
+		_, ours := claimed.Load(folderKey(dir))
+		return ours
+	}
 	return alive
+}
+
+// folderKey names dir the same way however it was spelled.
+func folderKey(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return filepath.Clean(dir)
 }

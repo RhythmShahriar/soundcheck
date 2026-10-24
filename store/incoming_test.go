@@ -24,7 +24,7 @@ func TestNewDirRemovesStaleIncomingFolders(t *testing.T) {
 		"two-days-old":    {os.Getppid(), old, false}, // live PID, but long ago
 		"crashed":         {deadPID(t), time.Now(), false},
 		"running":         {os.Getppid(), time.Now(), true}, // another live process
-		"this-process":    {os.Getpid(), time.Now(), true},  // a parallel snapshot of ours
+		"same-pid":        {os.Getpid(), time.Now(), false}, // a crashed run with our PID
 		"legacy-old":      {0, old, false},
 		"legacy-or-fresh": {0, time.Now(), true},
 	}
@@ -40,9 +40,16 @@ func TestNewDirRemovesStaleIncomingFolders(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	ours, err := s.NewDir(Incoming, "ours") // a parallel snapshot of this process
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir, err := s.NewDir(Incoming, "new")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(ours); err != nil {
+		t.Error("NewDir removed a folder this process is writing")
 	}
 	for name, f := range folders {
 		_, err := os.Stat(filepath.Join(in, name))
