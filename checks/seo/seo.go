@@ -40,6 +40,7 @@ import (
 // Module is the SEO module.
 type Module struct{}
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "seo" }
 
 // Facts are what one page tells search engines.

@@ -81,11 +81,8 @@ func (m *Module) Compare(ctx context.Context, cmp *check.CompareContext) []model
 
 // ComparePages is Compare a pair of pages at a time, for runs too big to
 // hold (check.PageComparer).
-func (*Module) ComparePages(_ context.Context, cmp *check.CompareContext) check.PairSink {
-	bar := cmp.Config.Speed.Slower
-	if bar <= 0 {
-		bar = 25
-	}
+func (m *Module) ComparePages(context.Context, *check.CompareContext) check.PairSink {
+	bar := m.slower()
 	return &pairSink{bar: bar, slower: make([][]hit, len(metrics)), faster: make([][]hit, len(metrics)), n: make([]int, len(metrics)),
 		before: map[string]*cost{}, after: map[string]*cost{}}
 }

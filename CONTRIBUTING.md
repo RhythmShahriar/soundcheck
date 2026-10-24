@@ -35,8 +35,15 @@ Optional interfaces tune how the runner treats the module:
   (`NeedsSecondShot`). Without it no screenshots are taken for the module.
 - `NeedsText` keeps `Page.Text` after the page's `PageChecker`s ran, for a module that reads it in
   `CheckSite`.
-- `Configurable` is meant to decode a module's own block of `config.yaml`. The config doesn't
-  hand blocks to modules yet, so a module's settings still go in `config.Config`.
+- `Configurable` decodes the module's own block of `config.yaml`, the top-level key named after
+  the module (`speed:` for speed). Registering the module lets the file have that key; the CLI
+  hands each module its block before anything runs, so a bad value stops the command (exit 2).
+  Decode it with `config.DecodeBlock`, which rejects unknown keys and wrong types with the file's
+  line, as the rest of the config does.
+- `PageComparer` is a `Comparer` that also compares two runs a pair of pages at a time, so a big
+  site's snapshot is never read whole. Every built-in comparer is one; a module that isn't makes
+  `compare` read both runs into memory. It must give the changes `Compare` gives (a test in
+  `compare` holds the built-in ones to that).
 - `IssueOwner` is a `Comparer` that reports every change in its own issues itself.
 - `NeedsChrome` marks a module whose `TabPreparer` or `TabLive` hooks use `Tab.Rod()`. See
   [Browser engines](#browser-engines).

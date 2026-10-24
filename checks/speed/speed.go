@@ -16,11 +16,14 @@ package speed
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/go-rod/rod/lib/proto"
+	"gopkg.in/yaml.v3"
 
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -28,14 +31,52 @@ import (
 // and DOM facts gathered while pages are open), so use one *Module per
 // process: New, or &speed.Module{}.
 type Module struct {
-	mu    sync.Mutex
-	tabs  map[proto.TargetTargetID]*tracker
-	facts map[*model.Run]map[string]*facts // by page path
+	mu       sync.Mutex
+	tabs     map[proto.TargetTargetID]*tracker
+	facts    map[*model.Run]map[string]*facts // by page path
+	settings Settings
 }
 
-// New returns a speed module.
-func New() *Module { return &Module{} }
+// Settings are the speed: block of the config file (see Configure).
+type Settings struct {
+	// Slower is how many percent slower a page must get to be reported
+	// SLOWER (and faster to be FIXED).
+	Slower float64 `yaml:"slower"`
+}
 
+// DefaultSettings are the settings without a speed: block.
+var DefaultSettings = Settings{Slower: 25}
+
+// New returns a speed module with the default settings.
+func New() *Module { return &Module{settings: DefaultSettings} }
+
+// Configure reads the speed: block of the config file
+// (check.Configurable).
+func (m *Module) Configure(node yaml.Node) error {
+	s := DefaultSettings
+	if err := config.DecodeBlock("speed", node, &s); err != nil {
+		return err
+	}
+	if math.IsNaN(s.Slower) || s.Slower < 1 || s.Slower > 1000 {
+		return &config.SettingError{Key: "speed.slower", Line: config.KeyLine(node, "slower"), Msg: "must be a percentage between 1 and 1000"}
+	}
+	m.mu.Lock()
+	m.settings = s
+	m.mu.Unlock()
+	return nil
+}
+
+// slower is the Slower setting in use.
+func (m *Module) slower() float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.settings.Slower <= 0 { // a Module{} that New didn't make
+		return DefaultSettings.Slower
+	}
+	return m.settings.Slower
+}
+
+// Name is the module's name in --modules and the config file.
 func (*Module) Name() string { return "speed" }
 
 // Thresholds for page issues. LCP, CLS and TBT use Google's Core Web

@@ -59,6 +59,7 @@ const timeout = 45 * time.Second
 // Module is the accessibility module.
 type Module struct{}
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "a11y" }
 
 // result is what runJS sends back: axe's violations, trimmed to what the

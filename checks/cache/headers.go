@@ -15,6 +15,7 @@ import (
 // Status is what a cache did with one response.
 type Status string
 
+// The statuses a cache can report.
 const (
 	Hit     Status = "hit"     // served from a cache
 	Miss    Status = "miss"    // cacheable, but fetched from the origin this time

@@ -24,6 +24,7 @@ const Schema = "rhythm-soundcheck/v1"
 // reported as BROKE and a new warning or notice as NEW.
 type Level string
 
+// The issue levels, worst first.
 const (
 	Error   Level = "error"   // something no longer works: a 5xx page, a fatal error, a form that fails
 	Warning Level = "warning" // a problem visitors may hit: a JS error, a PHP warning, a dead click
@@ -108,6 +109,7 @@ type Shot struct {
 	Masked []Rect `json:"masked,omitempty"`
 }
 
+// Rect is an area of a screenshot, in pixels from its top left.
 type Rect struct{ X, Y, W, H int }
 
 // Interaction is one element Soundcheck clicked or submitted.

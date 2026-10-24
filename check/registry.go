@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -37,6 +38,18 @@ func Register(m Module) {
 		panic(fmt.Sprintf("check: Register called twice for module %q", name))
 	}
 	registry = append(registry, m)
+	if _, ok := m.(Configurable); ok {
+		config.RegisterBlock(name)
+	}
+}
+
+// Configure hands m its block of the config file (cfg.Block), when m is
+// Configurable; other modules need nothing.
+func Configure(m Module, cfg config.Config) error {
+	if c, ok := m.(Configurable); ok {
+		return c.Configure(cfg.Block(m.Name()))
+	}
+	return nil
 }
 
 // Registered returns the registered modules in the order they registered.
@@ -107,9 +120,12 @@ type CaptureNeeds interface {
 	NeedsSecondShot(snapshot bool) bool
 }
 
-// Configurable is a module with settings of its own. Configure gets the
-// module's block of config.yaml (the zero Node when there is none) and
-// decodes it, failing on keys it doesn't know so a typo isn't ignored.
+// Configurable is a module with settings of its own, under a top-level
+// key of config.yaml named after it. Configure gets that block (the zero
+// Node when there is none) and decodes it, failing on keys it doesn't
+// know so a typo isn't ignored (config.DecodeBlock does both). Register
+// lets the config file have the key; Configure (the function) hands the
+// block over.
 type Configurable interface {
 	Configure(node yaml.Node) error
 }

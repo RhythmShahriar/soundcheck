@@ -128,10 +128,10 @@ func hasClass(n *html.Node, class string) bool {
 	return slices.Contains(strings.Fields(attr(n, "class")), class)
 }
 
-// BodyClasses returns the classes on <body>, which WordPress fills with
-// page facts: logged-in, woocommerce-cart, woocommerce-checkout…
 var bodyTag = regexp.MustCompile(`(?is)<body\b[^>]*?\bclass\s*=\s*["']([^"']*)["']`)
 
+// BodyClasses returns the classes on <body>, which WordPress fills with
+// page facts: logged-in, woocommerce-cart, woocommerce-checkout…
 func BodyClasses(body string) []string {
 	if m := bodyTag.FindStringSubmatch(body); m != nil {
 		return strings.Fields(m[1])

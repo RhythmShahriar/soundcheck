@@ -10,8 +10,14 @@ linters:
     - errorlint
     - gosec
     - misspell
+    - revive
     - unconvert
   settings:
+    revive:
+      rules: # every exported name has a doc comment that starts with it
+        - name: exported
+          arguments: [disableStutteringCheck] # check.CheckInfo is released API
+        - name: package-comments
     goheader:
       values:
         regexp:

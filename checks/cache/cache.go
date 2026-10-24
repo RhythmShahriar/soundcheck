@@ -62,6 +62,7 @@ type Module struct {
 	MaxPages int
 }
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "cache" }
 
 const (

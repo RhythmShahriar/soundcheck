@@ -23,6 +23,7 @@ import (
 // Action is what the reviewer decided for one change.
 type Action string
 
+// The actions a reviewer can take.
 const (
 	Accept Action = "accept" // the change is intended: make it the new baseline
 	Ignore Action = "ignore" // never report this change again

@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -624,5 +627,36 @@ func TestLoginURLOnAnotherSite(t *testing.T) {
 	s.cfg.Login.URL = "http://elsewhere.test/wp-login.php"
 	if err := s.loginHost("127.0.0.1:21200"); err != nil {
 		t.Errorf("--no-login: %v", err)
+	}
+}
+
+// The speed: block goes to the speed module (check.Configurable): its
+// errors stop the command before anything runs, naming the file and
+// line, and its value reaches the module a comparison uses.
+func TestSpeedBlockReachesTheModule(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for body, want := range map[string]string{
+		"speed:\n  slowr: 5\n":  `.soundcheck/config.yaml line 2: unknown setting "speed.slowr" (did you mean "speed.slower"?)`,
+		"speed:\n  slower: 0\n": `.soundcheck/config.yaml line 2: speed.slower: must be a percentage between 1 and 1000`,
+		"speed: fast\n":         `.soundcheck/config.yaml line 1: speed: takes a group of settings, each on its own indented line`,
+	} {
+		writeConfig(t, body)
+		if code, _, errOut := runCLI(t, "run", "127.0.0.1:21212", "--plain"); code != exitUsage || !strings.Contains(errOut, want) {
+			t.Errorf("%q: exit %d %q, want %s", body, code, errOut, want)
+		}
+	}
+	writeConfig(t, "speed:\n  slower: 60\n")
+	p, err := parse([]string{"a.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = speedModule.Configure(yaml.Node{}) })
+	if !slices.ContainsFunc(p.modules(p.cfg), func(m check.Module) bool { return m == check.Module(speedModule) }) {
+		t.Fatal("speed isn't among the modules")
+	}
+	before := &model.Run{Pages: []model.Page{{Path: "/", Status: 200, Metrics: model.Metrics{LCP: 1000}}}}
+	after := &model.Run{Pages: []model.Page{{Path: "/", Status: 200, Metrics: model.Metrics{LCP: 1500}}}}
+	if got := speedModule.Compare(context.Background(), &check.CompareContext{Config: p.cfg, Before: before, After: after}); len(got) != 0 {
+		t.Errorf("50%% slower reported with speed.slower 60: %+v", got)
 	}
 }

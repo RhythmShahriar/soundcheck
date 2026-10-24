@@ -37,6 +37,7 @@ type Module struct {
 	Rules *rules.Set
 }
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "health" }
 
 // Checks lists the checks this module reports from Go. Rule files can't

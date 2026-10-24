@@ -135,7 +135,9 @@ func (c *Context) Progress(label string, done, total int) {
 // a deferred Unlock when anything in between could panic: Safe turns the
 // panic into a warning through Warn, which takes the same lock, so a lock
 // left held would stop the whole run instead.
-func (c *Context) Lock()   { c.mu.Lock() }
+func (c *Context) Lock() { c.mu.Lock() }
+
+// Unlock releases Lock.
 func (c *Context) Unlock() { c.mu.Unlock() }
 
 // AddIssue appends a site-level issue.

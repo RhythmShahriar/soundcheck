@@ -215,6 +215,9 @@ type junitFailure struct {
 	Text    string `xml:",chardata"`
 }
 
+// JUnit writes r as JUnit XML for CI test reports: one test case per
+// change (or per issue of a run), failed when it's at or above failOn
+// (new, or error for a run, when failOn is empty).
 func JUnit(w io.Writer, r Result, failOn string) error {
 	out := junitSuites{Name: "soundcheck", Time: r.Run.Duration / 1000}
 	stamp := r.Run.Started.UTC().Format(time.RFC3339)

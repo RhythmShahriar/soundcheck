@@ -27,6 +27,7 @@ import (
 // Module is the echo module.
 type Module struct{}
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "echo" }
 
 // Compare diffs the messages of each action recorded in both runs: form

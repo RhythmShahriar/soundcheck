@@ -299,6 +299,9 @@ func parse(args []string) (*plan, error) {
 	if p.cfg, err = config.Load(path); err != nil {
 		return nil, cli.UsageError{Msg: err.Error()}
 	}
+	if err := configureModules(p.cfg, path); err != nil {
+		return nil, err
+	}
 	p.configPath = path
 	p.chosen = chosenSettings(set, p.cfg, path)
 	cfg := &p.cfg

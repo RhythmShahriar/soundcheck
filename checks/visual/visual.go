@@ -33,6 +33,7 @@ import (
 // Module is the visual regression module.
 type Module struct{}
 
+// Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "visual" }
 
 // Viewports compared, in report order.

@@ -115,9 +115,9 @@ func compareRuns(slower float64, pairs ...[2]model.Page) []model.Change {
 		before.Pages = append(before.Pages, p[0])
 		after.Pages = append(after.Pages, p[1])
 	}
-	cfg := config.Default()
-	cfg.Speed.Slower = slower
-	return (&Module{}).Compare(context.Background(), &check.CompareContext{Config: cfg, Before: before, After: after})
+	m := New()
+	m.settings.Slower = slower
+	return m.Compare(context.Background(), &check.CompareContext{Config: config.Default(), Before: before, After: after})
 }
 
 func pr(path, group string, b, a model.Metrics) [2]model.Page {

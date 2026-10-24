@@ -44,6 +44,7 @@ type Module struct {
 // New returns the module.
 func New() *Module { return &Module{} }
 
+// Name is the module's name in --modules and the config file.
 func (*Module) Name() string { return "interact" }
 
 // Live runs the browser levels on a loaded page.

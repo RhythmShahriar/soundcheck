@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
@@ -56,6 +58,22 @@ var builders = map[string]func(p *plan) check.Module{
 	},
 }
 
+// configureModules hands each registered module that keeps settings of
+// its own (check.Configurable) its block of the config file at path, so
+// a typo in it is a usage error before anything runs, enabled or not.
+func configureModules(cfg config.Config, path string) error {
+	for _, m := range check.Registered() {
+		if err := check.Configure(m, cfg); err != nil {
+			var se *config.SettingError
+			if errors.As(err, &se) && se.File == "" {
+				se.File = path
+			}
+			return cli.UsageError{Msg: err.Error()}
+		}
+	}
+	return nil
+}
+
 // modules returns the enabled modules in config.Modules order. The runner
 // runs interact's hooks last on each page (it declares check.PhaseMutate):
 // its clicks and submits change the page. The other modules' Live hooks
@@ -65,6 +83,8 @@ func (p *plan) modules(cfg config.Config) []check.Module {
 	for _, name := range config.Modules {
 		if b, ok := builders[name]; ok && cfg.Has(name) {
 			if m := b(p); m != nil {
+				// parse checked the block: configureModules
+				_ = check.Configure(m, cfg)
 				out = append(out, m)
 			}
 		}

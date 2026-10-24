@@ -5,12 +5,17 @@ package check
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/go-rod/rod"
+	"gopkg.in/yaml.v3"
 
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -138,5 +143,41 @@ func TestChromeOnly(t *testing.T) {
 		if got := ChromeOnly(tc.m); got != tc.want {
 			t.Errorf("ChromeOnly(%s) = %v, want %v", tc.m.Name(), got, tc.want)
 		}
+	}
+}
+
+// configured is a Configurable module that keeps the block it got.
+type configured struct {
+	named
+	got *yaml.Node
+}
+
+func (c configured) Configure(n yaml.Node) error {
+	*c.got = n
+	if n.Kind != 0 && n.Kind != yaml.MappingNode {
+		return errors.New("not a group")
+	}
+	return nil
+}
+
+// Registering a Configurable module lets the config file have its block,
+// and Configure hands the block over.
+func TestConfigurableGetsItsBlock(t *testing.T) {
+	resetRegistry(t)
+	m := configured{named: "gadget", got: &yaml.Node{}}
+	Register(m)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("gadget:\n  size: 3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("the module's block wasn't accepted: %v", err)
+	}
+	if err := Configure(m, cfg); err != nil || m.got.Kind != yaml.MappingNode || len(m.got.Content) != 2 || m.got.Content[0].Value != "size" {
+		t.Errorf("Configure gave %+v, %v", m.got, err)
+	}
+	if err := Configure(named("plain"), cfg); err != nil {
+		t.Errorf("a module without settings: %v", err)
 	}
 }

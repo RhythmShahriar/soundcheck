@@ -41,6 +41,10 @@ func decode(data []byte, c *Config) (map[string]int, error) {
 	if err := root.Decode(c); err != nil {
 		return nil, typeError(err, values)
 	}
+	c.blocks = map[string]*yaml.Node{}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		c.blocks[root.Content[i].Value] = root.Content[i+1]
+	}
 	return keys, nil
 }
 
@@ -65,6 +69,10 @@ func checkKeys(n *yaml.Node, t reflect.Type, prefix string, keys map[string]int,
 		k, v := n.Content[i], n.Content[i+1]
 		key := prefix + k.Value
 		ft, ok := fields[k.Value]
+		if !ok && prefix == "" && isBlock(k.Value) {
+			keys[key] = k.Line // a module's block: the module decodes it
+			continue
+		}
 		if !ok {
 			msg := fmt.Sprintf("unknown setting %q", key)
 			if m := Suggest(k.Value, names); m != "" {
@@ -145,7 +153,7 @@ func typeError(err error, values map[int]string) error {
 	line, _ := strconv.Atoi(m[1])
 	want := "a " + m[4]
 	switch m[4] {
-	case "config.Pages", "config.Visual", "config.Interactions", "config.Login", "config.Echo", "config.Speed",
+	case "config.Pages", "config.Visual", "config.Interactions", "config.Login", "config.Echo",
 		"config.IgnoreRule", "config.ExecCommand":
 		want = "a group of settings, each on its own indented line"
 	case "int", "float64":

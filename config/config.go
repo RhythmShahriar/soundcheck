@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 )
 
@@ -41,7 +43,7 @@ const EchoURL = "http://127.0.0.1:8025"
 // EchoTokenPrefix starts every variable echo.token_env may name.
 const EchoTokenPrefix = "RHYTHM_ECHO_"
 
-// Interaction levels, from safest to most invasive.
+// Levels are the interaction levels, from safest to most invasive.
 var Levels = []string{"inspect", "click", "submit", "flows"}
 
 // Config is every project setting. The file is untrusted (a pull request
@@ -58,8 +60,7 @@ type Config struct {
 	Production   []string     `yaml:"production"` // live sites (hosts, *.hosts or URLs with a path): form submits refuse them
 	Login        Login        `yaml:"login"`
 	Flows        string       `yaml:"flows"` // folder of YAML flows, relative to the project
-	Speed        Speed        `yaml:"speed"`
-	Rate         float64      `yaml:"rate"` // page loads per second per host
+	Rate         float64      `yaml:"rate"`  // page loads per second per host
 	Tabs         int          `yaml:"tabs"`
 	Timeout      Seconds      `yaml:"timeout"` // per page
 	Echo         Echo         `yaml:"echo"`
@@ -89,6 +90,9 @@ type Config struct {
 
 	// inFile holds the line of each key the file set, for InFile.
 	inFile map[string]int
+	// blocks holds the value of each top-level key the file set, for
+	// Block.
+	blocks map[string]*yaml.Node
 }
 
 // Pages chooses which pages are checked.
@@ -159,11 +163,6 @@ type Echo struct {
 	Timeout  time.Duration `yaml:"timeout"`   // …or at most this long
 }
 
-// Speed tunes when a page counts as slower.
-type Speed struct {
-	Slower float64 `yaml:"slower"` // % slower before a page is reported SLOWER
-}
-
 // Default returns the settings used when there's no config file.
 func Default() Config {
 	return Config{
@@ -173,7 +172,6 @@ func Default() Config {
 		Visual:       Visual{Threshold: 0.5},
 		Interactions: Interactions{Levels: []string{"inspect", "click"}, MaxClicks: 15},
 		Flows:        filepath.Join(Dir, "flows"),
-		Speed:        Speed{Slower: 25},
 		Rate:         5,
 		Tabs:         8,
 		Timeout:      30,
