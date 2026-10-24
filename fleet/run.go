@@ -283,11 +283,12 @@ func trend(storeRoot string) []float64 {
 }
 
 // child is the part of Soundcheck's --json output the fleet reads: the
-// summary when the binary writes one, and the changes or issues to
+// summary when the binary writes one, or the changes or issues to
 // count when it doesn't.
 type child struct {
-	Kind    string `json:"kind"`
-	Summary *struct {
+	Kind        string `json:"kind"`
+	Interrupted bool   `json:"interrupted"`
+	Summary     *struct {
 		Broke, New, Changed, Slower, Fixed int
 		Verdict                            string
 	} `json:"summary"`
@@ -326,6 +327,9 @@ func (r *Result) parse(data []byte) error {
 		if c.Summary != nil && slices.Contains(verdictOrder, c.Summary.Verdict) {
 			r.Verdict = c.Summary.Verdict
 		}
+		if c.Interrupted {
+			r.Verdict = Interrupted
+		}
 		return nil
 	}
 	var run model.Run
@@ -343,7 +347,7 @@ func (r *Result) parse(data []byte) error {
 	case r.Counts[string(model.Warning)] > 0:
 		r.Verdict = Warnings
 	}
-	if c.Summary != nil && c.Summary.Verdict == Interrupted {
+	if c.Interrupted || (c.Summary != nil && c.Summary.Verdict == Interrupted) {
 		r.Verdict = Interrupted
 	}
 	return nil

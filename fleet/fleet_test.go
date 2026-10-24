@@ -67,6 +67,10 @@ func fakeSoundcheck(args []string) int {
 	case "summary.test": // the newer JSON with kind and summary
 		emit(map[string]any{"kind": "comparison", "pages": 3, "changes": []any{},
 			"summary": map[string]any{"new": 1, "verdict": "changed"}})
+	case "stopped.test": // the results lane marks a canceled run
+		emit(map[string]any{"before": map[string]any{"name": "good"}, "pages": 2, "interrupted": true,
+			"changes": []map[string]any{{"class": "broke"}}})
+		return 130
 	case "failon.test":
 		emit(cmpWith(model.Slower))
 		return 1
@@ -222,7 +226,7 @@ func TestRunCompare(t *testing.T) {
 		t.Errorf("alpha args =\n%s\nwant\n%s", args, wantArgs)
 	}
 
-	// Each site sees only its own password, and never the fleet's own
+	// Each site sees only its own password and never the fleet's own
 	// SOUNDCHECK_* or unrelated secrets.
 	alpha := readFile(t, filepath.Join(dir, Folder, "alpha", "env.txt"))
 	betaEnv := readFile(t, filepath.Join(dir, Folder, "beta", "env.txt"))
@@ -327,5 +331,18 @@ func TestRunShowsTrend(t *testing.T) {
 	html := readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.html"))
 	if strings.Count(html, "<svg") != 1 || !strings.Contains(html, `title="LCP 1.2 s to 1.9 s over the last 3 runs"`) {
 		t.Error("fleet.html lacks one's sparkline")
+	}
+}
+
+func TestRunInterrupted(t *testing.T) {
+	p := writeSites(t, "- {name: one, url: http://stopped.test/}\n- {name: two, url: http://clean.test/}\n")
+	code, err := Run(context.Background(), os.Args[0], p, Compare, 2, &bytes.Buffer{})
+	if err != nil || code != exitCanceled {
+		t.Fatalf("Run = %d, %v; want 130", code, err)
+	}
+	var page Page
+	_ = json.Unmarshal([]byte(readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.json"))), &page)
+	if page.Sites[0].Site != "one" || page.Sites[0].Verdict != Interrupted || page.Sites[0].Counts[model.Broke] != 1 {
+		t.Errorf("sites = %+v", page.Sites)
 	}
 }
