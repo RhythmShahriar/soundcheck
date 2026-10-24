@@ -8,6 +8,11 @@
 // from flags or config, so they can't end up in shell history, config
 // files or reports; they're masked in every error. Cookies stay in the
 // browser session's memory and are never written anywhere.
+//
+// The password is typed only on the site being checked: login.url must be
+// on it and the login page must still be on it after any redirect. Plain
+// http is refused unless the site is this machine or --insecure-login
+// (config.Trust) says so.
 package login
 
 import (
@@ -75,7 +80,7 @@ func New(o Options) func(ctx context.Context, sess *rod.Browser) error {
 		if o.Config.Login.Flow != "" {
 			err = viaFlow(ctx, sess, o, env)
 		} else {
-			err = WordPress(ctx, sess, o.Base, o.Config.Login.URL, user, pass)
+			err = wordPress(ctx, sess, o.Base, o.Config.Login.URL, user, pass, o.Config.Trust.InsecureLogin)
 		}
 		if err != nil {
 			return errors.New(flow.Mask(err.Error(), pass, user))
@@ -89,12 +94,18 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 	if err != nil {
 		return fmt.Errorf("login flow: %w", err)
 	}
+	// The flow's goto and start steps stay on the site (flow.Options), so
+	// the scheme is the one thing left to check before it types.
+	if err := secure(o.Base, o.Config.Trust.InsecureLogin); err != nil {
+		return err
+	}
 	page, err := browser.NewTab(sess)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = page.Close() }()
-	fails := flow.Run(ctx, page, f, flow.Options{Base: o.Base, Env: env, Timeout: 15 * time.Second})
+	fails := flow.Run(ctx, page, f, flow.Options{Base: o.Base, Env: env, Timeout: 15 * time.Second,
+		AllowEnv: o.Config.Trust.AllowEnv, AllowHosts: o.Config.Trust.AllowHosts})
 	if len(fails) > 0 {
 		return fmt.Errorf("login flow %q failed at %w", f.Name, fails[0])
 	}
@@ -104,7 +115,13 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 // WordPress logs in through wp-login.php (or loginPath) with the given
 // account. It succeeds when WordPress sets its wordpress_logged_in cookie
 // and the site then shows the admin bar or the logged-in body class.
+// The login page must be on base's site and use https unless the site is
+// this machine.
 func WordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath, user, pass string) error {
+	return wordPress(ctx, sess, base, loginPath, user, pass, false)
+}
+
+func wordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath, user, pass string, insecure bool) error {
 	if loginPath == "" {
 		loginPath = "/wp-login.php"
 	}
@@ -112,7 +129,14 @@ func WordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 	if err != nil {
 		return err
 	}
-	loginURL := base.ResolveReference(ref).String()
+	login := base.ResolveReference(ref)
+	loginURL := login.String()
+	if err := onSite(base, login, "login.url"); err != nil {
+		return err
+	}
+	if err := secure(login, insecure); err != nil {
+		return err
+	}
 	page, err := browser.NewTab(sess)
 	if err != nil {
 		return err
@@ -123,6 +147,22 @@ func WordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 		return fmt.Errorf("opening %s: %w", loginURL, err)
 	}
 	_ = page.WaitLoad()
+	// A redirect may have moved the login page: check where it is now,
+	// before typing anything.
+	info, err := page.Timeout(5 * time.Second).Info()
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", loginURL, err)
+	}
+	landed, err := url.Parse(info.URL)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", loginURL, err)
+	}
+	if err := onSite(base, landed, loginURL+" redirected to "+landed.Redacted()+", which"); err != nil {
+		return err
+	}
+	if err := secure(landed, insecure); err != nil {
+		return err
+	}
 	short := page.Timeout(10 * time.Second)
 	userEl, err := short.Element("#user_login")
 	if err != nil {
@@ -178,6 +218,25 @@ func WordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 	}
 	if !res.Value.Bool() {
 		return errors.New("logged in, but the site doesn't show the admin bar or the logged-in body class (a cache may be serving anonymous pages to logged-in users)")
+	}
+	return nil
+}
+
+// onSite refuses to log in on u unless it's on base's site (same host
+// and port; www. and the scheme don't matter). what names u in the error.
+func onSite(base, u *url.URL, what string) error {
+	if site, host := config.HostKey(base), config.HostKey(u); site != host {
+		return fmt.Errorf("%s is on %s, not the site being checked (%s); the password is only typed there", what, host, site)
+	}
+	return nil
+}
+
+// secure refuses to type the password over plain http, where anyone on
+// the network can read it, unless u is this machine or insecure is set
+// (--insecure-login).
+func secure(u *url.URL, insecure bool) error {
+	if u.Scheme == "http" && !insecure && !config.IsLoopback(u.Hostname()) {
+		return fmt.Errorf("not typing the password over plain http to %s: use https, or pass --insecure-login", u.Host)
 	}
 	return nil
 }
