@@ -67,12 +67,15 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
 	client := httpClient(opts)
-	base, err := resolve(ctx, client, opts.Target, opts.UserAgent)
+	startURL, err := resolve(ctx, client, opts.Target, opts.UserAgent)
 	if err != nil {
 		return nil, err
 	}
+	// Modules get the start page without its query: production URLs
+	// (config) and flows match and resolve against scheme, host and path.
+	base := &url.URL{Scheme: startURL.Scheme, Host: startURL.Host, Path: startURL.Path, RawPath: startURL.RawPath}
 	run := &model.Run{
-		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: base.String(),
+		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: startURL.String(),
 		Name: opts.Name, Started: start.UTC(),
 		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
 			Limit: cfg.Pages.Limit},
@@ -99,7 +102,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	discover := len(opts.Paths) == 0
 	var frontier *crawl.Frontier
 	if discover {
-		frontier, err = crawl.New(copts).Crawl(ctx, base)
+		frontier, err = crawl.New(copts).Crawl(ctx, startURL)
 		if err != nil && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -142,7 +145,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	)
 	pages := sameSite(frontier.Pages())
 	if len(pages) == 0 {
-		return nil, fmt.Errorf("found no pages to check at %s", base)
+		return nil, fmt.Errorf("found no pages to check at %s", startURL)
 	}
 	if opts.Hooks.Discovered != nil {
 		emit(func() { opts.Hooks.Discovered(len(pages), skipped()) })
@@ -322,9 +325,11 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	return p
 }
 
-// resolve fetches the target once, following redirects, so the run uses
-// the scheme and host the site really answers on (http → https, apex →
-// www). A bare hostname falls back to http when https fails.
+// resolve fetches the target once, following redirects, and returns the
+// start page: the URL the site really answers on (http → https, apex →
+// www), with the path and query it ended up at, so a run started at
+// /q?lang=fr checks that page and one redirected to /b checks /b. A bare
+// hostname falls back to http when https fails.
 func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.URL, error) {
 	u, explicit, err := ratelimit.ParseTarget(target)
 	if err != nil {
@@ -344,7 +349,7 @@ func resolve(ctx context.Context, client *http.Client, target, ua string) (*url.
 		}
 		_ = resp.Body.Close()
 		final := resp.Request.URL
-		return &url.URL{Scheme: final.Scheme, Host: final.Host, Path: u.Path}, nil
+		return &url.URL{Scheme: final.Scheme, Host: final.Host, Path: final.Path, RawPath: final.RawPath, RawQuery: final.RawQuery}, nil
 	}
 	base, err := try(u)
 	if err != nil && !explicit && ctx.Err() == nil {

@@ -246,3 +246,34 @@ func TestSiblingPortIsAnotherSite(t *testing.T) {
 		t.Errorf("skipped: discovered %v, run %v", discovered, run.Skipped)
 	}
 }
+
+// The start page keeps the target's query and follows a redirect's path.
+func TestStartPage(t *testing.T) {
+	needBrowser(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/q", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<!doctype html><title>Lang %s</title><p>Language %[1]s.</p>`, r.URL.Query().Get("lang"))
+	})
+	mux.HandleFunc("/go", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/b", http.StatusFound) })
+	mux.HandleFunc("/b", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<!doctype html><title>B</title><p>Page b.</p>`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Modules, cfg.Viewports, cfg.Rate = []string{"health"}, []string{"desktop"}, 0
+	cfg.Pages.Limit = 1
+	for target, want := range map[string]string{"/q?lang=fr": "/q?lang=fr", "/go": "/b"} {
+		run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL + target, Dir: t.TempDir(), Version: "test",
+			Browser: browser.Options{NoDownload: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Target != srv.URL+want || len(run.Pages) == 0 || run.Pages[0].Path != want || run.Pages[0].Status != 200 {
+			t.Errorf("%s: target %s, pages %+v", target, run.Target, run.Pages)
+		}
+		if target == "/q?lang=fr" && len(run.Pages) > 0 && run.Pages[0].Title != "Lang fr" {
+			t.Errorf("%s: title %q", target, run.Pages[0].Title)
+		}
+	}
+}
