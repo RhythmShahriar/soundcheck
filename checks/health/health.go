@@ -112,8 +112,10 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	for _, r := range p.Failed {
 		target := shortURL(cc.Base, r.URL)
 		switch {
-		case strings.HasSuffix(r.URL, "/favicon.ico"):
-			check.Page(p, model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: target})
+		case isFavicon(r.URL):
+			// The browser asks for /favicon.ico once per session, so which
+			// page saw it fail depends on visit order; CheckSite reports it
+			// once for the site.
 		case r.Error != "":
 			check.Page(p, model.Issue{Check: "health/failed-request", Level: model.Warning,
 				Title: fmt.Sprintf("Request failed (%s): %s", strings.TrimPrefix(r.Error, "net::"), target)})
@@ -154,10 +156,12 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	}
 }
 
-// CheckSite tests links on visited pages that point at pages the run
-// didn't visit (HEAD, falling back to GET), and reports broken ones once
-// with every page that links to them.
+// CheckSite reports a missing favicon once for the site, then tests
+// links on visited pages that point at pages the run didn't visit (HEAD,
+// falling back to GET) and reports broken ones once with every page that
+// links to them.
 func (Module) CheckSite(ctx context.Context, cc *check.Context) {
+	favicon(cc)
 	cc.Lock()
 	visited := map[string]int{}
 	from := map[string][]string{}
@@ -218,6 +222,34 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 	}
 }
 
+// favicon adds one site-level "No favicon" when any page saw the
+// browser's /favicon.ico request fail. Its key doesn't depend on which
+// pages asked, so two runs that visit pages in a different order agree.
+func favicon(cc *check.Context) {
+	cc.Lock()
+	var pages, targets []string
+	for _, p := range cc.Run.Pages {
+		for _, r := range p.Failed {
+			if isFavicon(r.URL) {
+				targets = append(targets, shortURL(cc.Base, r.URL))
+				if !slices.Contains(pages, p.Path) {
+					pages = append(pages, p.Path)
+				}
+			}
+		}
+	}
+	cc.Unlock()
+	if len(pages) == 0 {
+		return
+	}
+	slices.Sort(pages)
+	slices.Sort(targets)
+	cc.AddIssue(model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: targets[0], Pages: pages,
+		Fix: "Add a favicon.ico at the site root, or a <link rel=\"icon\"> in every page's <head>."})
+}
+
+func isFavicon(raw string) bool { return strings.HasSuffix(stripQuery(raw), "/favicon.ico") }
+
 func probe(ctx context.Context, cc *check.Context, raw string) int {
 	for _, m := range []string{http.MethodHead, http.MethodGet} {
 		resp, err := cc.Get(ctx, m, raw)
@@ -256,6 +288,22 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 		}
 	}
 	return out
+}
+
+// FilterChanges drops the pair a snapshot taken before "No favicon" was
+// site-level makes: the same issue FIXED on a page and NEW for the site.
+func (Module) FilterChanges(changes []model.Change) []model.Change {
+	i := slices.IndexFunc(changes, func(c model.Change) bool { return c.Class == model.New && c.Check == "health/favicon" })
+	if i < 0 {
+		return changes
+	}
+	j := slices.IndexFunc(changes, func(c model.Change) bool {
+		return c.Class == model.Fixed && c.Check == changes[i].Check && c.Title == changes[i].Title && c.Source == changes[i].Source
+	})
+	if j < 0 {
+		return changes
+	}
+	return slices.Delete(slices.Delete(changes, max(i, j), max(i, j)+1), min(i, j), min(i, j)+1)
 }
 
 func finalPath(p *model.Page) string {
