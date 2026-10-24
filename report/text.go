@@ -16,15 +16,47 @@ import (
 )
 
 // JSON writes the comparison, or the run when there's none, in the
-// versioned rhythm-soundcheck/v1 schema.
+// versioned rhythm-soundcheck/v1 schema (model.Schemas describes both).
+// Lists are [] when empty, every change has an ID and a summary counts
+// what the terminal shows; a run also gets its issues grouped across
+// pages. The result itself isn't changed.
 func JSON(w io.Writer, r Result) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
-	if r.Compared() {
-		return enc.Encode(r.Comparison)
+	var failed *bool
+	if r.FailOn != "" {
+		f := FailOn(r, r.FailOn)
+		failed = &f
 	}
-	return enc.Encode(r.Run)
+	if r.Compared() {
+		c := *r.Comparison
+		c.Changes = slices.Clone(c.Changes)
+		c.Complete()
+		c.Summary.Failed = failed
+		return enc.Encode(&c)
+	}
+	run := *r.Run
+	run.Complete()
+	issues := Issues(&run)
+	counts := Counts(issues)
+	s := &model.RunSummary{Errors: counts[model.Error], Warnings: counts[model.Warning], Notices: counts[model.Notice], Failed: failed}
+	switch {
+	case Partial(r):
+		s.Verdict = model.VerdictInterrupted
+	case s.Errors > 0:
+		s.Verdict = model.VerdictErrors
+	case s.Warnings > 0:
+		s.Verdict = model.VerdictWarnings
+	default:
+		s.Verdict = model.VerdictClean
+	}
+	run.Summary = s
+	run.Groups = make([]model.Group, 0, len(issues))
+	for _, i := range issues {
+		run.Groups = append(run.Groups, model.Group{Key: i.Key, Check: i.Check, Level: i.Level, Title: i.Title, Pages: i.Pages})
+	}
+	return enc.Encode(&run)
 }
 
 // Markdown writes a report for pull requests, issues and CI summaries.
@@ -32,11 +64,19 @@ func Markdown(w io.Writer, r Result) error {
 	var b strings.Builder
 	run := r.Run
 	b.WriteString("## ♪ Soundcheck\n\n")
+	if Partial(r) {
+		fmt.Fprintf(&b, "> [!WARNING]\n> **Interrupted.** %s.\n\n", capitalize(partialNote))
+	}
 	if r.Compared() {
 		c := r.Comparison
-		fmt.Fprintf(&b, "**%s.** %d pages of %s compared with %s.\n\n", verdict(c), c.Pages, run.Target, snapshotAt(c.Before))
-		b.WriteString("| Broke | New | Changed | Slower | Fixed |\n|---:|---:|---:|---:|---:|\n|")
-		for _, class := range model.Classes {
+		fmt.Fprintf(&b, "**%s.** %s of %s compared with %s.\n\n", verdict(c), plural(c.Pages, "page", "pages"), MarkdownText(run.Target), MarkdownText(snapshotAt(c.Before)))
+		shown := shownClasses(c)
+		b.WriteString("|")
+		for _, class := range shown {
+			fmt.Fprintf(&b, " %s |", capitalize(class))
+		}
+		b.WriteString("\n|" + strings.Repeat("---:|", len(shown)) + "\n|")
+		for _, class := range shown {
 			fmt.Fprintf(&b, " %d |", c.Count(class))
 		}
 		b.WriteString("\n\n")
@@ -65,7 +105,7 @@ func Markdown(w io.Writer, r Result) error {
 	} else {
 		issues := Issues(run)
 		counts := Counts(issues)
-		fmt.Fprintf(&b, "**%s.** %d pages of %s checked.\n\n", capitalize(runVerdict(run, counts)), len(run.Pages), run.Target)
+		fmt.Fprintf(&b, "**%s.** %s of %s checked.\n\n", MarkdownText(capitalize(runVerdict(run, counts))), plural(len(run.Pages), "page", "pages"), MarkdownText(run.Target))
 		b.WriteString("| Errors | Warnings | Notices |\n|---:|---:|---:|\n")
 		fmt.Fprintf(&b, "| %d | %d | %d |\n\n", counts[model.Error], counts[model.Warning], counts[model.Notice])
 		if len(issues) > 0 {
@@ -81,7 +121,7 @@ func Markdown(w io.Writer, r Result) error {
 		}
 		writeNotes(&b, run.Warnings)
 	}
-	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", run.Version, r.stats(), run.Started.Format("2006-01-02 15:04 MST"))
+	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", MarkdownText(run.Version), r.stats(), run.Started.Format("2006-01-02 15:04 MST"))
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -97,13 +137,17 @@ func writeNotes(b *strings.Builder, notes []string) {
 	b.WriteString("\n</details>\n\n")
 }
 
+// mdPages shows up to three paths as code, where Markdown is inert. A
+// code span can't escape a backtick, so backticks are dropped and GitHub
+// splits table cells on a pipe even inside one, so pipes are escaped.
 func mdPages(pages []string) string {
 	if len(pages) == 0 {
 		return "site-wide"
 	}
 	var codes []string
 	for _, p := range pages[:min(len(pages), 3)] {
-		codes = append(codes, "`"+strings.ReplaceAll(p, "`", "")+"`")
+		p = strings.NewReplacer("`", "", "|", `\|`).Replace(Term(p))
+		codes = append(codes, "`"+p+"`")
 	}
 	s := strings.Join(codes, " ")
 	if len(pages) > 3 {
@@ -112,11 +156,8 @@ func mdPages(pages []string) string {
 	return s
 }
 
-// mdCell makes text safe inside a Markdown table cell.
-func mdCell(s string) string {
-	r := strings.NewReplacer("|", `\|`, "\n", " ", "\r", "", "<", "&lt;", ">", "&gt;")
-	return r.Replace(s)
-}
+// mdCell makes text safe inside a Markdown table cell; see MarkdownText.
+func mdCell(s string) string { return MarkdownText(s) }
 
 func capitalize(s string) string {
 	if s == "" {
@@ -133,23 +174,37 @@ type junitSuites struct {
 	Name     string       `xml:"name,attr"`
 	Tests    int          `xml:"tests,attr"`
 	Failures int          `xml:"failures,attr"`
+	Errors   int          `xml:"errors,attr"`
 	Time     float64      `xml:"time,attr"`
 	Suites   []junitSuite `xml:"testsuite"`
 }
 
 type junitSuite struct {
-	Name      string      `xml:"name,attr"`
-	Tests     int         `xml:"tests,attr"`
-	Failures  int         `xml:"failures,attr"`
-	Skipped   int         `xml:"skipped,attr"`
-	Timestamp string      `xml:"timestamp,attr"`
-	Cases     []junitCase `xml:"testcase"`
+	Name      string `xml:"name,attr"`
+	Tests     int    `xml:"tests,attr"`
+	Failures  int    `xml:"failures,attr"`
+	Errors    int    `xml:"errors,attr"`
+	Skipped   int    `xml:"skipped,attr"`
+	Timestamp string `xml:"timestamp,attr"`
+	// Properties carry facts about the whole run, e.g. interrupted=true.
+	Properties *junitProperties `xml:"properties,omitempty"`
+	Cases      []junitCase      `xml:"testcase"`
+}
+
+type junitProperties struct {
+	List []junitProperty `xml:"property"`
+}
+
+type junitProperty struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"value,attr"`
 }
 
 type junitCase struct {
 	Name      string        `xml:"name,attr"`
 	Classname string        `xml:"classname,attr"`
 	Failure   *junitFailure `xml:"failure,omitempty"`
+	Error     *junitFailure `xml:"error,omitempty"`
 	Skipped   *struct{}     `xml:"skipped,omitempty"`
 	Out       string        `xml:"system-out,omitempty"`
 }
@@ -169,12 +224,19 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 			limit = slices.Index(model.Classes, model.New)
 		}
 		groups := byClass(r.Comparison.Changes)
-		for i, class := range model.Classes {
+		for i, class := range shownClasses(r.Comparison) {
 			s := junitSuite{Name: "soundcheck." + class, Timestamp: stamp}
 			for _, ch := range groups[class] {
-				tc := junitCase{Name: ch.Title, Classname: strings.ReplaceAll(ch.Check, "/", "."), Out: caseText(ch.Pages, beforeAfter(ch), ch.Source, ch.Detail, ch.Fix)}
-				if i <= limit && class != model.Fixed {
-					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + ch.Title, Type: class, Text: tc.Out}
+				tc := junitCase{Name: xmlText(ch.Title), Classname: xmlText(strings.ReplaceAll(ch.Check, "/", ".")),
+					Out: caseText(ch.Pages, beforeAfter(ch), ch.Source, ch.Detail, ch.Fix)}
+				// An unstable change didn't reproduce: CI shows it as
+				// skipped, neither a pass nor a failure.
+				if class == model.Unstable {
+					tc.Skipped = &struct{}{}
+					s.Skipped++
+				}
+				if i <= limit && class != model.Fixed && class != model.Unstable {
+					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -195,9 +257,10 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 				if i.Level != level {
 					continue
 				}
-				tc := junitCase{Name: i.Title, Classname: strings.ReplaceAll(i.Check, "/", "."), Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
+				tc := junitCase{Name: xmlText(i.Title), Classname: xmlText(strings.ReplaceAll(i.Check, "/", ".")),
+					Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
 				if level.Rank() <= limit {
-					tc.Failure = &junitFailure{Message: i.Title, Type: string(level), Text: tc.Out}
+					tc.Failure = &junitFailure{Message: tc.Name, Type: string(level), Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -211,11 +274,20 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	// dashboards record that the check ran.
 	pages := junitSuite{Name: "soundcheck.pages", Timestamp: stamp,
 		Cases: []junitCase{{Name: fmt.Sprintf("%d pages checked", len(r.Run.Pages)), Classname: "soundcheck"}}}
-	pages.Tests = 1
+	// A partial result is an error, not a pass or a failure: CI shows
+	// the check didn't finish and --fail-on findings don't count.
+	if Partial(r) {
+		pages.Properties = &junitProperties{List: []junitProperty{{Name: "interrupted", Value: "true"}}}
+		pages.Cases = append(pages.Cases, junitCase{Name: "Run was interrupted", Classname: "soundcheck",
+			Error: &junitFailure{Message: capitalize(partialNote), Type: "interrupted"}})
+		pages.Errors = 1
+	}
+	pages.Tests = len(pages.Cases)
 	out.Suites = append(out.Suites, pages)
 	for _, s := range out.Suites {
 		out.Tests += s.Tests
 		out.Failures += s.Failures
+		out.Errors += s.Errors
 	}
 	if _, err := io.WriteString(w, xml.Header); err != nil {
 		return err
@@ -229,12 +301,14 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	return err
 }
 
+// caseText is a test case's text, made safe for XML: control characters
+// shown as text, characters XML forbids dropped.
 func caseText(pages []string, ba, source, detail, fix string) string {
 	var lines []string
-	lines = append(lines, "where: "+pagesLabel(pages, 10))
+	lines = append(lines, "where: "+xmlText(pagesLabel(pages, 10)))
 	for _, kv := range [][2]string{{"before → after", ba}, {"source", source}, {"detail", detail}, {"fix", fix}} {
 		if kv[1] != "" {
-			lines = append(lines, kv[0]+": "+kv[1])
+			lines = append(lines, kv[0]+": "+xmlText(kv[1]))
 		}
 	}
 	return strings.Join(lines, "\n")

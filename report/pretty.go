@@ -6,6 +6,8 @@ package report
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -24,11 +26,37 @@ const (
 	indent     = badgeWidth + 2
 )
 
+// PrettyOptions says how the terminal view looks.
 type PrettyOptions struct {
 	Plain    bool // no color, box drawing or decorative glyphs; for screen readers and logs
 	Quiet    bool // results only
 	Progress bool // redraw a progress line; only for interactive terminals
-	Verbose  bool // a line per page and the browser's log
+	Verbose  bool // a line per page with its timings and the browser's log
+	// Name is the command the header shows. Empty means the name the
+	// user typed; see InvokedAs.
+	Name string
+}
+
+// InvokedAs is the name the user ran Soundcheck by, for the header and
+// hints: RHYTHM_INVOKED_AS when the rhythm CLI forwarded the command
+// ("rhythm soundcheck"), else the program's file name without ".exe"
+// ("rhythm-soundcheck" after go install or in the Action).
+func InvokedAs() string {
+	return invokedAs(os.Getenv, os.Args[0])
+}
+
+func invokedAs(getenv func(string) string, argv0 string) string {
+	if name := strings.TrimSpace(getenv("RHYTHM_INVOKED_AS")); name != "" {
+		return name
+	}
+	name := filepath.Base(argv0)
+	if ext := filepath.Ext(name); strings.EqualFold(ext, ".exe") {
+		name = strings.TrimSuffix(name, ext)
+	}
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "rhythm-soundcheck"
+	}
+	return name
 }
 
 // Pretty renders a run for a terminal. Header, Step, Discovered, Page
@@ -45,7 +73,12 @@ type Pretty struct {
 	errors  int // pages with errors so far, for the progress line
 }
 
+// NewPretty returns a view that writes results to w and progress notes
+// (verbose page lines, the browser's log) to errw.
 func NewPretty(w, errw io.Writer, o PrettyOptions) *Pretty {
+	if o.Name == "" {
+		o.Name = InvokedAs()
+	}
 	return &Pretty{w: w, errw: errw, o: o, start: time.Now()}
 }
 
@@ -94,11 +127,12 @@ func (p *Pretty) Header(version, target string) {
 	if p.o.Quiet {
 		return
 	}
+	name, version, target := Term(p.o.Name), Term(version), Term(target)
 	if p.o.Plain {
-		fmt.Fprintf(p.w, "rhythm soundcheck %s - %s\n\n", version, target)
+		fmt.Fprintf(p.w, "%s %s - %s\n\n", name, version, target)
 		return
 	}
-	left := ui.Brand.Render("♪") + " " + bold.Render("rhythm soundcheck") + " " + muted.Render(version)
+	left := ui.Brand.Render("♪") + " " + bold.Render(name) + " " + muted.Render(version)
 	gap := max(2, width-lipgloss.Width(left)-lipgloss.Width(target))
 	fmt.Fprintf(p.w, "\n  %s%s%s\n  %s\n\n", left, strings.Repeat(" ", gap), muted.Render(target),
 		muted.Render(strings.Repeat("─", width)))
@@ -110,6 +144,7 @@ func (p *Pretty) Step(label, value string) {
 		return
 	}
 	p.clear()
+	label, value = Term(label), Term(value)
 	if p.o.Plain {
 		fmt.Fprintf(p.w, "%s: %s\n", label, value)
 		return
@@ -147,7 +182,7 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		p.clear()
 		status := fmt.Sprint(pg.Status)
 		if pg.Error != "" {
-			status = "failed: " + pg.Error
+			status = "failed: " + Term(pg.Error)
 		}
 		mark := "ok"
 		if bad {
@@ -155,11 +190,14 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		} else if len(pg.Issues) > 0 {
 			mark = plural(len(pg.Issues), "issue", "issues")
 		}
-		line := fmt.Sprintf("%s %s %s (%s)", pg.Path, status, time.Duration(pg.Duration*float64(time.Millisecond)).Round(10*time.Millisecond), mark)
+		line := fmt.Sprintf("%s %s %s (%s)", Term(pg.Path), status, millis(pg.Duration).Round(10*time.Millisecond), mark)
 		if p.o.Plain {
 			fmt.Fprintf(p.w, "[%d/%d] %s\n", done, total, line)
 		} else {
 			fmt.Fprintln(p.errw, muted.Render("  → "+line))
+		}
+		if p.o.Verbose {
+			p.pageDetail(pg)
 		}
 	}
 	if !p.o.Progress || p.o.Plain || done >= total {
@@ -181,6 +219,53 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 	p.drawn = true
 }
 
+// maxConsole caps the browser log lines shown per page: a page that logs
+// in a loop would otherwise bury the run.
+const maxConsole = 20
+
+// pageDetail prints a page's timings and the browser's log under its
+// line, for -v. Plain mode writes them with the page line (that is the
+// log); the live view keeps them on errw with its other notes.
+func (p *Pretty) pageDetail(pg *model.Page) {
+	var lines []string
+	if t := timing(pg); t != "" {
+		lines = append(lines, "timing: "+t)
+	}
+	for i, c := range pg.Console {
+		if i == maxConsole {
+			lines = append(lines, fmt.Sprintf("console: …and %d more", len(pg.Console)-maxConsole))
+			break
+		}
+		lines = append(lines, "console: "+Term(c))
+	}
+	for _, l := range lines {
+		if p.o.Plain {
+			fmt.Fprintf(p.w, "  %s\n", l)
+		} else {
+			fmt.Fprintln(p.errw, muted.Render("      "+l))
+		}
+	}
+}
+
+// timing is "ttfb 120ms, load 840ms, settle 1.26s" for a visited page,
+// or "" for one that never loaded. Settle is the rest of the visit after
+// the load event: waiting for the page to go quiet, screenshots and the
+// checks.
+func timing(pg *model.Page) string {
+	m := pg.Metrics
+	if m.TTFB <= 0 && m.Load <= 0 {
+		return ""
+	}
+	parts := []string{"ttfb " + millis(m.TTFB).Round(time.Millisecond).String(), "load " + millis(m.Load).Round(time.Millisecond).String()}
+	if settle := pg.Duration - m.Load; m.Load > 0 && settle > 0 {
+		parts = append(parts, "settle "+millis(settle).Round(10*time.Millisecond).String())
+	}
+	return strings.Join(parts, ", ")
+}
+
+// millis turns a stored millisecond count into a Duration.
+func millis(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
+
 // Log prints a message from the run (browser downloads, warnings) when
 // verbose, or always for lines that need the user's attention.
 func (p *Pretty) Log(msg string) {
@@ -188,7 +273,7 @@ func (p *Pretty) Log(msg string) {
 		return
 	}
 	p.clear()
-	msg = strings.TrimPrefix(msg, "!")
+	msg = Term(strings.TrimPrefix(msg, "!"))
 	if p.o.Plain {
 		fmt.Fprintln(p.errw, strings.TrimSpace(msg))
 		return
@@ -199,6 +284,7 @@ func (p *Pretty) Log(msg string) {
 // Summary prints the result.
 func (p *Pretty) Summary(r Result, hint string) {
 	p.clear()
+	p.banner(r)
 	if r.Compared() {
 		p.comparison(r, hint)
 	} else {
@@ -206,9 +292,27 @@ func (p *Pretty) Summary(r Result, hint string) {
 	}
 }
 
+// banner warns that a result is partial, first and even when quiet, so
+// nobody reads it as a full check.
+func (p *Pretty) banner(r Result) {
+	if !Partial(r) {
+		return
+	}
+	if p.o.Plain {
+		fmt.Fprintf(p.w, "\nINTERRUPTED - %s\n", partialNote)
+		return
+	}
+	mark := lipgloss.NewStyle().Foreground(lipgloss.Color(ui.High)).Bold(true).Render("! INTERRUPTED")
+	fmt.Fprintf(p.w, "\n  %s  %s\n", mark, muted.Render(partialNote))
+}
+
 func (p *Pretty) comparison(r Result, hint string) {
 	c := r.Comparison
-	groups := byClass(c.Changes)
+	safe := make([]model.Change, len(c.Changes))
+	for i, ch := range c.Changes {
+		safe[i] = termChange(ch)
+	}
+	groups := byClass(safe)
 	if p.o.Plain {
 		if len(c.Changes) > 0 {
 			fmt.Fprintln(p.w)
@@ -234,7 +338,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 			return
 		}
 		var parts []string
-		for _, class := range model.Classes {
+		for _, class := range shownClasses(c) {
 			parts = append(parts, fmt.Sprintf("%d %s", len(groups[class]), class))
 		}
 		fmt.Fprintf(p.w, "\n%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
@@ -282,6 +386,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 
 func (p *Pretty) run(r Result, hint string) {
 	issues := Issues(r.Run)
+	for i := range issues {
+		issues[i] = termIssue(issues[i])
+	}
 	if p.o.Plain {
 		if len(issues) > 0 {
 			fmt.Fprintln(p.w)
@@ -358,6 +465,7 @@ func (p *Pretty) notes(lists ...[]string) {
 	}
 	const show = 5
 	for i, n := range all {
+		n = Term(n)
 		if i == show {
 			n = fmt.Sprintf("…and %d more warnings in the report", len(all)-show)
 		}
@@ -375,14 +483,23 @@ func (p *Pretty) notes(lists ...[]string) {
 // stats is "124 pages · 2m10s".
 func (r Result) stats() string {
 	parts := []string{plural(len(r.Run.Pages), "page", "pages")}
-	failed := 0
-	for _, p := range r.Run.Pages {
-		if p.Error != "" {
+	failed, canceled := 0, 0
+	for i := range r.Run.Pages {
+		switch p := &r.Run.Pages[i]; {
+		case p.Canceled():
+			canceled++
+		case p.Error != "":
 			failed++
 		}
 	}
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d couldn't be loaded", failed))
+	}
+	if canceled > 0 {
+		parts = append(parts, fmt.Sprintf("%d not checked (interrupted)", canceled))
+	}
+	if r.Compared() && len(r.Comparison.Ignored) > 0 {
+		parts = append(parts, plural(len(r.Comparison.Ignored), "change ignored", "changes ignored"))
 	}
 	if r.Run.Options.Echo {
 		parts = append(parts, echoSummary(r.Run))
@@ -535,7 +652,7 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 }
 
 // snapshotName is `snapshot "good" (3h ago)` for the terminal.
-func snapshotName(r model.RunRef) string { return refName(r, true) }
+func snapshotName(r model.RunRef) string { return Term(refName(r, true)) }
 
 // snapshotAt is `snapshot "good" (23 Oct 2026 18:04 UTC)`, for saved
 // reports where "3h ago" would go stale.
@@ -583,7 +700,7 @@ func comparePanel(c *model.Comparison) string {
 	}
 	head := bold.Render("SOUNDCHECK") + "   " + lipgloss.NewStyle().Foreground(color).Bold(true).Render(verdict(c))
 	var parts []string
-	for _, class := range model.Classes {
+	for _, class := range shownClasses(c) {
 		n := c.Count(class)
 		style := muted
 		if n > 0 {
@@ -604,7 +721,7 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 	}
 	title := "SOUNDCHECK"
 	if r.Name != "" {
-		title = "SNAPSHOT " + strings.ToUpper(r.Name)
+		title = "SNAPSHOT " + strings.ToUpper(Term(r.Name))
 	}
 	head := bold.Render(title) + "   " + lipgloss.NewStyle().Foreground(color).Bold(true).Render(capitalize(runVerdict(r, counts)))
 	if r.Name != "" {

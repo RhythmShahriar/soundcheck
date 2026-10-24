@@ -42,6 +42,7 @@ const (
 type htmlData struct {
 	Title, Version, Target, Created, Stats string
 	Compared                               bool
+	Partial                                string // why the result is incomplete, when it is
 	Verdict, Tone                          string
 	Against                                string
 	Chips                                  []htmlChip
@@ -100,6 +101,9 @@ func HTML(w io.Writer, r Result) error {
 		Version: run.Version, Target: run.Target, Created: run.Started.Local().Format("2 Jan 2006, 15:04"),
 		Compared: r.Compared(), Stats: r.stats(),
 	}
+	if Partial(r) {
+		d.Partial = capitalize(partialNote) + "."
+	}
 	if r.Compared() {
 		c := r.Comparison
 		d.Title = "Soundcheck · " + verdict(c)
@@ -115,7 +119,7 @@ func HTML(w io.Writer, r Result) error {
 		}
 		groups := byClass(c.Changes)
 		embedded := 0
-		for _, class := range model.Classes {
+		for _, class := range shownClasses(c) {
 			info := classes[class]
 			d.Chips = append(d.Chips, htmlChip{class, info.Label, info.Glyph, len(groups[class])})
 			if len(groups[class]) == 0 {
@@ -141,7 +145,7 @@ func HTML(w io.Writer, r Result) error {
 					if it.Shots == nil {
 						for _, k := range []string{"before", "after", "diff"} {
 							if f := ch.Files[k]; f != "" {
-								it.Files = append(it.Files, r.Path(f))
+								it.Files = append(it.Files, r.fileLabel(f))
 							}
 						}
 					}
@@ -180,6 +184,11 @@ func HTML(w io.Writer, r Result) error {
 		d.Notes = run.Warnings
 	}
 	for _, p := range run.Pages {
+		if p.Canceled() {
+			d.Pages = append(d.Pages, htmlPage{Path: p.Path, URL: p.URL, Status: "not checked", Issues: "–",
+				Time: "–", LCP: "–", CLS: "–", Weight: "–"})
+			continue
+		}
 		hp := htmlPage{Path: p.Path, URL: p.URL, Status: fmt.Sprint(p.Status), Issues: fmt.Sprint(len(p.Issues)),
 			Time: ms(p.Metrics.Load), LCP: ms(p.Metrics.LCP), CLS: fmt.Sprintf("%.2f", p.Metrics.CLS), Weight: bytesLabel(p.Metrics.Bytes)}
 		if p.Error != "" {
@@ -193,7 +202,15 @@ func HTML(w io.Writer, r Result) error {
 		d.Pages = append(d.Pages, hp)
 	}
 	d.Echo = echoTable(run)
-	return htmlTemplate.Execute(w, d)
+	// html/template escapes site text but keeps bidi overrides, which
+	// make a name like "gnp.exe" read backwards. None of the report's own
+	// text has one, so they are removed from the whole page.
+	var buf bytes.Buffer
+	if err := htmlTemplate.Execute(&buf, d); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, noBidi(buf.String()))
+	return err
 }
 
 // echoTable is one row per message, and one for each action that sent
@@ -227,7 +244,11 @@ func (r Result) shots(files map[string]string) *htmlShots {
 		if f == "" {
 			return ""
 		}
-		u, err := embedImage(r.Path(f))
+		path, err := r.Path(f)
+		if err != nil {
+			return ""
+		}
+		u, err := embedImage(path)
 		if err != nil {
 			return ""
 		}
@@ -239,6 +260,16 @@ func (r Result) shots(files map[string]string) *htmlShots {
 		return nil
 	}
 	return s
+}
+
+// fileLabel is where a screenshot is, for a report that doesn't embed
+// it, or "image not available" when its path leaves the result's folder.
+func (r Result) fileLabel(rel string) string {
+	path, err := r.Path(rel)
+	if err != nil {
+		return "image not available"
+	}
+	return path
 }
 
 // embedImage returns a PNG file as a scaled-down JPEG data URL.

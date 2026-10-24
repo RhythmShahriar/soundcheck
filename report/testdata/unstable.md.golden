@@ -1,0 +1,25 @@
+## ♪ Soundcheck
+
+**Something broke.** 3 pages of http\://brew.test/ compared with snapshot "good".
+
+| Broke | New | Changed | Slower | Fixed | Unstable |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 0 | 0 | 0 | 0 | 1 |
+
+### ✗ BROKE (1)
+
+_Worked in the snapshot, fails now._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| Server error 500 | `/down/` |  | Check the PHP error log. |
+
+### ~ UNSTABLE (1)
+
+_Seen once, gone when the page was checked again; not counted._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| Server error 500 | `/flaky/` |  | Check the PHP error log. |
+
+<sub>rhythm-soundcheck 1.0.0 · 3 pages · 6s · 2026-10-23 09:00 UTC</sub>

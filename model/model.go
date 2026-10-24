@@ -10,6 +10,8 @@ package model
 import (
 	"crypto/sha1" //nolint:gosec // short stable IDs for file names, not security
 	"encoding/hex"
+	"strings"
+	"sync"
 	"time"
 
 	echomodel "github.com/RhythmShahriar/echo/model"
@@ -152,6 +154,18 @@ type Page struct {
 	Text string `json:"-"`
 }
 
+// CanceledError is a page's Error when the run was stopped (Ctrl+C, a
+// signal) before its visit finished. The engine records exactly this
+// text, the message of context.Canceled.
+const CanceledError = "context canceled"
+
+// Canceled reports whether the page's visit was cut short because the run
+// was stopped. Such a page wasn't checked: what it recorded says nothing
+// about the site.
+func (p *Page) Canceled() bool {
+	return p.Error == CanceledError || strings.HasSuffix(p.Error, ": "+CanceledError)
+}
+
 // EchoAction is one thing Soundcheck did (a form submit, a flow) and the
 // messages Echo saw the site send because of it.
 type EchoAction struct {
@@ -165,6 +179,7 @@ type EchoAction struct {
 // Run is one check of a site.
 type Run struct {
 	Schema   string         `json:"schema"`
+	Kind     string         `json:"kind"` // always KindRun; see Complete
 	Tool     string         `json:"tool"`
 	Version  string         `json:"version"`
 	Target   string         `json:"target"`
@@ -175,13 +190,24 @@ type Run struct {
 	Pages    []Page         `json:"pages"`
 	Issues   []Issue        `json:"issues,omitempty"`  // site-level issues
 	Skipped  map[string]int `json:"skipped,omitempty"` // discovery: URLs left out, by reason
-	Warnings []string       `json:"warnings,omitempty"`
+	Warnings []string       `json:"warnings"`
 	// Cache is the cache module's site summary (hit rate, layers, cached
 	// and uncached TTFB); see checks/cache for the keys.
 	Cache map[string]string `json:"cache,omitempty"`
 	// Echo lists the messages each flow made the site send (form submits
 	// are on their pages).
 	Echo []EchoAction `json:"echo,omitempty"`
+	// Interrupted says the run was stopped before it finished, so it
+	// holds partial results; see Page.Canceled.
+	Interrupted bool `json:"interrupted,omitempty"`
+
+	// Summary and Groups are filled for JSON output (report.JSON), not
+	// stored in run.json: the counts and grouped list the terminal shows,
+	// so scripts don't have to group issues themselves.
+	Summary *RunSummary `json:"summary,omitempty"`
+	Groups  []Group     `json:"groups,omitempty"`
+
+	index *pageIndex // see Page
 }
 
 // Options records what a run did, so a comparison can warn when two runs
@@ -203,14 +229,82 @@ func PageID(url string) string {
 	return hex.EncodeToString(sum[:5])
 }
 
-// Page returns the page with the given path, or nil.
+// Page returns the page with the given path, or nil. When two pages
+// share a path, it returns the first.
+//
+// Lookups go through a map built on first use, so comparing two big runs
+// stays linear. The map is rebuilt when Pages grows, shrinks or is
+// replaced and when a page it points at has moved; changing a page's
+// Path in place without that isn't seen. Concurrent readers are safe;
+// writers to Pages need their own lock, as before.
 func (r *Run) Page(path string) *Page {
-	for i := range r.Pages {
+	// The fast path only reads, so parallel comparers don't wait on
+	// each other once the index is built.
+	indexMu.RLock()
+	idx := r.index
+	if idx.valid(r.Pages) {
+		i, ok := idx.byPath[path]
+		if !ok {
+			indexMu.RUnlock()
+			return nil
+		}
 		if r.Pages[i].Path == path {
+			indexMu.RUnlock()
 			return &r.Pages[i]
 		}
 	}
-	return nil
+	indexMu.RUnlock()
+
+	indexMu.Lock()
+	defer indexMu.Unlock()
+	idx = r.index
+	if !idx.valid(r.Pages) {
+		idx = newPageIndex(r.Pages)
+		r.index = idx
+	}
+	i, ok := idx.byPath[path]
+	if ok && r.Pages[i].Path != path { // reordered in place
+		idx = newPageIndex(r.Pages)
+		r.index = idx
+		i, ok = idx.byPath[path]
+	}
+	if !ok {
+		return nil
+	}
+	return &r.Pages[i]
+}
+
+// indexMu guards every run's page index. One lock for all runs keeps Run
+// free of a mutex, so runs can still be copied by value (a copy builds
+// its own index on first use).
+var indexMu sync.RWMutex
+
+// pageIndex maps paths to positions in the Pages slice it was built from.
+type pageIndex struct {
+	base   *Page // first element, to notice a replaced slice
+	n      int
+	byPath map[string]int
+}
+
+func newPageIndex(pages []Page) *pageIndex {
+	idx := &pageIndex{base: first(pages), n: len(pages), byPath: make(map[string]int, len(pages))}
+	for i := range pages {
+		if _, ok := idx.byPath[pages[i].Path]; !ok {
+			idx.byPath[pages[i].Path] = i
+		}
+	}
+	return idx
+}
+
+func (idx *pageIndex) valid(pages []Page) bool {
+	return idx != nil && idx.n == len(pages) && idx.base == first(pages)
+}
+
+func first(pages []Page) *Page {
+	if len(pages) == 0 {
+		return nil
+	}
+	return &pages[0]
 }
 
 // EchoActions returns every recorded action: form submits page by page,
@@ -243,13 +337,20 @@ const (
 	Changed = "changed" // looks or reads differently
 	Slower  = "slower"  // measurably slower
 	Fixed   = "fixed"   // a problem from the snapshot is gone
+	// Unstable is a BROKE or NEW change that didn't show again when its
+	// page was checked a second time (see compare.Confirm). It's
+	// reported last and never fails a build: noise isn't a regression.
+	Unstable = "unstable"
 )
 
 // Classes lists change classes in report order.
-var Classes = []string{Broke, New, Changed, Slower, Fixed}
+var Classes = []string{Broke, New, Changed, Slower, Fixed, Unstable}
 
 // Change is one difference between a snapshot and the current run.
 type Change struct {
+	// ID names the change in this comparison and in the next one when
+	// nothing about it changed; see ChangeID.
+	ID     string            `json:"id"`
 	Class  string            `json:"class"`
 	Check  string            `json:"check"`
 	Title  string            `json:"title"`
@@ -261,19 +362,41 @@ type Change struct {
 	After  string            `json:"after,omitempty"`
 	Score  float64           `json:"score,omitempty"` // ranking within the class: % changed, % slower
 	Files  map[string]string `json:"files,omitempty"` // e.g. before/after/diff images, relative to the comparison
+	// Reason says why an ignored change was ignored: the reason its
+	// ignore rule gives. Changes that count leave it empty.
+	Reason string `json:"reason,omitempty"`
+	// FromPageIssue says the change is a page issue that appeared or went
+	// away (compare.Issues sets it), so checking the page again tells
+	// whether it's real. It isn't stored: Confirm runs on a fresh
+	// comparison.
+	FromPageIssue bool `json:"-"`
+	// Key is the issue key of a change compare.Issues grouped from
+	// issues (see Issue.Identify), so its ID stays the same when the
+	// issue shows up on more pages. Other changes leave it empty. It
+	// isn't stored: IDs are given before a comparison is written.
+	Key string `json:"-"`
 }
 
 // Comparison is the result of `compare`: what changed between two runs.
 type Comparison struct {
-	Schema   string    `json:"schema"`
-	Tool     string    `json:"tool"`
-	Version  string    `json:"version"`
-	Before   RunRef    `json:"before"`
-	After    RunRef    `json:"after"`
-	Changes  []Change  `json:"changes"`
+	Schema  string   `json:"schema"`
+	Kind    string   `json:"kind"` // always KindComparison; see Complete
+	Tool    string   `json:"tool"`
+	Version string   `json:"version"`
+	Before  RunRef   `json:"before"`
+	After   RunRef   `json:"after"`
+	Changes []Change `json:"changes"`
+	// Ignored holds the changes ignore rules matched. They're kept so a
+	// report can say what was left out; they never pass or fail a build.
+	Ignored  []Change  `json:"ignored"`
 	Pages    int       `json:"pages"`
-	Warnings []string  `json:"warnings,omitempty"`
+	Warnings []string  `json:"warnings"`
+	Summary  Summary   `json:"summary"`
 	Created  time.Time `json:"created"`
+	// Interrupted says the current run was stopped before it finished:
+	// pages it didn't finish weren't compared, so the comparison is
+	// partial and must not pass or fail a build.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 // RunRef points at a stored run.

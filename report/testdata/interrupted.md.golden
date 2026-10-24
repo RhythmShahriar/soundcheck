@@ -1,0 +1,18 @@
+## ♪ Soundcheck
+
+> [!WARNING]
+> **Interrupted.** Stopped before it finished; these results are partial.
+
+**Nothing changed.** 1 page of http\://brew.test/ compared with snapshot "good".
+
+| Broke | New | Changed | Slower | Fixed |
+|---:|---:|---:|---:|---:|
+| 0 | 0 | 0 | 0 | 0 |
+
+<details><summary>1 note</summary>
+
+- interrupted: 2 pages were not checked
+
+</details>
+
+<sub>rhythm-soundcheck 1.0.0 · 3 pages · 2 not checked (interrupted) · 6s · 2026-10-23 09:00 UTC</sub>

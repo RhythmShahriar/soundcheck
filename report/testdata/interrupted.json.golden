@@ -1,0 +1,35 @@
+{
+  "schema": "rhythm-soundcheck/v1",
+  "kind": "comparison",
+  "tool": "rhythm-soundcheck",
+  "version": "1.0.0",
+  "before": {
+    "target": "http://brew.test/",
+    "name": "good",
+    "dir": "",
+    "started": "0001-01-01T00:00:00Z"
+  },
+  "after": {
+    "target": "http://brew.test/",
+    "dir": "",
+    "started": "2026-10-23T09:00:00Z"
+  },
+  "changes": [],
+  "ignored": [],
+  "pages": 1,
+  "warnings": [
+    "interrupted: 2 pages were not checked"
+  ],
+  "summary": {
+    "broke": 0,
+    "new": 0,
+    "changed": 0,
+    "slower": 0,
+    "fixed": 0,
+    "unstable": 0,
+    "ignored": 0,
+    "verdict": "interrupted"
+  },
+  "created": "2026-10-23T09:00:06Z",
+  "interrupted": true
+}

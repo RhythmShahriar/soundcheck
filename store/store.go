@@ -3,17 +3,19 @@
 
 // Package store keeps Soundcheck's files in the project's .soundcheck/
 // folder: named snapshots, recent runs and comparisons, each a directory
-// with run.json (or comparison.json) and its screenshots.
+// with run.json, the run's pages in pages.jsonl, comparison.json for a
+// comparison and the screenshots.
 package store
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -29,60 +31,214 @@ const Incoming = ".incoming"
 // Store is a .soundcheck folder.
 type Store struct{ Root string }
 
-var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+// Latest is the file in the store's root that names the snapshot compare
+// uses by default. Older versions kept it in snapshots/, where it shared
+// the namespace with snapshot folders (see latest).
+const Latest = "LATEST"
 
-// ValidName reports whether name can be used as a snapshot name.
-func ValidName(name string) bool { return safeName.MatchString(name) }
+// owner is the file in a folder NewDir created that says which process
+// is still writing it, so Prune leaves it alone.
+const owner = ".owner"
 
-// Stamp is the default name for snapshots and runs.
-func Stamp(t time.Time) string { return t.Format("2006-01-02T15-04-05") }
+// maxSuffix bounds how many "-2", "-3"… folder names NewDir tries.
+const maxSuffix = 1000
 
-// NewDir creates kind/name (kind is "snapshots" or "runs") and returns it.
-// An existing snapshot with the same name is replaced.
+// NewDir creates a new folder kind/name (kind is "snapshots", "runs" or
+// Incoming) and returns it. It never reuses or empties an existing
+// folder: when kind/name exists, another run made it (two commands in
+// the same millisecond, or a crashed one), so it creates name-2, name-3
+// and so on instead.
+//
+// For Incoming it first removes snapshots that were never finished (see
+// cleanIncoming) and when it creates the Incoming folder itself it adds
+// the store to git's exclude list, so screenshots of a snapshot that
+// gets killed are never committed.
 func (s Store) NewDir(kind, name string) (string, error) {
-	if !ValidName(name) {
-		return "", fmt.Errorf("%q isn't a valid name: use letters, digits, dots, dashes and underscores", name)
-	}
-	dir := filepath.Join(s.Root, kind, name)
-	if err := os.RemoveAll(dir); err != nil {
+	if err := CheckName(name); err != nil {
 		return "", err
 	}
-	return dir, os.MkdirAll(dir, 0o750)
+	parent := filepath.Join(s.Root, kind)
+	// An incoming snapshot ends up in snapshots/, so that's where its
+	// name must not clash; checking now saves a whole scan. Runs are
+	// named by Stamp and can't clash.
+	if kind == Incoming || kind == "snapshots" {
+		if err := caseClash(filepath.Join(s.Root, "snapshots"), name); err != nil {
+			return "", err
+		}
+	}
+	_, statErr := os.Stat(parent)
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return "", err
+	}
+	if kind == Incoming {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			s.ExcludeFromGit()
+		}
+		s.cleanIncoming()
+	}
+	for n := 1; n <= maxSuffix; n++ {
+		dir := filepath.Join(parent, name)
+		if n > 1 {
+			dir = filepath.Join(parent, fmt.Sprintf("%s-%d", name, n))
+		}
+		// Mkdir fails when the folder exists, which makes it the claim:
+		// two processes can't both create the same one.
+		err := os.Mkdir(dir, 0o750)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return dir, writeOwner(filepath.Join(dir, owner))
+	}
+	return "", fmt.Errorf("couldn't create a folder for %q in %s: %d names are taken", name, parent, maxSuffix)
+}
+
+// Release marks a folder from NewDir as finished, so Prune may delete it
+// once it's old enough. Folders of processes that have exited count as
+// finished anyway.
+func Release(dir string) error {
+	claimed.Delete(folderKey(dir))
+	err := os.Remove(filepath.Join(dir, owner))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // Saver returns a function that writes files into dir.
 func Saver(dir string) func(name string, data []byte) error {
 	return func(name string, data []byte) error {
-		clean := filepath.Clean(filepath.FromSlash(name))
-		if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+		path, err := Contained(dir, name)
+		if err != nil {
 			return fmt.Errorf("refusing to write %q outside the run folder", name)
 		}
-		return cache.WriteFile(filepath.Join(dir, clean), data)
+		return cache.WriteFile(path, data)
 	}
 }
 
-// SaveRun writes run.json into dir.
+// Contained joins dir and rel, a slash-separated path from a run or
+// comparison file, when rel stays inside dir. Absolute paths, paths that
+// climb out with "..", empty ones and (on Windows) device names are
+// refused: run.json and comparison.json may come from someone else and
+// following such a path would read or write any file on the machine.
+func Contained(dir, rel string) (string, error) {
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	if clean == "." || !filepath.IsLocal(clean) {
+		return "", fmt.Errorf("%q is outside %s", rel, dir)
+	}
+	return filepath.Join(dir, clean), nil
+}
+
+// Inside is Contained for a file that is read: it also refuses a path
+// whose symlinks lead outside dir, so a run folder from someone else
+// with shots/a.png linked to a private file can't pull that file into a
+// report or a snapshot. A missing file isn't outside: opening it reports
+// the error.
+func Inside(dir, rel string) (string, error) {
+	path, err := Contained(dir, rel)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path, nil //nolint:nilerr // missing: the caller's open says so
+	}
+	root, err := filepath.EvalSymlinks(cmp.Or(dir, "."))
+	if err != nil {
+		return "", err
+	}
+	if inside, err := filepath.Rel(root, real); err != nil || !filepath.IsLocal(inside) {
+		return "", fmt.Errorf("%q links outside %s", rel, dir)
+	}
+	return path, nil
+}
+
+// SaveRun writes the run into dir: its pages to a pages file (see
+// PagesFile), then run.json naming it. A run with pages whose visit was
+// canceled is marked as interrupted, so it's never read back as a full
+// result.
+//
+// Rewriting a stored run (accepting a change into a snapshot) writes
+// the pages under the other name before run.json is replaced, so a
+// crash leaves the old run or the new one, never a mix; the old pages
+// file is removed last.
 func SaveRun(dir string, r *model.Run) error {
-	return cache.WriteJSON(filepath.Join(dir, "run.json"), r)
-}
-
-// LoadRun reads run.json from dir.
-func LoadRun(dir string) (*model.Run, error) {
-	var r model.Run
-	if err := cache.ReadJSON(filepath.Join(dir, "run.json"), &r); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("no run in %s", dir)
+	if slices.ContainsFunc(r.Pages, func(p model.Page) bool { return p.Canceled() }) {
+		r.Interrupted = true
+	}
+	r.Complete()
+	name := PagesFile
+	if currentPagesFile(dir) == PagesFile {
+		name = altPagesFile
+	}
+	if err := writePages(filepath.Join(dir, name), r.Pages); err != nil {
+		return err
+	}
+	// The summary and groups are for command output; run.json keeps
+	// what was recorded.
+	stored := *r
+	stored.Summary, stored.Groups = nil, nil
+	stored.Pages = []model.Page{}
+	if stored.Schema == model.Schema {
+		// A run of another schema keeps it and reads back as such.
+		stored.Schema = SplitSchema
+	}
+	if err := cache.WriteJSON(filepath.Join(dir, "run.json"), storedRun{Run: &stored, PagesFile: name, PageCount: len(r.Pages)}); err != nil {
+		if name == altPagesFile {
+			_ = os.Remove(filepath.Join(dir, name))
 		}
-		return nil, fmt.Errorf("%s: %w", dir, err)
+		return err
 	}
-	if r.Schema != model.Schema {
-		return nil, fmt.Errorf("%s was made by an incompatible Soundcheck (%s); take a new snapshot", dir, r.Schema)
+	old := altPagesFile
+	if name == altPagesFile {
+		old = PagesFile
 	}
-	return &r, nil
+	_ = os.Remove(filepath.Join(dir, old))
+	return nil
 }
 
-// SaveComparison writes comparison.json into dir.
+// LoadRun reads the run in dir: run.json and the pages it names, or a
+// run.json from an older version that holds its pages itself.
+func LoadRun(dir string) (*model.Run, error) {
+	r, s, err := loadHead(dir)
+	if err != nil || s.PagesFile == "" {
+		return r, err
+	}
+	if r.Pages, err = readPages(dir, s.PagesFile, s.PageCount); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// loadHead reads run.json in dir. In the split layout the run comes back
+// without its pages; the schema is set to model.Schema, the one the
+// rest of Soundcheck knows.
+func loadHead(dir string) (*model.Run, storedRun, error) {
+	var r model.Run
+	s := storedRun{Run: &r}
+	if err := cache.ReadJSON(filepath.Join(dir, "run.json"), &s); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, s, fmt.Errorf("no run in %s", dir)
+		}
+		return nil, s, fmt.Errorf("%s: %w", dir, err)
+	}
+	switch {
+	case r.Schema == SplitSchema && s.PagesFile != "":
+		r.Schema = model.Schema
+	case r.Schema == model.Schema:
+		s.PagesFile = "" // pages are inline in this layout
+	default:
+		return nil, s, fmt.Errorf("%s was made by an incompatible Soundcheck (%s); take a new snapshot", dir, r.Schema)
+	}
+	return &r, s, nil
+}
+
+// SaveComparison writes comparison.json into dir, completed (kind,
+// change IDs, summary) the way scripts expect it.
 func SaveComparison(dir string, c *model.Comparison) error {
+	c.Complete()
 	return cache.WriteJSON(filepath.Join(dir, "comparison.json"), c)
 }
 
@@ -97,34 +253,149 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 
 // Promote moves a finished snapshot from Incoming into snapshots/name,
 // replacing an older snapshot with that name, and returns its new folder.
+// It holds the store's lock, so two snapshots finishing at once each
+// leave a whole snapshot, never a mix of both. A snapshot whose
+// screenshots weren't all written (see verifyShots) is refused and the
+// previous one stays.
 func (s Store) Promote(dir, name string) (string, error) {
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
 	}
-	final := filepath.Join(s.Root, "snapshots", name)
-	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
+	if err := verifyShots(dir); err != nil {
 		return "", err
 	}
-	if err := os.RemoveAll(final); err != nil {
+	unlock, err := s.lock()
+	if err != nil {
 		return "", err
 	}
-	return final, os.Rename(dir, final)
+	defer unlock()
+	snapshots := filepath.Join(s.Root, "snapshots")
+	if err := os.MkdirAll(snapshots, 0o750); err != nil {
+		return "", err
+	}
+	if err := caseClash(snapshots, name); err != nil {
+		return "", err
+	}
+	final := filepath.Join(snapshots, name)
+	if _, err := os.Lstat(final); err != nil {
+		if err := move(dir, final); err != nil {
+			return "", err
+		}
+		return final, Release(final)
+	}
+	// The old snapshot is moved aside, not deleted, until the new one is
+	// in place: a failed rename then puts it back.
+	tmp, err := os.MkdirTemp(snapshots, ".replaced-*")
+	if err != nil {
+		return "", err
+	}
+	aside := filepath.Join(tmp, name)
+	if err := move(final, aside); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := move(dir, final); err != nil {
+		if rerr := move(aside, final); rerr != nil {
+			// Deleting tmp now would delete the old snapshot too, so it
+			// stays where the user can move it back.
+			return "", fmt.Errorf("%w; the previous snapshot %q couldn't be put back and is in %s", err, name, aside)
+		}
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	_ = os.RemoveAll(tmp) //nolint:gosec // our own temporary folder
+	return final, Release(final)
+}
+
+var (
+	// rename is os.Rename, swapped in tests to make it fail.
+	rename = os.Rename
+	// retryRenames is on where a rename can fail for a moment: on
+	// Windows, a virus scanner or the search indexer briefly opens the
+	// files of a folder that was just written and moving it is then
+	// denied until they let go.
+	retryRenames  = runtime.GOOS == "windows"
+	renameBackoff = 50 * time.Millisecond
+)
+
+// renameTries is how often move tries when retryRenames is on.
+const renameTries = 5
+
+// move renames from to to, retrying with a growing pause where renames
+// fail for a moment. A missing source is never retried.
+func move(from, to string) error {
+	err := rename(from, to)
+	wait := renameBackoff
+	for try := 1; retryRenames && err != nil && try < renameTries && !errors.Is(err, fs.ErrNotExist); try++ {
+		time.Sleep(wait)
+		wait *= 2
+		err = rename(from, to)
+	}
+	return err
 }
 
 // SetLatest records name as the snapshot compare uses by default.
 func (s Store) SetLatest(name string) error {
-	return cache.WriteFile(filepath.Join(s.Root, "snapshots", "LATEST"), []byte(name+"\n"))
+	if !ValidName(name) {
+		return fmt.Errorf("%q isn't a valid snapshot name", name)
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := cache.WriteFile(filepath.Join(s.Root, Latest), []byte(name+"\n")); err != nil {
+		return err
+	}
+	// The old pointer would otherwise name a stale snapshot to an older
+	// Soundcheck sharing this store and look like a snapshot to no one.
+	if legacy := s.legacyLatest(); isFile(legacy) {
+		_ = os.Remove(legacy)
+	}
+	return nil
+}
+
+// latest returns the name LATEST points to, or "" when there's none. A
+// store from an older version has the pointer in snapshots/; it's read
+// there once and moved to the root.
+func (s Store) latest() string {
+	if b, err := os.ReadFile(filepath.Join(s.Root, Latest)); err == nil {
+		return strings.TrimSpace(string(b))
+	}
+	legacy := s.legacyLatest()
+	if !isFile(legacy) {
+		// A folder there is a snapshot named LATEST from before the
+		// name was reserved, not a pointer.
+		return ""
+	}
+	b, err := os.ReadFile(legacy) //nolint:gosec // the store's own pointer file
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(string(b))
+	if ValidName(name) {
+		// A read-only store can't be migrated; it's read from the old
+		// place every time then, which works as well.
+		_ = s.SetLatest(name)
+	}
+	return name
+}
+
+func (s Store) legacyLatest() string { return filepath.Join(s.Root, "snapshots", Latest) }
+
+// isFile reports whether path is a regular file.
+func isFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // Snapshot returns the directory of a named snapshot, or of the latest
 // one when name is empty.
 func (s Store) Snapshot(name string) (string, error) {
 	if name == "" {
-		b, err := os.ReadFile(filepath.Join(s.Root, "snapshots", "LATEST"))
-		if err != nil {
+		if name = s.latest(); name == "" {
 			return "", errors.New("no snapshot yet; take one first: rhythm soundcheck snapshot <url>")
 		}
-		name = strings.TrimSpace(string(b))
 	}
 	if !ValidName(name) {
 		return "", fmt.Errorf("%q isn't a valid snapshot name", name)
@@ -157,26 +428,38 @@ func (s Store) list(kind string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		// Dot folders are Promote's temporary ones. Other invalid names
+		// (a snapshot named LATEST from before the name was reserved)
+		// can't be opened or deleted by name, so they aren't listed.
+		if e.IsDir() && ValidName(e.Name()) {
 			names = append(names, e.Name())
 		}
 	}
-	slices.Sort(names) // stamps sort chronologically
+	sortByTime(names)
 	return names, err
 }
 
 // Prune keeps the newest keep runs and deletes older ones. Snapshots are
-// never pruned.
+// never pruned and neither is a run another process is still writing.
 func (s Store) Prune(keep int) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	runs, err := s.list("runs")
 	if err != nil {
 		return err
 	}
 	for len(runs) > keep {
-		if err := os.RemoveAll(filepath.Join(s.Root, "runs", runs[0])); err != nil {
+		dir := filepath.Join(s.Root, "runs", runs[0])
+		runs = runs[1:]
+		if inUse(filepath.Join(dir, owner)) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
 			return err
 		}
-		runs = runs[1:]
 	}
 	return nil
 }
@@ -184,8 +467,10 @@ func (s Store) Prune(keep int) error {
 // ExcludeFromGit adds the store's snapshots and runs to the repository's
 // local exclude list (.git/info/exclude), so screenshots never get
 // committed by accident and the project's .gitignore stays untouched.
+// The LATEST pointer and the lock are local state and are excluded too.
 // config.yaml and flows/ stay visible to git, to share with the team. It
-// does nothing outside a git repository.
+// does nothing outside a git repository and adds only the lines that
+// are missing, so stores excluded by an older version get the new ones.
 func (s Store) ExcludeFromGit() {
 	out, err := exec.Command("git", "rev-parse", "--git-path", "info/exclude").Output()
 	if err != nil {
@@ -209,10 +494,16 @@ func (s Store) ExcludeFromGit() {
 		return
 	}
 	base := "/" + filepath.ToSlash(rel) + "/"
-	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/"}
+	lines := []string{base + "snapshots/", base + "runs/", base + Incoming + "/", base + Latest, base + lockFile}
 	existing, _ := os.ReadFile(path) //nolint:gosec // the repository's own exclude file
-	if slices.Contains(strings.Split(string(existing), "\n"), lines[0]) {
+	have := strings.Split(string(existing), "\n")
+	missing := slices.DeleteFunc(slices.Clone(lines), func(l string) bool { return slices.Contains(have, l) })
+	if len(missing) == 0 {
 		return
+	}
+	text := strings.Join(missing, "\n") + "\n"
+	if len(missing) == len(lines) {
+		text = "# Soundcheck snapshots and reports\n" + text
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // the repository's own exclude file
 	if err != nil {
@@ -222,5 +513,5 @@ func (s Store) ExcludeFromGit() {
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
 		_, _ = f.WriteString("\n")
 	}
-	_, _ = f.WriteString("# Soundcheck snapshots and reports\n" + strings.Join(lines, "\n") + "\n")
+	_, _ = f.WriteString(text)
 }
