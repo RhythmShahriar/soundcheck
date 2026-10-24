@@ -83,7 +83,7 @@ type Options struct {
 
 	// Done resumes an interrupted run: these pages were finished before
 	// and are kept as they are, not visited again. Their links are added
-	// to the pages to find, and the run's pages start with them.
+	// to the pages to find. The run's pages start with them.
 	Done []*model.Page
 	// OnPage is called with each page as it finishes (not the Done ones,
 	// nor one the cancel cut short), so it can be stored right away and a
@@ -107,8 +107,8 @@ type Hooks struct {
 }
 
 // Run checks the site. When ctx is canceled it starts no more pages and
-// returns the run so far with ctx.Err(): pages it finished are complete,
-// and a page whose visit the cancel cut short has the Error
+// returns the run so far with ctx.Err(). Pages it finished are complete;
+// a page whose visit the cancel cut short has the Error
 // "context canceled" and nothing else (see canceled). With opts.Done it
 // resumes such a run, visiting only the pages it didn't finish.
 func Run(ctx context.Context, opts Options) (*model.Run, error) {
@@ -622,7 +622,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 //
 // A visual module that doesn't implement CaptureNeeds yet gets the shots
 // it always had: whenever cfg enables "visual" (which the testbed uses
-// to give health the rendered mobile width without the module), and a
+// to give health the rendered mobile width without the module) plus a
 // second one in snapshots. The fallback goes once visual implements
 // CaptureNeeds.
 func captureNeeds(cfg config.Config, modules []check.Module, snapshot bool) (shots, twice bool) {
@@ -646,7 +646,7 @@ func captureNeeds(cfg config.Config, modules []check.Module, snapshot bool) (sho
 	return shots, twice
 }
 
-// resolve fetches the target once, following redirects, and returns the
+// resolve fetches the target once (following redirects) and returns the
 // start page: the URL the site really answers on, with the path and query
 // it ended up at, so a run started at /q?lang=fr checks that page and one
 // redirected to /b checks /b.

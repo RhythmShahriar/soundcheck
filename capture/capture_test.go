@@ -149,7 +149,7 @@ func TestVisitUnreachable(t *testing.T) {
 	}
 }
 
-// slowFixture answers /slow?wait=N after N seconds, and /busy with a page
+// slowFixture answers /slow?wait=N after N seconds. Its /busy is a page
 // whose script blocks the main thread for 8 seconds right after load.
 func slowFixture(t *testing.T) *httptest.Server {
 	t.Helper()

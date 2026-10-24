@@ -20,7 +20,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Conn is a WebDriver BiDi connection: commands with their replies, and
+// Conn is a WebDriver BiDi connection: commands with their replies plus
 // events for whoever subscribed to them. Its methods are safe to call
 // from several goroutines.
 type Conn struct {

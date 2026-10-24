@@ -87,8 +87,8 @@ type req struct {
 // window.__soundcheck. Long tasks are kept as [start, end] so factsJS can
 // compute Total Blocking Time once FCP is known; flushTasks hands over
 // long tasks the observer hasn't delivered yet and taskSeen is when the
-// last one came in. Chrome only paints, and
-// so only reports FCP, LCP and long tasks, for a visible page: tabs must
+// last one came in. Chrome only paints a visible page, so it only
+// reports FCP, LCP and long tasks for one: tabs must
 // be opened with browser.NewTab, which makes each one render as if it
 // were in front.
 const metricsJS = `(() => {
@@ -379,7 +379,7 @@ const (
 // Visit navigates to rawURL at the desktop viewport, waits for the page to
 // settle, and records it. Screenshots are taken when opts.Save is set.
 //
-// opts.Timeout covers the navigation, up to the main response, and the
+// opts.Timeout covers the navigation (up to the main response) and the
 // waits for load and network idle. Reading the page afterwards gets its
 // own budget (see readBudget), so a page that answers just inside the
 // timeout is still read instead of being recorded empty.
@@ -445,7 +445,7 @@ func newPage(rawURL string) *model.Page {
 }
 
 // readBudget is how long reading a loaded page and screenshotting it may
-// take: a quarter of the page timeout, and at least 5 seconds.
+// take: a quarter of the page timeout but never under 5 seconds.
 func readBudget(timeout time.Duration) time.Duration {
 	return max(5*time.Second, timeout/4)
 }

@@ -169,7 +169,7 @@ func TestFailedLoginIsOneWarning(t *testing.T) {
 	}
 }
 
-// A page that answers just inside the timeout is read in full, and one
+// A page that answers just inside the timeout is read in full. One
 // that answers after it is an error with its real duration.
 func TestSlowPages(t *testing.T) {
 	needBrowser(t)

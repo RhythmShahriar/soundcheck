@@ -68,7 +68,7 @@ func (progressing) CheckSite(_ context.Context, cc *check.Context) {
 	}
 }
 
-// After the last page, a run says it's checking site-wide issues, and
+// After the last page, a run says it's checking site-wide issues while
 // a SiteChecker's progress reaches Hooks.Progress. A --page the default
 // excludes drop is named in the log.
 func TestSiteProgressAndDroppedPage(t *testing.T) {

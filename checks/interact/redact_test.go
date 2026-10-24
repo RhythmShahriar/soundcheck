@@ -26,8 +26,8 @@ import (
 	"github.com/RhythmShahriar/soundcheck/runner"
 )
 
-// A form's email with a reset link and a one-time code is stored masked,
-// and since both runs are masked alike, a comparison still matches it
+// A form's email with a reset link and a one-time code is stored masked.
+// Since both runs are masked alike, a comparison still matches it
 // although the link and code differ on every send.
 func TestEchoMessagesStoredRedacted(t *testing.T) {
 	needBrowser(t)

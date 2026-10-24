@@ -30,8 +30,8 @@ type tab struct {
 
 	mu sync.Mutex
 	// frames are the tab's browsing contexts, its own and its frames':
-	// the session sends every tab's events to every subscriber, and
-	// events from a frame name the frame.
+	// the session sends every tab's events to every subscriber. Events
+	// from a frame name the frame.
 	frames  map[string]bool
 	sub     string // the event subscription's ID
 	stopOwn func() // stops following frames
@@ -378,8 +378,8 @@ func (t *tab) continueRequest(e Event) {
 	}
 }
 
-// responseCompleted is network.responseCompleted's params, and
-// network.fetchError's.
+// responseCompleted is network.responseCompleted's params (and
+// network.fetchError's).
 type responseCompleted struct {
 	Context  string      `json:"context"`
 	Request  requestData `json:"request"`

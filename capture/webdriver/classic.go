@@ -102,8 +102,8 @@ func (c *classic) in(ctx context.Context, handle, method, path string, body, out
 
 func (c *classic) path(p string) string { return "/session/" + url.PathEscape(c.session) + p }
 
-// newTab opens a window. The session's first window is the first tab's,
-// and the last window open is kept for the next tab: closing it would
+// newTab opens a window. The session's first window is the first tab's.
+// The last window open is kept for the next tab: closing it would
 // end the session.
 func (c *classic) newTab(ctx context.Context) (capture.Tab, error) {
 	c.mu.Lock()

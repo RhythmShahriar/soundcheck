@@ -54,8 +54,8 @@ func quietConfig() config.Config {
 }
 
 // Revisit visits only the pages it's given, again: a page that failed on
-// its first load and works on the second comes back working, and the
-// pages it links to aren't visited.
+// its first load and works on the second comes back working. The pages
+// it links to aren't visited.
 func TestRevisit(t *testing.T) {
 	needBrowser(t)
 	var h hits
@@ -119,7 +119,7 @@ func TestResume(t *testing.T) {
 	}))
 	defer srv.Close()
 	done := []*model.Page{
-		// Only the home page linked to the others, and it is done.
+		// Only the home page linked to the others. It is done.
 		{URL: srv.URL + "/", Path: "/", Title: "Home", Links: []string{srv.URL + "/a/", srv.URL + "/b/", srv.URL + "/c/", srv.URL + "/d/"}},
 		{URL: srv.URL + "/a/", Path: "/a/", Title: "A"},
 		{URL: srv.URL + "/b/", Path: "/b/", Title: "B"},

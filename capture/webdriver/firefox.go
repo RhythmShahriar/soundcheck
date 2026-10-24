@@ -162,7 +162,7 @@ func LaunchFirefox(ctx context.Context, opts Options) (*Browser, error) {
 	return b, nil
 }
 
-// waitListening reads Firefox's stderr until it names its BiDi URL, and
+// waitListening reads Firefox's stderr until it names its BiDi URL. It
 // keeps draining it afterwards so the browser never blocks on a full
 // pipe.
 func waitListening(ctx context.Context, stderr io.Reader, limit time.Duration) (string, error) {

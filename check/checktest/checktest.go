@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package checktest has fakes for testing Soundcheck modules without
-// Chrome: a Tab that answers Eval from a table and plays back events,
-// and a Context to run hooks against.
+// Chrome: a Tab that answers Eval from a table and plays back events
+// plus a Context to run hooks against.
 package checktest
 
 import (
