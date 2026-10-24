@@ -188,7 +188,7 @@ go test -tags testbed -v ./testbed/bench/
 - `TestHealthScenarios`: snapshot, break and compare for the health scenarios (s01–s10, s16, s17, plus s15 through health's "not responsive" check). It prints the score.
 - `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
-- `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
+- `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestExpectString`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
 - `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder, and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario

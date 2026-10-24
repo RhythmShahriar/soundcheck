@@ -129,3 +129,20 @@ func TestScoreboardPendingAndControl(t *testing.T) {
 		t.Error("the pending scenario is in the counted table")
 	}
 }
+
+func TestExpectString(t *testing.T) {
+	cases := map[string]Expect{
+		"BROKE health/status “503”": {Class: "broke", Check: "health/status", Title: "503"},
+		"BROKE":                     {Class: "broke"},
+		"any seo/og":                {Check: "seo/og"},
+		"warning “captcha”":         {Warning: "captcha"},
+		"marked interrupted":        {Interrupted: true},
+		"nothing at or above NEW":   {Clean: true},
+		"exit 3":                    {Exit: intp(3)},
+	}
+	for want, e := range cases {
+		if got := e.String(); got != want {
+			t.Errorf("%+v: %q, want %q", e, got, want)
+		}
+	}
+}

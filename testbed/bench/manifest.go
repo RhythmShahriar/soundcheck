@@ -157,7 +157,9 @@ func (e Expect) String() string {
 	if s == "" {
 		s = "any"
 	}
-	s += " " + e.Check
+	if e.Check != "" {
+		s += " " + e.Check
+	}
 	if e.Title != "" {
 		s += " “" + e.Title + "”"
 	}

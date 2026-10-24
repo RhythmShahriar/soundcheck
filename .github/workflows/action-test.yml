@@ -231,7 +231,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Manifest, scoring and TESTBED_STATE
-        run: go test -tags testbed -run 'TestManifest|TestLoadManifestRejects|TestEvaluate|TestScoreboardPendingAndControl|TestStateFromEnv' -v ./testbed/bench/
+        run: go test -tags testbed -run 'TestManifest|TestLoadManifestRejects|TestEvaluate|TestExpectString|TestScoreboardPendingAndControl|TestStateFromEnv' -v ./testbed/bench/
 
   verify:
     runs-on: ubuntu-latest
