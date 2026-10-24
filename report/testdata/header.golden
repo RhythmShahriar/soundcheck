@@ -1,0 +1,24 @@
+== RHYTHM_INVOKED_AS, plain true
+rhythm soundcheck 1.2.0 - http://brew.test/
+
+== RHYTHM_INVOKED_AS, plain false
+
+  ♪ rhythm soundcheck 1.2.0                                  http://brew.test/
+  ────────────────────────────────────────────────────────────────────────────
+
+== argv0 /usr/local/bin/rhythm-soundcheck.exe, plain true
+rhythm-soundcheck 1.2.0 - http://brew.test/
+
+== argv0 /usr/local/bin/rhythm-soundcheck.exe, plain false
+
+  ♪ rhythm-soundcheck 1.2.0                                  http://brew.test/
+  ────────────────────────────────────────────────────────────────────────────
+
+== Name set by the command, plain true
+sc 1.2.0 - http://brew.test/
+
+== Name set by the command, plain false
+
+  ♪ sc 1.2.0                                                 http://brew.test/
+  ────────────────────────────────────────────────────────────────────────────
+

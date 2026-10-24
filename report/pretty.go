@@ -6,6 +6,8 @@ package report
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -24,11 +26,37 @@ const (
 	indent     = badgeWidth + 2
 )
 
+// PrettyOptions says how the terminal view looks.
 type PrettyOptions struct {
 	Plain    bool // no color, box drawing or decorative glyphs; for screen readers and logs
 	Quiet    bool // results only
 	Progress bool // redraw a progress line; only for interactive terminals
-	Verbose  bool // a line per page and the browser's log
+	Verbose  bool // a line per page with its timings and the browser's log
+	// Name is the command the header shows. Empty means the name the
+	// user typed; see InvokedAs.
+	Name string
+}
+
+// InvokedAs is the name the user ran Soundcheck by, for the header and
+// hints: RHYTHM_INVOKED_AS when the rhythm CLI forwarded the command
+// ("rhythm soundcheck"), else the program's file name without ".exe"
+// ("rhythm-soundcheck" after go install or in the Action).
+func InvokedAs() string {
+	return invokedAs(os.Getenv, os.Args[0])
+}
+
+func invokedAs(getenv func(string) string, argv0 string) string {
+	if name := strings.TrimSpace(getenv("RHYTHM_INVOKED_AS")); name != "" {
+		return name
+	}
+	name := filepath.Base(argv0)
+	if ext := filepath.Ext(name); strings.EqualFold(ext, ".exe") {
+		name = strings.TrimSuffix(name, ext)
+	}
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "rhythm-soundcheck"
+	}
+	return name
 }
 
 // Pretty renders a run for a terminal. Header, Step, Discovered, Page
@@ -45,7 +73,12 @@ type Pretty struct {
 	errors  int // pages with errors so far, for the progress line
 }
 
+// NewPretty returns a view that writes results to w and progress notes
+// (verbose page lines, the browser's log) to errw.
 func NewPretty(w, errw io.Writer, o PrettyOptions) *Pretty {
+	if o.Name == "" {
+		o.Name = InvokedAs()
+	}
 	return &Pretty{w: w, errw: errw, o: o, start: time.Now()}
 }
 
@@ -94,12 +127,12 @@ func (p *Pretty) Header(version, target string) {
 	if p.o.Quiet {
 		return
 	}
-	version, target = Term(version), Term(target)
+	name, version, target := Term(p.o.Name), Term(version), Term(target)
 	if p.o.Plain {
-		fmt.Fprintf(p.w, "rhythm soundcheck %s - %s\n\n", version, target)
+		fmt.Fprintf(p.w, "%s %s - %s\n\n", name, version, target)
 		return
 	}
-	left := ui.Brand.Render("♪") + " " + bold.Render("rhythm soundcheck") + " " + muted.Render(version)
+	left := ui.Brand.Render("♪") + " " + bold.Render(name) + " " + muted.Render(version)
 	gap := max(2, width-lipgloss.Width(left)-lipgloss.Width(target))
 	fmt.Fprintf(p.w, "\n  %s%s%s\n  %s\n\n", left, strings.Repeat(" ", gap), muted.Render(target),
 		muted.Render(strings.Repeat("─", width)))
@@ -157,11 +190,14 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		} else if len(pg.Issues) > 0 {
 			mark = plural(len(pg.Issues), "issue", "issues")
 		}
-		line := fmt.Sprintf("%s %s %s (%s)", Term(pg.Path), status, time.Duration(pg.Duration*float64(time.Millisecond)).Round(10*time.Millisecond), mark)
+		line := fmt.Sprintf("%s %s %s (%s)", Term(pg.Path), status, millis(pg.Duration).Round(10*time.Millisecond), mark)
 		if p.o.Plain {
 			fmt.Fprintf(p.w, "[%d/%d] %s\n", done, total, line)
 		} else {
 			fmt.Fprintln(p.errw, muted.Render("  → "+line))
+		}
+		if p.o.Verbose {
+			p.pageDetail(pg)
 		}
 	}
 	if !p.o.Progress || p.o.Plain || done >= total {
@@ -182,6 +218,53 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		tally)
 	p.drawn = true
 }
+
+// maxConsole caps the browser log lines shown per page: a page that logs
+// in a loop would otherwise bury the run.
+const maxConsole = 20
+
+// pageDetail prints a page's timings and the browser's log under its
+// line, for -v. Plain mode writes them with the page line (that is the
+// log); the live view keeps them on errw with its other notes.
+func (p *Pretty) pageDetail(pg *model.Page) {
+	var lines []string
+	if t := timing(pg); t != "" {
+		lines = append(lines, "timing: "+t)
+	}
+	for i, c := range pg.Console {
+		if i == maxConsole {
+			lines = append(lines, fmt.Sprintf("console: …and %d more", len(pg.Console)-maxConsole))
+			break
+		}
+		lines = append(lines, "console: "+Term(c))
+	}
+	for _, l := range lines {
+		if p.o.Plain {
+			fmt.Fprintf(p.w, "  %s\n", l)
+		} else {
+			fmt.Fprintln(p.errw, muted.Render("      "+l))
+		}
+	}
+}
+
+// timing is "ttfb 120ms, load 840ms, settle 1.26s" for a visited page,
+// or "" for one that never loaded. Settle is the rest of the visit after
+// the load event: waiting for the page to go quiet, screenshots and the
+// checks.
+func timing(pg *model.Page) string {
+	m := pg.Metrics
+	if m.TTFB <= 0 && m.Load <= 0 {
+		return ""
+	}
+	parts := []string{"ttfb " + millis(m.TTFB).Round(time.Millisecond).String(), "load " + millis(m.Load).Round(time.Millisecond).String()}
+	if settle := pg.Duration - m.Load; m.Load > 0 && settle > 0 {
+		parts = append(parts, "settle "+millis(settle).Round(10*time.Millisecond).String())
+	}
+	return strings.Join(parts, ", ")
+}
+
+// millis turns a stored millisecond count into a Duration.
+func millis(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
 
 // Log prints a message from the run (browser downloads, warnings) when
 // verbose, or always for lines that need the user's attention.
