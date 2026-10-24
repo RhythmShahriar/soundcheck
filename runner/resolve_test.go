@@ -171,3 +171,27 @@ func TestRunRefusesOtherHost(t *testing.T) {
 		t.Errorf("run %v, err %v, other site hits %d", run, err, hits.Load())
 	}
 }
+
+// An https target that redirects to http is refused: the run's headers
+// would go out in cleartext. A bare hostname never asked for https and
+// may move.
+func TestResolveDowngrade(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS != nil {
+			http.Redirect(w, r, "http://"+r.Host+"/plain", http.StatusFound)
+		}
+	}))
+	defer srv.Close()
+	addr := hostPort(t, srv.URL)
+	for _, follow := range []bool{false, true} {
+		_, err := resolve(context.Background(), srv.Client(), srv.URL, "", follow, func(string) {})
+		if want := srv.URL + " redirects to http://" + addr + "/plain, which drops https"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("follow %v: err = %v", follow, err)
+		}
+	}
+	var logs []string
+	got, err := resolve(context.Background(), srv.Client(), addr, "", false, func(s string) { logs = append(logs, s) })
+	if err != nil || got.String() != "http://"+addr+"/plain" || strings.Join(logs, "|") != "!moved to http://"+addr+"/plain" {
+		t.Errorf("bare host: %v, %v, logs %v", got, err, logs)
+	}
+}

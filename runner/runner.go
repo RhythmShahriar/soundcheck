@@ -650,9 +650,11 @@ func captureNeeds(cfg config.Config, modules []check.Module, snapshot bool) (sho
 // redirected to /b checks /b.
 //
 // Redirects may move to https and between apex and www (logged as "moved
-// to ..."); one to another site is an error unless followHost is set. A
-// bare hostname falls back to http only when https is refused outright:
-// a bad certificate or a timeout is a reason to stop, not to downgrade.
+// to ..."); one to another site is an error unless followHost is set. So
+// is one from an https target to http: the run's headers would then go
+// out in cleartext. A bare hostname may end up on http, by a redirect or
+// when https is refused outright. A bad certificate or a timeout is a
+// reason to stop, not to downgrade.
 func resolve(ctx context.Context, client *http.Client, target, ua string, followHost bool, log func(string)) (*url.URL, error) {
 	u, explicit, err := ratelimit.ParseTarget(target)
 	if err != nil {
@@ -665,6 +667,9 @@ func resolve(ctx context.Context, client *http.Client, target, ua string, follow
 		}
 		if !followHost && !check.SameSite(via[0].URL, req.URL) {
 			return &hostChangeError{from: via[0].URL, to: req.URL}
+		}
+		if explicit && check.Downgrade(via[0].URL, req.URL) {
+			return &downgradeError{from: via[0].URL, to: req.URL}
 		}
 		return nil
 	}
@@ -693,9 +698,12 @@ func resolve(ctx context.Context, client *http.Client, target, ua string, follow
 	if err != nil {
 		var cv *tls.CertificateVerificationError
 		var hc *hostChangeError
+		var dg *downgradeError
 		switch {
 		case errors.As(err, &hc):
 			return nil, hc
+		case errors.As(err, &dg):
+			return nil, dg
 		case errors.As(err, &cv):
 			return nil, fmt.Errorf("can't reach %s: invalid TLS certificate (rerun with --insecure to check it anyway)", u.Host)
 		}
@@ -715,6 +723,13 @@ type hostChangeError struct{ from, to *url.URL }
 
 func (e *hostChangeError) Error() string {
 	return fmt.Sprintf("%s redirects to %s, which is another site; check that address instead if it's the one you meant", e.from, e.to)
+}
+
+// downgradeError is an https target that redirects to http.
+type downgradeError struct{ from, to *url.URL }
+
+func (e *downgradeError) Error() string {
+	return fmt.Sprintf("%s redirects to %s, which drops https; check %s instead if you mean to check it over http", e.from, e.to, e.to)
 }
 
 // refused reports whether err is a refused connection: nothing listens on
