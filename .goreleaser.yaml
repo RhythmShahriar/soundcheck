@@ -7,6 +7,15 @@
 version: 2
 project_name: rhythm-soundcheck
 
+# The release must carry current Chrome for Testing pins: regenerate them
+# (this downloads and hashes every platform's archive) and stop if they
+# differ from what's committed. Run `go generate ./browser` and commit
+# browser/cft_pins.go before tagging.
+before:
+  hooks:
+    - go run ./browser/internal/pingen -o browser/cft_pins.go
+    - git diff --exit-code browser/cft_pins.go
+
 builds:
   - main: ./cmd/rhythm-soundcheck
     binary: rhythm-soundcheck
