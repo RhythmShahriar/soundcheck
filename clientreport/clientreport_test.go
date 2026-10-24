@@ -249,3 +249,39 @@ func TestLoadBrandSVG(t *testing.T) {
 		t.Errorf("logo = %.40s", b.logo)
 	}
 }
+
+// A screenshot path that leaves the result's folder is not embedded.
+func TestPictureOutsideResultDir(t *testing.T) {
+	res := fixture(t)
+	outside := t.TempDir()
+	writePNG(t, filepath.Join(outside, "private.png"), 40, 30, color.RGBA{1, 2, 3, 255})
+	rel, err := filepath.Rel(res.Dir, filepath.Join(outside, "private.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := render(t, res, brand(t)); !strings.Contains(got, "data:image/jpeg") {
+		t.Fatal("fixture report has no pictures")
+	}
+	for i := range res.Comparison.Changes {
+		if res.Comparison.Changes[i].Files != nil {
+			res.Comparison.Changes[i].Files = map[string]string{"before": rel, "after": "after.png"}
+		}
+	}
+	if got := render(t, res, brand(t)); strings.Contains(got, "data:image/jpeg") {
+		t.Error("report embeds a screenshot from outside the result folder")
+	}
+}
+
+// An UNSTABLE change is not counted, so the client never sees it.
+func TestLeavesOutUnstable(t *testing.T) {
+	res := fixture(t)
+	res.Comparison.Changes = append(res.Comparison.Changes, model.Change{Class: model.Unstable, Check: "health/js-error",
+		Title: "Flaky script error", Pages: []string{"/"}})
+	got := render(t, res, brand(t))
+	if strings.Contains(got, "Flaky script error") || strings.Contains(got, `<b>0</b><span></span>`) {
+		t.Error("client report shows the UNSTABLE change or an unnamed count")
+	}
+	if strings.Count(got, `<div class="count `) != 5 {
+		t.Errorf("want 5 counts, one per counted class:\n%s", got)
+	}
+}

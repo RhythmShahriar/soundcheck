@@ -114,7 +114,11 @@ func fillComparison(d *pageData, res report.Result) {
 	}
 	d.Lead += "."
 	for _, class := range model.Classes {
-		d.Counts = append(d.Counts, count{classWords[class], toneOf(class), n(class)})
+		// UNSTABLE (seen once, gone on the second visit) isn't counted
+		// anywhere, so a report for a client leaves it out.
+		if words, ok := classWords[class]; ok {
+			d.Counts = append(d.Counts, count{words, toneOf(class), n(class)})
+		}
 	}
 	pictures := 0
 	for _, class := range model.Classes[:4] {
@@ -131,7 +135,7 @@ func fillComparison(d *pageData, res report.Result) {
 				it.Change = ch.Before + " → " + ch.After
 			}
 			if ch.Files["before"] != "" && ch.Files["after"] != "" && pictures < maxPictures {
-				it.Before, it.After = picture(res.Path(ch.Files["before"])), picture(res.Path(ch.Files["after"]))
+				it.Before, it.After = shot(res, ch.Files["before"]), shot(res, ch.Files["after"])
 				if it.Before != "" && it.After != "" {
 					pictures++
 				} else {
@@ -285,6 +289,17 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// shot returns the run's screenshot rel as a picture, or "" when the
+// path leaves the result's folder: a result can come from someone else,
+// and a client report must not embed a private image from outside it.
+func shot(res report.Result, rel string) template.URL {
+	path, err := res.Path(rel)
+	if err != nil {
+		return ""
+	}
+	return picture(path)
 }
 
 // picture returns a screenshot as a JPEG data URL, scaled to the report

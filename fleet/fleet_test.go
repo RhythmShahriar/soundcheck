@@ -41,6 +41,8 @@ func fakeSoundcheck(args []string) int {
 		for i, cl := range classes {
 			c.Changes = append(c.Changes, model.Change{Class: cl, Check: "health/x", Title: fmt.Sprint("change ", i)})
 		}
+		// Not completed, so the summary has no verdict: the fleet counts
+		// the changes, as for an older binary.
 		// Soundcheck writes the HTML report into the run's folder.
 		dir := filepath.Join(".soundcheck", "runs", "2026-10-24T10-00-00")
 		_ = os.MkdirAll(dir, 0o750)
@@ -344,5 +346,31 @@ func TestRunInterrupted(t *testing.T) {
 	_ = json.Unmarshal([]byte(readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.json"))), &page)
 	if page.Sites[0].Site != "one" || page.Sites[0].Verdict != Interrupted || page.Sites[0].Counts[model.Broke] != 1 {
 		t.Errorf("sites = %+v", page.Sites)
+	}
+}
+
+// A completed comparison (what the binary writes) is read from its
+// summary; one marshaled before Complete has a summary without a verdict
+// and is counted from its changes.
+func TestParseSummary(t *testing.T) {
+	for _, complete := range []bool{true, false} {
+		c := &model.Comparison{Pages: 2, Changes: []model.Change{
+			{Class: model.Broke, Check: "health/status", Title: "HTTP 500", Pages: []string{"/"}},
+			{Class: model.New, Check: "health/js-error", Title: "Script error", Pages: []string{"/a/"}},
+		}}
+		if complete {
+			c.Complete()
+		}
+		data, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := Result{Counts: map[string]int{}}
+		if err := r.parse(data); err != nil {
+			t.Fatal(err)
+		}
+		if r.Kind != "comparison" || r.Verdict != Broke || r.Counts[model.Broke] != 1 || r.Counts[model.New] != 1 || r.Pages != 2 {
+			t.Errorf("complete %v: %+v", complete, r)
+		}
 	}
 }

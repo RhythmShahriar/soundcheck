@@ -302,6 +302,12 @@ func (r *Result) parse(data []byte) error {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return err
 	}
+	// A summary always has a verdict. One without (a model.Comparison
+	// marshaled before Complete) holds zero counts that say nothing, so
+	// count the changes instead.
+	if c.Summary != nil && c.Summary.Verdict == "" {
+		c.Summary = nil
+	}
 	if c.Kind == "" { // older binaries: a comparison is the one with a snapshot
 		c.Kind = "run"
 		if c.Before != nil {
