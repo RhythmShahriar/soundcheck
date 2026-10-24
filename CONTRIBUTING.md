@@ -47,6 +47,10 @@ by default) and a builder to `cmd/rhythm-soundcheck/modules.go`, which makes the
 command. A test fails when the three don't agree, or when a `Check:` id in `checks/` is missing
 from its module's `Checks()`.
 
+Hooks that get no context of their own (`PageChecker.CheckPage`) take the run's from
+`cc.RunContext()`. Pass it to anything slow they start, such as a child process, so it stops with
+the run on Ctrl-C.
+
 ### A page's life cycle
 
 ```

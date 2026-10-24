@@ -235,7 +235,9 @@ func (b *Browser) Close() {
 // Prune deletes downloaded browsers other than the Chrome for Testing
 // version this build uses (all of them with all set, when an installed
 // Chrome is used instead), including Chromium revisions older versions
-// of Soundcheck downloaded. It returns what it removed.
+// of Soundcheck downloaded. Hidden entries, such as the .unpack-* folder
+// another process is unpacking a download into, are left alone. It
+// returns what it removed.
 func Prune(all bool) ([]string, error) {
 	dir, err := DownloadDir()
 	if err != nil {
@@ -254,7 +256,7 @@ func Prune(all bool) ([]string, error) {
 	}
 	var removed []string
 	for _, e := range entries {
-		if !e.IsDir() || (e.Name() == keep && !all) {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || (e.Name() == keep && !all) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())

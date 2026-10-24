@@ -189,7 +189,13 @@ func (m *Module) CheckPage(cc *check.Context, p *model.Page) {
 		return
 	}
 	for _, c := range m.Commands {
-		issues, err := run(c, in)
+		if cc.RunContext().Err() != nil {
+			return // the run is stopping
+		}
+		issues, err := run(cc.RunContext(), c, in)
+		if err != nil && cc.RunContext().Err() != nil {
+			return // stopped with the run: not the command's fault
+		}
 		if err != nil {
 			m.warnOnce(cc, c.Name+"\x00"+err.Error(), fmt.Sprintf("exec/%s: %s (first on %s)", c.Name, err, p.Path))
 			continue
@@ -229,13 +235,14 @@ type answer struct {
 
 var errTooMuch = fmt.Errorf("printed more than %d MB", MaxOutput>>20)
 
-// run runs one command on one page document and returns its issues.
-func run(c Command, in []byte) ([]model.Issue, error) {
+// run runs one command on one page document and returns its issues. The
+// command is stopped at its timeout or when parent is canceled.
+func run(parent context.Context, c Command, in []byte) ([]model.Issue, error) {
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = DefaultTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	cmd := osexec.CommandContext(ctx, c.Run[0], c.Run[1:]...) //nolint:gosec // argv from a config the user allowed with --allow-exec, no shell
 	cmd.Env = childEnv(os.Environ())
@@ -249,6 +256,8 @@ func run(c Command, in []byte) ([]model.Issue, error) {
 	switch {
 	case out.exceeded:
 		return nil, errTooMuch
+	case parent.Err() != nil:
+		return nil, parent.Err()
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return nil, fmt.Errorf("took longer than %s and was stopped", timeout)
 	case err != nil:

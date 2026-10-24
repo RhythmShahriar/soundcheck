@@ -104,8 +104,21 @@ type Context struct {
 	// OnProgress, set by the runner, shows how far a long step has got.
 	// Modules call Progress rather than this.
 	OnProgress func(label string, done, total int)
+	// Ctx is the run's context, canceled when the run stops (Ctrl-C).
+	// Hooks without a context of their own, such as CheckPage, read it
+	// through RunContext so the work they start stops with the run.
+	Ctx context.Context
 
 	mu sync.Mutex
+}
+
+// RunContext is the run's context, or context.Background() when the
+// Context was made without one (in tests).
+func (c *Context) RunContext() context.Context {
+	if c.Ctx == nil {
+		return context.Background()
+	}
+	return c.Ctx
 }
 
 // Progress reports that a long step, such as a SiteChecker probing every

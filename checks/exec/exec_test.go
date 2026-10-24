@@ -4,6 +4,7 @@
 package exec
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -212,6 +213,26 @@ func TestTimeout(t *testing.T) {
 	}
 	if len(cc.Run.Warnings) != 1 || !strings.Contains(cc.Run.Warnings[0], "took longer than 300ms and was stopped") {
 		t.Errorf("warnings %q", cc.Run.Warnings)
+	}
+}
+
+// Ctrl-C stops a running command at once instead of after its timeout,
+// and the commands left for the page don't start.
+func TestStopsWithTheRun(t *testing.T) {
+	second := helperCmd("sleep")
+	second.Name = "second"
+	m := module(t, helperCmd("sleep"), second)
+	cc, p := ctx(), page()
+	runCtx, cancel := context.WithCancel(context.Background())
+	cc.Ctx = runCtx
+	time.AfterFunc(300*time.Millisecond, cancel)
+	start := time.Now()
+	m.CheckPage(cc, p)
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %s; the commands' timeout is 20s", d)
+	}
+	if len(cc.Run.Warnings) != 0 || len(p.Issues) != 0 {
+		t.Errorf("warnings %q, issues %v", cc.Run.Warnings, p.Issues)
 	}
 }
 

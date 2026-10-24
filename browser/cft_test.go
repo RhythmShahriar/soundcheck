@@ -380,3 +380,33 @@ func TestDescribe(t *testing.T) {
 		t.Errorf("Describe = %q", got)
 	}
 }
+
+// Prune leaves hidden entries alone: another process may be unpacking a
+// download into a .unpack-* folder, and with no pin every folder would
+// otherwise go.
+func TestPruneSkipsHiddenEntries(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("LocalAppData", cache)
+	oldPin := pinned
+	pinned = Release{}
+	t.Cleanup(func() { pinned = oldPin })
+	dir, err := DownloadDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unpack, old := filepath.Join(dir, ".unpack-123"), filepath.Join(dir, "chromium-1321438")
+	for _, d := range []string{unpack, old} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := Prune(true)
+	if err != nil || len(removed) != 1 || removed[0] != old {
+		t.Errorf("Prune = %q, %v", removed, err)
+	}
+	if !fileExists(unpack) {
+		t.Error("Prune removed an unpack in progress")
+	}
+}
