@@ -335,6 +335,9 @@ func (s *session) finish(res report.Result, hint string) int {
 	if s.o.output != "" && !s.o.quiet {
 		fmt.Fprintf(s.stderr, "Report written to %s\n", s.o.output)
 	}
+	if tip := s.failOnTip(res); tip != "" {
+		fmt.Fprintln(s.stderr, faint.Render(tip))
+	}
 	if s.o.open && open != "" {
 		if err := openFile(open); err != nil {
 			fmt.Fprintln(s.stderr, prefix(), "opening the report:", err, "\n  open it yourself:", open)
@@ -357,6 +360,27 @@ func (s *session) finish(res report.Result, hint string) int {
 		return exitFindings
 	}
 	return exitOK
+}
+
+var faint = lipgloss.NewStyle().Faint(true)
+
+// failOnTip teaches the CI path after a comparison that found something
+// to fix: without --fail-on it still exits 0, which a script reads as
+// fine. It stays quiet with -q, when machine output owns stdout and when
+// --fail-on or fail_on was given, even as none.
+func (s *session) failOnTip(res report.Result) string {
+	if !res.Compared() || s.failOnSet || s.o.quiet || !s.live {
+		return ""
+	}
+	class := model.Broke
+	switch {
+	case res.Comparison.Count(model.Broke) > 0:
+	case res.Comparison.Count(model.New) > 0:
+		class = model.New // --fail-on broke wouldn't catch it
+	default:
+		return ""
+	}
+	return fmt.Sprintf("tip: add --fail-on %s to make this exit 1 in scripts", class)
 }
 
 func cmdSnapshot(s *session) int {

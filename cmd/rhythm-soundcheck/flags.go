@@ -178,6 +178,7 @@ type plan struct {
 
 	configPath string   // the config file read, for messages
 	failOnFrom string   // the config file, when fail_on gave --fail-on's value
+	failOnSet  bool     // --fail-on or fail_on was given, so no tip about it
 	envHeaders []string // headers the config file read from the environment
 	// siteFrom is the config file when its site: is the site being
 	// checked. Such a site is as untrusted as the file, so nothing from
@@ -280,6 +281,7 @@ func parse(args []string) (*plan, error) {
 	if set["timeout"] {
 		cfg.Timeout = config.Seconds(o.timeout)
 	}
+	p.failOnSet = set["fail-on"] || cfg.FailOn != ""
 	if !set["fail-on"] && cfg.FailOn != "" {
 		o.failOn, p.failOnFrom = cfg.FailOn, path
 	}
