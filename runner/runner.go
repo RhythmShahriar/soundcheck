@@ -70,7 +70,10 @@ type Hooks struct {
 	Log func(msg string)
 }
 
-// Run checks the site.
+// Run checks the site. When ctx is canceled it starts no more pages and
+// returns the run so far with ctx.Err(): pages it finished are complete,
+// and a page whose visit the cancel cut short has the Error
+// "context canceled" and nothing else (see canceled).
 func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
@@ -214,7 +217,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		order   []string
 	)
 	queue = append(queue, pages...)
-	for {
+	for ctx.Err() == nil {
 		qmu.Lock()
 		if len(queue) == 0 {
 			qmu.Unlock()
@@ -227,12 +230,24 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 		pg := queue[0]
 		queue = queue[1:]
-		order = append(order, pg.URL)
 		qmu.Unlock()
+		// Once the run is canceled no page starts: it would only be
+		// recorded as canceled.
+		acquired := false
+		select {
+		case sem <- struct{}{}:
+			acquired = true
+		case <-ctx.Done():
+		}
 		if ctx.Err() != nil {
+			if acquired {
+				<-sem
+			}
 			break
 		}
-		sem <- struct{}{}
+		qmu.Lock()
+		order = append(order, pg.URL)
+		qmu.Unlock()
 		wg.Go(func() {
 			defer func() { <-sem }()
 			p := visit(ctx, cc, opts, hosts, pg)
@@ -277,12 +292,22 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	return run, ctx.Err()
 }
 
+// canceled is the Error of a page whose visit the run's cancel cut
+// short (Ctrl+C). Such a page has no facts, issues or shots: what it
+// recorded before the cancel is partial, and compared with a snapshot it
+// would read as a page that lost its title or went blank.
+var canceled = context.Canceled.Error()
+
 // visit checks one page in its own tab.
 func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimit.Hosts, pg crawl.Page) *model.Page {
 	cfg := opts.Config
 	start := time.Now()
 	fail := func(err error) *model.Page {
-		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: err.Error(),
+		msg := err.Error()
+		if ctx.Err() != nil {
+			msg = canceled
+		}
+		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: msg,
 			Duration: float64(time.Since(start).Milliseconds())}
 	}
 	tab, err := browser.NewTab(cc.Browser)
@@ -316,6 +341,9 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		return fail(err)
 	}
 	p, err := capture.Visit(ctx, rec, pg.URL, copts)
+	if ctx.Err() != nil {
+		return fail(ctx.Err())
+	}
 	if err != nil {
 		cc.Warn(fmt.Sprintf("%s: %v", pg.URL, err))
 	}
@@ -328,11 +356,16 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		}
 		if slices.Contains(cfg.Viewports, "mobile") {
 			if err := hosts.For(host).Wait(ctx); err == nil {
-				if err := capture.Mobile(ctx, rec, p, pg.URL, copts); err != nil {
+				if err := capture.Mobile(ctx, rec, p, pg.URL, copts); err != nil && ctx.Err() == nil {
 					cc.Warn(fmt.Sprintf("%s (mobile): %v", pg.URL, err))
 				}
 			}
 		}
+	}
+	// A cancel during the modules' interactions or the mobile pass leaves
+	// them half done.
+	if ctx.Err() != nil {
+		return fail(ctx.Err())
 	}
 	for _, m := range opts.Modules {
 		if c, ok := m.(check.PageChecker); ok {
