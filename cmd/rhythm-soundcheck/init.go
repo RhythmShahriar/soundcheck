@@ -39,7 +39,7 @@ visual:
   ignore: []            # CSS selectors hidden before screenshots, e.g. [".ad", "#live-chat"]
 
 interactions:
-  levels: [inspect, click]  # add submit to send test data through forms, flows to run flows/
+  levels: [inspect, click]  # submit (which also clicks) sends test data through forms; flows runs flows/ too
   max_clicks: 15            # per page
   allow: []                 # selectors to click even if they look destructive
   forms: []                 # forms that may be submitted on production sites, by CSS selector

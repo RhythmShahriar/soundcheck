@@ -223,7 +223,9 @@ func parse(args []string) (*plan, error) {
 		cfg.Pages.IgnoreRobots = true
 	}
 	if len(o.modules) > 0 {
-		cfg.Modules = o.modules
+		if cfg.Modules, err = config.AddList(cfg.Modules, o.modules); err != nil {
+			return nil, cli.Usagef("--modules (modules): %v", err)
+		}
 	}
 	for _, m := range o.skip {
 		if !slices.Contains(config.Modules, m) {
@@ -249,7 +251,11 @@ func parse(args []string) (*plan, error) {
 		cfg.Modules = append(cfg.Modules, "echo")
 	}
 	if len(o.levels) > 0 {
-		cfg.Interactions.Levels = o.levels
+		levels, err := config.AddList(cfg.Interactions.Levels, o.levels)
+		if err != nil {
+			return nil, cli.Usagef("--level (interactions.levels): %v", err)
+		}
+		cfg.Interactions.Levels = config.Cumulative(levels)
 	}
 	if len(o.viewports) > 0 {
 		cfg.Viewports = o.viewports

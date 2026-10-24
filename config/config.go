@@ -149,6 +149,16 @@ func Load(path string) (Config, error) {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	c.inFile = fileKeys(data)
+	// The file takes the same list syntax as --modules and --level.
+	def := Default()
+	if c.Modules, err = AddList(def.Modules, c.Modules); err != nil {
+		return c, fmt.Errorf("%s: modules: %w", path, err)
+	}
+	levels, err := AddList(def.Interactions.Levels, c.Interactions.Levels)
+	if err != nil {
+		return c, fmt.Errorf("%s: interactions.levels: %w", path, err)
+	}
+	c.Interactions.Levels = Cumulative(levels)
 	// Validate first: it stores the parsed production entries on c.
 	err = c.Validate()
 	return c, err

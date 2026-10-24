@@ -102,6 +102,6 @@ func cmdFlows(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
-	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level inspect,click,flows\n", path)
+	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level flows (it submits forms too)\n", path)
 	return exitOK
 }

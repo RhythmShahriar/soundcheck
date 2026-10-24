@@ -135,10 +135,13 @@ What to check:
       --page <path>          always check this page too (repeatable)
       --ignore-robots        crawl pages robots.txt disallows (your own site)
       --modules <list>       health, visual, interact, cache, speed (default
-                             all), echo (on with --echo)
+                             all), echo (on with --echo); +<list> adds to
+                             the default or config list, e.g. +echo
       --skip <list>          leave these modules out
       --level <list>         interactions: inspect, click, submit, flows
-                             (default inspect,click; submit sends test data)
+                             (default inspect,click; submit sends test data).
+                             Each level includes the ones before it, so
+                             submit also clicks; +submit works too
       --viewport <list>      desktop, mobile (default both)
       --no-login             skip the login (leak test, login flows) even if
                              SOUNDCHECK_USER is set
@@ -195,6 +198,6 @@ Examples:
   rhythm soundcheck snapshot staging.example.com --name before-update
   rhythm soundcheck compare --open
   rhythm soundcheck staging.example.com --against example.com --fail-on broke
-  rhythm soundcheck run example.test -k --level inspect,click,submit --md -o check.md
+  rhythm soundcheck run example.test -k --level submit --md -o check.md
   rhythm soundcheck snapshot staging.shop.test --level inspect,click,submit --echo
 `

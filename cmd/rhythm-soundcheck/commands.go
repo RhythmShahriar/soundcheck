@@ -104,8 +104,8 @@ func (s *session) fail(err error) int {
 	return exitError
 }
 
-// start prints the header, the production guard and the one-time notice,
-// and looks for a new release in the background.
+// start prints the header, the effective settings, the production guard
+// and the one-time notice, and looks for a new release in the background.
 func (s *session) start(target string) {
 	if kitconfig.FirstRun("soundcheck-authorised-use") && !s.o.quiet {
 		fmt.Fprint(s.stderr, "Note: check only sites you own or are authorised to test. Soundcheck browses\n"+
@@ -115,7 +115,23 @@ func (s *session) start(target string) {
 	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
+	// What will run, after the config file, flags and (for compare) the
+	// snapshot had their say, so nothing is dropped silently.
+	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
+	s.view.Step("Levels", levels(s.cfg))
+	s.view.Step("Viewports", strings.Join(s.cfg.Viewports, ", "))
 	s.view.Step("Production", production(s.cfg))
+}
+
+// levels describes the interaction levels for the run header.
+func levels(cfg config.Config) string {
+	switch {
+	case !cfg.Has("interact"):
+		return "none: the interact module is off"
+	case len(cfg.Interactions.Levels) == 0:
+		return "none"
+	}
+	return strings.Join(cfg.Interactions.Levels, ", ")
 }
 
 // production describes the production guard for the run header, so a
