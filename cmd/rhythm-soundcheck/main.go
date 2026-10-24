@@ -98,7 +98,7 @@ Usage:
   rhythm soundcheck <url> --against <url>    compare two sites now (staging vs live)
   rhythm soundcheck run <url> [flags]        check once, no comparison
   rhythm soundcheck report [run] [flags]     show the last result again (--open, -o)
-  rhythm soundcheck snapshots                list snapshots (delete <name> removes one)
+  rhythm soundcheck snapshots [--json]       list snapshots (delete <name> removes one)
   rhythm soundcheck init                     write .soundcheck/config.yaml to edit
   rhythm soundcheck flows init               write an example flow to edit
   rhythm soundcheck update [--clear]         install or refresh the browser it uses

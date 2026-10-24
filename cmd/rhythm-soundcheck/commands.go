@@ -6,6 +6,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -591,14 +592,22 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
 		return exitOK
 	}
-	if len(args) > 0 {
-		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "snapshots [delete <name>]")
+	asJSON := len(args) == 1 && (args[0] == "--json" || args[0] == "-json")
+	if len(args) > 0 && !asJSON {
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "snapshots [--json | delete <name>]")
 		return exitUsage
 	}
 	names, err := st.Snapshots()
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
+	}
+	if asJSON {
+		if err := snapshotsJSON(stdout, st, names); err != nil {
+			fmt.Fprintln(stderr, prefix(), err)
+			return exitError
+		}
+		return exitOK
 	}
 	if len(names) == 0 {
 		fmt.Fprintln(stdout, "No snapshots yet. Take one:", cmdName(), "snapshot <url>")
@@ -620,6 +629,37 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%-24s %-6d %-12s %s%s\n", n, len(r.Pages), report.Ago(r.Started), r.Target, mark)
 	}
 	return exitOK
+}
+
+// snapshotEntry is one snapshot in `snapshots --json`.
+type snapshotEntry struct {
+	Name    string `json:"name"`
+	Created string `json:"created,omitempty"` // UTC, RFC 3339
+	Site    string `json:"site,omitempty"`
+	Pages   int    `json:"pages"`
+	Version string `json:"version,omitempty"` // the Soundcheck that took it
+	Latest  bool   `json:"latest"`            // what compare uses by default
+	Error   string `json:"error,omitempty"`   // run.json couldn't be read
+}
+
+// snapshotsJSON prints the snapshots as a JSON array, oldest first, for
+// scripts: [] when there are none, never null.
+func snapshotsJSON(w io.Writer, st store.Store, names []string) error {
+	latest, _ := st.Snapshot("")
+	out := make([]snapshotEntry, 0, len(names))
+	for _, n := range names {
+		dir := filepath.Join(st.Root, "snapshots", n)
+		e := snapshotEntry{Name: n, Latest: dir == latest}
+		if r, err := store.LoadRun(dir); err != nil {
+			e.Error = err.Error()
+		} else {
+			e.Created, e.Site, e.Pages, e.Version = r.Started.UTC().Format(time.RFC3339), r.Target, len(r.Pages), r.Version
+		}
+		out = append(out, e)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
 // cmdUpdate installs the browser if needed, removes older downloaded
