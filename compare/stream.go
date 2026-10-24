@@ -73,6 +73,8 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 	droppedBefore, dropped := canceled(before), canceled(after)
 	c := *cc
 	c.Before, c.After = head(cc.Before, droppedBefore), head(cc.After, dropped)
+	moduleWarn, moduleWarnings := collect()
+	c.WarnFunc = moduleWarn
 	cc = &c
 	out := start(cc, version, after.Len()-dropped, warnings, droppedBefore, dropped)
 	warn := func(msg string) { out.Warnings = append(out.Warnings, msg) }
@@ -137,6 +139,7 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 			safe(s.name, "Changes", warn, func() { out.Changes = append(out.Changes, s.s.Changes()...) })
 		}
 	}
+	out.Warnings = append(out.Warnings, moduleWarnings()...)
 	return finish(out, cc, modules), nil
 }
 

@@ -167,6 +167,17 @@ type CompareContext struct {
 	AfterDir      string
 	Dir           string                               // where the comparison's own files go
 	Save          func(name string, data []byte) error // stores a file in Dir
+	// WarnFunc receives what modules pass to Warn. compare sets it, so a
+	// Comparer's warnings land in the comparison's warnings.
+	WarnFunc func(string)
+}
+
+// Warn adds a warning to the comparison, such as screenshots that
+// couldn't be read. It is safe for concurrent use when WarnFunc is.
+func (c *CompareContext) Warn(msg string) {
+	if c.WarnFunc != nil {
+		c.WarnFunc(msg)
+	}
 }
 
 // Pairs returns pages present in both runs, matched by path.

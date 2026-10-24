@@ -129,13 +129,8 @@ type shotDiff struct {
 // warning, so a missing baseline never reads as "Nothing changed".
 func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
 	out, warnings := compareShots(ctx, cmp)
-	// CompareContext has no Warn yet. Until it does the warnings are
-	// still counted (and tested) here. They reach the comparison as soon
-	// as it grows the method Context already has.
-	if w, ok := any(cmp).(interface{ Warn(string) }); ok {
-		for _, msg := range warnings {
-			w.Warn(msg)
-		}
+	for _, msg := range warnings {
+		cmp.Warn(msg)
 	}
 	return out
 }

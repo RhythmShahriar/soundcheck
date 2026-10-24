@@ -14,6 +14,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -31,11 +32,11 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	warnings := mismatch(cc.Before, cc.After)
 	before, droppedBefore := withoutCanceled(cc.Before)
 	after, dropped := withoutCanceled(cc.After)
-	if droppedBefore+dropped > 0 {
-		c := *cc
-		c.Before, c.After = before, after
-		cc = &c
-	}
+	c := *cc
+	c.Before, c.After = before, after
+	moduleWarn, moduleWarnings := collect()
+	c.WarnFunc = moduleWarn
+	cc = &c
 	out := start(cc, version, len(cc.After.Pages), warnings, droppedBefore, dropped)
 	out.Changes = compared(Issues(cc.Before, cc.After), cc, modules)
 	warn := func(msg string) { out.Warnings = append(out.Warnings, msg) }
@@ -44,7 +45,24 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 			safe(m.Name(), "Compare", warn, func() { out.Changes = append(out.Changes, c.Compare(ctx, cc)...) })
 		}
 	}
+	out.Warnings = append(out.Warnings, moduleWarnings()...)
 	return finish(out, cc, modules)
+}
+
+// collect gathers the warnings modules give through CompareContext.Warn,
+// from any goroutine, for the comparison to add once they're done.
+func collect() (warn func(string), all func() []string) {
+	var mu sync.Mutex
+	var got []string
+	return func(msg string) {
+			mu.Lock()
+			got = append(got, msg)
+			mu.Unlock()
+		}, func() []string {
+			mu.Lock()
+			defer mu.Unlock()
+			return slices.Clone(got)
+		}
 }
 
 // start begins the comparison of cc's runs, of which the current one has
