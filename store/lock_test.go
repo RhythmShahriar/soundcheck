@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 package store
 
 import (
@@ -208,8 +211,8 @@ func TestPruneSkipsRunsInUse(t *testing.T) {
 		}
 		dirs = append(dirs, dir)
 	}
-	ownerFile(t, filepath.Join(dirs[0], owner), os.Getppid(), time.Now())                  // another live process
-	ownerFile(t, filepath.Join(dirs[1], owner), deadPID(t), time.Now())                    // crashed
+	ownerFile(t, filepath.Join(dirs[0], owner), os.Getppid(), time.Now())                    // another live process
+	ownerFile(t, filepath.Join(dirs[1], owner), deadPID(t), time.Now())                      // crashed
 	ownerFile(t, filepath.Join(dirs[2], owner), os.Getppid(), time.Now().Add(-48*time.Hour)) // PID reused long after
 	if err := s.Prune(1); err != nil {
 		t.Fatal(err)
