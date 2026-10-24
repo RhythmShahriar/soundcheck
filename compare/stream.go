@@ -22,24 +22,12 @@ type PageSource interface {
 	Lookup(path string) []int
 }
 
-// PageComparer is a Comparer that can also compare two runs a pair of
-// pages at a time, so Stream never holds either run whole. A module
-// implements it next to Compare and must report the same changes.
-type PageComparer interface {
-	check.Comparer
-	// ComparePages starts a comparison. cc.Before and cc.After are the
-	// runs without their pages (site issues, Echo flows, options); the
-	// returned PairSink then gets the pairs Pairs would give, one at a
-	// time and in that order.
-	ComparePages(ctx context.Context, cc *check.CompareContext) PairSink
-}
+// PageComparer is check.PageComparer: a module that compares a pair of
+// pages at a time.
+type PageComparer = check.PageComparer
 
-// PairSink takes the page pairs of one comparison and then gives its
-// changes. It keeps what it needs of a pair, not the pages.
-type PairSink interface {
-	Pair(before, after *model.Page)
-	Changes() []model.Change
-}
+// PairSink is check.PairSink: what a PageComparer's comparison gets.
+type PairSink = check.PairSink
 
 // Stream is Compare for runs too big to hold: cc.Before and cc.After are
 // the runs without their pages (as store.OpenRun gives them), before and
@@ -79,15 +67,15 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 	out := start(cc, version, after.Len()-dropped, warnings, droppedBefore, dropped)
 	warn := func(msg string) { out.Warnings = append(out.Warnings, msg) }
 
-	type sink struct {
-		name string
-		s    PairSink
-	}
 	var sinks []*sink
 	for _, m := range modules {
 		if pc, ok := m.(PageComparer); ok {
 			safe(m.Name(), "ComparePages", warn, func() { sinks = append(sinks, &sink{m.Name(), pc.ComparePages(ctx, cc)}) })
 		}
+	}
+
+	if err := feedBefore(before, sinks, warn); err != nil {
+		return nil, err
 	}
 
 	d := issueDiff{groups: map[string]*issueGroup{}}
@@ -141,6 +129,47 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 	}
 	out.Warnings = append(out.Warnings, moduleWarnings()...)
 	return finish(out, cc, modules), nil
+}
+
+// sink is one module's PairSink in a Stream; s is nil once it panicked.
+type sink struct {
+	name string
+	s    PairSink
+}
+
+// feedBefore gives every page of the earlier run that wasn't canceled to
+// the sinks that read them all (check.BeforeSink), in stored order. A
+// sink that panics is dropped with a warning, as in Stream.
+func feedBefore(before PageSource, sinks []*sink, warn func(string)) error {
+	var want []*sink
+	for _, s := range sinks {
+		if _, ok := s.s.(check.BeforeSink); ok {
+			want = append(want, s)
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	for i := range before.Len() {
+		if before.Canceled(i) {
+			continue
+		}
+		p, err := before.Page(i)
+		if err != nil {
+			return err
+		}
+		for _, s := range want {
+			if s.s == nil {
+				continue
+			}
+			ok := false
+			safe(s.name, "Before", warn, func() { s.s.(check.BeforeSink).Before(p); ok = true })
+			if !ok {
+				s.s = nil
+			}
+		}
+	}
+	return nil
 }
 
 // streamable reports whether every module that compares runs can do it a

@@ -337,29 +337,43 @@ func probe(ctx context.Context, cc *check.Context, raw string) int {
 // Compare reports pages whose title changed, that gained or lost a
 // redirect, or that lost most of their content.
 func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Change {
-	var out []model.Change
+	var s pairSink
 	for _, pair := range cmp.Pairs() {
-		b, a := pair[0], pair[1]
-		if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
-			continue // status problems are reported as issues
-		}
-		// A title that went away is the NEW "Page has no <title>" issue;
-		// saying it changed to nothing too would be two lines for one cause.
-		if b.Title != "" && a.Title != "" && a.Title != b.Title {
-			out = append(out, model.Change{Class: model.Changed, Check: "health/title", Title: "Page title changed",
-				Pages: []string{a.Path}, Before: b.Title, After: a.Title})
-		}
-		if b.TextLength > 400 && a.TextLength < b.TextLength/2 {
-			out = append(out, model.Change{Class: model.Changed, Check: "health/content-lost", Title: "Page lost most of its text",
-				Pages: []string{a.Path}, Before: strconv.Itoa(b.TextLength) + " characters", After: strconv.Itoa(a.TextLength) + " characters",
-				Score: float64(b.TextLength-a.TextLength) * 100 / float64(b.TextLength)})
-		}
-		if bf, af := finalPath(b), finalPath(a); bf != af {
-			out = append(out, model.Change{Class: model.Changed, Check: "health/redirect", Title: "Page now ends somewhere else",
-				Pages: []string{a.Path}, Before: bf, After: af})
-		}
+		s.Pair(pair[0], pair[1])
 	}
-	return out
+	return s.Changes()
+}
+
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer).
+func (Module) ComparePages(context.Context, *check.CompareContext) check.PairSink { return &pairSink{} }
+
+// pairSink makes Compare's changes one pair of pages at a time.
+type pairSink struct{ out []model.Change }
+
+// Changes returns the changes of the pairs so far.
+func (s *pairSink) Changes() []model.Change { return s.out }
+
+// Pair adds the changes of one page found in both runs.
+func (s *pairSink) Pair(b, a *model.Page) {
+	if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
+		return // status problems are reported as issues
+	}
+	// A title that went away is the NEW "Page has no <title>" issue;
+	// saying it changed to nothing too would be two lines for one cause.
+	if b.Title != "" && a.Title != "" && a.Title != b.Title {
+		s.out = append(s.out, model.Change{Class: model.Changed, Check: "health/title", Title: "Page title changed",
+			Pages: []string{a.Path}, Before: b.Title, After: a.Title})
+	}
+	if b.TextLength > 400 && a.TextLength < b.TextLength/2 {
+		s.out = append(s.out, model.Change{Class: model.Changed, Check: "health/content-lost", Title: "Page lost most of its text",
+			Pages: []string{a.Path}, Before: strconv.Itoa(b.TextLength) + " characters", After: strconv.Itoa(a.TextLength) + " characters",
+			Score: float64(b.TextLength-a.TextLength) * 100 / float64(b.TextLength)})
+	}
+	if bf, af := finalPath(b), finalPath(a); bf != af {
+		s.out = append(s.out, model.Change{Class: model.Changed, Check: "health/redirect", Title: "Page now ends somewhere else",
+			Pages: []string{a.Path}, Before: bf, After: af})
+	}
 }
 
 // FilterChanges drops changes on pages a firewall or password prompt now

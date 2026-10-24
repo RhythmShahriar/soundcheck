@@ -499,36 +499,49 @@ func (c *cost) describe(subject string, total int) string {
 // skip a resource.
 func costs(pages []model.Page, facts map[string]*facts, key func(r model.Resource) string) map[string]*cost {
 	out := map[string]*cost{}
-	for _, p := range pages {
-		blockingMS := map[string]float64{}
-		if f := facts[p.Path]; f != nil {
-			for _, b := range f.Blocking {
-				blockingMS[b.URL] += b.Duration
-			}
-		}
-		for _, r := range p.Resources {
-			k := key(r)
-			if k == "" {
-				continue
-			}
-			c := out[k]
-			if c == nil {
-				c = &cost{name: k}
-				out[k] = c
-			}
-			c.bytes += r.Bytes
-			c.requests++
-			c.blocking += blockingMS[r.URL]
-			blockingMS[r.URL] = 0 // count a file's blocking time once per page
-			if !slices.Contains(c.pages, p.Path) {
-				c.pages = append(c.pages, p.Path)
-			}
-		}
+	for i := range pages {
+		addCost(out, &pages[i], facts, key)
 	}
-	for _, c := range out {
-		slices.Sort(c.pages)
-	}
+	sortCosts(out)
 	return out
+}
+
+// addCost adds what p's resources cost to out, by key; see costs.
+// sortCosts puts each cost's pages in order once every page is added.
+func addCost(out map[string]*cost, p *model.Page, facts map[string]*facts, key func(r model.Resource) string) {
+	blockingMS := map[string]float64{}
+	if f := facts[p.Path]; f != nil {
+		for _, b := range f.Blocking {
+			blockingMS[b.URL] += b.Duration
+		}
+	}
+	for _, r := range p.Resources {
+		k := key(r)
+		if k == "" {
+			continue
+		}
+		c := out[k]
+		if c == nil {
+			c = &cost{name: k}
+			out[k] = c
+		}
+		c.bytes += r.Bytes
+		c.requests++
+		c.blocking += blockingMS[r.URL]
+		blockingMS[r.URL] = 0 // count a file's blocking time once per page
+		if n := len(c.pages); n == 0 || c.pages[n-1] != p.Path {
+			c.pages = append(c.pages, p.Path)
+		}
+	}
+}
+
+// sortCosts sorts each cost's pages and drops the repeats (a path the
+// run has twice).
+func sortCosts(m map[string]*cost) {
+	for _, c := range m {
+		slices.Sort(c.pages)
+		c.pages = slices.Compact(c.pages)
+	}
 }
 
 func sortedCosts(m map[string]*cost) []*cost {

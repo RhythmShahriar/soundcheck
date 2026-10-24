@@ -616,39 +616,63 @@ func summarize(cc *check.Context, results []*result) {
 // serves none now. Private pages that became cached are new issues, which
 // the generic diff reports as BROKE.
 func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Change {
-	var before, after, n int
-	var pages []string
+	s := &pairSink{}
+	for i := range cmp.Before.Pages {
+		s.Before(&cmp.Before.Pages[i])
+	}
 	for _, pair := range cmp.Pairs() {
-		b, a := pair[0], pair[1]
-		if b.Cache["status"] == "" || a.Cache["status"] == "" || b.Cache["private"] == "true" || a.Cache["private"] == "true" {
-			continue
-		}
-		n++
-		if b.Cache["status"] == string(Hit) {
-			before++
-			if a.Cache["status"] != string(Hit) {
-				pages = append(pages, a.Path)
-			}
-		}
-		if a.Cache["status"] == string(Hit) {
-			after++
+		s.Pair(pair[0], pair[1])
+	}
+	return s.Changes()
+}
+
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer). It also reads every snapshot page
+// (check.BeforeSink), for the cache layer that served one.
+func (Module) ComparePages(context.Context, *check.CompareContext) check.PairSink { return &pairSink{} }
+
+// pairSink counts cached pages one pair at a time.
+type pairSink struct {
+	before, after, n int
+	pages            []string // cached in the snapshot, not now
+	layer            string   // of the first snapshot page served from a cache
+}
+
+// Before notes the layer of the first snapshot page a cache served.
+func (s *pairSink) Before(p *model.Page) {
+	if s.layer == "" && p.Cache["status"] == string(Hit) && p.Cache["layer"] != "" {
+		s.layer = p.Cache["layer"]
+	}
+}
+
+// Pair counts one page found in both runs.
+func (s *pairSink) Pair(b, a *model.Page) {
+	if b.Cache["status"] == "" || a.Cache["status"] == "" || b.Cache["private"] == "true" || a.Cache["private"] == "true" {
+		return
+	}
+	s.n++
+	if b.Cache["status"] == string(Hit) {
+		s.before++
+		if a.Cache["status"] != string(Hit) {
+			s.pages = append(s.pages, a.Path)
 		}
 	}
-	if before == 0 || after > 0 {
+	if a.Cache["status"] == string(Hit) {
+		s.after++
+	}
+}
+
+// Changes reports the page cache as stopped when pages it served in the
+// snapshot and none now.
+func (s *pairSink) Changes() []model.Change {
+	if s.before == 0 || s.after > 0 {
 		return nil
 	}
-	slices.Sort(pages)
-	layer := ""
-	for _, p := range cmp.Before.Pages {
-		if p.Cache["status"] == string(Hit) && p.Cache["layer"] != "" {
-			layer = p.Cache["layer"]
-			break
-		}
-	}
-	return []model.Change{{Class: model.Changed, Check: "cache/stopped", Title: "Page cache stopped working", Source: layer,
+	slices.Sort(s.pages)
+	return []model.Change{{Class: model.Changed, Check: "cache/stopped", Title: "Page cache stopped working", Source: s.layer,
 		Detail: "Pages that came from the cache in the snapshot are now rendered on every request.",
 		Fix:    "Check the cache plugin or server cache is still enabled and that the change didn't add a cookie, a no-cache header or a rule that bypasses it.",
-		Pages:  pages, Before: fmt.Sprintf("%d of %d pages cached", before, n), After: fmt.Sprintf("0 of %d pages cached", n), Score: 100}}
+		Pages:  s.pages, Before: fmt.Sprintf("%d of %d pages cached", s.before, s.n), After: fmt.Sprintf("0 of %d pages cached", s.n), Score: 100}}
 }
 
 // bust adds a random ?soundcheck= parameter so caches treat the URL as

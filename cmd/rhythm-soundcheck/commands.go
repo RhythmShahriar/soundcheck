@@ -673,10 +673,13 @@ func cmdCompare(s *session) int {
 	if err != nil {
 		return s.fail(cli.UsageError{Msg: err.Error()})
 	}
-	before, err := store.LoadRun(snapDir)
+	// The snapshot's pages are read one at a time (store.OpenRun): a big
+	// site's snapshot doesn't have to fit in memory next to the run.
+	before, pages, err := store.OpenRun(snapDir)
 	if err != nil {
 		return s.fail(err)
 	}
+	defer func() { _ = pages.Close() }()
 	site := before.Target
 	if len(s.args) == 1 {
 		if err := target(s.args[0]); err != nil {
@@ -709,7 +712,7 @@ func cmdCompare(s *session) int {
 		return s.fail(err)
 	}
 	s.start(site)
-	s.view.Step("Snapshot", fmt.Sprintf("%q, %s, taken %s", before.Name, plural(len(before.Pages), "page"), report.Ago(before.Started)))
+	s.view.Step("Snapshot", fmt.Sprintf("%q, %s, taken %s", before.Name, plural(pages.Len(), "page"), report.Ago(before.Started)))
 	if len(before.Options.Modules)+len(before.Options.Levels)+len(before.Options.Viewports)+len(before.Options.Engine) > 0 {
 		s.view.Step("Settings", snapshotSettings(before.Name, before.Options))
 	}
@@ -717,7 +720,7 @@ func cmdCompare(s *session) int {
 		s.view.Step("You changed", joinChanges(changes))
 	}
 	s.view.Step("Confirm", s.confirmSetting())
-	return s.compareWith(before, snapDir, site, dir)
+	return s.compareWith(before, pages, snapDir, site, dir)
 }
 
 // cmdAgainst compares two sites now: the --against site is checked first
@@ -750,16 +753,23 @@ func cmdAgainst(s *session) int {
 		return s.fail(err)
 	}
 	s.view.Step("Now", s.args[0])
-	return s.compareWith(before, beforeDir, s.args[0], dir)
+	pages := compare.InMemory(before.Pages)
+	head := *before
+	head.Pages = nil
+	return s.compareWith(&head, pages, beforeDir, s.args[0], dir)
 }
 
-// compareWith checks site again on before's pages and compares. BROKE
-// and NEW pages are visited once more to confirm them (unless
-// --confirm=off), then the config's ignore rules apply.
-func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) int {
-	var paths []string
-	for _, p := range before.Pages {
-		paths = append(paths, p.Path)
+// compareWith checks site again on the earlier run's pages and compares.
+// before is that run without its pages, which come from pages one at a
+// time (compare.Stream). BROKE and NEW pages are visited once more to
+// confirm them (unless --confirm=off), then the config's ignore rules
+// apply.
+func (s *session) compareWith(before *model.Run, pages compare.PageSource, beforeDir, site, dir string) int {
+	paths := make([]string, 0, pages.Len())
+	known := make([]model.Page, 0, pages.Len()) // what confirm needs: which pages the earlier run has
+	for i := range pages.Len() {
+		paths = append(paths, pages.Path(i))
+		known = append(known, model.Page{Path: pages.Path(i)})
 	}
 	after, err := s.check(site, paths, false, "", dir)
 	if err != nil && after == nil {
@@ -769,10 +779,11 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	if err := store.SaveRun(dir, after); err != nil {
 		return s.fail(err)
 	}
-	cc := &check.CompareContext{Config: s.cfg, Before: before, After: after, BeforeDir: beforeDir, AfterDir: dir,
-		Dir: dir, Save: store.Saver(dir)}
-	c := compare.Compare(context.WithoutCancel(s.ctx), cc, s.modules(s.cfg), version)
-	s.confirm(c, before, site, dir)
+	c, err := s.compareStored(before, pages, beforeDir, after, dir)
+	if err != nil {
+		return s.fail(err)
+	}
+	s.confirm(c, &model.Run{Pages: known}, site, dir)
 	compare.ApplyIgnore(c, ignoreRules(s.cfg), time.Now())
 	if err := store.SaveComparison(dir, c); err != nil {
 		return s.fail(err)
@@ -783,6 +794,18 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	s.record(after, c)
 	return s.finish(report.Result{Run: after, Comparison: c, Dir: dir}, "")
+}
+
+// compareStored compares after, the run just made and still in memory,
+// with the earlier run before, whose pages are read from pages a pair at
+// a time: only the changes are kept, so a big site's snapshot is never
+// read whole.
+func (s *session) compareStored(before *model.Run, pages compare.PageSource, beforeDir string, after *model.Run, dir string) (*model.Comparison, error) {
+	head := *after
+	head.Pages = nil
+	cc := &check.CompareContext{Config: s.cfg, Before: before, After: &head, BeforeDir: beforeDir, AfterDir: dir,
+		Dir: dir, Save: store.Saver(dir)}
+	return compare.Stream(context.WithoutCancel(s.ctx), cc, pages, compare.InMemory(after.Pages), s.modules(s.cfg), version)
 }
 
 // confirm visits the pages of c's BROKE and NEW changes again and moves

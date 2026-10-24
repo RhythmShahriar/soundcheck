@@ -135,26 +135,78 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 	return out
 }
 
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer). It keeps where each pair's screenshots are
+// and diffs them at the end, as Compare does.
+func (Module) ComparePages(ctx context.Context, cmp *check.CompareContext) check.PairSink {
+	return &pairSink{ctx: ctx, cmp: cmp}
+}
+
+// pairSink collects the screenshots to diff, one pair at a time.
+type pairSink struct {
+	ctx  context.Context //nolint:containedctx // the comparison's, for Changes
+	cmp  *check.CompareContext
+	jobs []shotJob
+}
+
+// Pair notes the screenshots of one page found in both runs, keeping
+// only what diffing them needs of each page.
+func (s *pairSink) Pair(b, a *model.Page) {
+	slim := func(p *model.Page) *model.Page {
+		return &model.Page{ID: p.ID, URL: p.URL, Path: p.Path, Group: p.Group, Error: p.Error, Status: p.Status, Shots: p.Shots}
+	}
+	var sb, sa *model.Page
+	for _, j := range shotJobs(b, a) {
+		if sb == nil {
+			sb, sa = slim(b), slim(a)
+		}
+		s.jobs = append(s.jobs, shotJob{[2]*model.Page{sb, sa}, j.vp})
+	}
+}
+
+// Changes diffs the screenshots and returns the changes.
+func (s *pairSink) Changes() []model.Change {
+	out, warnings := diffJobs(s.ctx, s.cmp, s.jobs)
+	for _, msg := range warnings {
+		s.cmp.Warn(msg)
+	}
+	return out
+}
+
+// shotJob is one page's screenshots at one viewport, to diff.
+type shotJob struct {
+	pair [2]*model.Page
+	vp   string
+}
+
+// shotJobs returns the viewports at which both pages have a screenshot
+// to diff.
+func shotJobs(b, a *model.Page) []shotJob {
+	if a.Error != "" || b.Error != "" || a.Status >= 400 || b.Status >= 400 {
+		return nil // health reports pages that fail; their pixels aren't news
+	}
+	var out []shotJob
+	for _, vp := range Viewports {
+		if b.Shots[vp].File != "" && a.Shots[vp].File != "" {
+			out = append(out, shotJob{[2]*model.Page{b, a}, vp})
+		}
+	}
+	return out
+}
+
 // compareShots is Compare, returning the warnings it would show.
 func compareShots(ctx context.Context, cmp *check.CompareContext) ([]model.Change, []string) {
-	threshold := cmp.Config.Visual.Threshold
-	type job struct {
-		pair [2]*model.Page
-		vp   string
-	}
-	var jobs []job
+	var jobs []shotJob
 	for _, pair := range cmp.Pairs() {
-		b, a := pair[0], pair[1]
-		if a.Error != "" || b.Error != "" || a.Status >= 400 || b.Status >= 400 {
-			continue // health reports pages that fail; their pixels aren't news
-		}
-		for _, vp := range Viewports {
-			if b.Shots[vp].File != "" && a.Shots[vp].File != "" {
-				jobs = append(jobs, job{pair, vp})
-			}
-		}
+		jobs = append(jobs, shotJobs(pair[0], pair[1])...)
 	}
+	return diffJobs(ctx, cmp, jobs)
+}
 
+// diffJobs diffs the screenshots of jobs and returns the changes and
+// the warnings to show.
+func diffJobs(ctx context.Context, cmp *check.CompareContext, jobs []shotJob) ([]model.Change, []string) {
+	threshold := cmp.Config.Visual.Threshold
 	// Decoding and diffing dominate; a few at a time keeps memory bounded
 	// (a tall page is tens of MB decoded).
 	results := make([]*shotDiff, len(jobs))

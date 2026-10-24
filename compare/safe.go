@@ -29,7 +29,7 @@ const self = "github.com/RhythmShahriar/soundcheck/compare"
 
 // hookCallers are the functions of this package that call modules'
 // hooks, through closures named after them ("Compare.func3").
-var hookCallers = []string{".Compare.", ".finish.", ".Stream."}
+var hookCallers = []string{".Compare.", ".finish.", ".Stream.", ".feedBefore."}
 
 // frames describes up to n frames of a panicking goroutine's stack as
 // "function file:line", from where the panic happened down to the

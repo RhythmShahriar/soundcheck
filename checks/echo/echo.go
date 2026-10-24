@@ -31,13 +31,33 @@ func (Module) Name() string { return "echo" }
 
 // Compare diffs the messages of each action recorded in both runs: form
 // submits on the same page, and flows.
-func (Module) Compare(_ context.Context, cc *check.CompareContext) []model.Change {
-	g := &grouper{}
+func (m Module) Compare(ctx context.Context, cc *check.CompareContext) []model.Change {
+	s := m.ComparePages(ctx, cc)
 	for _, pair := range cc.Pairs() {
-		diff(g, pair[0].Echo, pair[1].Echo)
+		s.Pair(pair[0], pair[1])
 	}
-	diff(g, cc.Before.Echo, cc.After.Echo)
-	return g.list()
+	return s.Changes()
+}
+
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer). The flows are compared at the end.
+func (Module) ComparePages(_ context.Context, cc *check.CompareContext) check.PairSink {
+	return &pairSink{cc: cc, g: &grouper{}}
+}
+
+// pairSink diffs each pair's form submits as it comes.
+type pairSink struct {
+	cc *check.CompareContext
+	g  *grouper
+}
+
+// Pair compares the form submits of one page found in both runs.
+func (s *pairSink) Pair(b, a *model.Page) { diff(s.g, b.Echo, a.Echo) }
+
+// Changes compares the flows and returns every change.
+func (s *pairSink) Changes() []model.Change {
+	diff(s.g, s.cc.Before.Echo, s.cc.After.Echo)
+	return s.g.list()
 }
 
 // diff compares actions matched by ID. An action only in one run (a form

@@ -26,32 +26,55 @@ const sitemapDrop = 20
 // Compare reports what changed in the SEO facts of the pages checked in
 // both runs and in robots.txt and the sitemap. A run made without the
 // module has no facts, so then there's nothing to compare.
-func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Change {
-	if !ran(cmp.Before) || !ran(cmp.After) {
+func (m Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
+	s := m.ComparePages(ctx, cmp)
+	for _, pair := range cmp.Pairs() {
+		s.Pair(pair[0], pair[1])
+	}
+	return s.Changes()
+}
+
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer). robots.txt and the sitemap are compared at
+// the end.
+func (Module) ComparePages(_ context.Context, cmp *check.CompareContext) check.PairSink {
+	return &pairSink{cmp: cmp, on: ran(cmp.Before) && ran(cmp.After), d: &differ{hosts: hosts(cmp.Before, cmp.After)}}
+}
+
+// pairSink diffs each pair's SEO facts as it comes.
+type pairSink struct {
+	cmp *check.CompareContext
+	on  bool // both runs ran the module
+	d   *differ
+}
+
+// Pair compares the SEO facts of one page found in both runs.
+func (s *pairSink) Pair(b, a *model.Page) {
+	if !s.on || a.Error != "" || a.Status >= 400 || b.Status >= 400 {
+		return // health reports pages that fail
+	}
+	// A page that now redirects shows another page's facts; the
+	// redirect is the news.
+	if s.d.redirect(b, a) {
+		return
+	}
+	var fb, fa Facts
+	if load(s.cmp.BeforeDir, pageFile(b), &fb) && load(s.cmp.AfterDir, pageFile(a), &fa) {
+		s.d.page(a.Path, b.Robots, a.Robots, fb, fa)
+	}
+}
+
+// Changes compares robots.txt and the sitemap and returns every change.
+func (s *pairSink) Changes() []model.Change {
+	if !s.on {
 		return nil
 	}
-	d := &differ{hosts: hosts(cmp.Before, cmp.After)}
-	for _, pair := range cmp.Pairs() {
-		b, a := pair[0], pair[1]
-		if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
-			continue // health reports pages that fail
-		}
-		// A page that now redirects shows another page's facts; the
-		// redirect is the news.
-		if d.redirect(b, a) {
-			continue
-		}
-		var fb, fa Facts
-		if load(cmp.BeforeDir, pageFile(b), &fb) && load(cmp.AfterDir, pageFile(a), &fa) {
-			d.page(a.Path, b.Robots, a.Robots, fb, fa)
-		}
-	}
 	var sb, sa Site
-	if load(cmp.BeforeDir, siteFile, &sb) && load(cmp.AfterDir, siteFile, &sa) {
-		d.robotsTxt(sb.Robots, sa.Robots)
-		d.sitemap(sb.Sitemap, sa.Sitemap)
+	if load(s.cmp.BeforeDir, siteFile, &sb) && load(s.cmp.AfterDir, siteFile, &sa) {
+		s.d.robotsTxt(sb.Robots, sa.Robots)
+		s.d.sitemap(sb.Sitemap, sa.Sitemap)
 	}
-	return d.list()
+	return s.d.list()
 }
 
 func ran(r *model.Run) bool { return slices.Contains(r.Options.Modules, "seo") }

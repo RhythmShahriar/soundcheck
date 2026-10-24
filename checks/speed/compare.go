@@ -71,37 +71,72 @@ func (*Module) OwnsIssues() {}
 // Compare reports pages that got measurably slower (SLOWER) or faster
 // (FIXED), grouped by page template, or as one site-wide change when most
 // pages moved; and plugins or themes that now add much more weight.
-func (*Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Change {
+func (m *Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
+	s := m.ComparePages(ctx, cmp)
+	for _, pair := range cmp.Pairs() {
+		s.Pair(pair[0], pair[1])
+	}
+	return s.Changes()
+}
+
+// ComparePages is Compare a pair of pages at a time, for runs too big to
+// hold (check.PageComparer).
+func (*Module) ComparePages(_ context.Context, cmp *check.CompareContext) check.PairSink {
 	bar := cmp.Config.Speed.Slower
 	if bar <= 0 {
 		bar = 25
 	}
-	pairs := cmp.Pairs()
-	var out []model.Change
-	for _, m := range metrics {
-		var slower, faster []hit
-		n := 0
-		for _, pair := range pairs {
-			b, a := pair[0], pair[1]
-			if !comparable(b) || !comparable(a) || !m.measured(b.Metrics) || !m.measured(a.Metrics) {
-				continue
-			}
-			n++
-			bv, av := m.get(b.Metrics), m.get(a.Metrics)
-			group := a.Group
-			if group == "" {
-				group = b.Group
-			}
-			if pct, ok := moved(bv, av, m.floor, bar); ok {
-				slower = append(slower, hit{a.Path, group, bv, av, pct})
-			} else if _, ok := moved(av, bv, m.floor, bar); ok {
-				faster = append(faster, hit{a.Path, group, bv, av, (bv - av) / bv * 100})
-			}
-		}
-		out = append(out, grouped(m, slower, n, bar, true)...)
-		out = append(out, grouped(m, faster, n, bar, false)...)
+	return &pairSink{bar: bar, slower: make([][]hit, len(metrics)), faster: make([][]hit, len(metrics)), n: make([]int, len(metrics)),
+		before: map[string]*cost{}, after: map[string]*cost{}}
+}
+
+// pairSink keeps the pages that moved, per metric, and what plugins and
+// themes cost in each run, one pair of pages at a time.
+type pairSink struct {
+	bar            float64
+	slower, faster [][]hit // by metric, in metrics order
+	n              []int   // pages compared, by metric
+	before, after  map[string]*cost
+}
+
+// Pair compares the timings and plugin weight of one page found in both
+// runs.
+func (s *pairSink) Pair(b, a *model.Page) {
+	if !comparable(b) || !comparable(a) {
+		return
 	}
-	return append(out, pluginChanges(pairs, bar)...)
+	for i, m := range metrics {
+		if !m.measured(b.Metrics) || !m.measured(a.Metrics) {
+			continue
+		}
+		s.n[i]++
+		bv, av := m.get(b.Metrics), m.get(a.Metrics)
+		group := a.Group
+		if group == "" {
+			group = b.Group
+		}
+		if pct, ok := moved(bv, av, m.floor, s.bar); ok {
+			s.slower[i] = append(s.slower[i], hit{a.Path, group, bv, av, pct})
+		} else if _, ok := moved(av, bv, m.floor, s.bar); ok {
+			s.faster[i] = append(s.faster[i], hit{a.Path, group, bv, av, (bv - av) / bv * 100})
+		}
+	}
+	key := func(r model.Resource) string { return component(r.URL) }
+	addCost(s.before, b, nil, key)
+	addCost(s.after, a, nil, key)
+}
+
+// Changes returns the slower and faster pages, grouped, then the
+// plugins and themes whose weight moved.
+func (s *pairSink) Changes() []model.Change {
+	var out []model.Change
+	for i, m := range metrics {
+		out = append(out, grouped(m, s.slower[i], s.n[i], s.bar, true)...)
+		out = append(out, grouped(m, s.faster[i], s.n[i], s.bar, false)...)
+	}
+	sortCosts(s.before)
+	sortCosts(s.after)
+	return append(out, pluginChanges(s.before, s.after, s.bar)...)
 }
 
 // comparable: pages that loaded fine have meaningful timings.
@@ -213,16 +248,9 @@ func median(v []float64) float64 {
 // pluginChanges reports plugins and themes whose assets got much heavier
 // per page (or appeared), and ones that got much lighter, using the same
 // bar and a 100 KB floor. This points straight at the plugin an update
-// made heavier.
-func pluginChanges(pairs [][2]*model.Page, bar float64) []model.Change {
-	var before, after []model.Page
-	for _, p := range pairs {
-		if comparable(p[0]) && comparable(p[1]) {
-			before, after = append(before, *p[0]), append(after, *p[1])
-		}
-	}
-	key := func(r model.Resource) string { return component(r.URL) }
-	bc, ac := costs(before, nil, key), costs(after, nil, key)
+// made heavier. bc and ac are what each run's plugins and themes cost
+// on the pages compared.
+func pluginChanges(bc, ac map[string]*cost, bar float64) []model.Change {
 	names := map[string]bool{}
 	for n := range bc {
 		names[n] = true
