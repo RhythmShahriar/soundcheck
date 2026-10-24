@@ -10,6 +10,7 @@ package model
 import (
 	"crypto/sha1" //nolint:gosec // short stable IDs for file names, not security
 	"encoding/hex"
+	"sync"
 	"time"
 
 	echomodel "github.com/RhythmShahriar/echo/model"
@@ -182,6 +183,8 @@ type Run struct {
 	// Echo lists the messages each flow made the site send (form submits
 	// are on their pages).
 	Echo []EchoAction `json:"echo,omitempty"`
+
+	index *pageIndex // see Page
 }
 
 // Options records what a run did, so a comparison can warn when two runs
@@ -203,14 +206,65 @@ func PageID(url string) string {
 	return hex.EncodeToString(sum[:5])
 }
 
-// Page returns the page with the given path, or nil.
+// Page returns the page with the given path, or nil. When two pages
+// share a path, it returns the first.
+//
+// Lookups go through a map built on first use, so comparing two big runs
+// stays linear. The map is rebuilt when Pages grows, shrinks or is
+// replaced, and when a page it points at has moved; changing a page's
+// Path in place without that isn't seen. Concurrent readers are safe;
+// writers to Pages need their own lock, as before.
 func (r *Run) Page(path string) *Page {
-	for i := range r.Pages {
-		if r.Pages[i].Path == path {
-			return &r.Pages[i]
+	indexMu.Lock()
+	defer indexMu.Unlock()
+	idx := r.index
+	if !idx.valid(r.Pages) {
+		idx = newPageIndex(r.Pages)
+		r.index = idx
+	}
+	i, ok := idx.byPath[path]
+	if ok && r.Pages[i].Path != path { // reordered in place
+		idx = newPageIndex(r.Pages)
+		r.index = idx
+		i, ok = idx.byPath[path]
+	}
+	if !ok {
+		return nil
+	}
+	return &r.Pages[i]
+}
+
+// indexMu guards every run's page index. One lock for all runs keeps Run
+// free of a mutex, so runs can still be copied by value (a copy builds
+// its own index on first use).
+var indexMu sync.Mutex
+
+// pageIndex maps paths to positions in the Pages slice it was built from.
+type pageIndex struct {
+	base   *Page // first element, to notice a replaced slice
+	n      int
+	byPath map[string]int
+}
+
+func newPageIndex(pages []Page) *pageIndex {
+	idx := &pageIndex{base: first(pages), n: len(pages), byPath: make(map[string]int, len(pages))}
+	for i := range pages {
+		if _, ok := idx.byPath[pages[i].Path]; !ok {
+			idx.byPath[pages[i].Path] = i
 		}
 	}
-	return nil
+	return idx
+}
+
+func (idx *pageIndex) valid(pages []Page) bool {
+	return idx != nil && idx.n == len(pages) && idx.base == first(pages)
+}
+
+func first(pages []Page) *Page {
+	if len(pages) == 0 {
+		return nil
+	}
+	return &pages[0]
 }
 
 // EchoActions returns every recorded action: form submits page by page,
