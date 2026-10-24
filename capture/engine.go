@@ -159,6 +159,7 @@ func (r *Recorder) load(ctx context.Context, rawURL string, opts Options, viewpo
 	}
 	r.waitIdle(nctx, 700*time.Millisecond)
 	settle(ctx, 300*time.Millisecond)
+	waitLate(nctx, r.tab, func() { r.waitIdle(nctx, 700*time.Millisecond) })
 	return nil
 }
 

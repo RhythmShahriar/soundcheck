@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -102,7 +103,45 @@ const metricsJS = `(() => {
   const tasks = watch('longtask', e => { s.tasks.push([e.startTime, e.startTime + e.duration]); s.taskSeen = performance.now(); });
   if (tasks) s.flushTasks = () => tasks.takeRecords().forEach(e => { s.tasks.push([e.startTime, e.startTime + e.duration]); s.taskSeen = performance.now(); });
   watch('paint', e => { if (e.name === 'first-contentful-paint') s.fcp = e.startTime; });
+  // Short timers the page sets until it has loaded, its load handlers'
+  // included: a widget that fetches its part a moment after load. lateDue
+  // is how long until the last of them fires, so the visit can wait for
+  // that content. Timers set later (a carousel's next slide) don't count.
+  const st = window.setTimeout, ct = window.clearTimeout, late = new Map();
+  let loaded = false;
+  addEventListener('load', () => st.call(window, () => { loaded = true; }, 0));
+  window.setTimeout = function (fn, ms, ...args) {
+    const d = Number(ms) || 0;
+    if (loaded || typeof fn !== 'function' || d > ` + lateMs + `) return st.call(window, fn, ms, ...args);
+    let id = 0;
+    id = st.call(window, function () { late.delete(id); return fn.apply(this, arguments); }, ms, ...args);
+    late.set(id, performance.now() + d);
+    return id;
+  };
+  window.clearTimeout = function (id) { late.delete(id); return ct.call(window, id); };
+  s.lateDue = () => { let due = 0; for (const d of late.values()) due = Math.max(due, d); return Math.max(0, Math.ceil(due - performance.now())); };
 })();`
+
+// lateMs is the longest delay of a timer set before load that the visit
+// waits for (see metricsJS and waitLate).
+const lateMs = "2000"
+
+// lateJS asks metricsJS how long until the page's late timers fire.
+const lateJS = `() => (window.__soundcheck && window.__soundcheck.lateDue) ? window.__soundcheck.lateDue() : 0`
+
+// waitLate waits for content a page loads a moment after it loaded: the
+// timers it set until then (up to lateMs), then the requests they start.
+// idle waits for the network to go quiet.
+func waitLate(ctx context.Context, tab Tab, idle func()) {
+	var due int
+	if err := tab.Eval(ctx, lateJS, &due); err != nil || due <= 0 {
+		return
+	}
+	limit, _ := strconv.Atoi(lateMs)
+	settle(ctx, time.Duration(min(due, limit)+50)*time.Millisecond)
+	idle()
+	settle(ctx, 300*time.Millisecond)
+}
 
 // stillCSS pauses animations and hides carets so screenshots are stable.
 const stillCSS = `*,*::before,*::after{animation-play-state:paused!important;animation-delay:-0.0001s!important;transition:none!important;caret-color:transparent!important}`
@@ -474,6 +513,7 @@ func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*mode
 	_ = page.WaitLoad()
 	page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	settle(ctx, 300*time.Millisecond)
+	waitLate(page.GetContext(), ChromeTab(page), func() { page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)() })
 
 	// A fresh deadline: the one above may be all but spent by a slow
 	// first response.
@@ -569,6 +609,7 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 	_ = page.WaitLoad()
 	page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	settle(ctx, 300*time.Millisecond)
+	waitLate(page.GetContext(), ChromeTab(page), func() { page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)() })
 	rctx, cancel := context.WithTimeout(ctx, readBudget(opts.Timeout))
 	defer cancel()
 	return r.readMobile(rctx, ChromeTab(r.page), p, opts)

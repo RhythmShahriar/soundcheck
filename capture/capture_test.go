@@ -169,6 +169,53 @@ func TestVisitPasswordPrompt(t *testing.T) {
 	}
 }
 
+// A section a script fetches 1.5 s after the page started is waited for:
+// its broken image is recorded. Timers set after load (a carousel's next
+// slide) and long ones don't hold the visit up.
+func TestVisitWaitsForLateContent(t *testing.T) {
+	b := launch(t)
+	sess, _ := b.Session()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/part", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<h2>Team</h2><img src="/missing.png" width="10" height="10">`)
+	})
+	mux.HandleFunc("/missing.png", http.NotFound)
+	mux.HandleFunc("/late", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<!doctype html><title>Late</title><div id="late">Loading</div><script>
+setTimeout(() => fetch('/part').then(r => r.text()).then(h => { document.getElementById('late').innerHTML = h; }), 1500);
+</script>`)
+	})
+	mux.HandleFunc("/busy", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<!doctype html><title>Busy</title><p>Slides.</p><script>
+addEventListener('load', () => { const next = () => setTimeout(next, 200); next(); });
+setTimeout(() => {}, 60000);
+</script>`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	opts := Options{Timeout: 20 * time.Second}
+	visit := func(path string) *model.Page {
+		tab, _ := sess.Page(protoBlank())
+		rec, err := Start(context.Background(), tab, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rec.Stop()
+		p, err := Visit(context.Background(), rec, srv.URL+path, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	p := visit("/late")
+	if !slices.ContainsFunc(p.Failed, func(r model.Request) bool { return strings.HasSuffix(r.URL, "/missing.png") && r.Status == 404 }) {
+		t.Errorf("the late image wasn't recorded: failed %+v", p.Failed)
+	}
+	if p = visit("/busy"); p.Duration > 6000 {
+		t.Errorf("a timer set after load or a long one held the visit up: %.0f ms", p.Duration)
+	}
+}
+
 // slowFixture answers /slow?wait=N after N seconds. Its /busy is a page
 // whose script blocks the main thread for 12 seconds right after load.
 // The block starts from a MessageChannel task queued by the load handler:
