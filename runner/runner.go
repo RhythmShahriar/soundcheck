@@ -72,6 +72,8 @@ type Options struct {
 	// silently move somewhere the user didn't name.
 	FollowHost bool
 	Hooks      Hooks
+
+	revisit bool // set by Revisit: no site-wide checks
 }
 
 // Hooks report progress. Calls are serialized.
@@ -304,7 +306,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 	run.Skipped = skipped()
 
-	if ctx.Err() == nil {
+	if ctx.Err() == nil && !opts.revisit {
 		// Probing every link can take minutes after the last page.
 		if slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.SiteChecker); return ok }) {
 			log("!Checking site-wide issues (links, sitemap)...")
@@ -317,6 +319,20 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 	run.Duration = float64(time.Since(start).Milliseconds())
 	return run, ctx.Err()
+}
+
+// Revisit visits exactly paths again with opts and returns them as a
+// run: no discovery and no links followed, each page in a fresh tab. A
+// compare uses it to confirm changes before reporting them, since one
+// that doesn't come back on a second visit is unstable rather than
+// broken. Site-wide checks (CheckSite) don't run: the run holds only
+// these pages. opts.Paths is ignored.
+func Revisit(ctx context.Context, opts Options, paths []string) (*model.Run, error) {
+	if len(paths) == 0 {
+		return nil, errors.New("revisit: no pages to visit")
+	}
+	opts.Paths, opts.revisit = slices.Clone(paths), true
+	return Run(ctx, opts)
 }
 
 // addListed adds a page the user named to f: one from --page (source
