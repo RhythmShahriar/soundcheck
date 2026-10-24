@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -34,29 +34,6 @@ type Store struct{ Root string }
 // the namespace with snapshot folders (see latest).
 const Latest = "LATEST"
 
-var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
-// ValidName reports whether name can be used as a snapshot name.
-func ValidName(name string) bool { return checkName(name) == nil }
-
-// checkName says why name can't be a folder name in the store, or
-// returns nil when it can. "latest" is reserved in any case: a snapshot
-// folder with that name would sit where older versions keep the LATEST
-// pointer, and on case-insensitive disks "Latest" is the same file.
-func checkName(name string) error {
-	if !safeName.MatchString(name) {
-		return fmt.Errorf("%q isn't a valid name: use letters, digits, dots, dashes and underscores", name)
-	}
-	if strings.EqualFold(name, Latest) {
-		return fmt.Errorf("%q is reserved; pick another name", name)
-	}
-	return nil
-}
-
-// Stamp is the default name for snapshots and runs: UTC to the
-// millisecond, so names sort by time and rarely collide.
-func Stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15-04-05.000Z") }
-
 // owner is the file in a folder NewDir created that says which process
 // is still writing it, so Prune leaves it alone.
 const owner = ".owner"
@@ -70,10 +47,18 @@ const maxSuffix = 1000
 // the same millisecond, or a crashed one), so it creates name-2, name-3
 // and so on instead.
 func (s Store) NewDir(kind, name string) (string, error) {
-	if err := checkName(name); err != nil {
+	if err := CheckName(name); err != nil {
 		return "", err
 	}
 	parent := filepath.Join(s.Root, kind)
+	// An incoming snapshot ends up in snapshots/, so that's where its
+	// name must not clash; checking now saves a whole scan. Runs are
+	// named by Stamp and can't clash.
+	if kind == Incoming || kind == "snapshots" {
+		if err := caseClash(filepath.Join(s.Root, "snapshots"), name); err != nil {
+			return "", err
+		}
+	}
 	if err := os.MkdirAll(parent, 0o750); err != nil {
 		return "", err
 	}
@@ -174,9 +159,12 @@ func (s Store) Promote(dir, name string) (string, error) {
 	if err := os.MkdirAll(snapshots, 0o750); err != nil {
 		return "", err
 	}
+	if err := caseClash(snapshots, name); err != nil {
+		return "", err
+	}
 	final := filepath.Join(snapshots, name)
 	if _, err := os.Lstat(final); err != nil {
-		if err := rename(dir, final); err != nil {
+		if err := move(dir, final); err != nil {
 			return "", err
 		}
 		return final, Release(final)
@@ -188,12 +176,12 @@ func (s Store) Promote(dir, name string) (string, error) {
 		return "", err
 	}
 	aside := filepath.Join(tmp, name)
-	if err := rename(final, aside); err != nil {
+	if err := move(final, aside); err != nil {
 		_ = os.Remove(tmp)
 		return "", err
 	}
-	if err := rename(dir, final); err != nil {
-		if rerr := rename(aside, final); rerr != nil {
+	if err := move(dir, final); err != nil {
+		if rerr := move(aside, final); rerr != nil {
 			// Deleting tmp now would delete the old snapshot too, so it
 			// stays where the user can move it back.
 			return "", fmt.Errorf("%w; the previous snapshot %q couldn't be put back and is in %s", err, name, aside)
@@ -205,8 +193,32 @@ func (s Store) Promote(dir, name string) (string, error) {
 	return final, Release(final)
 }
 
-// rename is os.Rename, swapped in tests to make it fail.
-var rename = os.Rename
+var (
+	// rename is os.Rename, swapped in tests to make it fail.
+	rename = os.Rename
+	// retryRenames is on where a rename can fail for a moment: on
+	// Windows, a virus scanner or the search indexer briefly opens the
+	// files of a folder that was just written, and moving it is then
+	// denied until they let go.
+	retryRenames  = runtime.GOOS == "windows"
+	renameBackoff = 50 * time.Millisecond
+)
+
+// renameTries is how often move tries when retryRenames is on.
+const renameTries = 5
+
+// move renames from to to, retrying with a growing pause where renames
+// fail for a moment. A missing source is never retried.
+func move(from, to string) error {
+	err := rename(from, to)
+	wait := renameBackoff
+	for try := 1; retryRenames && err != nil && try < renameTries && !errors.Is(err, fs.ErrNotExist); try++ {
+		time.Sleep(wait)
+		wait *= 2
+		err = rename(from, to)
+	}
+	return err
+}
 
 // SetLatest records name as the snapshot compare uses by default.
 func (s Store) SetLatest(name string) error {
@@ -309,7 +321,7 @@ func (s Store) list(kind string) ([]string, error) {
 			names = append(names, e.Name())
 		}
 	}
-	slices.Sort(names) // stamps sort chronologically
+	sortByTime(names)
 	return names, err
 }
 
