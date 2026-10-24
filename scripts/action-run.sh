@@ -29,12 +29,15 @@ errlog="$RUNNER_TEMP/soundcheck-stderr.log"
 # couldnt CODE TEXT tells the job summary, the comment and the log why
 # Soundcheck couldn't check, then exits with CODE.
 couldnt() {
-  local code=$1 text=$2 last
+  local code=$1 text=$2 last fence
+  # The text can carry what the site sent (URLs, page messages). A fence
+  # longer than any run of tildes in it can't be closed from inside, so
+  # none of it renders as Markdown in the summary or the comment.
+  fence=$(printf '%s\n' "$text" | grep -o '~*' | awk '{ if (length($0) > n) n = length($0) } END { n = n < 3 ? 3 : n + 1; while (n--) printf "~" }')
   {
-    printf '## Soundcheck\n\nSoundcheck could not check:\n\n~~~text\n'
-    # A line starting with ~~~ would end the block early.
-    printf '%s\n' "$text" | sed 's/^~~~/ ~~~/'
-    printf '~~~\n'
+    printf '## Soundcheck\n\nSoundcheck could not check:\n\n%stext\n' "$fence"
+    printf '%s\n' "$text"
+    printf '%s\n' "$fence"
   } > "$markdown"
   cat "$markdown" >> "$summary"
   last=$(printf '%s\n' "$text" | sed '/^[[:space:]]*$/d' | tail -n 1)
@@ -88,8 +91,10 @@ run() {
     couldnt 2 "no baseline \"$BASELINE\" was found in the cache. Run the Action with mode: snapshot and baseline: $BASELINE on your main branch first; pull requests can restore caches saved on their base branch."
   fi
 
-  # shellcheck disable=SC2206 # ARGS is a flag string to split
-  local extra=(${ARGS:-}) line n=0 value
+  # ARGS is split on whitespace only: read does no globbing, so
+  # --include /blog/* reaches Soundcheck as written.
+  local extra=() line n=0 value
+  read -r -d '' -a extra <<< "${ARGS:-}" || true
   # A header name is an HTTP token (RFC 9110).
   local token='^[-!#$%&'\''*+.^_`|~0-9A-Za-z]+$'
   # One header per line, each passed whole, so spaces and quotes in a

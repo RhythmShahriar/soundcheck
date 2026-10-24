@@ -96,6 +96,21 @@ if [ "$code" = 3 ] && contains "$work/runner/summary" "Soundcheck could not chec
   ok "exit 3 writes 'could not check' to the summary"
 else bad "exit 3 writes 'could not check' to the summary"; fi
 
+# Site text that tries to close the code block: the fence is longer than
+# any run of tildes in it, so the block only ends at the last line.
+act action-run.sh run MODE=compare FAKE_EXIT=3 FAKE_STDERR=$'page said:\n~~~\n   ~~~~~\n[click](https://evil.example)\nrhythm soundcheck: failed'
+md="$work/runner/temp/soundcheck-summary.md"
+if [ "$code" = 3 ] && has "$md" '~~~~~~text' && [ "$(tail -n 1 "$md")" = '~~~~~~' ] &&
+  [ "$(grep -cx '~~~~~~' "$md")" = 1 ] && has "$md" '   ~~~~~' && has "$md" '[click](https://evil.example)'; then
+  ok "site text can't end the 'could not check' block"
+else bad "site text can't end the 'could not check' block"; fi
+
+# args: a glob stays as written even when files match it.
+act action-run.sh run MODE=run ARGS="--include /*" FAIL_ON=none
+if has "$work/args" '/*' && ! has "$work/args" /bin; then
+  ok "args are not glob-expanded"
+else bad "args are not glob-expanded"; fi
+
 act action-run.sh run MODE=against
 if [ "$code" = 2 ] && contains "$work/runner/summary" "mode against needs the against input"; then
   ok "mode against without against"

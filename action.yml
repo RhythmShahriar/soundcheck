@@ -82,7 +82,7 @@ inputs:
     default: ""
   args:
     description: >
-      Extra flags, e.g. "--limit 100 --skip speed -k". Split on spaces, so a value with spaces or
+      Extra flags, e.g. "--limit 100 --skip speed -k". Split on spaces with no glob expansion, so a value with spaces or
       quotes can't go here: use the headers and config inputs for those.
     required: false
     default: ""
