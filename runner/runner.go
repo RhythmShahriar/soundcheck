@@ -23,6 +23,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -45,6 +46,9 @@ type Options struct {
 	// nil (or a nil result) when no credentials are set. See
 	// check.Context.Login.
 	Login func(base *url.URL) func(ctx context.Context, sess *rod.Browser) error
+	// Echo, when set, records what each form submit and flow sends; the
+	// run gets its own ID from its start time.
+	Echo  *echolink.Link
 	Hooks Hooks
 }
 
@@ -130,6 +134,14 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 	if opts.Login != nil {
 		cc.Login = opts.Login(base)
+	}
+	if opts.Echo != nil && cfg.Has("echo") {
+		cc.Echo = opts.Echo.ForRun(run.Started)
+		run.Options.Echo, run.Options.EchoMode, run.Options.EchoURL = true, cc.Echo.Mode, cc.Echo.URL
+	} else {
+		// Without a link nothing is recorded: don't let a comparison think
+		// the module ran.
+		run.Options.Modules = slices.DeleteFunc(slices.Clone(run.Options.Modules), func(m string) bool { return m == "echo" })
 	}
 	// Try the login once up front: a wrong password or a changed login
 	// form is one clear warning, and the checks that need it skip.

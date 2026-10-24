@@ -14,6 +14,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -84,6 +85,9 @@ type Context struct {
 	// NewSession), using SOUNDCHECK_USER/SOUNDCHECK_PASSWORD. Nil when no
 	// credentials are set; modules that need a logged-in user then skip.
 	Login func(ctx context.Context, sess *rod.Browser) error
+	// Echo records the messages form submits and flows make the site
+	// send. Nil unless Echo is configured and running.
+	Echo *echolink.Link
 
 	mu sync.Mutex
 }
