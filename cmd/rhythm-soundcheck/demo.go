@@ -98,6 +98,7 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 		say("The demo's snapshot and report are kept in %s.", tmp)
 	}
 	say("")
+	say("On your own site, %s accept <id> makes a change you expected part of the snapshot.", cmdName())
 	say("Now try it on your staging site: %s snapshot staging.example.com", cmdName())
 	return code
 }
@@ -150,5 +151,6 @@ func demoSession(args []string, cfgPath, tmp string, keep bool, stdout, stderr i
 	p.cfg.Flows = filepath.Join(tmp, "flows")
 	p.failOnSet = true // no --fail-on tip: the demo isn't a script
 	p.noReportHint = !keep
+	p.noAcceptHint = true // accept works on the project's snapshots, not the demo's
 	return p.begin(stdout, stderr), exitOK
 }

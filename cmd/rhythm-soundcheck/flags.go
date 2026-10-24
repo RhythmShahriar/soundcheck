@@ -250,6 +250,9 @@ type plan struct {
 	// noReportHint leaves the "full report:" hint out of the summary,
 	// for the demo, whose run folder is removed when it ends.
 	noReportHint bool
+	// noAcceptHint leaves out the "accept <id> if this is expected"
+	// hints, for the demo, whose snapshot isn't in the project's store.
+	noAcceptHint bool
 	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.

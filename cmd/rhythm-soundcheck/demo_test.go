@@ -32,6 +32,9 @@ func TestDemo(t *testing.T) {
 			t.Errorf("no %s in:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "if this is expected") || !strings.Contains(out, "On your own site, rhythm-soundcheck accept <id> makes") {
+		t.Errorf("accept hints that can't work in the demo:\n%s", out)
+	}
 	if strings.Contains(out, "full report:") {
 		t.Errorf("points at a report it removes:\n%s", out)
 	}
