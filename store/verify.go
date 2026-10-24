@@ -61,7 +61,7 @@ func verifyShots(dir string) error {
 // checkShot says what's wrong with the screenshot at the run-relative
 // path name, or returns "" when it's fine.
 func checkShot(dir, name string) string {
-	path, err := Contained(dir, name)
+	path, err := Inside(dir, name)
 	if err != nil {
 		return "is outside the snapshot"
 	}

@@ -8,6 +8,7 @@
 package store
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -128,6 +129,30 @@ func Contained(dir, rel string) (string, error) {
 		return "", fmt.Errorf("%q is outside %s", rel, dir)
 	}
 	return filepath.Join(dir, clean), nil
+}
+
+// Inside is Contained for a file that is read: it also refuses a path
+// whose symlinks lead outside dir, so a run folder from someone else
+// with shots/a.png linked to a private file can't pull that file into a
+// report or a snapshot. A missing file isn't outside: opening it reports
+// the error.
+func Inside(dir, rel string) (string, error) {
+	path, err := Contained(dir, rel)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path, nil //nolint:nilerr // missing: the caller's open says so
+	}
+	root, err := filepath.EvalSymlinks(cmp.Or(dir, "."))
+	if err != nil {
+		return "", err
+	}
+	if inside, err := filepath.Rel(root, real); err != nil || !filepath.IsLocal(inside) {
+		return "", fmt.Errorf("%q links outside %s", rel, dir)
+	}
+	return path, nil
 }
 
 // SaveRun writes the run into dir: its pages to a pages file (see

@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -273,5 +274,32 @@ func TestAcceptSiteIssue(t *testing.T) {
 	}
 	if again := f.compareAgain(t); slices.ContainsFunc(again.Changes, func(ch model.Change) bool { return ch.Check == "health/broken-link" }) {
 		t.Errorf("the accepted broken link is still reported")
+	}
+}
+
+func TestAcceptRefusesScreenshotLinkedOutsideTheRun(t *testing.T) {
+	if runtime.GOOS == "windows" { // symlinks need privileges there
+		t.Skip("no symlinks")
+	}
+	f := newFixture(t)
+	c := f.compareAgain(t)
+	private := filepath.Join(t.TempDir(), "private.png")
+	if err := os.WriteFile(private, screen(image.Rect(0, 0, 10, 10)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	shot := filepath.Join(f.run, "shots", model.PageID("/a/")+"-desktop.png")
+	if err := os.Remove(shot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(private, shot); err != nil {
+		t.Fatal(err)
+	}
+	_, err := store.Accept(f.snap, f.run, c, store.Selector{Page: "/a/", Check: "visual/*"}, "dana")
+	if err == nil || !strings.Contains(err.Error(), "is outside the run") {
+		t.Fatalf("err = %v", err)
+	}
+	entries, _ := os.ReadDir(filepath.Join(f.snap, "shots"))
+	if len(entries) != 3 {
+		t.Errorf("the linked file was copied: %d in shots/", len(entries))
 	}
 }

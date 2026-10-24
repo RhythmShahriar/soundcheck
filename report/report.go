@@ -12,7 +12,6 @@ package report
 import (
 	"cmp"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -36,25 +35,11 @@ func (r Result) Compared() bool { return r.Comparison != nil }
 
 // Path resolves a file a change refers to, relative to Dir. A result
 // may come from someone else (a CI artifact, a colleague's folder), so a
-// path that leaves Dir is refused, and so is a symlink inside it that
+// path that leaves Dir is refused. So is a symlink inside it that
 // points outside: embedding it would copy a private image into a report
 // meant to be shared.
 func (r Result) Path(rel string) (string, error) {
-	path, err := store.Contained(r.Dir, rel)
-	if err != nil {
-		return "", err
-	}
-	// A missing file isn't outside: opening it reports the error.
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		root, err := filepath.EvalSymlinks(cmp.Or(r.Dir, "."))
-		if err != nil {
-			return "", err
-		}
-		if inside, err := filepath.Rel(root, real); err != nil || !filepath.IsLocal(inside) {
-			return "", fmt.Errorf("%q links outside %s", rel, r.Dir)
-		}
-	}
-	return path, nil
+	return store.Inside(r.Dir, rel)
 }
 
 // classInfo describes how a change class is shown.

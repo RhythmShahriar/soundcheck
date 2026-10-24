@@ -356,7 +356,7 @@ func (a *acceptor) copyShot(rel string) (string, error) {
 		}
 		return "", fmt.Errorf("can't accept: the run's screenshot %s %s", rel, why)
 	}
-	src, err := Contained(a.afterDir, rel)
+	src, err := Inside(a.afterDir, rel)
 	if err != nil {
 		return "", err
 	}
