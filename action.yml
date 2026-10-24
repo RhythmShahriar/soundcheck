@@ -67,7 +67,10 @@ inputs:
     required: false
     default: "false"
   github-token:
-    description: Token for the pull request comment. Default the job's GITHUB_TOKEN.
+    description: >
+      Token for the pull request comment. Default the job's GITHUB_TOKEN. Only a comment this token's
+      own user posted is updated. A GitHub App token can't look up its bot's login, so set the
+      SOUNDCHECK_COMMENT_AUTHOR environment variable to it (e.g. "my-app[bot]").
     required: false
     default: ${{ github.token }}
   fail-on:

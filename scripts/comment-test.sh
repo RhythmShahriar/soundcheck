@@ -35,6 +35,10 @@ if [ "$method" != GET ]; then
   exit 0
 fi
 case "$path" in
+user)
+  [ -n "${FAKE_USER:-}" ] || { echo '{"message": "Resource not accessible by integration"}'; exit 1; }
+  printf '{"login": "%s"}' "$FAKE_USER" | jq -r "$jq"
+  ;;
 */comments) printf '%s' "${FAKE_COMMENTS:-[]}" | jq -r "$jq" ;;
 */pulls) printf '%s' "${FAKE_PULLS:-[]}" | jq -r "$jq" ;;
 esac
@@ -105,18 +109,42 @@ post() {
   code=$?
 }
 echo '{"pull_request": {"number": 7}}' > "$work/pr.json"
-post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS='[{"id": 1, "body": "LGTM"}]'
+post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS='[{"id": 1, "body": "LGTM", "user": {"login": "dev"}}]'
 if [ "$code" = 0 ] && contains "$work/gh.log" "-X POST repos/acme/site/issues/7/comments" && ! contains "$work/gh.log" PATCH &&
   [ "$(jq -r .body "$work/sent.json" | head -n 1)" = '<!-- rhythm-soundcheck -->' ]; then
   ok "the first run creates the comment"
 else bad "the first run creates the comment"; fi
 
 # post again: our comment exists, so it is updated, not duplicated.
-post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS='[{"id": 1, "body": "LGTM"}, {"id": 99, "body": "<!-- rhythm-soundcheck -->\nold"}]'
+post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS='[{"id": 1, "body": "LGTM", "user": {"login": "dev"}}, {"id": 99, "body": "<!-- rhythm-soundcheck -->\nold", "user": {"login": "github-actions[bot]", "type": "Bot"}}]'
 if [ "$code" = 0 ] && contains "$work/gh.log" "-X PATCH repos/acme/site/issues/comments/99" && ! contains "$work/gh.log" POST &&
   jq -r .body "$work/sent.json" | grep -qF 'Server error 500'; then
   ok "a later run updates the same comment"
 else bad "a later run updates the same comment"; fi
+
+# Someone else's comment that starts with the marker is never ours, even
+# when it is older than ours: theirs stays as it is.
+planted='[{"id": 5, "body": "<!-- rhythm-soundcheck -->\nAll clear", "user": {"login": "mallory", "type": "User"}}'
+post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS="$planted]"
+if [ "$code" = 0 ] && contains "$work/gh.log" "-X POST repos/acme/site/issues/7/comments" && ! contains "$work/gh.log" PATCH; then
+  ok "a comment with the marker from another user is ignored"
+else bad "a comment with the marker from another user is ignored"; fi
+post GITHUB_EVENT_PATH="$work/pr.json" FAKE_COMMENTS="$planted"', {"id": 99, "body": "<!-- rhythm-soundcheck -->\nold", "user": {"login": "github-actions[bot]", "type": "Bot"}}]'
+if [ "$code" = 0 ] && contains "$work/gh.log" "-X PATCH repos/acme/site/issues/comments/99" && ! contains "$work/gh.log" comments/5; then
+  ok "ours is updated, not the planted one before it"
+else bad "ours is updated, not the planted one before it"; fi
+
+# A personal access token comments as its user, found through /user.
+post GITHUB_EVENT_PATH="$work/pr.json" FAKE_USER=rhythm FAKE_COMMENTS='[{"id": 98, "body": "<!-- rhythm-soundcheck -->\nold", "user": {"login": "github-actions[bot]"}}, {"id": 99, "body": "<!-- rhythm-soundcheck -->\nold", "user": {"login": "rhythm"}}]'
+if [ "$code" = 0 ] && contains "$work/gh.log" "-X PATCH repos/acme/site/issues/comments/99"; then
+  ok "a personal token finds the comment it posted"
+else bad "a personal token finds the comment it posted"; fi
+
+# Another app's token: SOUNDCHECK_COMMENT_AUTHOR names its bot.
+post GITHUB_EVENT_PATH="$work/pr.json" SOUNDCHECK_COMMENT_AUTHOR='acme-ci[bot]' FAKE_COMMENTS='[{"id": 97, "body": "<!-- rhythm-soundcheck -->\nold", "user": {"login": "acme-ci[bot]"}}]'
+if [ "$code" = 0 ] && contains "$work/gh.log" "-X PATCH repos/acme/site/issues/comments/97"; then
+  ok "SOUNDCHECK_COMMENT_AUTHOR names the bot"
+else bad "SOUNDCHECK_COMMENT_AUTHOR names the bot"; fi
 
 # deployment_status: the pull request is found from the deployed commit.
 echo '{"deployment": {"sha": "abc123"}, "deployment_status": {"target_url": "https://preview.example.com"}}' > "$work/deploy.json"

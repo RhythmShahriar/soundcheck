@@ -11,8 +11,11 @@
 #
 # MARKDOWN is `rhythm-soundcheck report --md` (counts and changes) or the
 # "could not check" note. The comment is found again by its first line,
-# the marker below. A body over GitHub's 65,536 character limit is cut at
-# a line, with a note that points to the full report.
+# the marker below and by its author, the token's own login. Anyone can
+# post a comment that starts with the marker. Updating theirs would show
+# Soundcheck's results under their name for them to edit. A body over
+# GitHub's 65,536 character limit is cut at a line, with a note that
+# points to the full report.
 #
 # post uses gh with GH_TOKEN. It needs GITHUB_REPOSITORY and
 # GITHUB_EVENT_PATH. The pull request is the event's own, or for a
@@ -61,8 +64,25 @@ pr() {
   printf '%s' "$n"
 }
 
+# me prints the login the token comments as. GITHUB_TOKEN and other app
+# tokens can't read /user. GITHUB_TOKEN comments as github-actions[bot]
+# and SOUNDCHECK_COMMENT_AUTHOR names another app's bot.
+me() {
+  if [ -n "${SOUNDCHECK_COMMENT_AUTHOR:-}" ]; then
+    printf '%s' "$SOUNDCHECK_COMMENT_AUTHOR"
+    return
+  fi
+  local login
+  # gh prints an error's JSON body on stdout, so check what came back.
+  if login=$(gh api user --jq .login 2> /dev/null) && [[ $login =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
+    printf '%s' "$login"
+  else
+    printf 'github-actions[bot]'
+  fi
+}
+
 post() {
-  local md=$1 url=${2:-} n id payload
+  local md=$1 url=${2:-} n id payload login
   : "${GITHUB_REPOSITORY:?}"
   n=$(pr)
   if [ -z "$n" ]; then
@@ -72,9 +92,10 @@ post() {
   payload=$(mktemp)
   trap 'rm -f "$payload"' RETURN
   body "$md" "$url" | jq -Rs '{body: .}' > "$payload"
-  # The first comment of ours (by its marker), oldest first.
+  login=$(me)
+  # The first comment of ours (by its author and marker), oldest first.
   if ! id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$n/comments" \
-    --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | sed -n 1p); then
+    --jq ".[] | select(.user.login == $(jq -n --arg l "$login" '$l') and (.body | startswith(\"$marker\"))) | .id" | sed -n 1p); then
     warn "couldn't read the pull request's comments"
     return 0
   fi
