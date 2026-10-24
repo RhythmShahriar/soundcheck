@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package health checks that every page loads and renders without errors:
-// HTTP status, redirects, PHP errors printed into the page, the WordPress
+// HTTP status, firewall challenges and password prompts, redirects, PHP errors printed into the page, the WordPress
 // "critical error" screen, white screens, framework error pages, JS
 // errors, failed requests, broken links, mixed content and indexing.
 package health
@@ -46,6 +46,9 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	if p.Error != "" {
 		check.Page(p, model.Issue{Check: "health/unreachable", Level: model.Error, Title: "Page didn't load: " + p.Error,
 			Fix: "Check the server and the URL; the page must answer before anything else can be checked."})
+		return
+	}
+	if gatekeeper(p) {
 		return
 	}
 	switch {
@@ -311,9 +314,12 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 	return out
 }
 
-// FilterChanges drops the pair a snapshot taken before "No favicon" was
-// site-level makes: the same issue FIXED on a page and NEW for the site.
+// FilterChanges drops changes on pages a firewall or password prompt now
+// answers, since the blocked change tells them. It also drops the pair a
+// snapshot taken before "No favicon" was site-level makes: the same issue
+// FIXED on a page and NEW for the site.
 func (Module) FilterChanges(changes []model.Change) []model.Change {
+	changes = gated(changes)
 	i := slices.IndexFunc(changes, func(c model.Change) bool { return c.Class == model.New && c.Check == "health/favicon" })
 	if i < 0 {
 		return changes
