@@ -248,7 +248,7 @@ func TestSiblingPortIsAnotherSite(t *testing.T) {
 }
 
 // A robots.txt that fails leaves only the start page and the pages
-// listed, and the run says so rather than passing for the whole site.
+// listed; the run says so rather than passing for the whole site.
 func TestRobotsUnavailableWarns(t *testing.T) {
 	needBrowser(t)
 	mux := http.NewServeMux()

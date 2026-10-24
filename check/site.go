@@ -19,7 +19,7 @@ import (
 //
 // It is the kit's crawl.SameSite, without its scheme rule: the kit
 // allows only the upgrade from http to https, while a page here may also
-// link or post back to http, and a local server may answer both on one
+// link or post back to http while a local server may answer both on one
 // port. Downgrade and Trusted tell those moves apart.
 func SameSite(a, b *url.URL) bool {
 	if a == nil || b == nil {

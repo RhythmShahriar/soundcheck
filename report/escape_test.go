@@ -44,7 +44,7 @@ func TestTerm(t *testing.T) {
 }
 
 // Term is the kit's term.Sanitize wherever the text has no newline or C1
-// character, and xmlText keeps the newlines Sanitize keeps.
+// character; xmlText keeps the newlines Sanitize keeps.
 func TestTermIsKitSanitize(t *testing.T) {
 	for _, in := range []string{"plain", "a\x1b[2Jb", "del\x7f", "raw \x9b byte", "\u202egnp.exe", "tab\tstays", osc52} {
 		if got, want := Term(in), term.Sanitize(in); got != want {
