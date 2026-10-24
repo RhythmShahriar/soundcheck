@@ -30,7 +30,8 @@ usage() {
 }
 
 if [ "${1:-}" = "status" ]; then
-	found=$(cd "$state" && ls s[0-9][0-9] 2>/dev/null || true)
+	# ls fails when nothing matches; that just means none is broken.
+	found=$(cd "$state" && ls s[0-9][0-9] 2>/dev/null) || found=
 	if [ -z "$found" ]; then echo "all scenarios good"; else echo "broken: $(words "$found")"; fi
 	exit 0
 fi
