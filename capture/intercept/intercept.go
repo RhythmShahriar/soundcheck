@@ -22,9 +22,12 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 )
 
-// BlockedError is how Chrome reports a request a handler blocked, in
-// Network.loadingFailed's errorText.
-const BlockedError = "net::ERR_BLOCKED_BY_CLIENT"
+// IsBlocked reports whether errorText, from Network.loadingFailed, is
+// that of a request a handler blocked. Chrome words it
+// "net::ERR_BLOCKED_BY_CLIENT.Inspector".
+func IsBlocked(errorText string) bool {
+	return strings.HasPrefix(errorText, "net::ERR_BLOCKED_BY_CLIENT")
+}
 
 // Request is a paused request the handlers may change.
 type Request struct {
@@ -53,7 +56,7 @@ func (r *Request) SetHeader(name, value string) {
 	r.headers = append(r.headers, &proto.FetchHeaderEntry{Name: name, Value: value})
 }
 
-// Block fails the request as blocked by the client (BlockedError), so
+// Block fails the request as blocked by the client (see IsBlocked), so
 // it never reaches the network.
 func (r *Request) Block() { r.blocked = true }
 

@@ -10,12 +10,15 @@ func TestDestructive(t *testing.T) {
 		"Delete account", "Remove item", "btn | unsubscribe-link", "Log out", "logout", "Sign out", "Cancel order",
 		"Empty cart", "empty_cart", "Deactivate", "Move to Trash", "Reset password", "/?action=trash&post=4",
 		"/wp-admin/post.php", "x | /cart/?_wpnonce=abc", "Add to cart", "Place order",
+		"Like", "btn | like-button", "Upvote", "Vote", "Follow us", "Subscribe", "Send", "Request a callback",
+		"Book now", "Apply", "Publish", "Approve", "Approved", "Liked", "Followed",
 	} {
 		if !isDestructive(words) {
 			t.Errorf("%q should be destructive", words)
 		}
 	}
-	for _, words := range []string{"Menu | menu-toggle", "Show more", "Next slide", "Subscribe", "Dropdown | dropdown-toggle", "Load more posts"} {
+	for _, words := range []string{"Menu | menu-toggle", "Show more", "Next slide", "Dropdown | dropdown-toggle", "Load more posts",
+		"Booking policy", "likely", "Sender details", "Bookmarks", "Applications"} {
 		if isDestructive(words) {
 			t.Errorf("%q isn't destructive", words)
 		}

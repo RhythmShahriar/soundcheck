@@ -10,7 +10,8 @@
 //   - click clicks menus, tabs, accordions, modals, sliders and other
 //     controls, and reports dead clicks, JS errors and failed requests
 //     they cause. Destructive-looking controls and /wp-admin are never
-//     clicked.
+//     clicked. Requests a click would send other than GET and HEAD are
+//     held in the browser and listed ("would have sent POST /x").
 //   - submit (opt-in) submits forms with fake data: empty first, expecting
 //     validation, then valid, expecting success. It refuses production
 //     URLs unless a form is allowlisted.
