@@ -28,6 +28,7 @@ type options struct {
 	quiet, plain, noColor, verbose bool
 
 	name, snapshot, against string
+	strict                  bool
 
 	configPath             string
 	limit                  int
@@ -126,6 +127,7 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.StringVar(&o.snapshot, "snapshot", "", "")
 	fs.StringVar(&o.snapshot, "against-snapshot", "", "")
 	fs.StringVar(&o.against, "against", "", "")
+	fs.BoolVar(&o.strict, "strict", false, "")
 
 	fs.StringVar(&o.configPath, "config", "", "")
 	fs.IntVar(&o.limit, "limit", 0, "")
@@ -173,6 +175,7 @@ type plan struct {
 	storeDir string
 
 	configPath string // the config file read, for messages
+	chosen     chosen // settings the user set, which compare keeps
 	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.
@@ -208,6 +211,7 @@ func parse(args []string) (*plan, error) {
 		return nil, cli.UsageError{Msg: err.Error()}
 	}
 	p.configPath = path
+	p.chosen = chosenSettings(set, p.cfg, path)
 	cfg := &p.cfg
 	if set["limit"] {
 		cfg.Pages.Limit = o.limit
@@ -342,6 +346,14 @@ func (p *plan) trust() error {
 		t.AllowHosts = append(t.AllowHosts, key)
 	}
 	t.InsecureLogin = p.o.insecureLogin
+	return nil
+}
+
+// notStrict refuses --strict outside compare with a snapshot.
+func (p *plan) notStrict() error {
+	if p.o.strict {
+		return cli.Usagef("--strict works with compare against a snapshot: it stops when the comparison wouldn't use the snapshot's settings")
+	}
 	return nil
 }
 

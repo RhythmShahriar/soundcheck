@@ -302,7 +302,7 @@ func cmdSnapshot(s *session) int {
 	if len(s.args) != 1 {
 		return s.fail(cli.Usagef("snapshot needs one site\n  try: rhythm soundcheck snapshot staging.example.com"))
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false)); err != nil {
+	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	name := cmp.Or(s.o.name, store.Stamp(time.Now()))
@@ -365,12 +365,25 @@ func cmdCompare(s *session) int {
 		}
 		site = s.args[0]
 	}
+	changes := inherit(&s.cfg, before.Options, s.chosen, s.o.skip)
+	if len(s.cfg.Modules) == 0 {
+		return s.fail(cli.Usagef("no modules left to run: the snapshot ran %s", list(before.Options.Modules)))
+	}
+	if s.o.strict && len(changes) > 0 {
+		return s.fail(cli.Usagef("--strict: this comparison wouldn't use snapshot %q's settings: %s", before.Name, joinChanges(changes)))
+	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
 	if err != nil {
 		return s.fail(err)
 	}
 	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q, %s, taken %s", before.Name, plural(len(before.Pages), "page"), report.Ago(before.Started)))
+	if len(before.Options.Modules)+len(before.Options.Levels)+len(before.Options.Viewports) > 0 {
+		s.view.Step("Settings", snapshotSettings(before.Name, before.Options))
+	}
+	if len(changes) > 0 {
+		s.view.Step("You changed", joinChanges(changes))
+	}
 	return s.compareWith(before, snapDir, site, dir)
 }
 
@@ -383,7 +396,7 @@ func cmdAgainst(s *session) int {
 	if len(s.args) != 1 {
 		return s.fail(cli.Usagef("--against compares one site with another: rhythm soundcheck staging.example.com --against example.com"))
 	}
-	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true)); err != nil {
+	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -434,7 +447,7 @@ func cmdRun(s *session) int {
 	if len(s.args) != 1 {
 		return s.fail(cli.Usagef("run needs one site\n  try: rhythm soundcheck run example.test"))
 	}
-	if err := cmp.Or(target(s.args[0]), s.failOn(false)); err != nil {
+	if err := cmp.Or(target(s.args[0]), s.failOn(false), s.notStrict()); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))

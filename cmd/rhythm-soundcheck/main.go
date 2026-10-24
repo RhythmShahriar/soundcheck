@@ -100,6 +100,11 @@ Snapshots:
                              uses the latest snapshot unless --snapshot is given
       --snapshot <name>      compare with this snapshot (alias --against-snapshot)
       --against <url>        compare with another site instead of a snapshot
+      --strict               stop (exit 2) when compare wouldn't run with the
+                             snapshot's modules, levels and viewports
+
+compare runs with the snapshot's modules, levels and viewports unless a flag
+or the config file sets them, and says what you changed.
 
 Output:
       --json                 JSON (schema rhythm-soundcheck/v1)

@@ -72,7 +72,7 @@ rhythm soundcheck snapshot staging.yoursite.com   # before: record how every pag
 rhythm soundcheck compare --open                  # after: what changed, in a report
 ```
 
-Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, screenshots, and stores it all in `./.soundcheck`. `compare` checks the same pages again and shows **only what's different**, most serious first:
+Soundcheck finds your pages from the sitemap and links, opens each one in headless Chrome at desktop and mobile size, clicks what can be clicked, measures, screenshots, and stores it all in `./.soundcheck`. `compare` checks the same pages again, with the snapshot's modules, levels and viewports unless you set others, and shows **only what's different**, most serious first:
 
 | Class | Means |
 |---|---|
