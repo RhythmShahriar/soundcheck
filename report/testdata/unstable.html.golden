@@ -154,7 +154,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     <h2>✗ BROKE <span class="count">1</span></h2>
     <p class="blurb">Worked in the snapshot, fails now.</p>
     
-    <article class="item k-broke" data-kind="broke">
+    <article class="item k-broke" data-kind="broke" data-id="0fc43c4d">
       <div class="head">
         <h3><span class="badge">BROKE</span>Server error 500</h3>
         <div class="where">/down/</div>
@@ -173,7 +173,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     <h2>~ UNSTABLE <span class="count">1</span></h2>
     <p class="blurb">Seen once, gone when the page was checked again; not counted.</p>
     
-    <article class="item k-unstable" data-kind="unstable">
+    <article class="item k-unstable" data-kind="unstable" data-id="52b2dc31">
       <div class="head">
         <h3><span class="badge">UNSTABLE</span>Server error 500</h3>
         <div class="where">/flaky/</div>

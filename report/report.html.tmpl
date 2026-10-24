@@ -149,7 +149,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     <h2>{{.Glyph}} {{.Label}} <span class="count">{{len .Items}}</span></h2>
     {{if .Blurb}}<p class="blurb">{{.Blurb}}.</p>{{end}}
     {{range .Items}}
-    <article class="item k-{{.Key}}" data-kind="{{.Key}}">
+    <article class="item k-{{.Key}}" data-kind="{{.Key}}"{{if .ID}} data-id="{{.ID}}"{{end}}>
       <div class="head">
         <h3><span class="badge">{{.Label}}</span>{{.Title}}</h3>
         <div class="where">{{.Where}}{{if .Score}} · {{.Score}}{{end}}</div>

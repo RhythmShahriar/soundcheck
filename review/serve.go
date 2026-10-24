@@ -85,12 +85,14 @@ type server struct {
 	decided map[string]Action
 }
 
-// barItem is what the page's script needs for one report entry. Entries
-// line up with the report's articles in order; Fixed ones are null.
+// barItem is what the page's script needs for one report entry. The
+// script finds its article by Change (the article's data-id), or by
+// position when the comparison has no change ids; Fixed ones are null.
 type barItem struct {
-	ID    string `json:"id"`
-	Class string `json:"class"`
-	Title string `json:"title"`
+	ID     string `json:"id"`
+	Change string `json:"change,omitempty"` // the change's own id
+	Class  string `json:"class"`
+	Title  string `json:"title"`
 }
 
 type barData struct {
@@ -126,7 +128,7 @@ func newServer(res report.Result, decide Decide) (*server, error) {
 				id = ID(c) + "-" + strconv.Itoa(n)
 			}
 			s.byID[id] = c
-			data.Items = append(data.Items, &barItem{ID: id, Class: c.Class, Title: c.Title})
+			data.Items = append(data.Items, &barItem{ID: id, Change: c.ID, Class: c.Class, Title: c.Title})
 		}
 	}
 

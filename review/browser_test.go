@@ -5,6 +5,8 @@ package review
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -75,5 +77,51 @@ func TestReviewPageRefusesMismatch(t *testing.T) {
 	}
 	if txt := page.MustElement("#rv-banner").MustText(); !strings.Contains(txt, "Review buttons are off") {
 		t.Errorf("banner: %s", txt)
+	}
+}
+
+// TestReviewPagePairsByID puts each bar on the article whose data-id is
+// its change's id, so a page that lists the changes differently (here:
+// without the fixed one) still gets every button on the right change.
+func TestReviewPagePairsByID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("needs Chrome")
+	}
+	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
+		t.Skip("no Chrome or Chromium installed: ", err)
+	}
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(b.Close)
+
+	changes := sampleChanges()
+	for i := range changes {
+		changes[i].ID = fmt.Sprintf("c%d", i+1)
+	}
+	rec := &recorder{}
+	s, _ := startServer(t, sampleResult(changes), rec)
+	if !strings.Contains(string(s.page), `data-id="c3"`) {
+		t.Fatal("the report's articles have no data-id")
+	}
+	s.page = regexp.MustCompile(`(?s)<article[^>]*data-kind="fixed".*?</article>`).ReplaceAll(s.page, nil)
+	page := b.Timeout(20 * time.Second).MustPage(s.URL())
+	page.MustWaitLoad()
+	if txt := page.MustElement("#rv-banner").MustText(); strings.Contains(txt, "off") {
+		t.Fatalf("banner: %s", txt)
+	}
+	for _, art := range page.MustElements("article.item") {
+		id := *art.MustAttribute("data-id")
+		if got := art.MustElement(".rv-id").MustText(); got != id {
+			t.Errorf("article %s carries the bar of %s", id, got)
+		}
+	}
+	page.MustElement(`article[data-id="c3"] .rv-accept`).MustClick()
+	page.MustElement(`article[data-id="c3"] .rv-state`).MustWait(`() => this.textContent === "Accepted"`)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if got := strings.Join(rec.calls, "|"); got != "accept Page returns HTTP 500" {
+		t.Errorf("decide calls = %q", got)
 	}
 }

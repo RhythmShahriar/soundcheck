@@ -17,17 +17,26 @@
   var rv = {{.}};
   var banner = document.getElementById("rv-banner");
   var articles = document.querySelectorAll("article.item");
-  // Pair each article with its change by position and refuse to add any
-  // button when the titles don't line up: a button on the wrong change
+  var off = function () { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; };
+  // Pair each change with its article by the article's data-id, or by
+  // position for a comparison without change ids. Refuse to add any
+  // button when a title doesn't line up: a button on the wrong change
   // would accept something nobody looked at.
-  if (articles.length !== rv.items.length) { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; return; }
-  for (var i = 0; i < articles.length; i++) {
-    var it = rv.items[i], h = articles[i].querySelector("h3");
-    if (it && (!h || h.textContent.slice(-it.title.length) !== it.title)) { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; return; }
+  var byId = {}, pairs = [];
+  articles.forEach(function (a) { if (a.dataset.id) byId[a.dataset.id] = a; });
+  var byIds = rv.items.every(function (it) { return !it || (it.change && byId[it.change]); });
+  if (byIds) {
+    rv.items.forEach(function (it) { if (it) pairs.push([byId[it.change], it]); });
+  } else {
+    if (articles.length !== rv.items.length) { off(); return; }
+    rv.items.forEach(function (it, i) { if (it) pairs.push([articles[i], it]); });
   }
-  articles.forEach(function (art, i) {
-    var it = rv.items[i];
-    if (!it) return;
+  for (var i = 0; i < pairs.length; i++) {
+    var h = pairs[i][0].querySelector("h3"), t = pairs[i][1].title;
+    if (!h || h.textContent.slice(-t.length) !== t) { off(); return; }
+  }
+  pairs.forEach(function (pair) {
+    var art = pair[0], it = pair[1];
     var bar = document.createElement("div");
     bar.className = "rv-bar";
     var state = document.createElement("span");

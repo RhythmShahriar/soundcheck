@@ -77,6 +77,9 @@ type htmlGroup struct {
 }
 
 type htmlItem struct {
+	// ID is the change's id (data-id on its article), which the review
+	// bar pairs it by; empty for a run's issues.
+	ID                              string
 	Key, Label, Title, Check, Where string
 	Pages                           []string
 	BeforeAfter, Source, Detail     string
@@ -135,7 +138,7 @@ func HTML(w io.Writer, r Result) error {
 			}
 			g := htmlGroup{Key: class, Label: info.Label, Glyph: info.Glyph, Blurb: capitalize(info.Blurb)}
 			for _, ch := range groups[class] {
-				it := htmlItem{Key: class, Label: info.Label, Title: ch.Title, Check: ch.Check, Where: where(ch.Pages),
+				it := htmlItem{ID: ch.ID, Key: class, Label: info.Label, Title: ch.Title, Check: ch.Check, Where: where(ch.Pages),
 					Pages: ch.Pages, BeforeAfter: beforeAfter(ch), Source: ch.Source, Detail: ch.Detail}
 				if class != model.Fixed {
 					it.Fix = ch.Fix
