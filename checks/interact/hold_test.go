@@ -4,14 +4,19 @@
 package interact
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/runner"
 )
 
 const writesPage = `<!doctype html><html><head><title>Poll</title></head><body>
@@ -122,5 +127,61 @@ func TestSubmitAfterClicks(t *testing.T) {
 	defer fx.mu.Unlock()
 	if len(fx.posts) != 2 {
 		t.Errorf("posts: %q", fx.posts)
+	}
+}
+
+// A click whose handler posts later (a timer or a debounce) can't send
+// once the hold ends: the page is reloaded while writes are still held.
+func TestClicksHoldDelayedWrites(t *testing.T) {
+	needBrowser(t)
+	fx := newFixture(t)
+	var mu sync.Mutex
+	var writes []string
+	loads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			writes = append(writes, r.Method+" "+r.URL.Path)
+			mu.Unlock()
+			return
+		}
+		loads++
+		n := loads
+		mu.Unlock()
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		// Every load after the first is slow, so the clicked page is
+		// still open when its timer fires.
+		if n > 1 {
+			time.Sleep(2500 * time.Millisecond)
+		}
+		fmt.Fprint(w, `<!doctype html><title>Later</title><main><button type="button" id="later">Save later</button></main>
+<script>document.getElementById('later').addEventListener('click', () => setTimeout(() => fetch('/api/later', {method: 'POST'}), 1800));</script>`)
+	}))
+	defer srv.Close()
+	fx.srv.Config.Handler = srv.Config.Handler
+
+	// The mobile pass loads the page again after the clicks: the window
+	// a timer could post in.
+	cfg := config.Default()
+	cfg.Interactions.Levels, cfg.Modules, cfg.Rate, cfg.Tabs = []string{"click"}, []string{"interact"}, 0, 1
+	run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: fx.srv.URL, Paths: []string{"/"},
+		Dir: t.TempDir(), Version: "test", Modules: []check.Module{New()}, Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := run.Page("/")
+	if p == nil || p.Error != "" {
+		t.Fatalf("page: %+v", p)
+	}
+	if got := outcomes(p, "click")["Save later"]; got == "" {
+		t.Fatalf("Save later wasn't clicked: %+v", p.Interact)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(writes) != 0 {
+		t.Errorf("a delayed write went out after the clicks: %v", writes)
 	}
 }

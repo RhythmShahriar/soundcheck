@@ -180,9 +180,11 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 	if left > 0 {
 		cc.Warn(fmt.Sprintf("interact %s: stopped clicking after %s with %d controls left (the page is slow)", p.Path, clickBudget, left))
 	}
-	// Leave the page as it was loaded for the submit level. Otherwise the
-	// runner's mobile pass reloads it anyway, so don't load it twice.
-	if n > 0 && cc.Config.Level("submit") {
+	// Leave the page as it was loaded, while writes are still held: a
+	// click may have set a timer that posts later, which would otherwise
+	// go out once the hold ends. The submit level and the hooks that run
+	// after this one get a fresh page too.
+	if n > 0 {
 		_ = reload(ctx, tab, pageURL)
 	}
 	return clicked
