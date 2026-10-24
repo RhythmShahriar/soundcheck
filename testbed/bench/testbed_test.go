@@ -8,7 +8,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -261,4 +265,68 @@ func TestClickScenarios(t *testing.T) {
 func firstLine(s string) string {
 	s, _, _ = strings.Cut(s, "\n")
 	return s
+}
+
+// TestStateFromEnv serves the plain-PHP site with PHP's built-in server
+// and a state folder from TESTBED_STATE, the way the README shows, and
+// checks that toggle.sh switches s03's deprecated notice on and off.
+// It needs php but not Docker or Chrome.
+func TestStateFromEnv(t *testing.T) {
+	php, err := exec.LookPath("php")
+	if err != nil {
+		t.Skip("php isn't installed")
+	}
+	dir, err := Testbed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := t.TempDir()
+	t.Setenv("TESTBED_STATE", state) // for toggle.sh and the server
+	const addr = "127.0.0.1:20342"
+	// The CLI's php.ini may hide errors; the Docker image shows them.
+	srv := exec.Command(php, "-d", "display_errors=1", "-d", "error_reporting=E_ALL", "-S", addr, "-t", filepath.Join(dir, "php")) //nolint:gosec // our own test server
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Process.Kill(); _ = srv.Wait() })
+
+	get := func() string {
+		t.Helper()
+		var last error
+		for range 50 {
+			resp, err := http.Get("http://" + addr + "/report.php") //nolint:gosec,noctx // the local test server
+			if err == nil {
+				body, err := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				return string(body)
+			}
+			last = err
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Fatalf("php -S didn't answer: %v", last)
+		return ""
+	}
+	const notice = "Deprecated</b>:  strlen()"
+	for _, step := range []struct {
+		state  string
+		broken bool
+	}{{"good", false}, {"broken", true}, {"good", false}} {
+		if err := Toggle(dir, "s03", step.state); err != nil {
+			t.Fatal(err)
+		}
+		_, statErr := os.Stat(filepath.Join(state, "s03"))
+		if (statErr == nil) != step.broken {
+			t.Fatalf("toggle.sh s03 %s: state file in TESTBED_STATE exists = %v", step.state, statErr == nil)
+		}
+		body := get()
+		if strings.Contains(body, notice) != step.broken {
+			t.Errorf("s03 %s: deprecated notice shown = %v, want %v\n%s", step.state, !step.broken, step.broken, body)
+		}
+		if !strings.Contains(body, "Monthly report") {
+			t.Errorf("s03 %s: not the report page:\n%s", step.state, body)
+		}
+	}
 }

@@ -24,6 +24,18 @@ Accounts (local test accounts only):
 | `admin` | `admin` | administrator | looking around in wp-admin |
 | `soundcheck` | `soundcheck-testbed` | editor, display name "Sam Soundcheck" | Soundcheck's logged-in checks: `SOUNDCHECK_USER=soundcheck SOUNDCHECK_PASSWORD=soundcheck-testbed` |
 
+### Plain PHP without Docker
+
+The plain-PHP site also runs under PHP's built-in server. Point it and `toggle.sh` at the same state folder with `TESTBED_STATE` (the containers use `testbed/state`):
+
+```sh
+mkdir -p /tmp/s
+TESTBED_STATE=/tmp/s php -S 127.0.0.1:18810 -t testbed/php
+TESTBED_STATE=/tmp/s testbed/toggle.sh s03 broken   # in another terminal
+```
+
+If your `php.ini` hides errors (`display_errors = Off`), add `-d display_errors=1` so s03's notice shows. WordPress reads `TESTBED_STATE` too (default `wp-content/testbed-state`), for a WordPress you run yourself with the testbed's plugins.
+
 ## Make targets
 
 | Target | Does |
@@ -46,7 +58,7 @@ testbed/toggle.sh all good
 testbed/toggle.sh status
 ```
 
-A scenario is broken while `testbed/state/<id>` exists. Both containers mount `state/` read-only and check it on every request. The mu-plugin `wp/mu-plugins/00-testbed-state.php` provides `testbed_broken('s05')`, and the theme, plugins and mu-plugins switch on it. The testbed's page cache keys on the set of broken scenarios, so it never serves a page that was rendered in the other state.
+A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`, see above). Both containers mount `state/` read-only and check it on every request. The mu-plugin `wp/mu-plugins/00-testbed-state.php` provides `testbed_broken('s05')`, and the theme, plugins and mu-plugins switch on it. The testbed's page cache keys on the set of broken scenarios, so it never serves a page that was rendered in the other state.
 
 ## Scenarios
 
@@ -139,6 +151,7 @@ go test -tags testbed -v ./testbed/bench/
 - `TestHealthScenarios`: snapshot, break and compare for the health scenarios (s01–s10, s16, s17, plus s15 through health's "not responsive" check). It prints the score.
 - `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
+- `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder, and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario
 

@@ -35,7 +35,13 @@ function page_end(): void {
 	<?php
 }
 
-/** Reports whether scenario $id is broken (testbed/toggle.sh). */
+/**
+ * Reports whether scenario $id is broken (testbed/toggle.sh). The state
+ * folder is TESTBED_STATE, or /var/www/state where the Docker stack
+ * mounts it, so the site also runs with PHP's built-in server:
+ * TESTBED_STATE=/tmp/s php -S 127.0.0.1:18810 -t testbed/php
+ */
 function testbed_broken( string $id ): bool {
-	return file_exists( '/var/www/state/' . $id );
+	$dir = getenv( 'TESTBED_STATE' ) ?: '/var/www/state';
+	return file_exists( rtrim( $dir, '/' ) . '/' . $id );
 }

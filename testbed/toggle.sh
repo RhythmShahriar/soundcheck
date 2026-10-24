@@ -9,13 +9,15 @@
 #
 # A scenario is broken while state/<id> exists. The WordPress and PHP
 # containers mount state/ read-only and check it on every request, so a
-# switch takes effect immediately, with no rebuild or restart. The page
+# switch takes effect immediately, with no rebuild or restart. Set
+# TESTBED_STATE to use another folder, e.g. for the plain-PHP site under
+# PHP's built-in server (see README.md); the site must get the same one. The page
 # cache keys on the set of broken scenarios, so it never serves a page
 # rendered in the other state.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-state="$here/state"
+state=${TESTBED_STATE:-$here/state}
 mkdir -p "$state"
 
 ids() { sed -n 's/^  - id: *\(s[0-9][0-9]\).*/\1/p' "$here/scenarios.yaml"; }
