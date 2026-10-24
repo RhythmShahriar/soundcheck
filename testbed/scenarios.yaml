@@ -22,6 +22,8 @@
 #   args      extra rhythm-soundcheck flags for both runs, e.g. [--timeout, 6s]
 #   modules   run exactly these modules (--modules), e.g. to add seo or a11y
 #   limit     page limit (default 20)
+#   timeout   time limit for each command when the bench's -timeout (5m)
+#             is too short, e.g. 15m for a 320-page site
 #   per_group pages.per_group: pages per URL pattern (-1 for all)
 #   echo      the run needs Echo (bench -echo URL); "not run" without it
 #   rules     YAML rule files (relative to testbed/) copied into .soundcheck/rules/
@@ -255,7 +257,11 @@ scenarios:
     include: ["/s17-title*"]
     module: health
     toggle: "the theme's title-tag support is removed, so pages have no <title> (wp/mu-plugins/testbed-scenarios.php)"
+    # A title that went away is NEW health/no-title ("Page has no <title>"),
+    # which ranks above CHANGED; since v1.2 it isn't also reported as a
+    # title changed to nothing (one cause, one line).
     expect:
+      - {class: new, check: health/no-title, title: no <title>}
       - {class: changed, check: health/title, title: title changed}
     tools: [unlighthouse]
 
@@ -412,9 +418,12 @@ scenarios:
     include: ["/s30-stale*"]
     module: cache
     toggle: "the page cache serves a 36-hour-old copy with the old roasting day and an expired form nonce (wp/mu-plugins/testbed-cache.php)"
+    # A nonce cached for more than 24 hours is past every WordPress grace
+    # period, so the expired nonce is an error: BROKE.
     expect:
       - {class: new, check: cache/stale}
       - {class: new, check: cache/expired-nonce}
+      - {class: broke, check: cache/expired-nonce}
     tools: []
 
   - id: s31
@@ -436,8 +445,6 @@ scenarios:
     include: ["/s32-captcha*"]
     module: interact
     levels: [inspect, click, submit]
-    pending: true
-    note: "Soundcheck should say it can't submit a form behind a CAPTCHA instead of calling the form broken; no detector for that is planned yet."
     toggle: "a security plugin adds reCAPTCHA markup; without a solved challenge the form refuses (wp/plugins/testbed-forms)"
     expect:
       - {warning: captcha}
@@ -542,8 +549,11 @@ scenarios:
     module: visual
     harness: delete-shots
     toggle: "a large red banner appears; the benchmark deletes the snapshot's shots/ first (php/banner.php)"
+    # Soundcheck words the warning by count: "1 screenshot … is", "2
+    # screenshots … are".
     expect:
-      - {warning: from the snapshot is missing or unreadable}
+      - {warning: screenshot from the snapshot is missing or unreadable}
+      - {warning: screenshots from the snapshot are missing or unreadable}
       - {class: changed, check: visual/}
     tools: [backstop]
 
@@ -604,6 +614,9 @@ scenarios:
     module: health
     limit: 330
     per_group: -1
+    # 321 pages take about 4 minutes a run (snapshot, then compare),
+    # too close to the bench's 5 minute limit for each command.
+    timeout: 15m
     toggle: "item 317 prints a PHP warning (php/catalog.php)"
     expect:
       - {class: new, check: health/php-error, title: "PHP Warning: Undefined array key"}
@@ -619,7 +632,9 @@ scenarios:
     module: health
     rules: [rules/elementor-missing-widget.yaml]
     toggle: "an Elementor add-on is deactivated, so its widget shows \"Widget ... not found\" (wp/mu-plugins/testbed-scenarios.php)"
+    # The rule says level: error; an error that appears is BROKE.
     expect:
+      - {class: broke, check: health/elementor-missing-widget, title: Elementor widget missing}
       - {class: new, check: health/elementor-missing-widget, title: Elementor widget missing}
     tools: []
 

@@ -85,7 +85,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s14 | `/s14-layout/` | the hero disappears and the header flips | CHANGED visual |
 | s15 | `/s15-mobile/` | a 1200 px fixed-width promo strip, so the page no longer fits a phone | CHANGED visual / NEW health (not responsive) |
 | s16 | `/s16-noindex/` | "Discourage search engines" switched on, so pages get noindex | NEW health |
-| s17 | `/s17-title/` | the theme loses `title-tag` support, so pages have no `<title>` | CHANGED health |
+| s17 | `/s17-title/` | the theme loses `title-tag` support, so pages have no `<title>` | NEW health (no title) |
 | s18 | `/cart/` | the page cache caches the cart (`X-Cache: HIT`, public) | cache: private page cached |
 | s19 | `/s19-account/` | the page cache stores pages rendered for logged-in users and serves them, with the admin bar and the user's name, to visitors | cache: leak (needs login) |
 | s20 | `/s20-heavy/` | a "slider" plugin adds a 2 MB image and a render-blocking script that takes 1.5 s | SLOWER speed |
@@ -98,9 +98,9 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s27 | `/s27-seo/` | canonical, hreflang, Open Graph and JSON-LD are gone | seo |
 | s28 | `/s28-sitemap/` | `/wp-sitemap.xml` answers 500 | seo |
 | s29 | `/s29-redirect/` | a new redirect rule sends the page to the home page | CHANGED health (redirect) |
-| s30 | `/s30-stale/` | the page cache serves a 36-hour-old copy with old content and an expired nonce | NEW cache (stale, expired nonce) |
+| s30 | `/s30-stale/` | the page cache serves a 36-hour-old copy with old content and an expired nonce | NEW cache (stale) / BROKE cache (expired nonce) |
 | s31 | `/checkout/` | Place order hits a fatal error in the payment step | BROKE interact (submit level) |
-| s32 | `/s32-captcha/` | the form gains a reCAPTCHA that automated submits can't pass | a "can't submit" warning, not BROKE (pending) |
+| s32 | `/s32-captcha/` | the form gains a reCAPTCHA that automated submits can't pass | a "has a CAPTCHA" warning, not BROKE |
 | s33 | `/s33-mail/` | the form still says sent while no email goes out | BROKE echo (needs Echo) |
 | s34 | `:18810/ttfb.php` | the server waits 1.5 s before answering; nothing else changes | SLOWER speed (TTFB) |
 | s35 | `:18810/late.php` | the section a script loads 1.5 s after load shows a missing photo | NEW health (broken image) |
@@ -114,17 +114,17 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s43 | `:18810/moved.php` | the page redirects to another host name | exit 3 |
 | s44 | `:18810/` | nothing; the benchmark keeps every CPU busy during compare | nothing at or above NEW |
 | s45 | `:18810/catalog.php` | page 317 of 320 prints a PHP warning | NEW health |
-| s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | NEW health |
+| s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | BROKE health (the rule's level is error) |
 | s47 | `/contact/` | ten plugin updates, one of which (testbed-update-07 1.1) breaks the contact page; `wp-update --bisect --rollback` | culprit testbed-update-07 in at most 4 compares |
 | s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares |
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
-**Pending** scenarios expect a detector or fix that isn't built yet (today only s32: Soundcheck has no CAPTCHA detector). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
+**Pending** scenarios expect a detector or fix that isn't built yet (none today). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
 
 ### Mail through Echo (s33)
 
-s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers. Start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up` and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run".
+s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers. Start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up` and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run" and is left out of the score: the benchmark doesn't start Echo itself, since Echo is another tool and WordPress must be started pointing at its SMTP port.
 
 ### Plugin updates (s47, s48)
 
