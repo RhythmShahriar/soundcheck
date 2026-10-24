@@ -5,6 +5,9 @@ package runner
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -96,6 +99,44 @@ func TestResolveRefusedHTTPSFallsBack(t *testing.T) {
 	}
 	if strings.Join(logs, "|") != "!https refused; using http" {
 		t.Errorf("logs = %v", logs)
+	}
+}
+
+// A bare host:port on a plain-http server answers the https try with
+// http, which isn't a TLS handshake: resolve falls back to http.
+func TestResolvePlainHTTPPortFallsBack(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	rec := &schemes{base: http.DefaultTransport.(*http.Transport).Clone()}
+	var logs []string
+	got, err := resolve(context.Background(), &http.Client{Transport: rec}, hostPort(t, srv.URL), "", false,
+		func(s string) { logs = append(logs, s) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != srv.URL+"/" || rec.list() != "https,http" {
+		t.Errorf("start %s, requests %s", got, rec.list())
+	}
+	if strings.Join(logs, "|") != "!https refused; using http" {
+		t.Errorf("logs = %v", logs)
+	}
+}
+
+func TestNoTLS(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}, true},
+		{fmt.Errorf("get: %w", tls.RecordHeaderError{}), true},
+		{http.ErrSchemeMismatch, true},
+		{errors.New(`Get "https://x": tls: first record does not look like a TLS handshake`), true},
+		{&tls.CertificateVerificationError{Err: errors.New("x509: unknown authority")}, false},
+		{errors.New("connection reset by peer"), false},
+	} {
+		if got := noTLS(tc.err); got != tc.want {
+			t.Errorf("noTLS(%v) = %v, want %v", tc.err, got, tc.want)
+		}
 	}
 }
 

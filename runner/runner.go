@@ -698,7 +698,7 @@ func resolve(ctx context.Context, client *http.Client, target, ua string, follow
 		return &url.URL{Scheme: final.Scheme, Host: final.Host, Path: final.Path, RawPath: final.RawPath, RawQuery: final.RawQuery}, nil
 	}
 	base, err := try(u)
-	if err != nil && !explicit && ctx.Err() == nil && refused(err) {
+	if err != nil && !explicit && ctx.Err() == nil && (refused(err) || noTLS(err)) {
 		log("!https refused; using http")
 		u.Scheme = "http"
 		base, err = try(u)
@@ -749,6 +749,17 @@ func refused(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "connection refused") || strings.Contains(s, "actively refused")
+}
+
+// noTLS reports whether err says the port speaks plain http: the
+// server answered the TLS handshake with something that isn't TLS. A bad
+// certificate is a TLS answer, so it never counts.
+func noTLS(err error) bool {
+	var rh tls.RecordHeaderError
+	if errors.As(err, &rh) || errors.Is(err, http.ErrSchemeMismatch) {
+		return true
+	}
+	return strings.Contains(err.Error(), "first record does not look like a TLS handshake")
 }
 
 // headerTransport adds the run's extra headers to requests to the site
