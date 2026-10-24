@@ -40,6 +40,8 @@ td.num, th.num { text-align: right; }
 .err { color: var(--muted); font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; }
 .k-failed { --c: var(--failed); } .k-broke { --c: var(--broke); } .k-interrupted { --c: var(--interrupted); } .k-errors { --c: var(--errors); }
 .k-changed { --c: var(--changed); } .k-warnings { --c: var(--warnings); } .k-clean { --c: var(--clean); }
+.trend { color: var(--muted); }
+.trend svg { display: block; }
 footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
 </style>
 </head>
@@ -49,12 +51,13 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
   <h1>{{.Title}}</h1>
   <div class="chips">{{range .Chips}}<span class="chip k-{{.Key}}"><b>{{.N}}</b> {{.Label}}</span>{{end}}</div>
   <div class="tablewrap"><table>
-    <thead><tr><th class="num">#</th><th>Site</th><th>Result</th><th>Found</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
+    <thead><tr><th class="num">#</th><th>Site</th><th>Result</th><th>Found</th><th>LCP trend</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
     <tbody>{{range .Rows}}<tr>
       <td class="num">{{.Rank}}</td>
       <td><div class="site">{{if .Report}}<a href="{{.Report}}">{{.Site}}</a>{{else}}{{.Site}}{{end}}</div><div class="url">{{.URL}}</div></td>
       <td><span class="badge k-{{.Verdict}}">{{.Label}}</span>{{if .Error}}<div class="err">{{.Error}}</div>{{end}}</td>
       <td>{{.Counts}}</td>
+      <td class="trend">{{if .Trend}}<span title="{{.TrendLabel}}">{{.Trend}}</span>{{else}}–{{end}}</td>
       <td class="num">{{.Pages}}</td>
       <td class="num">{{.Time}}</td>
     </tr>{{end}}</tbody>

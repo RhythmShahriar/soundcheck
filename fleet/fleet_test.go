@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -293,5 +294,38 @@ func TestRunBadInput(t *testing.T) {
 	code, err := Run(context.Background(), filepath.Join(t.TempDir(), "nosuch"), p, Compare, 1, &bytes.Buffer{})
 	if err != nil || code != exitError {
 		t.Errorf("missing binary: %d, %v; want exit 3", code, err)
+	}
+}
+
+func TestRunShowsTrend(t *testing.T) {
+	p := writeSites(t, "- {name: one, url: http://clean.test/}\n- {name: two, url: http://clean.test/}\n")
+	storeRoot := filepath.Join(filepath.Dir(p), Folder, "one", ".soundcheck")
+	for i, lcp := range []float64{1200, 0, 1500, 1900} {
+		run := &model.Run{Schema: model.Schema, Started: time.Date(2026, 10, i+1, 9, 0, 0, 0, time.UTC),
+			Pages: []model.Page{{Path: "/", Metrics: model.Metrics{LCP: lcp}}}}
+		if err := history.Append(storeRoot, run, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Run(context.Background(), os.Args[0], p, Compare, 2, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var page Page
+	_ = json.Unmarshal([]byte(readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.json"))), &page)
+	for _, r := range page.Sites {
+		switch r.Site {
+		case "one":
+			if fmt.Sprint(r.Trend) != "[1200 1500 1900]" {
+				t.Errorf("one's trend = %v, want the measured LCPs", r.Trend)
+			}
+		case "two":
+			if r.Trend != nil {
+				t.Errorf("two has no history but a trend %v", r.Trend)
+			}
+		}
+	}
+	html := readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.html"))
+	if strings.Count(html, "<svg") != 1 || !strings.Contains(html, `title="LCP 1.2 s to 1.9 s over the last 3 runs"`) {
+		t.Error("fleet.html lacks one's sparkline")
 	}
 }

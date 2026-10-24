@@ -9,6 +9,8 @@ import (
 	"html/template"
 	"io"
 	"time"
+
+	"github.com/RhythmShahriar/soundcheck/history"
 )
 
 //go:embed fleet.html.tmpl
@@ -39,6 +41,8 @@ type pageRow struct {
 	Site, URL, Report, Dir string
 	Verdict, Label, Counts string
 	Pages, Time, Error     string
+	Trend                  template.HTML
+	TrendLabel             string
 }
 
 // HTML writes the fleet page: one standalone file ranking the sites by
@@ -63,6 +67,10 @@ func HTML(w io.Writer, p Page) error {
 				row.Counts += fmt.Sprintf("%d %s", c, countName(k, c))
 			}
 		}
+		if len(r.Trend) > 1 {
+			row.Trend = history.SVG(r.Trend)
+			row.TrendLabel = fmt.Sprintf("LCP %s to %s over the last %d runs", lcpLabel(r.Trend[0]), lcpLabel(r.Trend[len(r.Trend)-1]), len(r.Trend))
+		}
 		if row.Counts == "" && r.Verdict != Failed {
 			row.Counts = "–"
 		}
@@ -74,4 +82,12 @@ func HTML(w io.Writer, p Page) error {
 		}
 	}
 	return pageTemplate.Execute(w, d)
+}
+
+// lcpLabel is "1.4 s" or "840 ms".
+func lcpLabel(v float64) string {
+	if v < 1000 {
+		return fmt.Sprintf("%.0f ms", v)
+	}
+	return fmt.Sprintf("%.1f s", v/1000)
 }

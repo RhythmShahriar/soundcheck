@@ -21,6 +21,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -65,6 +66,9 @@ type Result struct {
 	Dir      string         `json:"dir"`              // the site's folder, relative to the fleet folder
 	Report   string         `json:"report,omitempty"` // its HTML report, relative to the fleet folder
 	Duration float64        `json:"duration_ms"`
+	// Trend is the site's median LCP over its last runs, oldest first,
+	// from its history.
+	Trend []float64 `json:"trend_lcp_ms,omitempty"`
 }
 
 // Label is the verdict in words.
@@ -252,8 +256,30 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site) Result {
 			r.Report = filepath.ToSlash(rel)
 		}
 	}
+	r.Trend = trend(filepath.Join(dir, config.Dir))
 	r.Duration = float64(time.Since(start).Milliseconds())
 	return r
+}
+
+// trendRuns is how many of a site's latest entries its trend shows.
+const trendRuns = 12
+
+// trend reads the median LCP of a site's latest runs from its history.
+func trend(storeRoot string) []float64 {
+	entries, err := history.Read(storeRoot)
+	if err != nil {
+		return nil
+	}
+	var out []float64
+	for _, e := range entries[max(0, len(entries)-trendRuns):] {
+		if e.LCP > 0 {
+			out = append(out, e.LCP)
+		}
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	return out
 }
 
 // child is the part of Soundcheck's --json output the fleet reads: the
