@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -49,8 +50,10 @@ func TestCancelMarksUnfinishedPages(t *testing.T) {
 	defer cancel()
 	cfg := config.Default()
 	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs, cfg.Timeout = []string{"health"}, []string{"desktop"}, 0, 2, 30
+	var stored []string // what OnPage got: a resumed run skips these
 	run, err := Run(ctx, Options{Config: cfg, Target: srv.URL + "/fast", Paths: []string{"/fast", "/slow", "/later"},
 		Dir: t.TempDir(), Version: "test", Browser: browser.Options{NoDownload: true}, Modules: []check.Module{health.Module{}},
+		OnPage: func(p *model.Page) { stored = append(stored, p.Path) },
 		Hooks: Hooks{Page: func(p *model.Page, _, _ int) {
 			if p.Path != "/fast" {
 				return
@@ -86,5 +89,8 @@ func TestCancelMarksUnfinishedPages(t *testing.T) {
 	}
 	if len(run.Pages) != 2 {
 		t.Errorf("pages = %+v", run.Pages)
+	}
+	if !slices.Equal(stored, []string{"/fast"}) {
+		t.Errorf("OnPage got %v, want only the finished /fast", stored)
 	}
 }

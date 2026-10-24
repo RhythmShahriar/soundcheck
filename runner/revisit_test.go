@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 // hits counts the requests for each path.
@@ -77,8 +79,10 @@ func TestRevisit(t *testing.T) {
 	}
 	ran.Store(false)
 
-	// Revisit ignores the Paths in the options it's given.
+	// Revisit ignores Paths, Done and OnPage from the options it's given.
 	opts.Paths = []string{"/elsewhere/"}
+	opts.Done = []*model.Page{{URL: srv.URL + "/flaky/", Path: "/flaky/"}}
+	opts.OnPage = func(*model.Page) { t.Error("OnPage was called") }
 	again, err := Revisit(context.Background(), opts, []string{"/flaky/"})
 	if err != nil {
 		t.Fatal(err)
@@ -96,5 +100,61 @@ func TestRevisit(t *testing.T) {
 	}
 	if _, err := Revisit(context.Background(), opts, nil); err == nil {
 		t.Error("Revisit with no paths discovered the site")
+	}
+}
+
+// A resumed run visits only the pages the interrupted one didn't finish.
+// The finished pages' links still lead to the rest, the run has every
+// page and OnPage hears of each new one once.
+func TestResume(t *testing.T) {
+	needBrowser(t)
+	var h hits
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && r.URL.Path != "/a/" && r.URL.Path != "/b/" && r.URL.Path != "/c/" && r.URL.Path != "/d/" {
+			http.NotFound(w, r)
+			return
+		}
+		h.add(r.URL.Path)
+		fmt.Fprint(w, `<!doctype html><title>Page</title><a href="/">Home</a>`)
+	}))
+	defer srv.Close()
+	done := []*model.Page{
+		// Only the home page linked to the others, and it is done.
+		{URL: srv.URL + "/", Path: "/", Title: "Home", Links: []string{srv.URL + "/a/", srv.URL + "/b/", srv.URL + "/c/", srv.URL + "/d/"}},
+		{URL: srv.URL + "/a/", Path: "/a/", Title: "A"},
+		{URL: srv.URL + "/b/", Path: "/b/", Title: "B"},
+	}
+	var (
+		onPage   []string
+		progress []string
+	)
+	run, err := Run(context.Background(), Options{Config: quietConfig(), Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Browser: browser.Options{NoDownload: true}, Done: done,
+		OnPage: func(p *model.Page) { onPage = append(onPage, p.Path) },
+		Hooks:  Hooks{Page: func(_ *model.Page, d, total int) { progress = append(progress, fmt.Sprintf("%d/%d", d, total)) }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, p := range run.Pages {
+		paths = append(paths, p.Path)
+	}
+	if want := []string{"/", "/a/", "/b/"}; len(paths) != 5 || !slices.Equal(paths[:3], want) {
+		t.Fatalf("pages = %v, want %v then /c/ and /d/", paths, want)
+	}
+	if run.Page("/a/").Title != "A" {
+		t.Error("a finished page wasn't kept as it was")
+	}
+	for path, want := range map[string]int{"/a/": 0, "/b/": 0, "/c/": 1, "/d/": 1} {
+		if got := h.get(path); got != want {
+			t.Errorf("%s was loaded %d times, want %d", path, got, want)
+		}
+	}
+	slices.Sort(onPage)
+	if !slices.Equal(onPage, []string{"/c/", "/d/"}) {
+		t.Errorf("OnPage got %v", onPage)
+	}
+	if !slices.Equal(progress, []string{"4/5", "5/5"}) {
+		t.Errorf("progress = %v", progress)
 	}
 }

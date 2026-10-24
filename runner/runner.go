@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -73,6 +74,15 @@ type Options struct {
 	FollowHost bool
 	Hooks      Hooks
 
+	// Done resumes an interrupted run: these pages were finished before
+	// and are kept as they are, not visited again. Their links are added
+	// to the pages to find, and the run's pages start with them.
+	Done []*model.Page
+	// OnPage is called with each page as it finishes (not the Done ones,
+	// nor one the cancel cut short), so it can be stored right away and a
+	// later run can resume after it. Calls are serialized with Hooks.
+	OnPage func(p *model.Page)
+
 	revisit bool // set by Revisit: no site-wide checks
 }
 
@@ -91,7 +101,8 @@ type Hooks struct {
 // Run checks the site. When ctx is canceled it starts no more pages and
 // returns the run so far with ctx.Err(): pages it finished are complete,
 // and a page whose visit the cancel cut short has the Error
-// "context canceled" and nothing else (see canceled).
+// "context canceled" and nothing else (see canceled). With opts.Done it
+// resumes such a run, visiting only the pages it didn't finish.
 func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
@@ -180,12 +191,27 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			return s
 		}
 	)
-	pages := sameSite(frontier.Pages())
-	if len(pages) == 0 {
+	// Pages a resumed run already finished are kept as they are. Their
+	// links go back into the frontier, so the pages only they led to are
+	// still found.
+	finished := map[string]bool{}
+	for _, p := range opts.Done {
+		u := p.URL
+		if norm, ok := crawl.Normalize(startURL, p.URL); ok {
+			u = norm
+		}
+		finished[u] = true
+		if discover {
+			frontier.Add(p.URL, "rendered", 1)
+			addLinks(frontier, startURL, p.Links, 1)
+		}
+	}
+	pages := slices.DeleteFunc(sameSite(frontier.Pages()), func(p crawl.Page) bool { return finished[p.URL] })
+	if len(pages) == 0 && len(opts.Done) == 0 {
 		return nil, fmt.Errorf("found no pages to check at %s", startURL)
 	}
 	if opts.Hooks.Discovered != nil {
-		emit(func() { opts.Hooks.Discovered(len(pages), skipped()) })
+		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), skipped()) })
 	}
 
 	b, err := browser.Launch(ctx, withLog(opts.Browser, log))
@@ -233,13 +259,13 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	var (
 		qmu     sync.Mutex
 		queue   []crawl.Page
-		total   = len(pages)
-		done    int
+		total   = len(pages) + len(opts.Done)
+		done    = len(opts.Done)
 		wg      sync.WaitGroup
 		sem     = make(chan struct{}, cfg.Tabs)
 		results = map[string]*model.Page{}
 		order   []string
-		ordered = map[string]bool{} // a guard: each page is visited once
+		ordered = maps.Clone(finished) // a guard: each page is visited once
 	)
 	queue = append(queue, pages...)
 	for ctx.Err() == nil {
@@ -296,9 +322,17 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			if opts.Hooks.Page != nil {
 				emit(func() { opts.Hooks.Page(p, d, t) })
 			}
+			// A page the cancel cut short isn't finished: a resumed run
+			// visits it again.
+			if opts.OnPage != nil && p.Error != canceled {
+				emit(func() { opts.OnPage(p) })
+			}
 		})
 	}
 	wg.Wait()
+	for _, p := range opts.Done {
+		run.Pages = append(run.Pages, *p)
+	}
 	for _, u := range order {
 		if p := results[u]; p != nil {
 			run.Pages = append(run.Pages, *p)
@@ -326,12 +360,13 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 // compare uses it to confirm changes before reporting them, since one
 // that doesn't come back on a second visit is unstable rather than
 // broken. Site-wide checks (CheckSite) don't run: the run holds only
-// these pages. opts.Paths is ignored.
+// these pages. opts.Paths, opts.Done and opts.OnPage are ignored, as a
+// revisit is not part of a stored run.
 func Revisit(ctx context.Context, opts Options, paths []string) (*model.Run, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("revisit: no pages to visit")
 	}
-	opts.Paths, opts.revisit = slices.Clone(paths), true
+	opts.Paths, opts.Done, opts.OnPage, opts.revisit = slices.Clone(paths), nil, nil, true
 	return Run(ctx, opts)
 }
 
