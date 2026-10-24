@@ -1,0 +1,8 @@
+When               Kind        Name                    Pages  Errors  Warnings  Verdict   TBT (median)
+2026-10-01 09:00   snapshot    before-october-updates      2       0         0  clean     5 ms
+2026-10-08 09:00   run                                     2       0         0  clean     45 ms
+2026-10-15 09:00   run                                     2       0         0  clean     85 ms
+2026-10-22 09:00   comparison  before-october-updates      2       0         0  changed   125 ms
+2026-10-29 09:00   run                                     2       1         0  errors    165 ms
+
+TBT  ▁▃▅▆█  5 ms → 165 ms (+3200%)
