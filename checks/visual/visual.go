@@ -180,7 +180,23 @@ func compareShots(ctx context.Context, cmp *check.CompareContext) ([]model.Chang
 
 	told := map[*shotDiff]bool{} // pages whose height change a change already tells
 	out := changes(results, threshold, told)
+	fix := pageFix(cmp.Before)
+	for i := range out {
+		if out[i].Check == "visual/page" {
+			out[i].Fix = fix
+		}
+	}
 	return append(out, resizes(results, told)...), unreadable(errs)
+}
+
+// pageFix is the advice for a page that looks different. A snapshot can
+// be retaken; the other site of --against can't, so there the way to
+// accept a difference is to hide the area. Only snapshots have a name.
+func pageFix(before *model.Run) string {
+	if before == nil || before.Name == "" {
+		return "Open the report to compare the screenshots. If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."
+	}
+	return "Open the report to compare the screenshots. If the change is expected, take a new snapshot."
 }
 
 // shotError is a screenshot diffShot couldn't read.
@@ -606,8 +622,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 	detail := strings.Join(parts, ". ")
 	return model.Change{Class: model.Changed, Check: "visual/page",
 		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
-		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
-		Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."}, true
+		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files}, true
 }
 
 // placeOf tells an area's size and where it is, e.g. "377×314 px, 143 px
@@ -715,7 +730,7 @@ func collapse(cs []model.Change, vp string) []model.Change {
 	return []model.Change{{Class: model.Changed, Check: "visual/page",
 		Title:  fmt.Sprintf("%d pages look different (%s)", len(cs), vp),
 		Detail: fmt.Sprintf("Median %.2f%% of each page changed, at most %.2f%% (%s, shown).", round2(median), worst.Score, worst.Pages[0]),
-		Pages:  pages, Score: worst.Score, Files: worst.Files, Fix: worst.Fix}}
+		Pages:  pages, Score: worst.Score, Files: worst.Files}}
 }
 
 // Where a block sits, for grouping: pages differ in length, so a block

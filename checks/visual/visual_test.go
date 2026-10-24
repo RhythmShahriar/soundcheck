@@ -775,3 +775,27 @@ func TestCompareLargestAreaWording(t *testing.T) {
 		})
 	}
 }
+
+// A snapshot can be retaken; the other site of --against can't, so the
+// advice there is to hide the area.
+func TestComparePageFixByMode(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	a := page(800, 1200)
+	fill(a, image.Rect(120, 300, 400, 420), red)
+	for _, c := range []struct {
+		name, snapshot, want string
+	}{
+		{"snapshot", "before-update", "If the change is expected, take a new snapshot."},
+		{"against", "", "If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			before := &model.Run{Name: c.snapshot, Pages: []model.Page{shotPage(t, beforeDir, "/", page(800, 1200))}}
+			after := &model.Run{Pages: []model.Page{shotPage(t, afterDir, "/", a)}}
+			cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+			got := Module{}.Compare(context.Background(), cc)
+			if len(got) != 1 || got[0].Check != "visual/page" || !strings.HasSuffix(got[0].Fix, c.want) {
+				t.Fatalf("changes = %+v, want a fix ending %q", got, c.want)
+			}
+		})
+	}
+}
