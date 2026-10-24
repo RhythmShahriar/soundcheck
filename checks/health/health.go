@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Package health checks that every page loads and renders without errors:
-// HTTP status, redirects, PHP errors printed into the page, the WordPress
-// "critical error" screen, white screens, framework error pages, JS
-// errors, failed requests, broken links, mixed content and indexing.
+// HTTP status, firewall challenges and password prompts, redirects, PHP
+// errors printed into the page, the WordPress "critical error" screen,
+// white screens, framework error pages, JS errors, failed requests,
+// broken links, mixed content and indexing. Error signatures that are a
+// single pattern (the error screens among them) are YAML rules; see
+// package rules.
 package health
 
 import (
@@ -23,29 +26,62 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/rules"
 )
 
 // Module is the health check module.
-type Module struct{}
+type Module struct {
+	// Rules are the error signatures CheckPage looks for in each page
+	// (see package rules); nil means the built-in ones. LoadRules adds a
+	// project's own.
+	Rules *rules.Set
+}
 
 func (Module) Name() string { return "health" }
+
+// Checks lists the checks this module reports from Go. Rule files can't
+// use these ids (nor a built-in rule's), so a project's rule can't
+// replace or downgrade one.
+var Checks = []string{
+	"health/unreachable", "health/blocked", "health/auth-required", "health/status", "health/redirect-chain",
+	"health/php-error", "health/white-screen", "health/js-error", "health/failed-request", "health/broken-asset",
+	"health/mixed-content", "health/no-title", "health/noindex", "health/not-responsive", "health/broken-link",
+	"health/favicon", "health/title", "health/content-lost", "health/redirect",
+}
+
+// LoadRules returns the built-in rules and the project's own from dir
+// (.soundcheck/rules), for Module.Rules.
+func LoadRules(dir string) (*rules.Set, error) { return rules.Load(dir, Checks...) }
+
+// errorScreen is the rule group of the pages a broken site shows instead
+// of its own (WordPress "critical error", database and framework error
+// pages): a page gets one of them and isn't also a white screen.
+const errorScreen = "error-screen"
 
 var (
 	// PHP errors printed into the page: "Warning: Undefined array key "id"
 	// in /var/www/html/wp-content/themes/x/functions.php on line 212".
-	phpError     = regexp.MustCompile(`(?i)\b(Fatal error|Parse error|Recoverable fatal error|Warning|Notice|Deprecated|Strict Standards)\s*:\s+(.{3,300}?)\s+in\s+(/?[^\s<>"']+\.(?:php|inc|phtml))(?:\(\d+\))?\s+on\s+line\s+(\d+)`)
-	wpCritical   = regexp.MustCompile(`(?i)There has been a critical error on (this|your) website`)
-	frameworkErr = regexp.MustCompile(`(?i)Whoops, looks like something went wrong|Symfony\\Component\\ErrorHandler|Ignition|Stack trace:\s*#0|Uncaught (Error|Exception|TypeError|ArgumentCountError)`)
-	dbError      = regexp.MustCompile(`(?i)Error establishing a database connection|SQLSTATE\[[0-9A-Z]+\]`)
-	scriptLoc    = regexp.MustCompile(`\((https?://[^)\s]+?):(\d+)\)$`)
-	digits       = regexp.MustCompile(`\b\d{2,}\b`)
+	// The level and title depend on the kind, so this stays in Go.
+	phpError  = regexp.MustCompile(`(?i)\b(Fatal error|Parse error|Recoverable fatal error|Warning|Notice|Deprecated|Strict Standards)\s*:\s+(.{3,300}?)\s+in\s+(/?[^\s<>"']+\.(?:php|inc|phtml))(?:\(\d+\))?\s+on\s+line\s+(\d+)`)
+	scriptLoc = regexp.MustCompile(`\((https?://[^)\s]+?):(\d+)\)$`)
+	digits    = regexp.MustCompile(`\b\d{2,}\b`)
 )
 
+func (m Module) rules() *rules.Set {
+	if m.Rules != nil {
+		return m.Rules
+	}
+	return rules.Builtin()
+}
+
 // CheckPage runs the per-page checks.
-func (Module) CheckPage(cc *check.Context, p *model.Page) {
+func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 	if p.Error != "" {
 		check.Page(p, model.Issue{Check: "health/unreachable", Level: model.Error, Title: "Page didn't load: " + p.Error,
 			Fix: "Check the server and the URL; the page must answer before anything else can be checked."})
+		return
+	}
+	if gatekeeper(p) {
 		return
 	}
 	switch {
@@ -79,16 +115,21 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 			Source: shortPath(m[3]) + ":" + m[4],
 			Fix:    "Fix the code at the source line, and turn display_errors off in production so visitors never see these."})
 	}
+	set := m.rules()
+	screen := false
+	for _, h := range set.Check(p) {
+		check.Page(p, h.Issue)
+		// Only built-in screens stand in for the white-screen and title
+		// checks below: a project rule must not hide a built-in detection.
+		screen = screen || h.Rule.Builtin && h.Rule.Group == errorScreen
+	}
 	switch {
-	case wpCritical.MatchString(text):
-		check.Page(p, model.Issue{Check: "health/wp-critical", Level: model.Error, Title: "WordPress \"critical error\" screen",
-			Fix: "A plugin or theme threw a fatal error. Check the admin email WordPress sent, or wp-content/debug.log with WP_DEBUG_LOG on."})
-	case dbError.MatchString(text):
-		check.Page(p, model.Issue{Check: "health/database", Level: model.Error, Title: "Database error on the page",
-			Fix: "Check the database server and the credentials in wp-config.php or .env."})
-	case frameworkErr.MatchString(text) || strings.Contains(strings.ToLower(p.Title), "whoops"):
-		check.Page(p, model.Issue{Check: "health/error-page", Level: model.Error, Title: "Application error page",
-			Fix: "Read the exception shown; turn APP_DEBUG/display_errors off in production."})
+	case screen:
+	case strings.Contains(strings.ToLower(p.Title), "whoops"):
+		// Laravel's error page title; rules only see the text.
+		if r := set.Rule("health/error-page"); r != nil {
+			check.Page(p, model.Issue{Check: r.ID, Level: r.Level, Title: r.Title, Fix: r.Fix})
+		}
 	case p.Status == 200 && p.TextLength == 0 && !loadsContent(p):
 		check.Page(p, model.Issue{Check: "health/white-screen", Level: model.Error, Title: "Blank page (white screen)",
 			Fix: "A PHP fatal error with display_errors off usually causes this; check the error log."})
@@ -112,8 +153,10 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	for _, r := range p.Failed {
 		target := shortURL(cc.Base, r.URL)
 		switch {
-		case strings.HasSuffix(r.URL, "/favicon.ico"):
-			check.Page(p, model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: target})
+		case isFavicon(r.URL):
+			// The browser asks for /favicon.ico once per session, so which
+			// page saw it fail depends on visit order; CheckSite reports it
+			// once for the site.
 		case r.Error != "":
 			check.Page(p, model.Issue{Check: "health/failed-request", Level: model.Warning,
 				Title: fmt.Sprintf("Request failed (%s): %s", strings.TrimPrefix(r.Error, "net::"), target)})
@@ -154,10 +197,12 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 	}
 }
 
-// CheckSite tests links on visited pages that point at pages the run
-// didn't visit (HEAD, falling back to GET), and reports broken ones once
-// with every page that links to them.
+// CheckSite reports a missing favicon once for the site, then tests
+// links on visited pages that point at pages the run didn't visit (HEAD,
+// falling back to GET) and reports broken ones once with every page that
+// links to them.
 func (Module) CheckSite(ctx context.Context, cc *check.Context) {
+	favicon(cc)
 	cc.Lock()
 	visited := map[string]int{}
 	from := map[string][]string{}
@@ -188,7 +233,14 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 		}
 	}
 	slices.Sort(todo)
-	todo = todo[:min(len(todo), 300)] // a bounded sample keeps big sites fast
+	// A bounded sample keeps big sites fast; the detail says so, or a
+	// clean result would read as every link checked.
+	var sampled string
+	if found := len(todo); found > maxLinks {
+		todo = todo[:maxLinks]
+		sampled = fmt.Sprintf("Checked %s of %s links found on the visited pages; the rest weren't requested.",
+			thousands(maxLinks), thousands(found))
+	}
 	status := map[string]int{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -213,10 +265,50 @@ func (Module) CheckSite(ctx context.Context, cc *check.Context) {
 			slices.Sort(pages)
 			cc.AddIssue(model.Issue{Check: "health/broken-link", Level: model.Warning,
 				Title: fmt.Sprintf("Broken link to %s (%d)", shortURL(cc.Base, cmp.Or(orig[l], l)), code), Pages: pages,
-				Fix: "Update or remove the link, or redirect the old URL."})
+				Detail: sampled, Fix: "Update or remove the link, or redirect the old URL."})
 		}
 	}
 }
+
+// maxLinks is how many links to unvisited pages CheckSite requests.
+const maxLinks = 300
+
+// thousands writes n with comma separators, e.g. 1,240.
+func thousands(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0 && s[i-1] != '-'; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// favicon adds one site-level "No favicon" when any page saw the
+// browser's /favicon.ico request fail. Its key doesn't depend on which
+// pages asked, so two runs that visit pages in a different order agree.
+func favicon(cc *check.Context) {
+	cc.Lock()
+	var pages, targets []string
+	for _, p := range cc.Run.Pages {
+		for _, r := range p.Failed {
+			if isFavicon(r.URL) {
+				targets = append(targets, shortURL(cc.Base, r.URL))
+				if !slices.Contains(pages, p.Path) {
+					pages = append(pages, p.Path)
+				}
+			}
+		}
+	}
+	cc.Unlock()
+	if len(pages) == 0 {
+		return
+	}
+	slices.Sort(pages)
+	slices.Sort(targets)
+	cc.AddIssue(model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: targets[0], Pages: pages,
+		Fix: "Add a favicon.ico at the site root, or a <link rel=\"icon\"> in every page's <head>."})
+}
+
+func isFavicon(raw string) bool { return strings.HasSuffix(stripQuery(raw), "/favicon.ico") }
 
 func probe(ctx context.Context, cc *check.Context, raw string) int {
 	for _, m := range []string{http.MethodHead, http.MethodGet} {
@@ -241,9 +333,11 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 		if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
 			continue // status problems are reported as issues
 		}
-		if b.Title != "" && a.Title != b.Title {
+		// A title that went away is the NEW "Page has no <title>" issue;
+		// saying it changed to nothing too would be two lines for one cause.
+		if b.Title != "" && a.Title != "" && a.Title != b.Title {
 			out = append(out, model.Change{Class: model.Changed, Check: "health/title", Title: "Page title changed",
-				Pages: []string{a.Path}, Before: b.Title, After: orDefault(a.Title, "(none)")})
+				Pages: []string{a.Path}, Before: b.Title, After: a.Title})
 		}
 		if b.TextLength > 400 && a.TextLength < b.TextLength/2 {
 			out = append(out, model.Change{Class: model.Changed, Check: "health/content-lost", Title: "Page lost most of its text",
@@ -256,6 +350,25 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 		}
 	}
 	return out
+}
+
+// FilterChanges drops changes on pages a firewall or password prompt now
+// answers, since the blocked change tells them. It also drops the pair a
+// snapshot taken before "No favicon" was site-level makes: the same issue
+// FIXED on a page and NEW for the site.
+func (Module) FilterChanges(changes []model.Change) []model.Change {
+	changes = gated(changes)
+	i := slices.IndexFunc(changes, func(c model.Change) bool { return c.Class == model.New && c.Check == "health/favicon" })
+	if i < 0 {
+		return changes
+	}
+	j := slices.IndexFunc(changes, func(c model.Change) bool {
+		return c.Class == model.Fixed && c.Check == changes[i].Check && c.Title == changes[i].Title && c.Source == changes[i].Source
+	})
+	if j < 0 {
+		return changes
+	}
+	return slices.Delete(slices.Delete(changes, max(i, j), max(i, j)+1), min(i, j), min(i, j)+1)
 }
 
 func finalPath(p *model.Page) string {

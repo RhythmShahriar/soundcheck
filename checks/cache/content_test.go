@@ -66,11 +66,3 @@ func TestWordsIgnoreVolatileText(t *testing.T) {
 		t.Errorf("gone %v added %v", gone, added)
 	}
 }
-
-func TestMask(t *testing.T) {
-	for in, want := range map[string]string{"jane@example.test": "ja***", "j": "j***", "Ünïcode": "Ün***"} {
-		if got := maskValue(in); got != want {
-			t.Errorf("mask(%q) = %q", in, got)
-		}
-	}
-}

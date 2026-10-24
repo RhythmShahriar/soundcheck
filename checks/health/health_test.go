@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -94,7 +96,6 @@ func TestRequestsConsoleAndHygiene(t *testing.T) {
 		"POST /wp-admin/admin-ajax.php returned 500",
 		"Broken image: /wp-content/uploads/hero.jpg (404)",
 		"Request failed (ERR_NAME_NOT_RESOLVED): https://cdn.example/lib.js",
-		"No favicon",
 		"Insecure (http://) resource on an https page",
 		"Page has no <title>",
 		"Page is set to noindex",
@@ -103,6 +104,9 @@ func TestRequestsConsoleAndHygiene(t *testing.T) {
 		if _, ok := got[want]; !ok {
 			t.Errorf("missing %q; got %v", want, keys(got))
 		}
+	}
+	if _, ok := got["No favicon"]; ok {
+		t.Error("a missing favicon is reported for the site, not on the page that asked first")
 	}
 	if js := got["JS error: Uncaught ReferenceError: jQuery is not defined"]; js.Source != "https://shop.example/wp-content/plugins/x/app.js:14" {
 		t.Errorf("js source = %q", js.Source)
@@ -207,7 +211,145 @@ func TestCheckSiteLinks(t *testing.T) {
 	if len(titles) != 1 || titles[0] != "Broken link to /gone/ (404)" {
 		t.Errorf("issues = %v; want only the missing /gone/, keeping its slash", titles)
 	}
+	if len(run.Issues) == 1 && run.Issues[0].Detail != "" {
+		t.Errorf("every link was checked, yet the detail says %q", run.Issues[0].Detail)
+	}
 	if cartHit.Load() {
 		t.Error("an add-to-cart link must never be requested")
+	}
+}
+
+// A big site has more links than CheckSite requests; a broken one says
+// how many were checked, so the rest aren't taken for fine.
+func TestCheckSiteLinksSampled(t *testing.T) {
+	var asked atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		if r.URL.Path == "/a/0007/" {
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base, _ := url.Parse(srv.URL + "/")
+	home := model.Page{URL: srv.URL + "/", Path: "/", Status: 200}
+	for i := range 1240 {
+		home.Links = append(home.Links, fmt.Sprintf("%s/a/%04d/", srv.URL, i))
+	}
+	run := &model.Run{Pages: []model.Page{home}}
+	cc := &check.Context{Config: config.Default(), Base: base, Run: run, HTTP: srv.Client(), Hosts: ratelimit.NewHosts(0)}
+	Module{}.CheckSite(context.Background(), cc)
+	if len(run.Issues) != 1 || run.Issues[0].Title != "Broken link to /a/0007/ (404)" {
+		t.Fatalf("issues = %+v", run.Issues)
+	}
+	if got, want := run.Issues[0].Detail, "Checked 300 of 1,240 links found on the visited pages; the rest weren't requested."; got != want {
+		t.Errorf("detail = %q, want %q", got, want)
+	}
+	if n := asked.Load(); n != 300 {
+		t.Errorf("requested %d links, want 300", n)
+	}
+}
+
+func TestThousands(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 300: "300", 1240: "1,240", 999999: "999,999", 1234567: "1,234,567", -1240: "-1,240"} {
+		if got := thousands(n); got != want {
+			t.Errorf("thousands(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+// favicon404 is a page whose visit the browser used for its one
+// /favicon.ico request of the session, which got a 404.
+func favicon404(path string) model.Page {
+	return model.Page{URL: "https://shop.example" + path, Path: path, Status: 200, Title: "T", TextLength: 500,
+		Failed: []model.Request{{URL: "https://shop.example/favicon.ico", Type: "Other", Status: 404}}}
+}
+
+func siteRun(pages ...model.Page) *model.Run {
+	run := &model.Run{Pages: pages}
+	cc := ctx()
+	cc.Run = run
+	cc.Config = config.Default()
+	for i := range run.Pages {
+		Module{}.CheckPage(cc, &run.Pages[i])
+	}
+	Module{}.CheckSite(context.Background(), cc)
+	return run
+}
+
+func TestFaviconIsSiteLevel(t *testing.T) {
+	plain := func(path string) model.Page {
+		return model.Page{URL: "https://shop.example" + path, Path: path, Status: 200, Title: "T", TextLength: 500}
+	}
+	// The same site visited in a different order: the favicon request
+	// fails on whichever page asked first.
+	before := siteRun(favicon404("/"), plain("/about/"), plain("/shop/"))
+	after := siteRun(plain("/shop/"), favicon404("/about/"), plain("/"))
+
+	var favicons []model.Issue
+	for _, i := range after.Issues {
+		if i.Check == "health/favicon" {
+			favicons = append(favicons, i)
+		}
+	}
+	if len(favicons) != 1 || favicons[0].Level != model.Notice || favicons[0].Title != "No favicon" ||
+		favicons[0].Source != "/favicon.ico" || !slices.Equal(favicons[0].Pages, []string{"/about/"}) {
+		t.Errorf("want one site-level notice, got %+v", favicons)
+	}
+	for _, p := range after.Pages {
+		for _, i := range p.Issues {
+			if i.Check == "health/favicon" {
+				t.Errorf("%s has a page-level favicon issue", p.Path)
+			}
+		}
+	}
+	if cs := compare.Issues(before, after); len(cs) != 0 {
+		t.Errorf("an unchanged site visited in another order must have no changes: %+v", cs)
+	}
+}
+
+func TestFaviconPresent(t *testing.T) {
+	ok := model.Page{URL: "https://shop.example/", Path: "/", Status: 200, Title: "T", TextLength: 500,
+		Resources: []model.Resource{{URL: "https://shop.example/favicon.ico", Type: "Other", Status: 200}}}
+	if run := siteRun(ok); len(run.Issues) != 0 || len(run.Pages[0].Issues) != 0 {
+		t.Errorf("a site with a favicon has no issue: %+v %+v", run.Issues, run.Pages[0].Issues)
+	}
+}
+
+func TestFilterChangesFaviconMoved(t *testing.T) {
+	// A snapshot from before the favicon issue was site-level has it on a
+	// page; the new run has it on the site. That is the same issue.
+	before := &model.Run{Pages: []model.Page{favicon404("/")}}
+	i := model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Source: "/favicon.ico"}
+	i.Identify()
+	before.Pages[0].Issues = []model.Issue{i}
+	after := siteRun(favicon404("/"))
+	other := model.Change{Class: model.New, Check: "health/js-error", Title: "JS error: x"}
+	cs := append(compare.Issues(before, after), other)
+	if got := (Module{}).FilterChanges(cs); len(got) != 1 || got[0].Check != "health/js-error" {
+		t.Errorf("filtered = %+v", got)
+	}
+	// A favicon that really went missing stays NEW.
+	gone := []model.Change{{Class: model.New, Check: "health/favicon", Title: "No favicon", Source: "/favicon.ico"}}
+	if got := (Module{}).FilterChanges(gone); len(got) != 1 {
+		t.Errorf("a new missing favicon must stay: %+v", got)
+	}
+}
+
+func TestLostTitleIsOneLine(t *testing.T) {
+	page := func(title string) model.Page {
+		return model.Page{Path: "/about/", URL: "https://shop.example/about/", FinalURL: "https://shop.example/about/", Status: 200, Title: title, TextLength: 500}
+	}
+	before, after := siteRun(page("About us")), siteRun(page(""))
+	cc := &check.CompareContext{Before: before, After: after}
+	all := append(compare.Issues(before, after), Module{}.Compare(context.Background(), cc)...)
+	if len(all) != 1 || all[0].Class != model.New || all[0].Title != "Page has no <title>" {
+		t.Errorf("a lost title must be one NEW line: %+v", all)
+	}
+	// A title that really changed is still CHANGED, with nothing NEW.
+	after = siteRun(page("About the shop"))
+	cc.After = after
+	all = append(compare.Issues(before, after), Module{}.Compare(context.Background(), cc)...)
+	if len(all) != 1 || all[0].Check != "health/title" || all[0].Before != "About us" || all[0].After != "About the shop" {
+		t.Errorf("a changed title = %+v", all)
 	}
 }

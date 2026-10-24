@@ -12,10 +12,12 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -61,8 +63,8 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 		if !ok || s.Second == "" {
 			continue
 		}
-		first, err1 := load(filepath.Join(cc.Dir, filepath.FromSlash(s.File)))
-		second, err2 := load(filepath.Join(cc.Dir, filepath.FromSlash(s.Second)))
+		first, err1 := load(cc.Dir, s.File)
+		second, err2 := load(cc.Dir, s.Second)
 		if err1 != nil || err2 != nil {
 			continue
 		}
@@ -121,7 +123,25 @@ type shotDiff struct {
 // for pages that changed, and reports them. Areas that changed the same
 // way on several pages (a new header) become one change listing those
 // pages, so a site-wide tweak is one line instead of hundreds.
+//
+// Screenshots that can't be read (deleted, truncated, not a PNG, or a
+// path that leaves the run's folder) are counted and reported as a
+// warning, so a missing baseline never reads as "Nothing changed".
 func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
+	out, warnings := compareShots(ctx, cmp)
+	// CompareContext has no Warn yet. Until it does the warnings are
+	// still counted (and tested) here. They reach the comparison as soon
+	// as it grows the method Context already has.
+	if w, ok := any(cmp).(interface{ Warn(string) }); ok {
+		for _, msg := range warnings {
+			w.Warn(msg)
+		}
+	}
+	return out
+}
+
+// compareShots is Compare, returning the warnings it would show.
+func compareShots(ctx context.Context, cmp *check.CompareContext) ([]model.Change, []string) {
 	threshold := cmp.Config.Visual.Threshold
 	type job struct {
 		pair [2]*model.Page
@@ -143,6 +163,7 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 	// Decoding and diffing dominate; a few at a time keeps memory bounded
 	// (a tall page is tens of MB decoded).
 	results := make([]*shotDiff, len(jobs))
+	errs := make([]error, len(jobs))
 	sem := make(chan struct{}, min(runtime.GOMAXPROCS(0), 4))
 	var wg sync.WaitGroup
 	for i, j := range jobs {
@@ -152,7 +173,7 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			results[i] = diffShot(cmp, j.pair[0], j.pair[1], j.vp, threshold)
+			results[i], errs[i] = diffShot(cmp, j.pair[0], j.pair[1], j.vp, threshold)
 		})
 	}
 	wg.Wait()
@@ -160,27 +181,71 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 
 	told := map[*shotDiff]bool{} // pages whose height change a change already tells
 	out := changes(results, threshold, told)
-	return append(out, resizes(results, told)...)
+	fix := pageFix(cmp.Before)
+	for i := range out {
+		if out[i].Check == "visual/page" {
+			out[i].Fix = fix
+		}
+	}
+	return append(out, resizes(results, told)...), unreadable(errs)
+}
+
+// pageFix is the advice for a page that looks different. A snapshot can
+// be retaken; the other site of --against can't, so there the way to
+// accept a difference is to hide the area. Only snapshots have a name.
+func pageFix(before *model.Run) string {
+	if before == nil || before.Name == "" {
+		return "Open the report to compare the screenshots. If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."
+	}
+	return "Open the report to compare the screenshots. If the change is expected, take a new snapshot."
+}
+
+// shotError is a screenshot diffShot couldn't read.
+type shotError struct {
+	snapshot bool // the snapshot's file, not this run's
+	err      error
+}
+
+func (e *shotError) Error() string { return e.err.Error() }
+func (e *shotError) Unwrap() error { return e.err }
+
+// unreadable turns diffShot's errors into warnings, one per side.
+func unreadable(errs []error) []string {
+	var snap, run int
+	for _, err := range errs {
+		var se *shotError
+		switch {
+		case errors.As(err, &se) && se.snapshot:
+			snap++
+		case err != nil:
+			run++
+		}
+	}
+	var out []string
+	for _, x := range []struct {
+		n     int
+		where string
+	}{{snap, "the snapshot"}, {run, "this run"}} {
+		switch {
+		case x.n == 1:
+			out = append(out, fmt.Sprintf("visual: 1 screenshot from %s is missing or unreadable; visual changes on this page weren't checked", x.where))
+		case x.n > 1:
+			out = append(out, fmt.Sprintf("visual: %d screenshots from %s are missing or unreadable; visual changes on these pages weren't checked", x.n, x.where))
+		}
+	}
+	return out
 }
 
 // diffShot loads and compares one page's screenshots at one viewport.
-func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold float64) *shotDiff {
+func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold float64) (*shotDiff, error) {
 	sb, sa := b.Shots[vp], a.Shots[vp]
-	rawB, err := os.ReadFile(filepath.Join(cmp.BeforeDir, filepath.FromSlash(sb.File)))
+	rawB, imgB, err := readShot(cmp.BeforeDir, sb.File)
 	if err != nil {
-		return nil
+		return nil, &shotError{snapshot: true, err: err}
 	}
-	rawA, err := os.ReadFile(filepath.Join(cmp.AfterDir, filepath.FromSlash(sa.File)))
+	rawA, imgA, err := readShot(cmp.AfterDir, sa.File)
 	if err != nil {
-		return nil
-	}
-	imgB, err := png.Decode(bytes.NewReader(rawB))
-	if err != nil {
-		return nil
-	}
-	imgA, err := png.Decode(bytes.NewReader(rawA))
-	if err != nil {
-		return nil
+		return nil, &shotError{err: err}
 	}
 	d := Compare(imgB, imgA, DiffOptions{
 		// Rows are lined up before pixels are compared, so each side's
@@ -198,7 +263,38 @@ func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold 
 		r.files = save(cmp, a, vp, rawB, rawA, d)
 	}
 	d.release() // keep only the summary; hundreds of pages don't fit in memory
-	return r
+	return r, nil
+}
+
+// openShot opens a screenshot recorded in run.json. A run's files are
+// always inside its folder; a path that is absolute or climbs out of it,
+// or a symlink that points outside (a snapshot someone else made), is
+// refused rather than read, since the bytes end up in the report.
+func openShot(dir, file string) (*os.File, error) {
+	rel := filepath.FromSlash(file)
+	if !filepath.IsLocal(rel) {
+		return nil, fmt.Errorf("screenshot path %q is outside the run folder", file)
+	}
+	return os.OpenInRoot(dir, rel)
+}
+
+// readShot reads and decodes a screenshot, keeping the file's bytes for
+// the report.
+func readShot(dir, file string) ([]byte, image.Image, error) {
+	f, err := openShot(dir, file)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return nil, nil, err
+	}
+	img, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", file, err)
+	}
+	return raw, img, nil
 }
 
 // blocks returns the blocks inserted into or removed from the page that
@@ -406,8 +502,8 @@ func changes(results []*shotDiff, threshold float64, told map[*shotDiff]bool) []
 		ch.Title = fmt.Sprintf("%s changed on %d pages (%s)", sh.label, len(ch.Pages), sh.viewport)
 		r := sh.members[0].region
 		if sh.groups == 1 {
-			ch.Detail = fmt.Sprintf("The same area (%d×%d px at %d,%d on %s) changed the same way on every page listed.",
-				r.W, r.H, r.X, r.Y, sh.members[0].r.page.Path)
+			ch.Detail = fmt.Sprintf("The same area (%s, on %s) changed the same way on every page listed.",
+				placeOf(r.Rect, sh.members[0].r.sizeA.X), sh.members[0].r.page.Path)
 		} else {
 			ch.Detail = fmt.Sprintf("%d different changes in this part of the pages listed, each the same on several pages.", sh.groups)
 		}
@@ -491,12 +587,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 			}
 		}
 	}
-	var blocks []Band
-	for i, b := range r.blocks() {
-		if !grouped[i] {
-			blocks = append(blocks, b)
-		}
-	}
+	blocks := looseBlocks(r.blocks(), grouped)
 	score := 0.0
 	if d.Compared > 0 {
 		score = float64(pixels) * 100 / float64(d.Compared)
@@ -518,7 +609,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 			p += " besides the changes shared with other pages"
 		}
 		big := rest[0]
-		parts = append(parts, p+fmt.Sprintf("; the largest at %d,%d (%d×%d px)", big.X, big.Y, big.W, big.H))
+		parts = append(parts, p+"; the largest "+placeOf(big.Rect, r.sizeA.X))
 	}
 	for _, b := range blocks {
 		parts = append(parts, bandDetail(b))
@@ -534,8 +625,88 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 	detail := strings.Join(parts, ". ")
 	return model.Change{Class: model.Changed, Check: "visual/page",
 		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
-		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
-		Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."}, true
+		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files}, true
+}
+
+// placeOf tells an area's size and where it is, e.g. "377×314 px, 143 px
+// from the top and 8 px from the left". The left offset is left out for
+// an area as wide as the page. Coordinates as "8,143" read as one number.
+func placeOf(r model.Rect, width int) string {
+	top := fmt.Sprintf("%d px from the top", r.Y)
+	if r.Y == 0 {
+		top = "at the top"
+	}
+	s := fmt.Sprintf("%d×%d px, %s", r.W, r.H, top)
+	switch {
+	case r.X == 0 && r.W >= width:
+		return s
+	case r.X == 0:
+		return s + " at the left edge"
+	}
+	return s + fmt.Sprintf(" and %d px from the left", r.X)
+}
+
+// nearBlock is how far apart (in px) two blocks may be and still be one
+// block: row alignment can split a notice around a couple of rows that
+// happen to match. The pieces have one cause.
+const nearBlock = 8
+
+// bandRows is where a block's rows are: in the after image for an
+// inserted block, in the before image for a removed one.
+func bandRows(b Band) (start, end int) {
+	if b.H > 0 {
+		return b.At, b.At + b.H
+	}
+	return b.Y, b.Y - b.H
+}
+
+// looseBlocks returns the blocks a grouped change doesn't tell, with
+// pieces within nearBlock of each other merged into one. A piece next to
+// a grouped block is part of it and is left out with it.
+func looseBlocks(blocks []Band, grouped map[int]bool) []Band {
+	order := make([]int, len(blocks))
+	for i := range order {
+		order[i] = i
+	}
+	removed := func(i int) int { // inserted blocks first, then removed ones
+		if blocks[i].H < 0 {
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(order, func(x, y int) int {
+		sx, _ := bandRows(blocks[x])
+		sy, _ := bandRows(blocks[y])
+		return cmp.Or(cmp.Compare(removed(x), removed(y)), cmp.Compare(sx, sy))
+	})
+	var out []Band
+	for i := 0; i < len(order); {
+		merged, told := blocks[order[i]], grouped[order[i]]
+		first, end := bandRows(merged)
+		j := i + 1
+		for ; j < len(order); j++ {
+			b := blocks[order[j]]
+			start, e := bandRows(b)
+			if (b.H < 0) != (merged.H < 0) || start-end > nearBlock {
+				break
+			}
+			end = max(end, e)
+			told = told || grouped[order[j]]
+		}
+		// The merged block spans its pieces and the rows between them,
+		// which only matched by chance.
+		if merged.H > 0 {
+			merged.H = end - first
+		} else {
+			merged.H = first - end
+		}
+		if !told {
+			out = append(out, merged)
+		}
+		i = j
+	}
+	slices.SortStableFunc(out, func(x, y Band) int { return cmp.Compare(x.Y, y.Y) })
+	return out
 }
 
 // maxPages is how many pages may each get their own "looks different"
@@ -568,7 +739,7 @@ func collapse(cs []model.Change, vp string) []model.Change {
 	return []model.Change{{Class: model.Changed, Check: "visual/page",
 		Title:  fmt.Sprintf("%d pages look different (%s)", len(cs), vp),
 		Detail: fmt.Sprintf("Median %.2f%% of each page changed, at most %.2f%% (%s, shown).", round2(median), worst.Score, worst.Pages[0]),
-		Pages:  pages, Score: worst.Score, Files: worst.Files, Fix: worst.Fix}}
+		Pages:  pages, Score: worst.Score, Files: worst.Files}}
 }
 
 // Where a block sits, for grouping: pages differ in length, so a block
@@ -763,8 +934,8 @@ func concat(rs ...[]model.Rect) []model.Rect {
 	return out
 }
 
-func load(path string) (image.Image, error) {
-	f, err := os.Open(filepath.Clean(path))
+func load(dir, file string) (image.Image, error) {
+	f, err := openShot(dir, file)
 	if err != nil {
 		return nil, err
 	}

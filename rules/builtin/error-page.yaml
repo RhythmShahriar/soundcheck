@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Framework and PHP error pages left on in production: Laravel
+# (Whoops, Ignition), Symfony's ErrorHandler and uncaught PHP 7+ errors
+# with their stack trace. A "Whoops" page title counts too; the health
+# module checks that itself.
+id: health/error-page
+match: text
+pattern: '(?i)Whoops, looks like something went wrong|Symfony\\Component\\ErrorHandler|Ignition|Stack trace:\s*#0|Uncaught (Error|Exception|TypeError|ArgumentCountError)'
+level: error
+title: Application error page
+fix: Read the exception shown; turn APP_DEBUG/display_errors off in production.
+group: error-screen
+priority: 10

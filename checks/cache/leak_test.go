@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/store"
 )
 
 func needBrowser(t *testing.T) *browser.Browser {
@@ -186,8 +190,8 @@ func TestCacheLeak(t *testing.T) {
 			t.Errorf("%s: no leak reported: %v (warnings %v)", path, cc.Run.Page(path).Issues, cc.Run.Warnings)
 			continue
 		}
-		for _, want := range []string{"email (ja***)", "username (ja***)", "admin bar (#wpadminbar)", `body class "logged-in"`, `"Howdy," greeting`,
-			"wpApiSettings nonce of the logged-in user (5e***)", "x-cache: HIT"} {
+		for _, want := range []string{"email (ja•••••)", "username (j•••••)", "admin bar (#wpadminbar)", `body class "logged-in"`, `"Howdy," greeting`,
+			"wpApiSettings nonce of the logged-in user (5e•••••)", "x-cache: HIT"} {
 			if !strings.Contains(i.Detail, want) {
 				t.Errorf("%s: detail lacks %q: %s", path, want, i.Detail)
 			}
@@ -222,5 +226,40 @@ func TestLeakSkips(t *testing.T) {
 	Module{}.CheckSite(context.Background(), cc)
 	if len(cc.Run.Warnings) != 1 || !strings.Contains(cc.Run.Warnings[0], "production") {
 		t.Errorf("production: warnings = %v", cc.Run.Warnings)
+	}
+}
+
+func TestFoundMasksValues(t *testing.T) {
+	values := map[string]string{ // value → how it is shown (secrets.Mask keeps at most a third)
+		"Ω":                     "•••••",
+		"Zqk":                   "Z•••••",
+		"jane.doe@example.test": "ja•••••",
+	}
+	var ms []marker
+	body := "<html>"
+	for v := range values {
+		ms = append(ms, marker{what: "secret", value: v, mask: true})
+		body += "<p>" + v + "</p>"
+	}
+	hits := found(body, "<html></html>", ms)
+	for _, shown := range values {
+		if !slices.Contains(hits, "secret ("+shown+")") {
+			t.Errorf("hits %q lack %q", hits, shown)
+		}
+	}
+	// What a leak issue stores in run.json never holds the values.
+	dir := t.TempDir()
+	run := &model.Run{Pages: []model.Page{{Path: "/", Issues: []model.Issue{{Check: "cache/leak", Detail: strings.Join(hits, ", ")}}}}}
+	if err := store.SaveRun(dir, run); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "run.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for v := range values {
+		if strings.Contains(string(raw), v) {
+			t.Errorf("run.json holds %q: %s", v, raw)
+		}
 	}
 }

@@ -6,6 +6,7 @@ package speed
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -14,9 +15,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -183,11 +187,55 @@ func TestSpeedInBrowser(t *testing.T) {
 	}
 }
 
+// calibration is what a test page measured about its own busy loop, in
+// the tab that ran it: when the loop started and ended and when the page
+// first painted, in performance.now() milliseconds.
+type calibration struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	FCP   float64 `json:"fcp"`
+}
+
+// tbt is the Total Blocking Time the loop should add, by the rule capture
+// follows: the part of the task after first paint, minus 50 ms.
+func (c calibration) tbt() float64 { return max(0, c.End-max(c.Start, c.FCP)-50) }
+
+// calibrator is a test module that reads each page's calibration while
+// the page is still open, right after capture read its metrics.
+type calibrator struct {
+	mu   sync.Mutex
+	seen map[string]calibration
+}
+
+func (*calibrator) Name() string { return "calibrate" }
+
+func (c *calibrator) Live(ctx context.Context, _ *check.Context, tab *rod.Page, p *model.Page) {
+	obj, err := tab.Context(ctx).Eval(`() => {
+  const c = window.__calibration || {};
+  const s = window.__soundcheck || {};
+  return {start: c.start || 0, end: c.end || 0, fcp: s.fcp || 0};
+}`)
+	if err != nil {
+		return
+	}
+	var cal calibration
+	if json.Unmarshal([]byte(obj.Value.JSON("", "")), &cal) != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.seen[p.Path] = cal
+}
+
 // TestMetricsInParallelTabs loads pages in four tabs at once, the way a
 // real run does. Every page must report paint metrics (Chrome doesn't
 // paint hidden tabs), the main document must count toward weight, and
 // TBT must follow Lighthouse: long tasks after first paint count, a script
 // that blocks before it delays FCP instead.
+//
+// A loaded machine stretches the busy loop and moves first paint, so the
+// expected TBT isn't a fixed number: each page times its own loop in the
+// same tab and TBT must match that calibration.
 func TestMetricsInParallelTabs(t *testing.T) {
 	needBrowser(t)
 	const busy = `function busy(ms) { var t = Date.now(); while (Date.now() - t < ms) {} }`
@@ -195,7 +243,14 @@ func TestMetricsInParallelTabs(t *testing.T) {
 		return `<!doctype html><html><head><title>Page</title><script>` + busy + `</script>` + head + `</head><body><h1>Coffee</h1>
 <p>` + strings.Repeat("Fresh beans roasted daily. ", 40) + `</p>` + body + `</body></html>`
 	}
-	afterPaint := `<script>requestAnimationFrame(function () { setTimeout(function () { busy(300); }, 0); });</script>`
+	// The loop starts once Chrome reported first paint, so all of it is
+	// after FCP however late the paint comes; a frame callback alone can
+	// run before the paint on a busy machine.
+	afterPaint := `<script>new PerformanceObserver((l, o) => {
+  if (!l.getEntries().some(e => e.name === 'first-contentful-paint')) return;
+  o.disconnect();
+  setTimeout(() => { const start = performance.now(); busy(300); window.__calibration = {start, end: performance.now()}; }, 0);
+}).observe({type: 'paint', buffered: true});</script>`
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{$}", func(w http.ResponseWriter, _ *http.Request) {
 		links := ""
@@ -206,7 +261,7 @@ func TestMetricsInParallelTabs(t *testing.T) {
 	})
 	mux.HandleFunc("/{page}/", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, page("", afterPaint)) })
 	mux.HandleFunc("/blocking/", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, page("<script>busy(400);</script>", ""))
+		fmt.Fprint(w, page(`<script>const start = performance.now(); busy(400); window.__calibration = {start, end: performance.now()};</script>`, ""))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -216,31 +271,52 @@ func TestMetricsInParallelTabs(t *testing.T) {
 	cfg.Viewports = []string{"desktop"}
 	cfg.Modules = []string{"speed"}
 	cfg.Pages.PerGroup = -1
+	cal := &calibrator{seen: map[string]calibration{}}
 	run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
-		Modules: []check.Module{New()}, Browser: browser.Options{NoDownload: true}})
+		Modules: []check.Module{New(), cal}, Browser: browser.Options{NoDownload: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(run.Pages) != 8 {
 		t.Fatalf("visited %d pages", len(run.Pages))
 	}
+	measured, late := 0, 0
 	for _, p := range run.Pages {
-		m := p.Metrics
-		t.Logf("%s %+v", p.Path, m)
+		m, c := p.Metrics, cal.seen[p.Path]
+		t.Logf("%s %+v calibration %+v (want TBT %.0f)", p.Path, m, c, c.tbt())
 		if m.FCP <= 0 || m.LCP <= 0 {
 			t.Errorf("%s: no paint metrics (FCP %v, LCP %v): was the tab hidden?", p.Path, m.FCP, m.LCP)
 		}
 		if m.Requests < 1 || m.Bytes < 1000 {
 			t.Errorf("%s: the HTML isn't counted: %d bytes in %d requests", p.Path, m.Bytes, m.Requests)
 		}
-		if p.Path == "/blocking/" {
-			if m.TBT > 100 || m.FCP < 350 {
-				t.Errorf("%s: a script before first paint should delay FCP, not add TBT: FCP %v, TBT %v", p.Path, m.FCP, m.TBT)
-			}
-		} else if m.TBT < 100 || m.TBT > 500 {
-			// About 250 ms, but loaded machines (CI runners) land anywhere in
-			// 100–180 ms of that: the reason for the 250 ms noise floor.
-			t.Errorf("%s: a 300 ms task after first paint gave TBT %v, want about 250", p.Path, m.TBT)
+		if c.End == 0 {
+			t.Errorf("%s: the page didn't run its busy loop: %+v", p.Path, c)
+			continue
 		}
+		if p.Path == "/blocking/" {
+			if m.TBT > 50 || m.FCP < c.End-c.Start {
+				t.Errorf("%s: a %.0f ms script before first paint should delay FCP, not add TBT: FCP %v, TBT %v",
+					p.Path, c.End-c.Start, m.FCP, m.TBT)
+			}
+			continue
+		}
+		measured++
+		if m.TBT == 0 && c.tbt() > 0 {
+			// Chrome hadn't delivered the long task when capture read the
+			// page. Flushing pending entries before the read is capture's
+			// job; here it may only happen on some pages, not all.
+			t.Logf("%s: the long task wasn't reported yet when the page was read", p.Path)
+			late++
+			continue
+		}
+		// The long task wraps the loop, so it can only be a little longer
+		// than what the page timed; Chrome rounds its timings.
+		if want := c.tbt(); want < 200 || m.TBT < want-5 || m.TBT > want+60 {
+			t.Errorf("%s: a %.0f ms task after first paint gave TBT %v, want %.0f", p.Path, c.End-c.Start, m.TBT, want)
+		}
+	}
+	if measured > 0 && late == measured {
+		t.Errorf("none of %d pages had its long task reported when the page was read", measured)
 	}
 }

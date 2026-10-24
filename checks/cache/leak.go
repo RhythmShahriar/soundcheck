@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -137,7 +138,9 @@ func found(body, fresh string, ms []marker) []string {
 		if strings.Contains(lb, v) && !strings.Contains(lf, v) {
 			shown := m.value
 			if m.mask {
-				shown = maskValue(m.value)
+				// Two leading characters at most, fewer for short values,
+				// as everywhere secrets are shown.
+				shown = secrets.Mask(m.value, 2)
 			}
 			out = append(out, fmt.Sprintf("%s (%s)", m.what, shown))
 		}
@@ -155,12 +158,6 @@ func found(body, fresh string, ms []marker) []string {
 }
 
 func loggedInClass(body string) bool { return slices.Contains(BodyClasses(body), "logged-in") }
-
-// maskValue shows the first two characters only.
-func maskValue(s string) string {
-	r := []rune(s)
-	return string(r[:min(2, len(r))]) + "***"
-}
 
 // leak logs in through a separate session, visits pages as the test user
 // so a misconfigured cache may store them, then fetches the same pages

@@ -44,6 +44,18 @@ func shotPage(t *testing.T, dir, path string, img image.Image) model.Page {
 	return p
 }
 
+// pixelHeavy marks a test that diffs many or large screenshots: under
+// -race each takes 5 to 20 seconds. It skips with -short and otherwise
+// runs alongside the other heavy tests, so the package's -race run fits
+// Go's 10 minute default timeout even with -count=3.
+func pixelHeavy(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("pixel-heavy test")
+	}
+	t.Parallel()
+}
+
 func byTitle(cs []model.Change) map[string]model.Change {
 	m := map[string]model.Change{}
 	for _, c := range cs {
@@ -53,6 +65,7 @@ func byTitle(cs []model.Change) map[string]model.Change {
 }
 
 func TestCompareGroupsSharedChanges(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir, cmpDir := t.TempDir(), t.TempDir(), t.TempDir()
 	paths := []string{"/", "/about/", "/blog/", "/contact/", "/shop/"}
 	before, after := &model.Run{}, &model.Run{}
@@ -102,7 +115,7 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 		if !strings.HasPrefix(f, "visual/") {
 			t.Fatalf("files = %v", about.Files)
 		}
-		img, err := load(filepath.Join(cmpDir, f))
+		img, err := load(cmpDir, f)
 		if err != nil {
 			t.Fatalf("%s: %v", k, err)
 		}
@@ -133,6 +146,7 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 // differ above and below it, and on one page something else changed
 // too: one change for the banner, one for that page.
 func TestCompareGroupsInsertedBanner(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir, cmpDir := t.TempDir(), t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
@@ -177,6 +191,7 @@ func TestCompareGroupsInsertedBanner(t *testing.T) {
 // every page: one change per block per viewport, nothing per page. The
 // notice wraps onto more lines on mobile, and on some pages.
 func TestCompareGroupsTwoBlocks(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
@@ -238,6 +253,7 @@ func TestCompareGroupsRemovedBlock(t *testing.T) {
 
 // More than five pages that each changed differently are one change.
 func TestCompareCollapsesManyPages(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i := range 7 {
@@ -425,6 +441,7 @@ func shortPage(content int, footerExtra func(*image.NRGBA, int)) *image.NRGBA {
 // the top of the footer push content into the filler. Each block is one
 // change, however long each page is, and the filler isn't a change.
 func TestCompareShortPages(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	gray := color.NRGBA{236, 236, 236, 255}
@@ -466,6 +483,7 @@ func windowTall(img *image.NRGBA, content int) *image.NRGBA {
 // A second, different footer change on other pages shares its line, and
 // the height the footers gained is told with it, not on its own.
 func TestCompareFooterAtDifferentHeights(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/1/", "/2/", "/3/", "/4/", "/5/"} {
@@ -496,5 +514,309 @@ func TestCompareFooterAtDifferentHeights(t *testing.T) {
 	if c.Title != "Footer changed on 5 pages (desktop)" || !strings.Contains(c.Detail, "2 different changes") ||
 		!strings.Contains(c.Detail, "The pages are 25 px taller.") {
 		t.Errorf("footer = %+v", c)
+	}
+}
+
+// twoViewportRuns is a snapshot and a run of two pages, each with a
+// desktop and a mobile screenshot, where the after pages changed.
+func twoViewportRuns(t *testing.T) (*check.CompareContext, string) {
+	t.Helper()
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for _, path := range []string{"/", "/about/"} {
+		for _, vp := range Viewports {
+			addShot(t, before, beforeDir, path, vp, page(400, 600))
+			a := page(400, 600)
+			fill(a, image.Rect(50, 200, 350, 400), red)
+			addShot(t, after, afterDir, path, vp, a)
+		}
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	return cc, beforeDir
+}
+
+func TestCompareWarnsAboutUnreadableShots(t *testing.T) {
+	pixelHeavy(t)
+	const four = "visual: 4 screenshots from the snapshot are missing or unreadable; visual changes on these pages weren't checked"
+
+	t.Run("intact", func(t *testing.T) {
+		cc, _ := twoViewportRuns(t)
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(warnings) != 0 || len(cs) == 0 {
+			t.Errorf("an intact snapshot: changes %d, warnings %q", len(cs), warnings)
+		}
+	})
+	t.Run("shots deleted", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		if err := os.RemoveAll(filepath.Join(dir, "shots")); err != nil {
+			t.Fatal(err)
+		}
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(cs) != 0 || !slices.Equal(warnings, []string{four}) {
+			t.Errorf("changes %+v, warnings %q", cs, warnings)
+		}
+	})
+	t.Run("truncated", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		f := filepath.Join(dir, filepath.FromSlash(cc.Before.Pages[0].Shots["desktop"].File))
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, raw[:len(raw)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, warnings := compareShots(context.Background(), cc)
+		want := "visual: 1 screenshot from the snapshot is missing or unreadable; visual changes on this page weren't checked"
+		if !slices.Equal(warnings, []string{want}) {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+	t.Run("not a png", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		f := filepath.Join(dir, filepath.FromSlash(cc.Before.Pages[1].Shots["mobile"].File))
+		lfs := "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1234\n"
+		if err := os.WriteFile(f, []byte(lfs), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, warnings := compareShots(context.Background(), cc); len(warnings) != 1 || !strings.Contains(warnings[0], "1 screenshot from the snapshot") {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+	t.Run("paths outside the run folder", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		// A real PNG sits outside the snapshot's folder; run.json points
+		// at it with an absolute path and with ../ paths.
+		outside := filepath.Join(t.TempDir(), "private.png")
+		writePNG(t, filepath.Dir(outside), "private.png", page(400, 600))
+		rel, err := filepath.Rel(dir, outside)
+		if err != nil {
+			t.Fatal(err)
+		}
+		set := func(i int, vp, file string) {
+			s := cc.Before.Pages[i].Shots[vp]
+			s.File = file
+			cc.Before.Pages[i].Shots[vp] = s
+		}
+		set(0, "desktop", outside)
+		set(0, "mobile", filepath.ToSlash(rel))
+		set(1, "desktop", "shots/../../"+filepath.Base(dir)+"/shots/"+cc.Before.Pages[1].ID+"-desktop.png")
+		set(1, "mobile", "../x.png")
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(cs) != 0 || !slices.Equal(warnings, []string{four}) {
+			t.Errorf("changes %+v, warnings %q", cs, warnings)
+		}
+	})
+	t.Run("this run's shot", func(t *testing.T) {
+		cc, _ := twoViewportRuns(t)
+		if err := os.RemoveAll(filepath.Join(cc.AfterDir, "shots")); err != nil {
+			t.Fatal(err)
+		}
+		_, warnings := compareShots(context.Background(), cc)
+		want := "visual: 4 screenshots from this run are missing or unreadable; visual changes on these pages weren't checked"
+		if !slices.Equal(warnings, []string{want}) {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+}
+
+func TestOpenShot(t *testing.T) {
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.png"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shots", "a-desktop.png"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A received snapshot can hold a symlink that points out of its folder.
+	if err := os.Symlink(filepath.Join(outside, "secret.png"), filepath.Join(dir, "shots", "link.png")); err != nil {
+		t.Skip("symlinks unsupported:", err)
+	}
+	for file, ok := range map[string]bool{
+		"shots/a-desktop.png": true,
+		"/etc/passwd":         false,
+		"../shots/a.png":      false,
+		"shots/../../a.png":   false,
+		"shots/link.png":      false,
+		"":                    false,
+	} {
+		f, err := openShot(dir, file)
+		if err == nil {
+			_ = f.Close()
+		}
+		if (err == nil) != ok {
+			t.Errorf("openShot(%q) error = %v", file, err)
+		}
+	}
+}
+
+// notice inserts a 40 px notice above the footer of a page h px tall,
+// and with split also a 16 px piece 2 px below it, the way row alignment
+// can cut one block around a couple of rows that happen to match.
+func notice(b *image.NRGBA, h int, split bool) *image.NRGBA {
+	a := b
+	if split {
+		a = insertRows(a, h-78, 16, color.NRGBA{240, 240, 190, 255})
+	}
+	return insertRows(a, h-80, 40, color.NRGBA{250, 250, 200, 255})
+}
+
+// The compare from users.md N5: a notice near the bottom of three pages,
+// and on /shop/ also a block the alignment cut in two pieces 2 px apart.
+func TestCompareOneLinePerCause(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/contact/", "/shop/"} {
+		h := 1200 + i*100
+		b := page(390, h)
+		fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+		a := notice(b, h, path == "/shop/")
+		if path == "/shop/" {
+			a = insertRows(insertRows(a, 649, 16, red), 647, 16, blue)
+		}
+		addShot(t, before, beforeDir, path, "mobile", b)
+		addShot(t, after, afterDir, path, "mobile", a)
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	if c, ok := got["New block near the bottom of 3 pages (mobile)"]; !ok || strings.Join(c.Pages, ",") != "/,/contact/,/shop/" {
+		t.Fatalf("grouped notice = %+v (all %v)", c, keys(got))
+	}
+	p, ok := got["Page looks different (mobile)"]
+	if !ok || strings.Join(p.Pages, ",") != "/shop/" {
+		t.Fatalf("shop's own change = %+v (all %v)", p, keys(got))
+	}
+	// The two pieces are one block, 34 px tall with the 2 rows between
+	// them. The notice's piece is told with the grouped notice, not again
+	// here.
+	if n := strings.Count(p.Detail, "block was inserted"); n != 1 || !strings.Contains(p.Detail, "A 34 px tall block was inserted 647 px down") {
+		t.Errorf("detail = %q", p.Detail)
+	}
+	if len(got) != 2 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// A page whose only leftover is a piece of a grouped block has no change
+// of its own.
+func TestComparePieceOfGroupedBlock(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/contact/", "/shop/"} {
+		h := 1200 + i*100
+		b := page(390, h)
+		fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+		addShot(t, before, beforeDir, path, "mobile", b)
+		addShot(t, after, afterDir, path, "mobile", notice(b, h, path == "/shop/"))
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	if _, ok := got["New block near the bottom of 3 pages (mobile)"]; !ok || len(got) != 1 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// Two blocks far apart on one page are two causes and stay two.
+func TestCompareDistinctBlocksStaySeparate(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	b := page(800, 1500)
+	a := insertRows(insertRows(b, 900, 30, red), 300, 40, blue)
+	addShot(t, before, beforeDir, "/", "desktop", b)
+	addShot(t, after, afterDir, "/", "desktop", a)
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	p := got["Page looks different (desktop)"]
+	if !strings.Contains(p.Detail, "A 40 px tall block was inserted 300 px down") || !strings.Contains(p.Detail, "A 30 px tall block was inserted 900 px down") {
+		t.Errorf("detail = %q (all %v)", p.Detail, keys(got))
+	}
+}
+
+func TestLooseBlocks(t *testing.T) {
+	blocks := []Band{
+		{Y: 147, H: 16, At: 147}, {Y: 149, H: 16, At: 165}, // pieces of one block 2 px apart: 147 to 181
+		{Y: 600, H: -20, At: 632}, {Y: 625, H: -10, At: 632}, // two removed blocks 5 px apart: 600 to 635
+		{Y: 900, H: 30, At: 902}, // grouped elsewhere
+		{Y: 900, H: 8, At: 934},  // its piece
+		{Y: 1400, H: 12, At: 1442},
+	}
+	got := looseBlocks(blocks, map[int]bool{4: true})
+	want := []Band{{Y: 147, H: 34, At: 147}, {Y: 600, H: -35, At: 632}, {Y: 1400, H: 12, At: 1442}}
+	if !slices.Equal(got, want) {
+		t.Errorf("looseBlocks = %+v, want %+v", got, want)
+	}
+	// An inserted and a removed block side by side aren't one block.
+	if got := looseBlocks([]Band{{Y: 100, H: 20, At: 100}, {Y: 100, H: -20, At: 120}}, nil); len(got) != 2 {
+		t.Errorf("mixed = %+v", got)
+	}
+}
+
+func TestPlaceOf(t *testing.T) {
+	for _, c := range []struct {
+		r    model.Rect
+		want string
+	}{
+		{model.Rect{X: 8, Y: 143, W: 377, H: 314}, "377×314 px, 143 px from the top and 8 px from the left"},
+		{model.Rect{X: 0, Y: 143, W: 800, H: 60}, "800×60 px, 143 px from the top"},
+		{model.Rect{X: 0, Y: 0, W: 800, H: 60}, "800×60 px, at the top"},
+		{model.Rect{X: 0, Y: 40, W: 200, H: 60}, "200×60 px, 40 px from the top at the left edge"},
+	} {
+		if got := placeOf(c.r, 800); got != c.want {
+			t.Errorf("placeOf(%+v) = %q, want %q", c.r, got, c.want)
+		}
+	}
+}
+
+// Where the largest area is reads as a size and distances, not as
+// "8,143", which looks like eight thousand.
+func TestCompareLargestAreaWording(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		area image.Rectangle
+		want string
+	}{
+		{"offset", image.Rect(120, 300, 400, 420), "; the largest 280×120 px, 300 px from the top and 120 px from the left."},
+		{"full width", image.Rect(0, 300, 800, 340), "; the largest 800×40 px, 300 px from the top."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			beforeDir, afterDir := t.TempDir(), t.TempDir()
+			a := page(800, 1200)
+			fill(a, c.area, red)
+			before := &model.Run{Pages: []model.Page{shotPage(t, beforeDir, "/", page(800, 1200))}}
+			after := &model.Run{Pages: []model.Page{shotPage(t, afterDir, "/", a)}}
+			cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+			got := Module{}.Compare(context.Background(), cc)
+			if len(got) != 1 || !strings.HasSuffix(got[0].Detail, c.want) {
+				t.Fatalf("changes = %+v, want a detail ending %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A snapshot can be retaken; the other site of --against can't, so the
+// advice there is to hide the area.
+func TestComparePageFixByMode(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	a := page(800, 1200)
+	fill(a, image.Rect(120, 300, 400, 420), red)
+	for _, c := range []struct {
+		name, snapshot, want string
+	}{
+		{"snapshot", "before-update", "If the change is expected, take a new snapshot."},
+		{"against", "", "If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			before := &model.Run{Name: c.snapshot, Pages: []model.Page{shotPage(t, beforeDir, "/", page(800, 1200))}}
+			after := &model.Run{Pages: []model.Page{shotPage(t, afterDir, "/", a)}}
+			cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+			got := Module{}.Compare(context.Background(), cc)
+			if len(got) != 1 || got[0].Check != "visual/page" || !strings.HasSuffix(got[0].Fix, c.want) {
+				t.Fatalf("changes = %+v, want a fix ending %q", got, c.want)
+			}
+		})
 	}
 }

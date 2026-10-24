@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+positive:
+  - name: Laravel 5 Whoops page
+    text: Whoops, looks like something went wrong.
+  - name: an uncaught PHP error
+    status: 500
+    text: "Fatal error: Uncaught Error: Call to undefined function wc_get_x() in /var/www/html/wp-content/plugins/x/x.php:88 Stack trace: #0 {main} thrown"
+  - name: Symfony's error page
+    status: 500
+    text: "Symfony\\Component\\ErrorHandler\\Error\\UndefinedMethodError"
+negative:
+  - name: an ordinary page
+    text: Fresh coffee, roasted every Monday.
+  - name: a page about catching errors
+    text: Every error is caught and logged; visitors never see a stack trace.
