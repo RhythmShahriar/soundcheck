@@ -120,8 +120,10 @@ func holder(path string, maxAge time.Duration) (int, bool) {
 // writing any more: their owner has exited (SIGHUP, kill -9, a CI job
 // timeout) or is older than staleOwner. Nothing else would ever remove
 // them. A folder without an owner file (from an older version, or one
-// just created) is removed once it's older than staleOwner. It's best
-// effort: a folder that can't be read or removed is left for next time.
+// just created) is removed once it's older than staleOwner. A folder
+// that finished some pages is kept for keepResumable after its last one,
+// so --resume can pick it up (see Resumable). It's best effort: a folder
+// that can't be read or removed is left for next time.
 func (s Store) cleanIncoming() {
 	dir := filepath.Join(s.Root, Incoming)
 	entries, err := os.ReadDir(dir)
@@ -134,6 +136,9 @@ func (s Store) cleanIncoming() {
 		}
 		path := filepath.Join(dir, e.Name())
 		if held(path) {
+			continue
+		}
+		if at, ok := resumable(path); ok && time.Since(at) < keepResumable {
 			continue
 		}
 		_ = os.RemoveAll(path) //nolint:gosec // a folder in our own .incoming
