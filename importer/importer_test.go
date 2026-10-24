@@ -122,7 +122,7 @@ func TestBackstopMapping(t *testing.T) {
 }
 
 // Negative: every scenario on another site. Nothing becomes a page, each
-// URL is named, and the site still gets crawled.
+// URL is named and the site still gets crawled.
 func TestBackstopForeignHosts(t *testing.T) {
 	r, err := Backstop(read(t, "foreign.json"), "staging.shop.test")
 	if err != nil {

@@ -125,9 +125,9 @@ func (c Config) productionSites() []prodSite {
 
 // IsProduction reports whether rawURL is on one of the production sites:
 // the same host (case, a trailing dot, www., punycode and default ports
-// don't matter, nor does the scheme), or a subdomain of a *. entry, and
-// under the entry's path on a segment boundary, so /shop covers /shop/cart
-// but not /shopping.
+// don't matter, nor does the scheme), or a subdomain of a *. entry. It
+// must also be under the entry's path on a segment boundary, so /shop
+// covers /shop/cart but not /shopping.
 func (c Config) IsProduction(rawURL string) bool {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || u.Hostname() == "" {

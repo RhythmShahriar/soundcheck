@@ -152,8 +152,8 @@ func Default() Config {
 }
 
 // Load reads path over the defaults. A missing file is not an error.
-// Unknown keys are, so a typo fails loudly instead of being ignored, and
-// every error names the file and, when it can, the line.
+// Unknown keys are, so a typo fails loudly instead of being ignored.
+// Every error names the file and, when it can, the line.
 func Load(path string) (Config, error) {
 	c := Default()
 	data, err := os.ReadFile(path) //nolint:gosec // the user's own project config

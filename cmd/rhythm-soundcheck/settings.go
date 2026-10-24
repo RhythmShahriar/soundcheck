@@ -54,7 +54,7 @@ func (c settingChange) String() string {
 // inherit gives cfg the snapshot's modules, levels and viewports where
 // the user didn't choose them, so a plain compare checks what the
 // snapshot checked: one taken with --level submit is compared with submit
-// too. --skip still applies to inherited modules, and echo stays on or off
+// too. --skip still applies to inherited modules. Echo stays on or off
 // as --echo, SOUNDCHECK_ECHO and echo.url say, since it needs Echo
 // running now. It returns the settings that still differ from the
 // snapshot. A snapshot from before Soundcheck stored its options changes

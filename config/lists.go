@@ -32,8 +32,8 @@ func AddList(base, values []string) ([]string, error) {
 }
 
 // Cumulative makes interaction levels cumulative: each level brings the
-// safer ones before it, so "submit" is inspect, click and submit, and
-// "flows" all four. Asking for submit and silently losing the click
+// safer ones before it, so "submit" is inspect, click and submit
+// and "flows" is all four. Asking for submit and silently losing the click
 // checks was a trap. Values that aren't levels are kept, at the end, for
 // Validate to report.
 func Cumulative(levels []string) []string {

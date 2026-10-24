@@ -22,8 +22,8 @@ import (
 const maxImport = 4 << 20
 
 // cmdImport writes .soundcheck/config.yaml from a BackstopJS or Lost
-// Pixel config. The file is only read: a Lost Pixel config is code, and
-// it's scanned as text, never run. Unlike init it doesn't ask git to
+// Pixel config. The file is only read: a Lost Pixel config is code,
+// so it's scanned as text and never run. Unlike init it doesn't ask git to
 // ignore the snapshot folders, so it starts no process at all; the
 // first snapshot does that.
 func cmdImport(args []string, stdout, stderr io.Writer) int {

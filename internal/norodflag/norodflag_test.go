@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // An external test package: a test file inside package norodflag that
-// imported rod would make rod a dependency of norodflag itself, and so
+// imported rod would make rod a dependency of norodflag itself and so
 // initialize it first.
 package norodflag_test
 

@@ -7,8 +7,8 @@ import "strings"
 
 // A small, forgiving reader for JavaScript and TypeScript object
 // literals. It knows strings, template literals and comments, so a
-// bracket or key inside one isn't taken for code, and nothing else: it
-// never evaluates anything.
+// bracket or key inside one isn't taken for code. It knows nothing else
+// and never evaluates anything.
 
 // skip returns the index just past the string, template literal or
 // comment starting at i, or i when there is none there.
@@ -76,7 +76,7 @@ func colonAfter(src string, i int) int {
 }
 
 // balanced returns the text of the bracketed list starting at open,
-// brackets included, and whether it closes.
+// brackets included. It also reports whether the list closes.
 func balanced(src string, open int) (string, bool) {
 	depth := 0
 	for i := open; i < len(src); {

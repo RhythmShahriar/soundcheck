@@ -102,7 +102,7 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// demoOptions checks demo's arguments: only the flags in demoFlags, and
+// demoOptions checks demo's arguments: only the flags in demoFlags and
 // no site. It returns --keep (or --open, which needs the report kept)
 // and the other flags to pass on.
 func demoOptions(args []string) (keep bool, rest []string, err error) {

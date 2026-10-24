@@ -3,7 +3,7 @@
 
 // Package importer turns a BackstopJS or Lost Pixel setup into a
 // Soundcheck config, for `rhythm-soundcheck import`. It only reads: a
-// backstop.json is decoded as data, and a lostpixel.config.ts is scanned
+// backstop.json is decoded as data and a lostpixel.config.ts is scanned
 // as text for its page paths, never run.
 package importer
 
@@ -25,7 +25,7 @@ import (
 // about 430 px and small tablets in portrait start past 600.
 const mobileMax = 600
 
-// Result is what an import could map, and what it couldn't.
+// Result is what an import could map and what it couldn't.
 type Result struct {
 	Site      string   // the site the pages are on, "" when not known
 	Pages     []string // paths for pages.extra
@@ -126,7 +126,7 @@ var unmappedKeys = []struct{ key, why string }{
 
 // Backstop maps a backstop.json. site is the site to check; when it's ""
 // the first scenario's site is used. Scenario URLs on another site are
-// listed as unmapped, and crawling stays on either way.
+// listed as unmapped. Crawling stays on either way.
 func Backstop(data []byte, site string) (*Result, error) {
 	var b backstop
 	if err := json.Unmarshal(data, &b); err != nil {
@@ -293,7 +293,7 @@ func (r *Result) backstopIgnore(all []scenario) {
 
 // LostPixelPages reads the page paths from a Lost Pixel config's
 // pageShots.pages. The file is TypeScript or JavaScript, so it's scanned
-// as text: only paths written as plain strings are found, and nothing in
+// as text: only paths written as plain strings are found. Nothing in
 // the file is run.
 func LostPixelPages(data []byte) (*Result, error) {
 	src := string(data)

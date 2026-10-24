@@ -244,7 +244,7 @@ func TestFailOnNoneAndCase(t *testing.T) {
 		t.Errorf("--fail-on nope: exit %d %q", code, errOut)
 	}
 
-	// none fits run and compare alike, and turns off the config's fail_on.
+	// none fits run and compare alike. It also turns off the config's fail_on.
 	dir := storedComparison(t, model.Broke)
 	writeConfig(t, "fail_on: broke\n")
 	if code, _, errOut := runCLI(t, "report", dir, "--plain"); code != exitFindings {

@@ -120,7 +120,7 @@ Snapshots:
                              snapshot's modules, levels and viewports
 
 compare runs with the snapshot's modules, levels and viewports unless a flag
-or the config file sets them, and says what you changed.
+or the config file sets them. It says what you changed.
 
 Output:
       --json                 JSON (schema rhythm-soundcheck/v1)
@@ -166,7 +166,7 @@ What to check:
                              site that isn't this machine
       --lighthouse           also run Unlighthouse (needs Node.js and npx)
       --echo[=<url>]         record the emails, SMS and webhooks each form
-                             submit and flow sends, and compare them, through
+                             submit and flow sends and compare them, through
                              Echo (default http://127.0.0.1:8025; start it with
                              rhythm echo up). Also SOUNDCHECK_ECHO=<url>
 
@@ -191,7 +191,7 @@ CI:
                              notice; none never fails (overrides fail_on)
 
 Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
-test that caches don't leak logged-in pages to visitors, and to run flows that
+test that caches don't leak logged-in pages to visitors and to run flows that
 set login: true. Pages themselves are checked as a visitor. Credentials are
 read only from the environment and never written to reports. Uses
 /wp-login.php, or the login flow in .soundcheck/config.yaml. The password is
@@ -199,7 +199,7 @@ typed only on the site being checked, over https unless it's this machine.
 
 Messages: with Echo running (rhythm echo up) and its connector on the site,
 --echo ties each form submit and flow to what it sent, so a form that says
-"sent" but emails nobody is caught, and a lost or changed email, SMS or
+"sent" but emails nobody is caught. A lost or changed email, SMS or
 webhook shows up in the comparison. Flows can check them with
 expect: {message: ...}. A token comes from RHYTHM_ECHO_TOKEN (echo.token_env,
 which must start with RHYTHM_ECHO_). It goes to an Echo on another machine
