@@ -62,8 +62,9 @@ inputs:
     description: >
       "true" posts the result as one comment on the pull request and updates that same comment on
       later runs: the counts, the top changes and a link to the full report. The job needs
-      "permissions: pull-requests: write"; on deployment_status it finds the pull request of the
-      deployed commit. A token that can't comment (a pull request from a fork) only gives a warning.
+      "permissions: pull-requests: write"; on deployment_status it finds the open pull request of
+      the deployed commit. Other runs without a pull request (a push to main) post nothing. A token
+      that can't comment (a pull request from a fork) only gives a warning.
     required: false
     default: "false"
   github-token:

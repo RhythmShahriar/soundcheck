@@ -52,14 +52,16 @@ body() {
   [ -z "$footer" ] || printf '\n%s\n' "$footer"
 }
 
-# pr prints the pull request number for this run, if there is one.
+# pr prints the pull request number for this run, if there is one. A
+# deployment_status event has none of its own, so it uses the open pull
+# request of the deployed commit. Other events without one (a push to
+# main) get none: their commit's pull request is usually merged by then.
 pr() {
   local n sha
   n=$(jq -r '.pull_request.number // .issue.number // empty' "${GITHUB_EVENT_PATH:?}")
   if [ -z "$n" ]; then
     sha=$(jq -r '.deployment.sha // empty' "$GITHUB_EVENT_PATH")
-    sha=${sha:-${GITHUB_SHA:-}}
-    [ -z "$sha" ] || n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" --jq '.[0].number // empty' 2> /dev/null || true)
+    [ -z "$sha" ] || n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" --jq '[.[] | select(.state == "open")][0].number // empty' 2> /dev/null || true)
   fi
   printf '%s' "$n"
 }

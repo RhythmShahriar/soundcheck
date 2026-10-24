@@ -54,7 +54,7 @@ bad() {
   sed 's/^/     /' "$work/out" | head -40
   fail=1
 }
-contains() { grep -qF -- "$2" "$1"; }
+contains() { grep -sqF -- "$2" "$1"; }
 
 cat > "$work/report.md" <<'MD'
 ## ♪ Soundcheck
@@ -148,15 +148,22 @@ else bad "SOUNDCHECK_COMMENT_AUTHOR names the bot"; fi
 
 # deployment_status: the pull request is found from the deployed commit.
 echo '{"deployment": {"sha": "abc123"}, "deployment_status": {"target_url": "https://preview.example.com"}}' > "$work/deploy.json"
-post GITHUB_EVENT_PATH="$work/deploy.json" GITHUB_EVENT_NAME=deployment_status FAKE_PULLS='[{"number": 12}]'
+post GITHUB_EVENT_PATH="$work/deploy.json" GITHUB_EVENT_NAME=deployment_status FAKE_PULLS='[{"number": 11, "state": "closed"}, {"number": 12, "state": "open"}]'
 if [ "$code" = 0 ] && contains "$work/gh.log" "repos/acme/site/commits/abc123/pulls" && contains "$work/gh.log" "-X POST repos/acme/site/issues/12/comments"; then
-  ok "a deployment_status run comments on the deployed commit's pull request"
-else bad "a deployment_status run comments on the deployed commit's pull request"; fi
+  ok "a deployment_status run comments on the deployed commit's open pull request"
+else bad "a deployment_status run comments on the deployed commit's open pull request"; fi
+
+# The deployed commit's only pull request is merged: nothing posted.
+post GITHUB_EVENT_PATH="$work/deploy.json" GITHUB_EVENT_NAME=deployment_status FAKE_PULLS='[{"number": 11, "state": "closed"}]'
+if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run" && ! contains "$work/gh.log" POST; then
+  ok "a closed pull request gets no comment"
+else bad "a closed pull request gets no comment"; fi
 
 # A push with no pull request: a notice, nothing posted.
 echo '{}' > "$work/push.json"
-post GITHUB_EVENT_PATH="$work/push.json" GITHUB_EVENT_NAME=push GITHUB_SHA=def456
-if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run (event push)" && ! contains "$work/gh.log" POST; then
+# Its commit came from a pull request, which is not looked up.
+post GITHUB_EVENT_PATH="$work/push.json" GITHUB_EVENT_NAME=push GITHUB_SHA=def456 FAKE_PULLS='[{"number": 13, "state": "closed"}]'
+if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run (event push)" && ! contains "$work/gh.log" POST && ! contains "$work/gh.log" pulls; then
   ok "no pull request, no comment"
 else bad "no pull request, no comment"; fi
 
