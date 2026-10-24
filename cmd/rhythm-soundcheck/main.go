@@ -133,7 +133,8 @@ What to check:
                              rhythm echo up). Also SOUNDCHECK_ECHO=<url>
 
 Requests and browser:
-      --rate <n>             page loads per second per site (default 5)
+      --rate <n>             page loads per second per site, 0.01 to 1000
+                             (default 5)
       --tabs <n>             pages checked at once (default 8)
       --timeout <d>          per page (default 30s)
   -A, --user-agent <ua>      User-Agent header

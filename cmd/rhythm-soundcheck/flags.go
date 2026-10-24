@@ -251,6 +251,9 @@ func parse(args []string) (*plan, error) {
 		cfg.Viewports = o.viewports
 	}
 	if set["rate"] {
+		if err := config.CheckRate(o.rate); err != nil {
+			return nil, cli.Usagef("--rate: %v", err)
+		}
 		cfg.Rate = o.rate
 	}
 	if set["tabs"] {
@@ -267,9 +270,6 @@ func parse(args []string) (*plan, error) {
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, cli.UsageError{Msg: flagName(err.Error())}
-	}
-	if cfg.Rate <= 0 {
-		return nil, cli.Usagef("--rate must be more than 0")
 	}
 	if len(cfg.Modules) == 0 {
 		return nil, cli.Usagef("no modules left to run")

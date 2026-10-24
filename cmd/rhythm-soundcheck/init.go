@@ -68,7 +68,7 @@ echo:
   quiet: 1500ms         # after a submit, wait until nothing new arrives for this long
   timeout: 10s          # but no longer than this
 
-rate: 5                 # page loads per second per site
+rate: 5                 # page loads per second per site, 0.01 to 1000
 tabs: 8                 # pages checked at once; politeness comes from rate
 timeout: 30             # seconds per page
 `

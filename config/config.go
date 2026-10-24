@@ -183,6 +183,9 @@ func (c *Config) Validate() error {
 	case c.Timeout < 5:
 		return errors.New("timeout must be at least 5 seconds")
 	}
+	if err := CheckRate(c.Rate); err != nil {
+		return fmt.Errorf("rate: %w", err)
+	}
 	if err := c.Login.validate(); err != nil {
 		return err
 	}
@@ -222,6 +225,22 @@ func (e Echo) validate(on bool) error {
 	case e.TokenEnv != "" && !strings.HasPrefix(e.TokenEnv, EchoTokenPrefix):
 		// A committed config must not pick which secret is sent where.
 		return fmt.Errorf("echo.token_env: %q must start with %s", e.TokenEnv, EchoTokenPrefix)
+	}
+	return nil
+}
+
+// The rates Soundcheck accepts, in page loads per second per host.
+const (
+	MinRate = 0.01
+	MaxRate = 1000
+)
+
+// CheckRate reports a rate outside MinRate to MaxRate. NaN, infinities and
+// rates so small they overflow all make the limiter wait zero, so a typo
+// would hammer the site; the comparison is written to catch NaN too.
+func CheckRate(rate float64) error {
+	if !(rate >= MinRate && rate <= MaxRate) {
+		return fmt.Errorf("%v isn't between %v and %v page loads a second", rate, MinRate, MaxRate)
 	}
 	return nil
 }

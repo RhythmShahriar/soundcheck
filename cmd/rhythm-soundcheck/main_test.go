@@ -408,3 +408,23 @@ func TestProductionHeader(t *testing.T) {
 		t.Errorf("bad entry: exit %d, %q", code, errOut)
 	}
 }
+
+func TestRateFlag(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, r := range []string{"NaN", "Inf", "+Inf", "-Inf", "-1", "0", "1e-300", "0.009", "1001"} {
+		code, _, errOut := runCLI(t, "run", "a.test", "--rate", r)
+		if code != exitUsage || !strings.Contains(errOut, "--rate: ") || !strings.Contains(errOut, "isn't between 0.01 and 1000 page loads a second") {
+			t.Errorf("--rate %s: exit %d, %q", r, code, errOut)
+		}
+	}
+	for _, r := range []string{"0.01", "1", "5", "1000"} {
+		if _, err := parse([]string{"a.test", "--rate", r}); err != nil {
+			t.Errorf("--rate %s: %v", r, err)
+		}
+	}
+	_ = os.MkdirAll(".soundcheck", 0o755)
+	_ = os.WriteFile(".soundcheck/config.yaml", []byte("rate: .nan\n"), 0o600)
+	if code, _, errOut := runCLI(t, "run", "a.test"); code != exitUsage || !strings.Contains(errOut, "rate: NaN isn't between") {
+		t.Errorf("rate: .nan: exit %d, %q", code, errOut)
+	}
+}

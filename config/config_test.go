@@ -104,3 +104,19 @@ func TestLoginURL(t *testing.T) {
 		t.Error("the config file must not set trust")
 	}
 }
+
+func TestRate(t *testing.T) {
+	for body, ok := range map[string]bool{
+		"rate: .nan\n": false, "rate: .inf\n": false, "rate: -.inf\n": false, "rate: -1\n": false, "rate: 0\n": false,
+		"rate: 1e-300\n": false, "rate: 0.009\n": false, "rate: 1001\n": false,
+		"rate: 0.01\n": true, "rate: 1\n": true, "rate: 5\n": true, "rate: 1000\n": true,
+	} {
+		_, err := Load(write(t, body))
+		switch {
+		case ok && err != nil:
+			t.Errorf("%q: %v", body, err)
+		case !ok && (err == nil || !strings.HasPrefix(err.Error(), "rate: ") || !strings.Contains(err.Error(), "between 0.01 and 1000")):
+			t.Errorf("%q: err = %v, want a rate error", body, err)
+		}
+	}
+}
