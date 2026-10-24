@@ -47,8 +47,8 @@ type Options struct {
 // Browser is a running Chrome.
 type Browser struct {
 	*rod.Browser
-	launcher *launcher.Launcher
-	Bin      string
+	proc *process
+	Bin  string
 	// Version is the running browser's version, e.g. 153.0.8010.52. It
 	// hides rod's Browser.Version method, which asks Chrome each time.
 	Version string
@@ -126,7 +126,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := launcher.New().Context(ctx).Bin(bin).Headless(!opts.Visible).Leakless(false).
+	l := launcher.New().Context(ctx).Headless(!opts.Visible).
 		Set("disable-gpu").Set("hide-scrollbars").Set("mute-audio").
 		Set("disable-features", "Translate,MediaRouter,OptimizationHints").
 		Set("disable-background-networking").Set("no-first-run").Set("no-default-browser-check").
@@ -144,16 +144,16 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	if opts.Insecure {
 		l = l.Set("ignore-certificate-errors")
 	}
-	u, err := l.Launch()
+	u, proc, err := start(ctx, l, bin)
 	if err != nil {
 		return nil, fmt.Errorf("starting %s: %w", bin, err)
 	}
 	b := rod.New().ControlURL(u).Context(ctx)
 	if err := b.Connect(); err != nil {
-		l.Kill()
+		proc.stop()
 		return nil, fmt.Errorf("connecting to the browser: %w", err)
 	}
-	br := &Browser{Browser: b, launcher: l, Bin: bin, Downloaded: downloaded}
+	br := &Browser{Browser: b, proc: proc, Bin: bin, Downloaded: downloaded}
 	if v, err := (proto.BrowserGetVersion{}).Call(b); err == nil {
 		br.Version = productVersion(v.Product)
 	}
@@ -207,11 +207,11 @@ func logf(opts Options, msg string) {
 // private window: anonymous crawling and a logged-in user never share one.
 func (b *Browser) Session() (*rod.Browser, error) { return b.Incognito() }
 
-// Close shuts the browser down and removes its temporary profile.
+// Close shuts the browser down, kills any of its processes still
+// running and removes its temporary profile.
 func (b *Browser) Close() {
 	_ = b.Browser.Close()
-	b.launcher.Kill()
-	b.launcher.Cleanup()
+	b.proc.stop()
 }
 
 // Prune deletes downloaded browsers other than the Chrome for Testing
