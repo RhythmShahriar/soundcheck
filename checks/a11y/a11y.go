@@ -248,9 +248,22 @@ func clean(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// snippet shortens the element's HTML to its opening tag.
+// filled matches attributes that can carry what a visitor typed or what
+// the site knows about them (a prefilled email on a page behind a login):
+// value and data-*. Their contents never reach run.json or a report.
+var filled = regexp.MustCompile(`(?i)(\s(?:value|data-[\w.:-]+)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)`)
+
+// snippet shortens the element's HTML to its opening tag, with the values
+// of filled attributes replaced by "***".
 func snippet(html string) string {
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
+	html = filled.ReplaceAllStringFunc(html, func(m string) string {
+		sub := filled.FindStringSubmatch(m)
+		if v := strings.Trim(sub[2], `"'`); v == "" {
+			return m
+		}
+		return sub[1] + `"***"`
+	})
 	if r := []rune(html); len(r) > 160 {
 		html = string(r[:159]) + "…"
 	}

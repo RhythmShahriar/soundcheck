@@ -125,6 +125,22 @@ func TestIssues(t *testing.T) {
 	}
 }
 
+// A field prefilled after login must not put the visitor's details into
+// run.json; empty values and other attributes stay as they are.
+func TestSnippetMasksFilledValues(t *testing.T) {
+	for in, want := range map[string]string{
+		`<input id="email" value="ana@example.com" data-user-id='4471'>`: `<input id="email" value="***" data-user-id="***">`,
+		`<input name=acct VALUE=12345678 type="text">`:                   `<input name=acct VALUE="***" type="text">`,
+		`<input id="q" value="" placeholder="Search">`:                   `<input id="q" value="" placeholder="Search">`,
+		`<button data-x = "a b">Go</button>`:                             `<button data-x = "***">Go</button>`,
+		`<li aria-valuenow="5">`:                                         `<li aria-valuenow="5">`,
+	} {
+		if got := snippet(in); got != want {
+			t.Errorf("snippet(%s) = %s, want %s", in, got, want)
+		}
+	}
+}
+
 func TestIssuesCapsElements(t *testing.T) {
 	r := result{ID: "link-name", Impact: "serious", Help: "Links must have discernible text"}
 	for i := range 50 {
