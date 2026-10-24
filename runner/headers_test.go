@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 // seen records the Authorization and Cookie headers of each request a
@@ -145,5 +147,52 @@ func TestHeaderTransportScope(t *testing.T) {
 	_ = resp.Body.Close()
 	if h, _ := got.get("/plain"); h != [2]string{} {
 		t.Errorf("http link of an https site: %q", h)
+	}
+}
+
+// A header the browser refuses to send costs its requests nothing but
+// that header. The run names it. -H Host for the target's own host
+// is harmless; for another host the run refuses to start, since the
+// browser would get the pages of whatever answers for the target.
+func TestUnsafeHeadersInBrowser(t *testing.T) {
+	needBrowser(t)
+	type got struct{ auth, host string }
+	var mu sync.Mutex
+	reqs := map[string]got{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		reqs[r.URL.Path] = got{r.Header.Get("Authorization"), r.Host}
+		mu.Unlock()
+		if r.URL.Path == "/" {
+			fmt.Fprint(w, `<!doctype html><title>Staging</title><p>Behind a gate.</p><script>fetch('/api');</script>`)
+		}
+	}))
+	defer srv.Close()
+	self := strings.TrimPrefix(srv.URL, "http://")
+	run := func(headers map[string]string) (*model.Run, error) {
+		cfg := config.Default()
+		cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Pages.Limit = []string{"health"}, []string{"desktop"}, 0, 1
+		return Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+			Headers: headers, Browser: browser.Options{NoDownload: true}})
+	}
+	r, err := run(map[string]string{"Authorization": "Bearer t", "Host": self, "Connection": "close"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	for _, path := range []string{"/", "/api", "/robots.txt"} {
+		if g := reqs[path]; g != (got{"Bearer t", self}) {
+			t.Errorf("%s: %+v (requests %v)", path, g, reqs)
+		}
+	}
+	mu.Unlock()
+	want := "-H Connection is not sent by the browser, which doesn't let a run set it; robots.txt and sitemap requests still send it"
+	if !slices.Contains(r.Warnings, want) || len(r.Warnings) != 1 {
+		t.Errorf("warnings %q", r.Warnings)
+	}
+
+	_, err = run(map[string]string{"Authorization": "Bearer t", "Host": "staging.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "-H Host: staging.example.com can't be sent by the browser, so its pages would come from "+self) {
+		t.Errorf("another host: %v", err)
 	}
 }

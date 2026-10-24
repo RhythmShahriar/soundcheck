@@ -135,6 +135,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := capture.HostError(opts.Headers, startURL); err != nil {
+		return nil, err
+	}
 	// With FollowHost the start page may be on another site, which is
 	// now the one the headers belong to.
 	client = httpClient(opts, startURL)
@@ -227,6 +230,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	cc := &check.Context{
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
+	}
+	for _, note := range capture.HeaderNotes(opts.Headers) {
+		cc.Warn(note)
 	}
 	var b *browser.Browser
 	if engine == capture.Chrome {

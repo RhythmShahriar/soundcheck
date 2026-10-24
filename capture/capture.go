@@ -160,7 +160,9 @@ func (r *Recorder) Stop() {
 // the Authorization header. Instead each request is paused (see package
 // intercept) and the headers are added when it goes to site. A Cookie
 // header is set as cookies for site's host: overriding the Cookie header
-// would drop the cookies the site sets during the visit.
+// would drop the cookies the site sets during the visit. Headers Chrome
+// won't let a paused request carry (see intercept.Unsafe) are left out,
+// so they can't cost it the others; HeaderNotes names them for the run.
 func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (release func(), err error) {
 	release = func() {}
 	if site == nil || len(headers) == 0 {
@@ -168,19 +170,21 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 	}
 	extra := map[string]string{}
 	for k, v := range headers {
-		if !strings.EqualFold(k, "Cookie") {
-			extra[k] = v
-			continue
-		}
-		for _, c := range Cookies(v) {
-			// HttpOnly keeps them from the page's own scripts, third-party
-			// ones included. Secure keeps an https site's cookies off its
-			// http links.
-			_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/",
-				HTTPOnly: true, Secure: strings.EqualFold(site.Scheme, "https")}.Call(tab)
-			if err != nil {
-				return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
+		switch {
+		case intercept.Unsafe(k):
+		case strings.EqualFold(k, "Cookie"):
+			for _, c := range Cookies(v) {
+				// HttpOnly keeps them from the page's own scripts, third-party
+				// ones included. Secure keeps an https site's cookies off its
+				// http links.
+				_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/",
+					HTTPOnly: true, Secure: strings.EqualFold(site.Scheme, "https")}.Call(tab)
+				if err != nil {
+					return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
+				}
 			}
+		default:
+			extra[k] = v
 		}
 	}
 	if len(extra) == 0 {
@@ -193,6 +197,41 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 			}
 		}
 	})
+}
+
+// HeaderNotes are the run's warnings about headers the browser won't
+// send (see intercept.Unsafe), one per header. The run's own requests,
+// for robots.txt and sitemaps, still send them. Host is not among them:
+// see HostError.
+func HeaderNotes(headers map[string]string) []string {
+	var notes []string
+	for k := range headers {
+		if intercept.Unsafe(k) && !strings.EqualFold(k, "Host") {
+			notes = append(notes, "-H "+k+" is not sent by the browser, which doesn't let a run set it; robots.txt and sitemap requests still send it")
+		}
+	}
+	slices.Sort(notes)
+	return notes
+}
+
+// HostError refuses a -H Host that names another host than site's. No
+// browser lets a run set Host: Chrome fails the navigation
+// (net::ERR_INVALID_ARGUMENT) or sends the URL's own host, so the pages
+// would come from whatever site answers for site's host while robots.txt
+// and the sitemaps came from the named one.
+func HostError(headers map[string]string, site *url.URL) error {
+	for k, v := range headers {
+		if !strings.EqualFold(k, "Host") || site == nil {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if strings.EqualFold(v, site.Host) || strings.EqualFold(v, site.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("-H Host: %s can't be sent by the browser, so its pages would come from %s instead; "+
+			"check the site by its name and point the name at that address (for example in /etc/hosts)", v, site.Host)
+	}
+	return nil
 }
 
 // Cookies splits a Cookie header ("a=1; b=2") into name and value pairs.

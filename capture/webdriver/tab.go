@@ -18,6 +18,7 @@ import (
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/check"
 )
 
@@ -234,6 +235,11 @@ func (t *tab) ScopeHeaders(ctx context.Context, site *url.URL, headers map[strin
 	}
 	extra := map[string]string{}
 	for k, v := range headers {
+		if intercept.Unsafe(k) {
+			// As in Chrome: one refused header would cost the request the
+			// others (see capture.HeaderNotes).
+			continue
+		}
 		if !strings.EqualFold(k, "Cookie") {
 			extra[k] = v
 			continue

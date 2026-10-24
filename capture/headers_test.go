@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -106,5 +107,34 @@ func TestVisitMasksHeaders(t *testing.T) {
 		if strings.Contains(string(data), secret) {
 			t.Errorf("the stored page has %q: %v", secret, p.Headers)
 		}
+	}
+}
+
+func TestHostError(t *testing.T) {
+	site, _ := url.Parse("http://10.0.0.5:8080/")
+	for _, c := range []struct {
+		headers map[string]string
+		fails   bool
+	}{
+		{nil, false},
+		{map[string]string{"Authorization": "Bearer t"}, false},
+		{map[string]string{"Host": "10.0.0.5:8080"}, false},
+		{map[string]string{"host": " 10.0.0.5 "}, false},
+		{map[string]string{"Host": "staging.example.com"}, true},
+		{map[string]string{"HOST": "10.0.0.5:9090"}, true},
+	} {
+		if err := HostError(c.headers, site); (err != nil) != c.fails {
+			t.Errorf("%v: %v", c.headers, err)
+		}
+	}
+}
+
+func TestHeaderNotes(t *testing.T) {
+	got := HeaderNotes(map[string]string{"Authorization": "a", "Host": "h", "Cookie": "c=1", "Proxy-Authorization": "p", "connection": "close"})
+	if len(got) != 2 || !strings.HasPrefix(got[0], "-H Proxy-Authorization is not sent") || !strings.HasPrefix(got[1], "-H connection is not sent") {
+		t.Errorf("%q", got)
+	}
+	if got := HeaderNotes(map[string]string{"Authorization": "a"}); got != nil {
+		t.Errorf("%q", got)
 	}
 }
