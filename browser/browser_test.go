@@ -57,7 +57,7 @@ func TestLaunchHintsAtTheSandboxSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Launch(t.Context(), Options{Bin: bin})
-	if err == nil || !strings.Contains(err.Error(), "No usable sandbox") || !strings.Contains(err.Error(), "set "+NoSandboxEnv+"=1 if this container can't give Chrome its sandbox") {
+	if err == nil || !strings.Contains(err.Error(), "No usable sandbox") || !strings.Contains(err.Error(), "pass --no-sandbox, or set "+NoSandboxEnv+"=1, if this container can't give Chrome its sandbox") {
 		t.Fatalf("err = %v", err)
 	}
 }

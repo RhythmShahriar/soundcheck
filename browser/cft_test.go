@@ -356,7 +356,7 @@ func TestSandbox(t *testing.T) {
 
 func TestSandboxHint(t *testing.T) {
 	chrome := errors.New("[launcher] Failed to get the debug url: [1:1:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! Update your kernel")
-	if got := sandboxHint(chrome, false); !strings.Contains(got, NoSandboxEnv+"=1 if this container can't give Chrome its sandbox") {
+	if got := sandboxHint(chrome, false); !strings.Contains(got, NoSandboxEnv+"=1, if this container can't give Chrome its sandbox") {
 		t.Errorf("hint = %q", got)
 	}
 	if got := sandboxHint(chrome, true); got != "" {

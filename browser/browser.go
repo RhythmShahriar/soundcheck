@@ -191,7 +191,7 @@ const NoSandboxEnv = "SOUNDCHECK_NO_SANDBOX"
 func sandbox(opts Options) (off bool, err error) {
 	off = opts.NoSandbox || os.Getenv(NoSandboxEnv) == "1"
 	if geteuid() == 0 && !off {
-		return false, errors.New("running as root, where Chrome can't use its sandbox. Run Soundcheck as a normal user, or set " + NoSandboxEnv + "=1 to run Chrome without it (only for sites you trust, e.g. in a throwaway container)")
+		return false, errors.New("running as root, where Chrome can't use its sandbox. Run Soundcheck as a normal user, or pass --no-sandbox (or set " + NoSandboxEnv + "=1) to run Chrome without it (only for sites you trust, e.g. in a throwaway container)")
 	}
 	if off {
 		logf(opts, "WARNING: Chrome is running without its sandbox. A page that exploits a browser bug could take over this machine; only check sites you trust.")
@@ -202,13 +202,13 @@ func sandbox(opts Options) (off bool, err error) {
 // sandboxHint points at NoSandboxEnv when Chrome failed to start
 // because it couldn't set up its sandbox. Inside containers that is
 // common for normal users too (Docker's default seccomp profile,
-// Ubuntu's AppArmor limits on user namespaces), and Chrome's own error
+// Ubuntu's AppArmor limits on user namespaces). Chrome's own error
 // ("No usable sandbox!") doesn't say how to get past it.
 func sandboxHint(err error, noSandbox bool) string {
 	if noSandbox || !strings.Contains(strings.ToLower(err.Error()), "sandbox") {
 		return ""
 	}
-	return "\n(set " + NoSandboxEnv + "=1 if this container can't give Chrome its sandbox; only for sites you trust)"
+	return "\n(pass --no-sandbox, or set " + NoSandboxEnv + "=1, if this container can't give Chrome its sandbox; only for sites you trust)"
 }
 
 // logf sends a line to opts.Log, or to stderr when nothing listens, so
