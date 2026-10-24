@@ -78,16 +78,21 @@ type req struct {
 
 // metricsJS runs before any page script and keeps Web Vitals in
 // window.__soundcheck. Long tasks are kept as [start, end] so factsJS can
-// compute Total Blocking Time once FCP is known. Chrome only paints, and
+// compute Total Blocking Time once FCP is known; flushTasks hands over
+// long tasks the observer hasn't delivered yet and taskSeen is when the
+// last one came in. Chrome only paints, and
 // so only reports FCP, LCP and long tasks, for a visible page: tabs must
 // be opened with browser.NewTab, which makes each one render as if it
 // were in front.
 const metricsJS = `(() => {
-  const s = window.__soundcheck = {lcp: 0, cls: 0, fcp: 0, tasks: []};
-  const watch = (type, fn) => { try { new PerformanceObserver(l => l.getEntries().forEach(fn)).observe({type, buffered: true}); } catch (e) {} };
+  const s = window.__soundcheck = {lcp: 0, cls: 0, fcp: 0, tasks: [], taskSeen: 0, flushTasks: () => {}};
+  const watch = (type, fn) => {
+    try { const o = new PerformanceObserver(l => l.getEntries().forEach(fn)); o.observe({type, buffered: true}); return o; } catch (e) { return null; }
+  };
   watch('largest-contentful-paint', e => { s.lcp = e.renderTime || e.loadTime || e.startTime; });
   watch('layout-shift', e => { if (!e.hadRecentInput) s.cls += e.value; });
-  watch('longtask', e => { s.tasks.push([e.startTime, e.startTime + e.duration]); });
+  const tasks = watch('longtask', e => { s.tasks.push([e.startTime, e.startTime + e.duration]); s.taskSeen = performance.now(); });
+  if (tasks) s.flushTasks = () => tasks.takeRecords().forEach(e => { s.tasks.push([e.startTime, e.startTime + e.duration]); s.taskSeen = performance.now(); });
   watch('paint', e => { if (e.name === 'first-contentful-paint') s.fcp = e.startTime; });
 })();`
 
@@ -314,12 +319,23 @@ type pageFacts struct {
 
 // factsJS reads the page after it settled. TBT follows Lighthouse: the
 // part of each long task after FCP, minus 50 ms, summed; Lighthouse stops
-// at Time to Interactive, Soundcheck at the moment it reads the page
-// (load plus network idle), which is close for most pages. A script that
-// blocks before the first paint delays FCP and LCP instead.
-const factsJS = `() => {
-  const nav = performance.getEntriesByType('navigation')[0] || {};
+// at Time to Interactive, Soundcheck once the page went quiet: load,
+// network idle, then no long task for taskQuietMs (at most taskWaitMs),
+// which is close for most pages. The wait matters: a long task the
+// observer hasn't delivered yet, or one that starts just after load,
+// would otherwise count as 0 ms and turn into a false FIXED or SLOWER
+// between runs. A script that blocks before the first paint delays FCP
+// and LCP instead.
+const factsJS = `async () => {
   const s = window.__soundcheck || {};
+  const begin = performance.now();
+  for (;;) {
+    if (s.flushTasks) s.flushTasks();
+    const now = performance.now();
+    if (now - Math.max(begin, s.taskSeen || 0) >= ` + taskQuietMs + ` || now - begin >= ` + taskWaitMs + `) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  const nav = performance.getEntriesByType('navigation')[0] || {};
   let tbt = 0;
   for (const [start, end] of s.tasks || []) {
     const d = end - Math.max(start, s.fcp || 0);
@@ -335,6 +351,13 @@ const factsJS = `() => {
     height: Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0),
   };
 }`
+
+// How long factsJS waits for long tasks: until none came in for
+// taskQuietMs, and never more than taskWaitMs.
+const (
+	taskQuietMs = "300"
+	taskWaitMs  = "2000"
+)
 
 // Visit navigates to rawURL at the desktop viewport, waits for the page to
 // settle, and records it. Screenshots are taken when opts.Save is set.
