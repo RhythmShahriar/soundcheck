@@ -208,6 +208,44 @@ func TestStartTabVisit(t *testing.T) {
 	}
 }
 
+// A resource fetched twice (a preload, then the real load) fails once;
+// another method on the same URL is its own failure.
+func TestFailedOncePerRequest(t *testing.T) {
+	tab := &fakeTab{load: func(t *fakeTab, _ string) {
+		n := t.net
+		n(NetEvent{Phase: NetRequest, ID: "1", Document: true, URL: "http://site.test/", Method: "GET", Type: "Document"})
+		n(NetEvent{Phase: NetResponse, ID: "1", Document: true, URL: "http://site.test/", Status: 200})
+		n(NetEvent{Phase: NetFinished, ID: "1"})
+		for _, id := range []string{"2", "3"} {
+			n(NetEvent{Phase: NetRequest, ID: id, URL: "http://site.test/missing.png", Method: "GET", Type: "Image"})
+			n(NetEvent{Phase: NetResponse, ID: id, URL: "http://site.test/missing.png", Status: 404, Type: "Image"})
+			n(NetEvent{Phase: NetFinished, ID: id})
+		}
+		n(NetEvent{Phase: NetRequest, ID: "4", URL: "http://site.test/missing.png", Method: "POST", Type: "Fetch"})
+		n(NetEvent{Phase: NetFailed, ID: "4", Error: "NS_ERROR_CONNECTION_REFUSED"})
+	}}
+	opts := Options{Timeout: 5 * time.Second, Save: func(string, []byte) error { return nil }}
+	ctx := context.Background()
+	r, err := StartTab(ctx, tab, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Stop()
+	p, err := Visit(ctx, r, "http://site.test/", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []model.Request{
+		{URL: "http://site.test/missing.png", Method: "GET", Type: "Image", Status: 404},
+		{URL: "http://site.test/missing.png", Method: "POST", Type: "Fetch", Error: "NS_ERROR_CONNECTION_REFUSED"},
+	}; !slices.Equal(p.Failed, want) {
+		t.Errorf("failed = %+v", p.Failed)
+	}
+	if p.Metrics.Requests != 4 {
+		t.Errorf("%d requests, want every fetch counted", p.Metrics.Requests)
+	}
+}
+
 func TestStartTabFailures(t *testing.T) {
 	site, _ := url.Parse("http://site.test/")
 	ctx := context.Background()

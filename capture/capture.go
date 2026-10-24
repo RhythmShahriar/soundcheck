@@ -519,6 +519,10 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 		}
 	}
 	p.Metrics = model.Metrics{TTFB: f.TTFB, FCP: f.FCP, LCP: f.LCP, CLS: round(f.CLS, 3), TBT: f.TBT, Load: f.Load}
+	// An engine may fetch one resource twice (Firefox follows a
+	// speculative preload with the real load), so a failure is kept once
+	// per method and URL.
+	failed := map[string]bool{}
 	for _, id := range r.order {
 		q := r.reqs[id]
 		if id == r.doc {
@@ -541,7 +545,8 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 		}
 		p.Metrics.Requests++
 		p.Metrics.Bytes += q.bytes
-		if q.failed != "" || q.status >= 400 {
+		if key := q.method + " " + q.url; (q.failed != "" || q.status >= 400) && !failed[key] {
+			failed[key] = true
 			p.Failed = append(p.Failed, model.Request{URL: q.url, Method: q.method, Type: q.typ, Status: q.status, Error: q.failed})
 		}
 		if q.done || q.status > 0 {
