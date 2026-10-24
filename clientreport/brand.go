@@ -76,7 +76,7 @@ func LoadBrand(path string) (Brand, error) {
 // brandKeys are the keys agency.yaml takes.
 var brandKeys = []string{"name", "logo", "accent", "contact"}
 
-// decodeBrand reads agency.yaml into b. "color" (and "colour") is taken
+// decodeBrand reads agency.yaml into b. "color" is taken
 // for accent, as help calls it the agency's color. An unknown key names
 // its line and the keys there are, not yaml's Go type names.
 func decodeBrand(data []byte, b *Brand) error {
@@ -94,7 +94,7 @@ func decodeBrand(data []byte, b *Brand) error {
 	seen := map[string]int{}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		k := root.Content[i]
-		if k.Value == "color" || k.Value == "colour" {
+		if k.Value == "color" {
 			k.Value = "accent"
 		}
 		if !slices.Contains(brandKeys, k.Value) {
