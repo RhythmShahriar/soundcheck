@@ -73,8 +73,10 @@ func inherit(cfg *config.Config, snap model.Options, ch chosen, skip []string) [
 		}
 		cfg.Modules = mods // empty when --skip left none: cmdCompare says so
 	}
+	// A snapshot from before levels were cumulative may store "submit"
+	// alone, which now means inspect, click and submit.
 	if l := known(snap.Levels, config.Levels); ch.levels == "" && len(l) > 0 {
-		cfg.Interactions.Levels = l
+		cfg.Interactions.Levels = config.Cumulative(l)
 	}
 	if v := known(snap.Viewports, []string{"desktop", "mobile"}); ch.viewports == "" && len(v) > 0 {
 		cfg.Viewports = v
@@ -87,7 +89,9 @@ func inherit(cfg *config.Config, snap model.Options, ch chosen, skip []string) [
 		}
 	}
 	add("modules", snap.Modules, cfg.Modules, ch.modules)
-	add("levels", snap.Levels, cfg.Interactions.Levels, ch.levels)
+	if !sameSet(config.Cumulative(snap.Levels), cfg.Interactions.Levels) {
+		add("levels", snap.Levels, cfg.Interactions.Levels, ch.levels)
+	}
 	add("viewports", snap.Viewports, cfg.Viewports, ch.viewports)
 	return changes
 }

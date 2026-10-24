@@ -62,6 +62,9 @@ func TestInherit(t *testing.T) {
 			snap:    model.Options{Modules: []string{"health", "telepathy"}, Levels: []string{"inspect", "dance"}, Viewports: []string{"watch", "mobile"}},
 			modules: "health", levels: "inspect", views: "mobile",
 			changes: "modules health,telepathy -> health; levels inspect,dance -> inspect; viewports watch,mobile -> mobile"},
+		{name: "an old snapshot's levels are made cumulative",
+			snap:    model.Options{Modules: snap.Modules, Levels: []string{"submit"}, Viewports: snap.Viewports},
+			modules: "health,interact", levels: "inspect,click,submit", views: "desktop"},
 		{name: "an old snapshot without options changes nothing",
 			modules: "health,visual,interact,cache,speed", levels: "inspect,click", views: "desktop,mobile"},
 	} {
