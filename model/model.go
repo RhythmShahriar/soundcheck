@@ -375,6 +375,10 @@ type Change struct {
 	After  string            `json:"after,omitempty"`
 	Score  float64           `json:"score,omitempty"` // ranking within the class: % changed, % slower
 	Files  map[string]string `json:"files,omitempty"` // e.g. before/after/diff images, relative to the comparison
+	// Viewport is the viewport a visual change was seen at, such as
+	// "desktop", so accepting it replaces that screenshot alone. Other
+	// changes leave it empty.
+	Viewport string `json:"viewport,omitempty"`
 	// Reason says why an ignored change was ignored: the reason its
 	// ignore rule gives. Changes that count leave it empty.
 	Reason string `json:"reason,omitempty"`

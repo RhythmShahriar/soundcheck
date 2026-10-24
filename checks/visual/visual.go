@@ -418,7 +418,7 @@ func resizes(results []*shotDiff, told map[*shotDiff]bool) []model.Change {
 			title := fmt.Sprintf("Page got %s (%s)", s, r.viewport)
 			g := groups[title]
 			if g == nil {
-				g = &model.Change{Class: model.Changed, Check: "visual/size", Title: title,
+				g = &model.Change{Class: model.Changed, Check: "visual/size", Title: title, Viewport: r.viewport,
 					Before: fmt.Sprintf("%d×%d px", r.sizeB.X, r.sizeB.Y), After: fmt.Sprintf("%d×%d px", r.sizeA.X, r.sizeA.Y),
 					Fix: "Expected if content was added or removed; otherwise look for a new notice, banner or element pushing the layout."}
 				groups[title] = g
@@ -524,7 +524,7 @@ func changes(results []*shotDiff, threshold float64, told map[*shotDiff]bool) []
 	explained := map[*shotDiff]map[int]bool{} // regions covered by a shared change
 	for _, lk := range labels {
 		sh := byLabel[lk]
-		ch := model.Change{Class: model.Changed, Check: "visual/shared"}
+		ch := model.Change{Class: model.Changed, Check: "visual/shared", Viewport: sh.viewport}
 		var heights []int
 		for _, m := range sh.members {
 			if !slices.Contains(ch.Pages, m.r.page.Path) {
@@ -674,7 +674,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 	detail := strings.Join(parts, ". ")
 	return model.Change{Class: model.Changed, Check: "visual/page",
 		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
-		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files}, true
+		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files, Viewport: r.viewport}, true
 }
 
 // placeOf tells an area's size and where it is, e.g. "377×314 px, 143 px
@@ -788,7 +788,7 @@ func collapse(cs []model.Change, vp string) []model.Change {
 	return []model.Change{{Class: model.Changed, Check: "visual/page",
 		Title:  fmt.Sprintf("%d pages look different (%s)", len(cs), vp),
 		Detail: fmt.Sprintf("Median %.2f%% of each page changed, at most %.2f%% (%s, shown).", round2(median), worst.Score, worst.Pages[0]),
-		Pages:  pages, Score: worst.Score, Files: worst.Files}}
+		Pages:  pages, Score: worst.Score, Files: worst.Files, Viewport: vp}}
 }
 
 // Where a block sits, for grouping: pages differ in length, so a block
@@ -926,7 +926,7 @@ func blockChange(rs []*shotDiff, bs []Band, where string) model.Change {
 		}
 		detail += fmt.Sprintf(" The pages are %s %s in all.", t, dir)
 	}
-	ch := model.Change{Class: model.Changed, Check: "visual/block", Title: title, Detail: detail, Pages: paths, Score: round2(score),
+	ch := model.Change{Class: model.Changed, Check: "visual/block", Title: title, Detail: detail, Pages: paths, Score: round2(score), Viewport: vp,
 		Fix: "Expected if you added or removed it; otherwise look for a plugin or theme notice, banner or element that appeared."}
 	for _, p := range paths {
 		for _, r := range rs {

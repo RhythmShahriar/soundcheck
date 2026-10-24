@@ -330,3 +330,89 @@ func TestAcceptLocksTheStoreWithATrailingSlash(t *testing.T) {
 		t.Errorf("Accept ignored the store's lock: %v", err)
 	}
 }
+
+// twoViewports is a snapshot and a run of /a/ at desktop and mobile.
+// The snapshot learned a dynamic region at desktop; in the run /a/
+// gained a red block at both viewports.
+func twoViewports(t *testing.T) fixture {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), ".soundcheck")
+	f := fixture{snap: filepath.Join(root, "snapshots", "good"), run: filepath.Join(root, "runs", "now")}
+	write := func(dir string, block image.Rectangle, dynamic []model.Rect) {
+		r := &model.Run{Schema: model.Schema, Version: "test", Target: "http://site.test/",
+			Options: model.Options{Viewports: []string{"desktop", "mobile"}, Modules: []string{"visual"}}}
+		p := model.Page{ID: model.PageID("/a/"), Path: "/a/", Status: 200, Shots: map[string]model.Shot{}}
+		for _, vp := range []string{"desktop", "mobile"} {
+			file := "shots/" + p.ID + "-" + vp + ".png"
+			if err := store.Saver(dir)(file, screen(block)); err != nil {
+				t.Fatal(err)
+			}
+			s := model.Shot{File: file, Width: 800, Height: 1200}
+			if vp == "desktop" {
+				s.Dynamic = dynamic
+			}
+			p.Shots[vp] = s
+		}
+		r.Pages = append(r.Pages, p)
+		if err := store.SaveRun(dir, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(f.snap, image.Rectangle{}, []model.Rect{{X: 0, Y: 400, W: 800, H: 100}})
+	write(f.run, image.Rect(100, 800, 300, 900), nil)
+	return f
+}
+
+func TestAcceptVisualChangeAtOneViewport(t *testing.T) {
+	t.Parallel()
+	for _, old := range []bool{false, true} {
+		t.Run(fmt.Sprintf("old comparison %t", old), func(t *testing.T) {
+			t.Parallel()
+			f := twoViewports(t)
+			c := f.compareAgain(t)
+			var desktop string
+			for i, ch := range c.Changes {
+				if old { // written before changes named their viewport
+					c.Changes[i].Viewport = ""
+				}
+				if ch.Check == "visual/page" && strings.HasSuffix(ch.Title, "(desktop)") {
+					desktop = ch.ID
+				}
+			}
+			if desktop == "" || len(onPage(c, "visual/page", "/a/")) != 2 {
+				t.Fatalf("want a visual change at each viewport: %+v", c.Changes)
+			}
+			before, err := store.LoadRun(f.snap)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mobile := before.Page("/a/").Shots["mobile"]
+
+			if _, err := store.Accept(f.snap, f.run, c, store.Selector{IDs: []string{desktop}}, "dana"); err != nil {
+				t.Fatal(err)
+			}
+			snap, err := store.LoadRun(f.snap)
+			if err != nil {
+				t.Fatal(err)
+			}
+			shots := snap.Page("/a/").Shots
+			if got := shots["mobile"]; got.File != mobile.File {
+				t.Errorf("accepting the desktop change replaced the mobile screenshot: %+v", got)
+			}
+			if shots["desktop"].File == before.Page("/a/").Shots["desktop"].File {
+				t.Errorf("the desktop screenshot wasn't replaced: %+v", shots["desktop"])
+			}
+			if got := shots["desktop"].Dynamic; len(got) != 1 || got[0].Y != 400 {
+				t.Errorf("the learned dynamic region was dropped: %+v", got)
+			}
+			again := f.compareAgain(t)
+			var left []string
+			for _, ch := range onPage(again, "visual/page", "/a/") {
+				left = append(left, ch.Title)
+			}
+			if len(left) != 1 || !strings.HasSuffix(left[0], "(mobile)") {
+				t.Errorf("after accepting desktop, changes left = %q, want the mobile one", left)
+			}
+		})
+	}
+}

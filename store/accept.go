@@ -89,7 +89,9 @@ type target struct {
 // comparison they come from and afterDir the folder of its current run.
 //
 // Only the accepted pages' baselines change, only in what the change
-// is about: a visual change copies that page's screenshots from the run,
+// is about: a visual change copies that page's screenshot at the
+// change's viewport from the run, keeping the dynamic regions the
+// snapshot learned,
 // an issue change replaces the page's issues with its key (the site's,
 // for a site-wide issue such as a broken link), a speed change copies
 // the page's metrics and resources; title, text, redirect, cache and
@@ -226,7 +228,7 @@ type acceptor struct {
 	before, after         *model.Run
 	snapshotDir, afterDir string
 	suffix                string          // makes new screenshot names unique to this accept
-	shotsDone             map[string]bool // pages whose screenshots were copied
+	shotsDone             map[string]bool // page and viewport pairs whose screenshots were copied
 	siteDone              map[string]bool // site issue keys replaced
 	written, replaced     []string        // screenshot files, relative to snapshotDir
 }
@@ -285,7 +287,7 @@ func (a *acceptor) page(ch model.Change, path string) (bool, error) {
 	mod, rule, _ := strings.Cut(ch.Check, "/")
 	switch mod {
 	case "visual":
-		if err := a.shots(bp, ap); err != nil {
+		if err := a.shots(bp, ap, viewportOf(ch)); err != nil {
 			return false, err
 		}
 	case "speed":
@@ -314,21 +316,47 @@ func (a *acceptor) page(ch model.Change, path string) (bool, error) {
 	return true, nil
 }
 
-// shots copies a page's screenshots from the run into the snapshot,
-// once per page, under new names; see Accept.
-func (a *acceptor) shots(bp, ap *model.Page) error {
-	if a.shotsDone[bp.Path] {
-		return nil
+// viewportOf returns the viewport a visual change is about. A
+// comparison written before changes named it has it at the end of the
+// title, as in "Page looks different (mobile)". "" means it can't be
+// told, and every viewport is accepted.
+func viewportOf(ch model.Change) string {
+	if ch.Viewport != "" {
+		return ch.Viewport
 	}
-	a.shotsDone[bp.Path] = true
-	if len(ap.Shots) == 0 {
-		return nil
+	t, ok := strings.CutSuffix(ch.Title, ")")
+	if !ok {
+		return ""
+	}
+	i := strings.LastIndex(t, " (")
+	if i < 0 || strings.ContainsAny(t[i+2:], " ()") {
+		return ""
+	}
+	return t[i+2:]
+}
+
+// shots copies a page's screenshot at viewport vp (every viewport when
+// vp is "") from the run into the snapshot, once per page and viewport,
+// under new names; see Accept. A run doesn't learn dynamic regions, so
+// the snapshot's are kept for the new screenshot unless the run has its
+// own.
+func (a *acceptor) shots(bp, ap *model.Page, vp string) error {
+	vps := slices.Sorted(maps.Keys(ap.Shots))
+	if vp != "" {
+		if _, ok := ap.Shots[vp]; !ok {
+			return nil
+		}
+		vps = []string{vp}
 	}
 	shots := maps.Clone(bp.Shots)
 	if shots == nil {
 		shots = map[string]model.Shot{}
 	}
-	for _, vp := range slices.Sorted(maps.Keys(ap.Shots)) {
+	for _, vp := range vps {
+		if a.shotsDone[bp.Path+"|"+vp] {
+			continue
+		}
+		a.shotsDone[bp.Path+"|"+vp] = true
 		s := ap.Shots[vp]
 		old := shots[vp]
 		var err error
@@ -337,6 +365,9 @@ func (a *acceptor) shots(bp, ap *model.Page) error {
 		}
 		if s.Second, err = a.copyShot(s.Second); err != nil {
 			return err
+		}
+		if len(s.Dynamic) == 0 {
+			s.Dynamic = slices.Clone(old.Dynamic)
 		}
 		a.replaced = append(a.replaced, old.File, old.Second)
 		shots[vp] = s

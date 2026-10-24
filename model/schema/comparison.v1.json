@@ -55,7 +55,8 @@
         "after": {"type": "string"},
         "score": {"type": "number", "description": "Ranks changes within a class: percent changed or slower, or the page count."},
         "files": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Images such as before, after and diff, relative to the comparison's folder."},
-        "reason": {"type": "string", "description": "Why an ignored change was ignored: its rule's reason."}
+        "reason": {"type": "string", "description": "Why an ignored change was ignored: its rule's reason."},
+        "viewport": {"type": "string", "description": "The viewport a visual change was seen at, such as desktop. Left out for other changes."}
       }
     },
     "summary": {
