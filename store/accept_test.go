@@ -6,6 +6,7 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -16,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/visual"
@@ -301,5 +303,23 @@ func TestAcceptRefusesScreenshotLinkedOutsideTheRun(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Join(f.snap, "shots"))
 	if len(entries) != 3 {
 		t.Errorf("the linked file was copied: %d in shots/", len(entries))
+	}
+}
+
+func TestAcceptLocksTheStoreWithATrailingSlash(t *testing.T) {
+	f := newFixture(t)
+	c := f.compareAgain(t)
+	wait := *store.LockWait
+	*store.LockWait = 100 * time.Millisecond
+	t.Cleanup(func() { *store.LockWait = wait })
+	// Another live process holds the store's lock.
+	root := filepath.Dir(filepath.Dir(f.snap))
+	held := fmt.Sprintf("%d\n%s\n", os.Getppid(), time.Now().UTC().Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(root, store.LockFile), []byte(held), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := store.Accept(f.snap+string(filepath.Separator), f.run, c, store.Selector{Page: "/a/", Check: "visual/*"}, "dana")
+	if err == nil || !strings.Contains(err.Error(), "another Soundcheck") {
+		t.Errorf("Accept ignored the store's lock: %v", err)
 	}
 }

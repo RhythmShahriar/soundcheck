@@ -107,7 +107,8 @@ func Accept(snapshotDir, afterDir string, c *model.Comparison, sel Selector, who
 		return nil, err
 	}
 	// snapshotDir is <store>/snapshots/<name>.
-	unlock, err := Store{Root: filepath.Dir(filepath.Dir(snapshotDir))}.lock()
+	// Clean first: a trailing slash would make the lock land in snapshots/.
+	unlock, err := Store{Root: filepath.Dir(filepath.Dir(filepath.Clean(snapshotDir)))}.lock()
 	if err != nil {
 		return nil, err
 	}
