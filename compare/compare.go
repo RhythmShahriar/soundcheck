@@ -358,6 +358,9 @@ func mismatchWith(before, after *model.Run, missing int) []string {
 	if note := versionNote(before.Version, after.Version); note != "" {
 		w = append(w, note)
 	}
+	if b, a := before.Options.EngineName(), after.Options.EngineName(); b != a {
+		w = append(w, fmt.Sprintf("browser engines differ (snapshot %s, now %s); screenshots and speed only compare in the same engine", b, a))
+	}
 	if !slices.Equal(before.Options.Viewports, after.Options.Viewports) {
 		w = append(w, fmt.Sprintf("viewports differ (snapshot %v, now %v)", before.Options.Viewports, after.Options.Viewports))
 	}

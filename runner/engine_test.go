@@ -109,7 +109,10 @@ func TestEnginesFindTheSameHealthIssues(t *testing.T) {
 	needBrowser(t)
 	needFirefox(t)
 	srv := brokenSite(t)
-	chrome, _ := healthIssues(t, srv, capture.Chrome)
+	chrome, chromeRun := healthIssues(t, srv, capture.Chrome)
+	if chromeRun.Options.Engine != "" {
+		t.Errorf("a Chrome run stored engine %q", chromeRun.Options.Engine)
+	}
 	firefox, run := healthIssues(t, srv, capture.Firefox)
 	if !slices.Equal(chrome, firefox) {
 		t.Errorf("issues differ\nchrome:\n  %s\nfirefox:\n  %s", strings.Join(chrome, "\n  "), strings.Join(firefox, "\n  "))
@@ -180,7 +183,8 @@ func TestChromeOnlyModulesSkipOnOtherEngines(t *testing.T) {
 			t.Errorf("no warning %q in %q", w, run.Warnings)
 		}
 	}
-	if slices.Contains(run.Options.Modules, "mutates") || !slices.Contains(run.Options.Modules, "tabmod") || run.Options.LoggedIn {
+	if slices.Contains(run.Options.Modules, "mutates") || !slices.Contains(run.Options.Modules, "tabmod") || run.Options.LoggedIn ||
+		run.Options.Engine != "firefox" {
 		t.Errorf("run options: %+v", run.Options)
 	}
 }

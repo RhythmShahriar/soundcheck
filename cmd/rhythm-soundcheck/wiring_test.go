@@ -517,3 +517,63 @@ func TestAcceptHintName(t *testing.T) {
 		t.Errorf("no hint:\n%s", out.String())
 	}
 }
+
+// help <command> describes the main commands, not just the general help.
+func TestHelpTopics(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"snapshot": "rhythm-soundcheck snapshot <url> [flags]",
+		"compare":  "rhythm-soundcheck compare [url] [flags]",
+		"report":   "rhythm-soundcheck report --client --brand <agency.yaml>",
+		"import":   "rhythm-soundcheck import <backstop.json> [--site <url>] [--force]",
+	} {
+		code, out, _ := runCLI(t, "help", cmd)
+		if code != exitOK || !strings.Contains(out, want) || strings.Contains(out, "Requests and browser:") {
+			t.Errorf("help %s: exit %d\n%s", cmd, code, out)
+		}
+	}
+	_, out, _ := runCLI(t, "help")
+	for _, row := range []string{"      --serve ", "      --client ", "      --brand <file> ", "      --site <url> ", "      --force ", "      --pages-only "} {
+		if !strings.Contains(out, row) {
+			t.Errorf("help lists no %q row", row)
+		}
+	}
+}
+
+// Every command takes --plain and --no-color, the subcommands too.
+func TestSubcommandsTakeColorFlags(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, args := range [][]string{
+		{"history", "--plain"}, {"history", "--no-color"},
+		{"accept", "c1", "--plain"}, {"accept", "--no-color", "c1"},
+		{"review", "--plain"}, {"review", "--no-color"},
+	} {
+		_, _, errOut := runCLI(t, args...)
+		if strings.Contains(errOut, "unknown flag") {
+			t.Errorf("%v: %s", args, errOut)
+		}
+	}
+	if code, _, errOut := runCLI(t, "review", "--frobnicate"); code != exitUsage || !strings.Contains(errOut, "unknown flag --frobnicate") {
+		t.Errorf("review --frobnicate: exit %d %s", code, errOut)
+	}
+}
+
+// -H Host naming another host is a usage error found before the run
+// starts: no header, no https probe, exit 2 rather than 3.
+func TestHostHeaderIsAUsageError(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, args := range [][]string{
+		{"run", "127.0.0.1:21210", "-H", "Host: x"},
+		{"snapshot", "127.0.0.1:21210", "--header", "host: shop.test"},
+		{"127.0.0.1:21210", "--against", "127.0.0.1:21211", "-H", "Host: x"},
+	} {
+		code, out, errOut := runCLI(t, args...)
+		if code != exitUsage || !strings.Contains(errOut, "-H Host: ") || strings.Contains(errOut+out, "using http") || strings.Contains(errOut+out, "Modules") {
+			t.Errorf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	if _, err := os.Stat(".soundcheck/runs"); err == nil {
+		if left, _ := os.ReadDir(".soundcheck/runs"); len(left) > 0 {
+			t.Errorf("a run folder was made: %s", left[0].Name())
+		}
+	}
+}

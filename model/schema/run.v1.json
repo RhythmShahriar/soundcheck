@@ -65,7 +65,8 @@
         "logged_in": {"type": "boolean"},
         "echo": {"type": "boolean"},
         "echo_mode": {"type": "string"},
-        "echo_url": {"type": "string"}
+        "echo_url": {"type": "string"},
+        "engine": {"enum": ["firefox", "webkit"], "description": "The browser engine the pages were captured in. Absent for Chrome."}
       }
     },
     "issue": {

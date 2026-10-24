@@ -26,7 +26,8 @@ Usage:
   rhythm-soundcheck update [--clear]         install or refresh its browser
   rhythm-soundcheck demo [--keep]            try it on a built-in site
   rhythm-soundcheck --list-checks            every check each module makes
-  rhythm-soundcheck help <command>           more on accept, review, history,
+  rhythm-soundcheck help <command>           more on snapshot, compare, report,
+                                             import, accept, review, history,
                                              fleet, wp-update or rules
 
 Snapshots:
@@ -36,15 +37,15 @@ Snapshots:
                              (alias --against-snapshot)
       --against <url>        compare with another site instead of a snapshot
       --strict               stop (exit 2) when compare wouldn't run with the
-                             snapshot's modules, levels and viewports
+                             snapshot's modules, levels, viewports and browser
       --confirm[=off]        compare visits BROKE and NEW pages again and
                              shows the ones that don't come back as UNSTABLE
                              (default on)
       --resume               snapshot: carry on with a stopped snapshot of
                              the same --name, keeping the pages it finished
 
-compare runs with the snapshot's modules, levels and viewports unless a flag
-or the config file sets them. It says what you changed.
+compare runs with the snapshot's modules, levels, viewports and browser
+unless a flag or the config file sets them. It says what you changed.
 
 Output:
       --json                 JSON (schema rhythm-soundcheck/v1)
@@ -55,6 +56,12 @@ Output:
                              extension: .json .md .xml .html), keep the live
                              view; repeat it for several files and formats
       --open                 open the HTML report when done
+      --serve                report: review the comparison in the browser,
+                             accepting or ignoring each change
+      --client               report: a client-ready HTML report, to -o or
+                             stdout; needs --brand
+      --brand <file>         report --client: the agency's name, logo and
+                             color (agency.yaml)
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
       --no-color             no color
@@ -130,6 +137,13 @@ CI:
                              broke, new, changed or slower; for run and
                              snapshot: issues at or above error, warning or
                              notice; none never fails (overrides fail_on)
+
+Import:
+      --site <url>           import: the site to check, written as site:
+      --force                import: replace .soundcheck/config.yaml when
+                             there is one
+      --pages-only           import: read only the page paths of a Lost
+                             Pixel config, which is code and never runs
 
 Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
 test that caches don't leak logged-in pages to visitors and to run flows that

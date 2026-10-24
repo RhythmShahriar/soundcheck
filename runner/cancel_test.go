@@ -126,3 +126,16 @@ func TestVisitErrorNamesTheContextsEnd(t *testing.T) {
 		t.Errorf("deadline: %q", p.Error)
 	}
 }
+
+// A page the run's deadline cut short is visited again by --resume, like
+// a canceled one; a page that timed out on its own is finished.
+func TestCutShort(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"context canceled": true, "context deadline exceeded": true,
+		"": false, "timed out": false, "net::ERR_CONNECTION_REFUSED": false,
+	} {
+		if got := cutShort(&model.Page{Error: msg}); got != want {
+			t.Errorf("cutShort(%q) = %v", msg, got)
+		}
+	}
+}

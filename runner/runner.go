@@ -99,7 +99,8 @@ type Hooks struct {
 	Discovered func(pages int, skipped map[string]int)
 	Page       func(p *model.Page, done, total int)
 	// Log gets progress notes; a leading "!" marks one to show even
-	// without --verbose (see report.Pretty.Log).
+	// without --verbose and a leading "~" a status line that -q hides
+	// (see report.Pretty.Log).
 	Log func(msg string)
 	// Progress gets a module's progress through a long step, from
 	// check.Context.Progress.
@@ -226,8 +227,12 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 
 	engine := cmpEngine(opts.Engine)
+	if engine != capture.Chrome {
+		run.Options.Engine = string(engine)
+	}
 	hosts := ratelimit.NewHosts(cfg.Rate)
 	cc := &check.Context{
+		Ctx:    ctx,
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
 	}
@@ -358,9 +363,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			if opts.Hooks.Page != nil {
 				emit(func() { opts.Hooks.Page(p, d, t) })
 			}
-			// A page the cancel cut short isn't finished: a resumed run
-			// visits it again.
-			if opts.OnPage != nil && p.Error != canceled {
+			// A page the cancel or the run's deadline cut short isn't
+			// finished: a resumed run visits it again.
+			if opts.OnPage != nil && !cutShort(p) {
 				emit(func() { opts.OnPage(p) })
 			}
 		})
@@ -379,7 +384,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if ctx.Err() == nil && !opts.revisit {
 		// Probing every link can take minutes after the last page.
 		if slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.SiteChecker); return ok }) {
-			log("!Checking site-wide issues (links, sitemap)...")
+			log("~Checking site-wide issues (links, sitemap)...")
 		}
 		for _, m := range opts.Modules {
 			if s, ok := m.(check.SiteChecker); ok {
@@ -511,6 +516,12 @@ var addHook func(added bool)
 // recorded before the cancel is partial; compared with a snapshot it
 // would read as a page that lost its title or went blank.
 var canceled = context.Canceled.Error()
+
+// cutShort reports whether the run ending, by a cancel or its deadline,
+// cut p's visit short. visit records both as the context's error.
+func cutShort(p *model.Page) bool {
+	return p.Error == canceled || p.Error == context.DeadlineExceeded.Error()
+}
 
 // visit checks one page in its own tab.
 func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimit.Hosts, pg crawl.Page) *model.Page {

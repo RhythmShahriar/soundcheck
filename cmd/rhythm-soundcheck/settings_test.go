@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -89,9 +90,51 @@ func TestInherit(t *testing.T) {
 	}
 }
 
+func TestInheritEngine(t *testing.T) {
+	for _, tc := range []struct {
+		name, snap string
+		args       []string
+		engine     string
+		change     string
+	}{
+		{name: "a Chrome snapshot stays in Chrome", engine: ""},
+		{name: "a Firefox snapshot is compared in Firefox", snap: "firefox", engine: "firefox"},
+		{name: "--browser wins and is a change", snap: "", args: []string{"--browser", "firefox"},
+			engine: "firefox", change: "browser chrome -> firefox (--browser)"},
+		{name: "--browser chrome over a WebKit snapshot", snap: "webkit", args: []string{"--browser", "chrome"},
+			engine: "chrome", change: "browser webkit -> chrome (--browser)"},
+		{name: "a path to Chrome is Chrome", snap: "", args: []string{"--browser", "/usr/bin/chromium"}, engine: ""},
+		{name: "an engine this version doesn't know is left", snap: "netscape", engine: "",
+			change: "browser netscape -> chrome"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			p, err := parse(append([]string{"compare"}, tc.args...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := inheritEngine(&p.engine, model.Options{Engine: tc.snap}, p.chosen)
+			if string(p.engine) != tc.engine {
+				t.Errorf("engine = %q, want %q", p.engine, tc.engine)
+			}
+			got := ""
+			if c != nil {
+				got = c.String()
+			}
+			if got != tc.change {
+				t.Errorf("change = %q, want %q", got, tc.change)
+			}
+		})
+	}
+}
+
 func TestSnapshotSettings(t *testing.T) {
 	got := snapshotSettings("forms", model.Options{Modules: []string{"health", "interact"}, Levels: []string{"inspect", "submit"}, Viewports: []string{"desktop"}})
 	if want := `from snapshot "forms" (modules health,interact; levels inspect,submit; viewports desktop)`; got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+	got = snapshotSettings("ff", model.Options{Modules: []string{"health"}, Engine: "firefox"})
+	if want := `from snapshot "ff" (modules health; browser firefox)`; got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
 }
@@ -229,4 +272,14 @@ func latestRun(t *testing.T) *model.Run {
 		t.Fatal(err)
 	}
 	return r
+}
+
+func TestBrowserLog(t *testing.T) {
+	var got []string
+	log := browserLog(func(s string) { got = append(got, s) })
+	log("Browser: Chrome 140 (installed)")
+	log("Downloading Chrome for Testing 140.0 (about 150 MB)...")
+	if want := []string{"~Browser: Chrome 140 (installed)", "!Downloading Chrome for Testing 140.0 (about 150 MB)..."}; !slices.Equal(got, want) {
+		t.Errorf("got %q", got)
+	}
 }

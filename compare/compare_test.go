@@ -111,6 +111,18 @@ func TestMismatchEchoMode(t *testing.T) {
 	}
 }
 
+func TestMismatchEngine(t *testing.T) {
+	before, after := &model.Run{}, &model.Run{}
+	after.Options.Engine = "firefox"
+	if w := strings.Join(mismatch(before, after), "\n"); !strings.Contains(w, "browser engines differ (snapshot chrome, now firefox)") {
+		t.Errorf("want an engine warning, got %q", w)
+	}
+	before.Options.Engine = "firefox"
+	if w := mismatch(before, after); len(w) != 0 {
+		t.Errorf("same engine warned: %q", w)
+	}
+}
+
 // deterministicRuns has one issue on six pages with a different detail on
 // each, plus changes that tie on class, score and title.
 func deterministicRuns() (before, after *model.Run) {

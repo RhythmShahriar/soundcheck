@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -16,7 +17,7 @@ import (
 // snapshot: the flag ("--level") or the config file's path. Empty means
 // not set, so the snapshot's value is used.
 type chosen struct {
-	modules, levels, viewports string
+	modules, levels, viewports, engine string
 }
 
 // chosenSettings reads which of the inheritable settings the flags
@@ -26,13 +27,13 @@ func chosenSettings(set map[string]bool, cfg config.Config, configPath string) c
 		switch {
 		case set[flagName]:
 			return "--" + flagName
-		case cfg.InFile(key):
+		case key != "" && cfg.InFile(key):
 			return configPath
 		}
 		return ""
 	}
 	return chosen{modules: from("modules", "modules"), levels: from("level", "interactions.levels"),
-		viewports: from("viewport", "viewports")}
+		viewports: from("viewport", "viewports"), engine: from("browser", "")}
 }
 
 // settingChange is one setting a comparison runs differently from its
@@ -91,6 +92,26 @@ func inherit(cfg *config.Config, snap model.Options, ch chosen, skip []string) [
 	return changes
 }
 
+// inheritEngine gives engine the snapshot's browser engine when --browser
+// didn't choose one: screenshots and speed only compare in the same
+// engine. It returns the change when the engines still differ, or nil.
+func inheritEngine(engine *capture.Engine, snap model.Options, ch chosen) *settingChange {
+	if ch.engine == "" {
+		*engine = ""
+		if e, err := capture.ParseEngine(snap.Engine); err == nil && e != capture.Chrome {
+			*engine = e
+		}
+	}
+	before, after := snap.EngineName(), string(*engine)
+	if after == "" {
+		after = "chrome"
+	}
+	if before == after {
+		return nil
+	}
+	return &settingChange{name: "browser", before: []string{before}, after: []string{after}, from: ch.engine}
+}
+
 func joinChanges(changes []settingChange) string {
 	parts := make([]string, len(changes))
 	for i, c := range changes {
@@ -105,12 +126,21 @@ func snapshotSettings(name string, o model.Options) string {
 	for _, p := range []struct {
 		name string
 		v    []string
-	}{{"modules", o.Modules}, {"levels", o.Levels}, {"viewports", o.Viewports}} {
+	}{{"modules", o.Modules}, {"levels", o.Levels}, {"viewports", o.Viewports}, {"browser", engineList(o.Engine)}} {
 		if len(p.v) > 0 {
 			parts = append(parts, p.name+" "+list(p.v))
 		}
 	}
 	return fmt.Sprintf("from snapshot %q (%s)", name, strings.Join(parts, "; "))
+}
+
+// engineList is a stored engine as a one-item list, or nil for Chrome,
+// which the Settings line leaves out.
+func engineList(e string) []string {
+	if e == "" {
+		return nil
+	}
+	return []string{e}
 }
 
 // known keeps the values this version knows, in their order: a snapshot

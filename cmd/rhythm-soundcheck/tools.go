@@ -16,6 +16,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
@@ -34,7 +37,9 @@ import (
 // after --help (0) or a bad flag (2).
 func subFlags(fs *flag.FlagSet, args []string, usage string, stdout, stderr io.Writer) (pos []string, code int, ok bool) {
 	fs.SetOutput(io.Discard)
+	apply := colorFlags(fs)
 	pos, err := cli.ParseInterspersed(fs, args)
+	apply()
 	switch {
 	case errors.Is(err, flag.ErrHelp):
 		fmt.Fprint(stdout, named(usage))
@@ -44,6 +49,19 @@ func subFlags(fs *flag.FlagSet, args []string, usage string, stdout, stderr io.W
 		return nil, exitUsage, false
 	}
 	return pos, 0, true
+}
+
+// colorFlags adds --plain and --no-color to a subcommand's flags, as every
+// command takes them. The returned func, called after parsing, turns color
+// off when either is set.
+func colorFlags(fs *flag.FlagSet) (apply func()) {
+	plain := fs.Bool("plain", false, "")
+	noColor := fs.Bool("no-color", false, "")
+	return func() {
+		if *plain || *noColor {
+			lipgloss.SetColorProfile(termenv.Ascii)
+		}
+	}
 }
 
 // listChecks prints every check of every module, in config.Modules
@@ -387,9 +405,58 @@ func (s *session) clientReport(res report.Result) int {
 	return code
 }
 
-// helpTopics are the commands with their own --help.
+// helpTopics are the commands with their own --help, and the main ones
+// that `help <command>` describes before the full list of flags.
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
-	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage}
+	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage,
+	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic}
+
+const snapshotUsage = `Usage:
+  rhythm soundcheck snapshot <url> [flags]
+
+Records how the site works now: each page's errors, screenshots, forms,
+cache and timing, kept in .soundcheck/snapshots/<name>. compare checks the
+site again against it. --name names it (default: date and time). --resume
+carries on with a stopped snapshot of the same --name and keeps the pages it
+finished. Every flag in rhythm soundcheck help applies.
+`
+
+const compareUsage = `Usage:
+  rhythm soundcheck compare [url] [flags]
+  rhythm soundcheck <url> --against <url>
+
+Checks the site again and shows what changed since the snapshot (the latest
+one unless --snapshot <name> picks another) as BROKE, NEW, CHANGED, SLOWER,
+FIXED and UNSTABLE. With no URL it checks the snapshot's site. It runs with
+the snapshot's modules, levels, viewports and browser unless a flag or the
+config file sets them; --strict stops (exit 2) when they would differ.
+BROKE and NEW pages are visited once more to confirm them (--confirm=off
+skips that). --against compares two sites now instead of a snapshot. Every
+flag in rhythm soundcheck help applies.
+`
+
+const reportUsage = `Usage:
+  rhythm soundcheck report [run folder|snapshot] [flags]
+  rhythm soundcheck report --serve
+  rhythm soundcheck report --client --brand <agency.yaml> [-o report.html]
+
+Shows the last result again (or the run folder or snapshot named) in any
+output format: --md, --json, --junit, --html or -o <file>. --serve opens the
+comparison in the browser, where each change can be accepted or ignored.
+--client writes a client-ready HTML report with the agency's name, logo and
+color from --brand, to -o or stdout.
+`
+
+const importTopic = `Usage:
+  rhythm soundcheck import <backstop.json> [--site <url>] [--force]
+  rhythm soundcheck import <lostpixel.config.ts> --pages-only [--site <url>] [--force]
+
+Writes .soundcheck/config.yaml from a BackstopJS config, or from the page
+paths of a Lost Pixel config with --pages-only (that file is code, so it is
+read as text and never run). --site sets the site to check (default: the
+first BackstopJS scenario's). --force replaces a config that's already
+there.
+`
 
 // topic returns a command's own usage, for `help <command>`.
 func topic(name string) (string, bool) {

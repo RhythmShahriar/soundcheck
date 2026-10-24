@@ -221,6 +221,17 @@ type Options struct {
 	Echo      bool     `json:"echo,omitempty"`      // messages were recorded through Echo
 	EchoMode  string   `json:"echo_mode,omitempty"` // Echo's mode: seal or observe
 	EchoURL   string   `json:"echo_url,omitempty"`  // where Echo ran, for its live view
+	// Engine is the browser engine pages were captured in: firefox or
+	// webkit. Empty is Chrome, which every run before engines had.
+	Engine string `json:"engine,omitempty"`
+}
+
+// EngineName is the run's browser engine, with Chrome for empty.
+func (o Options) EngineName() string {
+	if o.Engine == "" {
+		return "chrome"
+	}
+	return o.Engine
 }
 
 // PageID returns a short stable ID for a URL, used in file names.

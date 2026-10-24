@@ -30,6 +30,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/rhythm/kit/update"
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -157,7 +158,7 @@ func gitTracked(path string) bool {
 func (s *session) start(target string) {
 	if kitconfig.FirstRun("soundcheck-authorised-use") && !s.o.quiet {
 		fmt.Fprint(s.stderr, "Note: check only sites you own or are authorised to test. Soundcheck browses\n"+
-			"like a visitor at a polite pace, and only submits forms when you turn on the\n"+
+			"like a visitor at a polite pace. It only submits forms when you turn on the\n"+
 			"submit level, never on sites listed as production. This notice is shown once.\n\n")
 	}
 	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
@@ -215,7 +216,7 @@ func (s *session) connectEcho() error {
 	s.echo = link
 	what := "recording what each form submit and flow sends"
 	if !s.cfg.Level("submit") && !s.cfg.Level("flows") {
-		what = "on, but forms are only submitted with --level submit (and flows with flows)"
+		what = "on; forms are only submitted with --level submit (and flows with flows)"
 	}
 	s.view.Step("Echo", fmt.Sprintf("%s, %s mode: %s", link.URL, link.Mode, what))
 	return nil
@@ -333,7 +334,7 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: s.modules(s.cfg), Login: login,
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
-			Visible: s.o.show, Log: func(msg string) { s.view.Log("!" + msg) }},
+			Visible: s.o.show, Log: browserLog(s.view.Log)},
 		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress},
 	}, nil
 }
@@ -504,7 +505,7 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("snapshot", "confirm", "serve", "client", "brand")); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("snapshot", "confirm", "serve", "client", "brand"), s.hostHeader(site)); err != nil {
 		return s.fail(err)
 	}
 	if s.o.resume && s.o.name == "" {
@@ -633,6 +634,22 @@ func (s *session) trend(run *model.Run) []float64 {
 }
 
 // only refuses flags that belong to another command.
+// hostHeader refuses -H Host naming another host than each site: the
+// browser can't send it, so that's a usage error (exit 2) found before
+// anything starts, not a site that couldn't be checked.
+func (s *session) hostHeader(sites ...string) error {
+	for _, site := range sites {
+		u, _, err := ratelimit.ParseTarget(site)
+		if err != nil {
+			continue // target() words that error
+		}
+		if err := capture.HostError(s.headers, u); err != nil {
+			return cli.UsageError{Msg: err.Error()}
+		}
+	}
+	return nil
+}
+
 func (s *session) only(cmd string, flags ...string) error {
 	for _, f := range flags {
 		if s.set[f] {
@@ -674,7 +691,13 @@ func cmdCompare(s *session) int {
 		runJSON := rel(filepath.Join(snapDir, "run.json"))
 		s.siteFrom, s.siteKey, s.siteTrusted = runJSON, "target", !gitTracked(runJSON)
 	}
+	if err := s.hostHeader(site); err != nil {
+		return s.fail(err)
+	}
 	changes := inherit(&s.cfg, before.Options, s.chosen, s.o.skip)
+	if c := inheritEngine(&s.engine, before.Options, s.chosen); c != nil {
+		changes = append(changes, *c)
+	}
 	if len(s.cfg.Modules) == 0 {
 		return s.fail(cli.Usagef("no modules left to run: the snapshot ran %s", list(before.Options.Modules)))
 	}
@@ -687,7 +710,7 @@ func cmdCompare(s *session) int {
 	}
 	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q, %s, taken %s", before.Name, plural(len(before.Pages), "page"), report.Ago(before.Started)))
-	if len(before.Options.Modules)+len(before.Options.Levels)+len(before.Options.Viewports) > 0 {
+	if len(before.Options.Modules)+len(before.Options.Levels)+len(before.Options.Viewports)+len(before.Options.Engine) > 0 {
 		s.view.Step("Settings", snapshotSettings(before.Name, before.Options))
 	}
 	if len(changes) > 0 {
@@ -706,7 +729,8 @@ func cmdAgainst(s *session) int {
 	if len(s.args) != 1 {
 		return s.fail(cli.Usagef("--against compares one site with another: %s staging.example.com --against example.com", cmdName()))
 	}
-	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict(), s.only("--against", "resume", "serve", "client", "brand")); err != nil {
+	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict(), s.only("--against", "resume", "serve", "client", "brand"),
+		s.hostHeader(s.args[0], s.o.against)); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -821,7 +845,7 @@ func cmdRun(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("run", "confirm", "resume", "serve", "client", "brand")); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("run", "confirm", "resume", "serve", "client", "brand"), s.hostHeader(site)); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -1097,3 +1121,16 @@ func plural(n int, word string) string {
 }
 
 func validName(s string) bool { return store.ValidName(s) }
+
+// browserLog passes the browser's messages to log: the line naming the
+// browser used is a status line, hidden with -q; the rest (a download,
+// a failure) always shows.
+func browserLog(log func(string)) func(string) {
+	return func(msg string) {
+		if strings.HasPrefix(msg, "Browser: ") {
+			log("~" + msg)
+			return
+		}
+		log("!" + msg)
+	}
+}

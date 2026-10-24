@@ -308,8 +308,16 @@ func timing(pg *model.Page) string {
 func millis(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
 
 // Log prints a message from the run (browser downloads, warnings) when
-// verbose, or always for lines that need the user's attention.
+// verbose, or always for lines that need the user's attention ("!"
+// first). A status line ("~" first: the browser used, a long step
+// starting) shows like those, except with -q, which shows results only.
 func (p *Pretty) Log(msg string) {
+	if status, ok := strings.CutPrefix(msg, "~"); ok {
+		if p.o.Quiet {
+			return
+		}
+		msg = "!" + status
+	}
 	if !p.o.Verbose && !strings.HasPrefix(msg, "!") {
 		return
 	}

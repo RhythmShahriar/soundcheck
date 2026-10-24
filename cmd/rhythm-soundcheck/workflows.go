@@ -102,7 +102,9 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(io.Discard)
 	page := fs.String("page", "", "")
 	check := fs.String("check", "", "")
+	apply := colorFlags(fs)
 	ids, err := cli.ParseInterspersed(fs, args)
+	apply()
 	if errors.Is(err, flag.ErrHelp) {
 		fmt.Fprint(stdout, named(acceptUsage))
 		return exitOK
@@ -252,19 +254,19 @@ terminal; in scripts use accept, or report --serve for the browser.
 
 // cmdReview reviews the latest comparison's changes in the terminal.
 func cmdReview(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprint(stdout, named(reviewUsage))
-		return exitOK
+	pos, code, ok := subFlags(flag.NewFlagSet("review", flag.ContinueOnError), args, reviewUsage, stdout, stderr)
+	if !ok {
+		return code
 	}
-	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
+	if len(pos) > 1 {
 		fmt.Fprint(stderr, named(reviewUsage))
 		return exitUsage
 	}
 	st := store.Store{Root: config.Dir}
 	var sc stored
 	var err error
-	if len(args) == 1 {
-		sc, err = comparisonIn(st, args[0], "review")
+	if len(pos) == 1 {
+		sc, err = comparisonIn(st, pos[0], "review")
 	} else {
 		sc, err = latestComparison(st, "review")
 	}

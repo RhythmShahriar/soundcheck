@@ -94,7 +94,7 @@ func TestSiteProgressAndDroppedPage(t *testing.T) {
 		t.Error("/x?s=1 was checked")
 	}
 	for _, want := range []string{"!--page /x?s=1 matches the default exclude *?s=*; not checked",
-		"!Checking site-wide issues (links, sitemap)..."} {
+		"~Checking site-wide issues (links, sitemap)..."} {
 		if !slices.Contains(logs, want) {
 			t.Errorf("log %q is missing from %q", want, logs)
 		}
