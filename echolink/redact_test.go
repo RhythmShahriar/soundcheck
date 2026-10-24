@@ -19,7 +19,7 @@ func TestRedact(t *testing.T) {
 		"Order 1234 of 2 items, total 1,234567.50": "Order 1234 of 2 items, total 1,234567.50",
 		`<td style="color:#123456">&#128512;</td>`: `<td style="color:#123456">&#128512;</td>`,
 		"Call 0123456789 any time":                 "Call 0123456789 any time",
-		"key sk_live_4eC39HqLyjWDarjtT1zdp7dc":     "key sk_live_•••••",
+		"key sk_live_4eC39HqLyjWDarjtT1zdp7dc":     "key sk_l•••••",
 		"https://shop.test/?p=12&lang=en":          "https://shop.test/?p=12&lang=en",
 		// Tokens in the path after a reset or verify segment.
 		"https://app.test/password/reset/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08?email=sam%40app.test": "https://app.test/password/reset/•••••?email=sam%40app.test",

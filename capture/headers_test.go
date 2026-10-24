@@ -25,7 +25,7 @@ func TestStoredHeader(t *testing.T) {
 		{"x-robots-tag", "noindex", "noindex"},
 		{"www-authenticate", `Basic realm="Staging"`, `Basic realm="Staging"`},
 		{"x-api-key", "sk_live_4eC39HqLyjWDarjtT1zdp7dc", "•••••"},
-		{"x-debug-info", "stripe=sk_live_4eC39HqLyjWDarjtT1zdp7dc", "stripe=sk_live_•••••"},
+		{"x-debug-info", "stripe=sk_live_4eC39HqLyjWDarjtT1zdp7dc", "stripe=sk_l•••••"},
 		{"x-debug", "Bearer abcdef123456", "Bearer abcdef123456"},
 		{"x-forwarded-for", "10.0.0.1", "10.0.0.1"},
 		{"x-auth-token", "plain-looking-value", "•••••"},
