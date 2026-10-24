@@ -31,7 +31,10 @@ type Robots struct {
 	Status    int      `json:"status"`               // 0 when it couldn't be fetched
 	Disallow  []string `json:"disallow,omitempty"`   // sorted
 	BlocksAll bool     `json:"blocks_all,omitempty"` // Disallow: / without an Allow that opens it again
-	Sitemaps  []string `json:"sitemaps,omitempty"`
+	// HomeOnly is BlocksAll with "Allow: /$", which opens the home page
+	// and nothing else.
+	HomeOnly bool     `json:"home_only,omitempty"`
+	Sitemaps []string `json:"sitemaps,omitempty"`
 }
 
 // Sitemap is the site's XML sitemap and how many pages it lists, sitemap
@@ -89,7 +92,7 @@ func robots(ctx context.Context, cc *check.Context, root *url.URL) Robots {
 	status, body := fetch(ctx, cc, root.JoinPath("robots.txt").String())
 	r := Robots{Status: status}
 	if status == http.StatusOK {
-		r.Disallow, r.BlocksAll, r.Sitemaps = parseRobots(body)
+		r.Disallow, r.BlocksAll, r.HomeOnly, r.Sitemaps = parseRobots(body)
 	}
 	return r
 }
@@ -97,8 +100,10 @@ func robots(ctx context.Context, cc *check.Context, root *url.URL) Robots {
 // parseRobots reads the rules of the groups for every crawler
 // ("User-agent: *") and every Sitemap line. It follows Google's reading:
 // consecutive User-agent lines share the rules after them. An empty
-// Disallow allows everything.
-func parseRobots(body []byte) (disallow []string, blocksAll bool, sitemaps []string) {
+// Disallow allows everything. Only "Allow: /" and "Allow: /*" open a
+// site that "Disallow: /" closed; "Allow: /$" opens the home page alone,
+// which is homeOnly.
+func parseRobots(body []byte) (disallow []string, blocksAll, homeOnly bool, sitemaps []string) {
 	var allow []string
 	star, inAgents := false, false
 	sc := bufio.NewScanner(bytes.NewReader(body))
@@ -135,8 +140,9 @@ func parseRobots(body []byte) (disallow []string, blocksAll bool, sitemaps []str
 	}
 	slices.Sort(disallow)
 	blocksAll = (slices.Contains(disallow, "/") || slices.Contains(disallow, "/*")) &&
-		!slices.ContainsFunc(allow, func(a string) bool { return a == "/" || a == "/*" || a == "/$" })
-	return disallow, blocksAll, sitemaps
+		!slices.ContainsFunc(allow, func(a string) bool { return a == "/" || a == "/*" })
+	homeOnly = blocksAll && slices.Contains(allow, "/$")
+	return disallow, blocksAll, homeOnly, sitemaps
 }
 
 // sitemap counts the pages in the sitemaps robots.txt names on the site's

@@ -66,21 +66,25 @@ func TestParseRobots(t *testing.T) {
 		disallow []string
 		all      bool
 		sitemaps []string
+		home     bool
 	}{
 		{"User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n\nSitemap: https://shop.test/wp-sitemap.xml\n",
-			[]string{"/wp-admin/"}, false, []string{"https://shop.test/wp-sitemap.xml"}},
-		{"User-agent: *\nDisallow: /\n", []string{"/"}, true, nil},
-		{"user-agent: *\ndisallow: /  # staging\nallow: /wp-admin/admin-ajax.php\n", []string{"/"}, true, nil},
+			[]string{"/wp-admin/"}, false, []string{"https://shop.test/wp-sitemap.xml"}, false},
+		{"User-agent: *\nDisallow: /\n", []string{"/"}, true, nil, false},
+		{"user-agent: *\ndisallow: /  # staging\nallow: /wp-admin/admin-ajax.php\n", []string{"/"}, true, nil, false},
 		// Consecutive User-agent lines share their rules.
-		{"User-agent: Googlebot\nUser-agent: *\nDisallow: /*\n", []string{"/*"}, true, nil},
+		{"User-agent: Googlebot\nUser-agent: *\nDisallow: /*\n", []string{"/*"}, true, nil, false},
 		// Rules for one crawler aren't the site's.
-		{"User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n", nil, false, nil},
-		{"User-agent: *\nDisallow: /\nAllow: /$\n", []string{"/"}, false, nil},
-		{"", nil, false, nil},
+		{"User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow:\n", nil, false, nil, false},
+		// "/$" opens the home page only; "/" and "/*" open the site.
+		{"User-agent: *\nDisallow: /\nAllow: /$\n", []string{"/"}, true, nil, true},
+		{"User-agent: *\nDisallow: /\nAllow: /\n", []string{"/"}, false, nil, false},
+		{"User-agent: *\nDisallow: /\nAllow: /$\nAllow: /*\n", []string{"/"}, false, nil, false},
+		{"", nil, false, nil, false},
 	} {
-		d, all, sm := parseRobots([]byte(c.body))
-		if !slices.Equal(d, c.disallow) || all != c.all || !slices.Equal(sm, c.sitemaps) {
-			t.Errorf("parseRobots(%q) = %v %v %v, want %v %v %v", c.body, d, all, sm, c.disallow, c.all, c.sitemaps)
+		d, all, home, sm := parseRobots([]byte(c.body))
+		if !slices.Equal(d, c.disallow) || all != c.all || home != c.home || !slices.Equal(sm, c.sitemaps) {
+			t.Errorf("parseRobots(%q) = %v %v %v %v, want %v %v %v %v", c.body, d, all, home, sm, c.disallow, c.all, c.home, c.sitemaps)
 		}
 	}
 }

@@ -327,8 +327,12 @@ func (d *differ) robotsTxt(b, a Robots) {
 			Before: status(b.Status), After: status(a.Status),
 			Fix: "Google treats a robots.txt that fails with a server error as if it disallowed everything; fix the error."}, "")
 	case a.BlocksAll && !b.BlocksAll:
-		d.add(model.Change{Class: model.Broke, Check: "seo/robots-txt", Title: "robots.txt now blocks the whole site", Source: src,
-			Detail: "User-agent: * has Disallow: /",
+		title, detail := "robots.txt now blocks the whole site", "User-agent: * has Disallow: /"
+		if a.HomeOnly {
+			title, detail = "robots.txt now blocks every page but the home page", "User-agent: * has Disallow: / with only Allow: /$"
+		}
+		d.add(model.Change{Class: model.Broke, Check: "seo/robots-txt", Title: title, Source: src,
+			Detail: detail,
 			Fix: `Search engines will stop crawling the site. Remove "Disallow: /" (WordPress: Settings → Reading, "Discourage search engines"). ` +
 				"On a staging site that should stay hidden, this is expected."}, "")
 	case b.Status == 200 && (a.Status == 404 || a.Status == 410):

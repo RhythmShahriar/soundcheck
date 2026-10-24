@@ -251,6 +251,10 @@ func TestRobotsTxt(t *testing.T) {
 	if c.Title != "robots.txt now blocks the whole site" || c.Source != "/robots.txt" || c.Pages != nil {
 		t.Errorf("blocks all = %+v", c)
 	}
+	c = one(t, run(open, Robots{Status: 200, Disallow: []string{"/"}, BlocksAll: true, HomeOnly: true}), "seo/robots-txt", model.Broke)
+	if c.Title != "robots.txt now blocks every page but the home page" || c.Detail != "User-agent: * has Disallow: / with only Allow: /$" {
+		t.Errorf("home only = %+v", c)
+	}
 	if c := one(t, run(open, Robots{Status: 503}), "seo/robots-txt", model.Broke); c.Title != "robots.txt returns 503" || c.Before != "200" {
 		t.Errorf("5xx = %+v", c)
 	}
