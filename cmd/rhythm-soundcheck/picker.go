@@ -11,7 +11,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 
-	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
+	"github.com/RhythmShahriar/rhythm/kit/httpx"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -51,7 +51,7 @@ func pick(stdout, stderr io.Writer) int {
 					if strings.TrimSpace(s) == "" {
 						return errors.New("enter a URL or hostname")
 					}
-					_, _, err := ratelimit.ParseTarget(strings.TrimSpace(s))
+					_, _, err := httpx.ParseTarget(strings.TrimSpace(s))
 					return err
 				}),
 		).WithHideFunc(func() bool { return action == "compare" }),

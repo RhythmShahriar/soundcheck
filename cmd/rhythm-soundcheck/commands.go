@@ -27,7 +27,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	kitconfig "github.com/RhythmShahriar/rhythm/kit/config"
-	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
+	"github.com/RhythmShahriar/rhythm/kit/httpx"
 	"github.com/RhythmShahriar/rhythm/kit/update"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/capture"
@@ -142,7 +142,7 @@ func (s *session) untrusted(target string) bool {
 	if s.siteFrom == "" || s.siteTrusted {
 		return false
 	}
-	u, _, err := ratelimit.ParseTarget(target)
+	u, _, err := httpx.ParseTarget(target)
 	return err != nil || !config.IsLoopback(u.Hostname())
 }
 
@@ -693,7 +693,7 @@ func (s *session) loginHost(sites ...string) error {
 		return nil // a path, as in the default: always on the site
 	}
 	for _, site := range sites {
-		t, _, err := ratelimit.ParseTarget(site)
+		t, _, err := httpx.ParseTarget(site)
 		if err != nil || s.untrusted(site) {
 			continue // target() words that error; an untrusted site gets no login
 		}
@@ -715,7 +715,7 @@ func (s *session) loginHost(sites ...string) error {
 // anything starts, not a site that couldn't be checked.
 func (s *session) hostHeader(sites ...string) error {
 	for _, site := range sites {
-		u, _, err := ratelimit.ParseTarget(site)
+		u, _, err := httpx.ParseTarget(site)
 		if err != nil {
 			continue // target() words that error
 		}

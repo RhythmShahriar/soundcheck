@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
-	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
+	"github.com/RhythmShahriar/rhythm/kit/httpx"
 	"github.com/RhythmShahriar/soundcheck/capture"
 	execmod "github.com/RhythmShahriar/soundcheck/checks/exec"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
@@ -706,7 +706,7 @@ func (s *session) failOn(compared bool) error {
 
 // target validates a site argument.
 func target(s string) error {
-	if _, _, err := ratelimit.ParseTarget(s); err != nil {
+	if _, _, err := httpx.ParseTarget(s); err != nil {
 		return cli.UsageError{Msg: err.Error()}
 	}
 	return nil

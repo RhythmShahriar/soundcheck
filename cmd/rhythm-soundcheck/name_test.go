@@ -4,9 +4,12 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/RhythmShahriar/rhythm/kit/cli"
 )
 
 // names are the ways Soundcheck is started and what it should call itself.
@@ -61,6 +64,25 @@ func TestCmdName(t *testing.T) {
 		_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--echo="+deadSite(t), "--plain", "--modules", "health")
 		if want := tc.want + " 1.0.0-test - 127.0.0.1:20260\n"; !strings.HasPrefix(out, want) {
 			t.Errorf("header: %q, want it to start with %q", out, want)
+		}
+	}
+}
+
+// Where the name is one a terminal can show, it is the kit's cli.Name:
+// the rhythm CLI's RHYTHM_INVOKED_AS, else the binary's name.
+func TestCmdNameIsKitName(t *testing.T) {
+	for _, env := range []string{"", "rhythm soundcheck"} {
+		asCommand(t, os.Args[0], env)
+		if env == "" {
+			os.Unsetenv(invokedAs)
+		}
+		if got, want := cmdName(), cli.Name(); got != want {
+			t.Errorf("%s=%q: cmdName %q, cli.Name %q", invokedAs, env, got, want)
+		}
+	}
+	for code, want := range map[int]int{exitOK: 0, exitFindings: 1, exitUsage: 2, exitError: 3, exitCanceled: 130} {
+		if code != want {
+			t.Errorf("exit code %d, want %d", code, want)
 		}
 	}
 }

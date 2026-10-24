@@ -15,6 +15,7 @@ import (
 	"github.com/go-rod/rod/lib/defaults"
 
 	"github.com/RhythmShahriar/rhythm/kit"
+	"github.com/RhythmShahriar/rhythm/kit/cli"
 	// Turns off rod's -rod flag before rod's init reads os.Args; the
 	// package doc says why its init runs first.
 	_ "github.com/RhythmShahriar/soundcheck/internal/norodflag"
@@ -22,13 +23,13 @@ import (
 
 var version = "dev"
 
-// Exit codes, the same as Tuner's.
+// Exit codes, the kit's that every Rhythm tool shares.
 const (
-	exitOK       = 0
-	exitFindings = 1 // changes (or issues) at or above --fail-on
-	exitUsage    = 2
-	exitError    = 3 // the site couldn't be checked
-	exitCanceled = 130
+	exitOK       = cli.ExitOK
+	exitFindings = cli.ExitFindings // changes (or issues) at or above --fail-on
+	exitUsage    = cli.ExitUsage
+	exitError    = cli.ExitUnavailable // the site couldn't be checked
+	exitCanceled = cli.ExitInterrupted
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
