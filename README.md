@@ -93,6 +93,7 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 | Test that forms still send (staging only) | `rhythm-soundcheck snapshot staging.site.com --level submit` |
 | Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm-soundcheck snapshot …` |
 | A report for the pull request | `rhythm-soundcheck compare --md -o soundcheck.md` |
+| Every report format from one run | `rhythm-soundcheck compare -o r.json -o r.md -o r.xml -o r.html` |
 | Fail CI when something broke | `rhythm-soundcheck compare --fail-on broke` |
 
 Every flag is in the [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference).

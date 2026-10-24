@@ -4,11 +4,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/net/html"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -75,5 +80,87 @@ func TestFailOnTip(t *testing.T) {
 	writeConfig(t, "fail_on: slower\n")
 	if code, _, errOut := runCLI(t, "report", brokeDir, "--plain"); code != exitFindings || strings.Contains(errOut, "tip:") {
 		t.Errorf("fail_on: exit %d %q", code, errOut)
+	}
+}
+
+func TestSeveralOutputs(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	dir := storedComparison(t, model.Broke)
+	code, out, errOut := runCLI(t, "report", dir, "--plain", "-o", "out/r.json", "--output", "out/r.md", "-o", "out/r.xml", "-o", "out/r.html")
+	if code != exitOK {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(out, "[BROKE]") {
+		t.Errorf("the live view stays on stdout:\n%s", out)
+	}
+	for _, f := range []string{"out/r.json", "out/r.md", "out/r.xml", "out/r.html"} {
+		if !strings.Contains(errOut, "Report written to "+f+"\n") {
+			t.Errorf("no %q in %q", "Report written to "+f, errOut)
+		}
+	}
+	if !strings.Contains(out, "full report: out/r.html") {
+		t.Errorf("the hint points at the -o HTML file:\n%s", out)
+	}
+	read := func(name string) []byte {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	var c model.Comparison
+	if err := json.Unmarshal(read("out/r.json"), &c); err != nil || c.Count(model.Broke) != 1 {
+		t.Errorf("r.json: %v %+v", err, c)
+	}
+	if md := string(read("out/r.md")); !strings.HasPrefix(md, "#") || !strings.Contains(md, "BROKE") {
+		t.Errorf("r.md:\n%s", md)
+	}
+	var suites struct {
+		Failures int `xml:"failures,attr"`
+	}
+	if err := xml.Unmarshal(read("out/r.xml"), &suites); err != nil {
+		t.Errorf("r.xml: %v", err)
+	}
+	if doc, err := html.Parse(bytes.NewReader(read("out/r.html"))); err != nil || doc.FirstChild == nil ||
+		!bytes.Contains(read("out/r.html"), []byte("Page fails")) {
+		t.Errorf("r.html: %v", err)
+	}
+
+	// One -o with a format flag keeps the flag's format, whatever the name.
+	if code, _, errOut := runCLI(t, "report", dir, "--md", "-o", "summary.txt"); code != exitOK || !strings.HasPrefix(string(read("summary.txt")), "#") {
+		t.Errorf("--md -o summary.txt: exit %d %q", code, errOut)
+	}
+	// A format flag alone still goes to stdout.
+	if code, out, _ := runCLI(t, "report", dir, "--json"); code != exitOK || json.Unmarshal([]byte(out), &c) != nil {
+		t.Errorf("--json: exit %d %q", code, out)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-o", "a.json", "-o", "a.pdf"}, "rhythm-soundcheck: can't tell the format of a.pdf from its extension; use .json, .md, .xml or .html\n"},
+		{[]string{"-o", "a.pdf"}, "rhythm-soundcheck: can't tell the format of a.pdf; add --json, --md, --junit or --html\n"},
+		{[]string{"-o", "a.json", "-o", "./a.json"}, "rhythm-soundcheck: -o a.json and -o ./a.json are the same file\n"},
+		{[]string{"--json", "-o", "a.json", "-o", "a.md"}, "rhythm-soundcheck: --json with several -o: each file's format comes from its extension, so leave out --json\n"},
+		{[]string{"--json", "--md", "-o", "a.json"}, "rhythm-soundcheck: pick one output format, not --json and --md\n"},
+	} {
+		code, _, errOut := runCLI(t, append([]string{"report", dir}, tc.args...)...)
+		if code != exitUsage || errOut != tc.want {
+			t.Errorf("%v: exit %d %q, want 2 %q", tc.args, code, errOut, tc.want)
+		}
+	}
+	if _, err := os.Stat("a.json"); err == nil {
+		t.Error("a usage error must write nothing")
+	}
+
+	// A file that can't be written fails the command but not the others.
+	if err := os.WriteFile("blocker", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut = runCLI(t, "report", dir, "-o", "blocker/r.json", "-o", "ok.md")
+	if code != exitError || !strings.Contains(errOut, "writing blocker/r.json:") || !strings.Contains(errOut, "Report written to ok.md") {
+		t.Errorf("unwritable: exit %d %q", code, errOut)
 	}
 }

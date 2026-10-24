@@ -25,7 +25,7 @@ import (
 
 type options struct {
 	json, md, junit, html          bool
-	output                         string
+	outputs                        cli.RepeatFlag
 	open                           bool
 	quiet, plain, noColor, verbose bool
 
@@ -118,7 +118,7 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.BoolVar(&o.md, "md", false, "")
 	fs.BoolVar(&o.junit, "junit", false, "")
 	fs.BoolVar(&o.html, "html", false, "")
-	both("o", "output", func(n string) { fs.StringVar(&o.output, n, "", "") })
+	both("o", "output", func(n string) { fs.Var(&o.outputs, n, "") })
 	fs.BoolVar(&o.open, "open", false, "")
 	both("q", "quiet", func(n string) { fs.BoolVar(&o.quiet, n, false, "") })
 	fs.BoolVar(&o.plain, "plain", false, "")
@@ -170,7 +170,8 @@ type plan struct {
 	o        options
 	args     []string // positional arguments
 	cfg      config.Config
-	format   string // json, md, junit, html or "" for the terminal view only
+	format   string   // json, md, junit or html for stdout, or "" for the live view
+	outputs  []output // files to write, from -o
 	headers  map[string]string
 	proxy    *url.URL
 	ua       string
@@ -308,23 +309,8 @@ func parse(args []string) (*plan, error) {
 		return nil, cli.Usagef("no modules left to run")
 	}
 
-	// Output.
-	var chosen []string
-	for name, on := range map[string]bool{"json": o.json, "md": o.md, "junit": o.junit, "html": o.html} {
-		if on {
-			chosen = append(chosen, name)
-		}
-	}
-	switch {
-	case len(chosen) > 1:
-		slices.Sort(chosen)
-		return nil, cli.Usagef("pick one output format, not --%s", strings.Join(chosen, " and --"))
-	case len(chosen) == 1:
-		p.format = chosen[0]
-	case o.output != "":
-		if p.format = formatFromExt(o.output); p.format == "" {
-			return nil, cli.Usagef("can't tell the format of %s; add --json, --md, --junit or --html", o.output)
-		}
+	if err := p.outputFormats(); err != nil {
+		return nil, err
 	}
 
 	// Requests.
@@ -358,6 +344,62 @@ func parse(args []string) (*plan, error) {
 	}
 	p.storeDir = config.Dir
 	return p, nil
+}
+
+// output is one report file -o asked for.
+type output struct {
+	path, format string
+}
+
+// outputFormats reads the format flags and -o. A format flag alone writes
+// to stdout in place of the live view. Each -o file takes its format from
+// its extension, so one run can write JSON, Markdown, JUnit and HTML at
+// once; with a single -o a format flag may name the format instead, as
+// in --md -o check.md.
+func (p *plan) outputFormats() error {
+	o := &p.o
+	var chosen []string
+	for name, on := range map[string]bool{"json": o.json, "md": o.md, "junit": o.junit, "html": o.html} {
+		if on {
+			chosen = append(chosen, name)
+		}
+	}
+	slices.Sort(chosen)
+	switch {
+	case len(chosen) > 1:
+		return cli.Usagef("pick one output format, not --%s", strings.Join(chosen, " and --"))
+	case len(o.outputs) == 0:
+		if len(chosen) == 1 {
+			p.format = chosen[0]
+		}
+		return nil
+	case len(o.outputs) == 1 && len(chosen) == 1:
+		p.outputs = []output{{o.outputs[0], chosen[0]}}
+		return nil
+	case len(chosen) == 1:
+		return cli.Usagef("--%s with several -o: each file's format comes from its extension, so leave out --%[1]s", chosen[0])
+	}
+	seen := map[string]string{}
+	for _, path := range o.outputs {
+		f := formatFromExt(path)
+		switch {
+		case f == "" && len(o.outputs) == 1:
+			return cli.Usagef("can't tell the format of %s; add --json, --md, --junit or --html", path)
+		case f == "":
+			return cli.Usagef("can't tell the format of %s from its extension; use .json, .md, .xml or .html", path)
+		}
+		// Two -o naming one file would leave only the last format there.
+		key := filepath.Clean(path)
+		if abs, err := filepath.Abs(path); err == nil {
+			key = abs
+		}
+		if first, ok := seen[key]; ok {
+			return cli.Usagef("-o %s and -o %s are the same file", first, path)
+		}
+		seen[key] = path
+		p.outputs = append(p.outputs, output{path, f})
+	}
+	return nil
 }
 
 // trust reads --allow-env, --allow-host and --insecure-login into the

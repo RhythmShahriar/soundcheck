@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 	// Machine output on stdout replaces the live view; with -o both show.
-	s.live = p.format == "" || p.o.output != ""
+	s.live = p.format == ""
 	out := stdout
 	if !s.live {
 		out = io.Discard
@@ -291,7 +292,20 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	return run, err
 }
 
-// finish saves the HTML report, writes the chosen format, prints the
+// render writes res in one output format.
+func (s *session) render(w io.Writer, res report.Result, format string) error {
+	switch format {
+	case "json":
+		return report.JSON(w, res)
+	case "md":
+		return report.Markdown(w, res)
+	case "junit":
+		return report.JUnit(w, res, s.o.failOn)
+	}
+	return report.HTML(w, res)
+}
+
+// finish saves the HTML report, writes the chosen formats, prints the
 // summary and picks the exit code.
 func (s *session) finish(res report.Result, hint string) int {
 	html := filepath.Join(res.Dir, "report.html")
@@ -300,31 +314,26 @@ func (s *session) finish(res report.Result, hint string) int {
 		html = ""
 	}
 	if s.format != "" {
-		write := func(w io.Writer) error {
-			switch s.format {
-			case "json":
-				return report.JSON(w, res)
-			case "md":
-				return report.Markdown(w, res)
-			case "junit":
-				return report.JUnit(w, res, s.o.failOn)
-			}
-			return report.HTML(w, res)
-		}
-		var err error
-		if s.o.output != "" {
-			err = writeFile(s.o.output, write)
-		} else {
-			err = write(s.stdout)
-		}
-		if err != nil {
+		if err := s.render(s.stdout, res, s.format); err != nil {
 			fmt.Fprintln(s.stderr, prefix(), "writing the report:", err)
 			return exitError
 		}
 	}
+	// Every file is attempted, so one bad path doesn't lose the others.
+	var written []string
+	for _, out := range s.outputs {
+		if err := writeFile(out.path, func(w io.Writer) error { return s.render(w, res, out.format) }); err != nil {
+			fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), out.path, err)
+			continue
+		}
+		written = append(written, out.path)
+	}
 	open := html
-	if s.format == "html" && s.o.output != "" {
-		open = s.o.output
+	for _, out := range s.outputs {
+		if out.format == "html" && slices.Contains(written, out.path) {
+			open = out.path
+			break
+		}
 	}
 	if hint == "" && open != "" {
 		hint = "full report: " + rel(open)
@@ -332,8 +341,10 @@ func (s *session) finish(res report.Result, hint string) int {
 	if s.live {
 		s.view.Summary(res, hint)
 	}
-	if s.o.output != "" && !s.o.quiet {
-		fmt.Fprintf(s.stderr, "Report written to %s\n", s.o.output)
+	if !s.o.quiet {
+		for _, path := range written {
+			fmt.Fprintf(s.stderr, "Report written to %s\n", path)
+		}
 	}
 	if tip := s.failOnTip(res); tip != "" {
 		fmt.Fprintln(s.stderr, faint.Render(tip))
@@ -355,6 +366,9 @@ func (s *session) finish(res report.Result, hint string) int {
 	if s.ctx.Err() != nil {
 		fmt.Fprintln(s.stderr, prefix(), "canceled; results are partial")
 		return exitCanceled
+	}
+	if len(written) < len(s.outputs) {
+		return exitError
 	}
 	if report.FailOn(res, s.o.failOn) {
 		return exitFindings

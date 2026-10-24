@@ -120,7 +120,8 @@ Output:
       --junit                JUnit XML for CI test reports
       --html                 standalone HTML report with before/after sliders
   -o, --output <file>        write the report to a file (format from the
-                             extension: .json .md .xml .html), keep the live view
+                             extension: .json .md .xml .html), keep the live
+                             view; repeat it for several files and formats
       --open                 open the HTML report when done
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
