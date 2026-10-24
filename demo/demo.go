@@ -13,7 +13,6 @@
 package demo
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -217,11 +216,11 @@ func Start(h http.Handler) (*Server, error) {
 	return s, nil
 }
 
-// Close stops the server, waiting a few seconds for requests in flight.
+// Close stops the server and drops its connections. It's called once
+// the comparison is done, so nothing is in flight; waiting for the
+// browser's idle keep-alive connections would only hold up the exit.
 func (s *Server) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err := s.srv.Shutdown(ctx)
+	err := s.srv.Close()
 	if serveErr := <-s.err; !errors.Is(serveErr, http.ErrServerClosed) {
 		err = errors.Join(err, serveErr)
 	}
