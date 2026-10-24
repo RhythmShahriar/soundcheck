@@ -16,10 +16,13 @@ import (
 // Browser is a running Firefox or WebKit, driven over WebDriver BiDi or,
 // for a WebKit driver without it, classic WebDriver.
 type Browser struct {
-	engine  capture.Engine
-	bin     string
-	cmd     *exec.Cmd // the browser or driver process
-	profile string    // a temporary profile to remove on Close
+	engine capture.Engine
+	bin    string
+	cmd    *exec.Cmd // the browser or driver process
+	// exited closes when cmd has exited, for a process whose Wait is
+	// already running; nil when nothing waits for it yet.
+	exited  <-chan struct{}
+	profile string // a temporary profile to remove on Close
 
 	conn *Conn // BiDi; nil for classic WebDriver
 	// userContext keeps the run's cookies and storage apart from the
@@ -114,7 +117,7 @@ func (b *Browser) Close() error {
 		if b.cmd != nil && b.cmd.Process != nil {
 			// Firefox exits after browser.close; a WebDriver server
 			// would keep running.
-			stop(b.cmd, b.engine == capture.Firefox)
+			stop(b.cmd, b.exited, b.engine == capture.Firefox)
 		}
 		if b.profile != "" {
 			_ = os.RemoveAll(b.profile)
@@ -124,10 +127,14 @@ func (b *Browser) Close() error {
 }
 
 // stop ends the process: with wait it gets a moment to exit by itself
-// first.
-func stop(cmd *exec.Cmd, wait bool) {
-	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited) }()
+// first. exited closes when the process has exited; when it is nil stop
+// waits for the process itself.
+func stop(cmd *exec.Cmd, exited <-chan struct{}, wait bool) {
+	if exited == nil {
+		done := make(chan struct{})
+		go func() { _ = cmd.Wait(); close(done) }()
+		exited = done
+	}
 	if wait {
 		select {
 		case <-exited:

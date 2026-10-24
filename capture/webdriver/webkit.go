@@ -49,23 +49,9 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	port, err := freePort()
+	b, base, err := startDriver(ctx, bin, opts.Log)
 	if err != nil {
 		return nil, err
-	}
-	args := []string{"--port=" + strconv.Itoa(port)}
-	if filepath.Base(bin) == "safaridriver" {
-		args = []string{"-p", strconv.Itoa(port)}
-	}
-	cmd := exec.Command(bin, args...) //nolint:gosec // the user's own driver binary
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("starting %s: %w", bin, err)
-	}
-	b := &Browser{engine: capture.WebKit, bin: bin, cmd: cmd, logf: opts.Log}
-	base := "http://127.0.0.1:" + strconv.Itoa(port)
-	if err := waitReady(ctx, base, 20*time.Second); err != nil {
-		_ = b.Close()
-		return nil, fmt.Errorf("starting %s: %w", bin, err)
 	}
 	always := map[string]any{"webSocketUrl": true, "acceptInsecureCerts": opts.Insecure}
 	if filepath.Base(bin) != "safaridriver" && !opts.Visible {
@@ -80,6 +66,44 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// errExited is a driver that exited before its server answered.
+var errExited = errors.New("it exited before its WebDriver server answered")
+
+// startDriver starts the WebKit driver bin on a free local port and waits
+// for its server to answer, returning it with the server's base URL. The
+// port is free when it is chosen. Another process may take it before the
+// driver binds it, so a driver that exits before it answers is started
+// once more on another port.
+func startDriver(ctx context.Context, bin string, logf func(string)) (*Browser, string, error) {
+	for try := 1; ; try++ {
+		port, err := freePort()
+		if err != nil {
+			return nil, "", err
+		}
+		args := []string{"--port=" + strconv.Itoa(port)}
+		if filepath.Base(bin) == "safaridriver" {
+			args = []string{"-p", strconv.Itoa(port)}
+		}
+		cmd := exec.Command(bin, args...) //nolint:gosec // the user's own driver binary
+		if err := cmd.Start(); err != nil {
+			return nil, "", fmt.Errorf("starting %s: %w", bin, err)
+		}
+		exited := make(chan struct{})
+		go func() { _ = cmd.Wait(); close(exited) }()
+		b := &Browser{engine: capture.WebKit, bin: bin, cmd: cmd, exited: exited, logf: logf}
+		base := "http://127.0.0.1:" + strconv.Itoa(port)
+		err = waitReady(ctx, base, 20*time.Second, exited)
+		if err == nil {
+			return b, base, nil
+		}
+		_ = b.Close()
+		if !errors.Is(err, errExited) || try == 2 {
+			return nil, "", fmt.Errorf("starting %s: %w", bin, err)
+		}
+		b.log(fmt.Sprintf("%s exited on port %d; trying another port", filepath.Base(bin), port))
+	}
 }
 
 // openSession creates a classic session and, when the driver returns a
@@ -121,8 +145,9 @@ func freePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-// waitReady polls a WebDriver server's /status until it answers.
-func waitReady(ctx context.Context, base string, limit time.Duration) error {
+// waitReady polls a WebDriver server's /status until it answers, or
+// until exited closes: the driver is gone.
+func waitReady(ctx context.Context, base string, limit time.Duration, exited <-chan struct{}) error {
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	c := &classic{base: base, http: &http.Client{Timeout: time.Second}}
@@ -131,6 +156,8 @@ func waitReady(ctx context.Context, base string, limit time.Duration) error {
 			return nil
 		}
 		select {
+		case <-exited:
+			return errExited
 		case <-ctx.Done():
 			return errors.New("its WebDriver server didn't answer in time")
 		case <-time.After(100 * time.Millisecond):
