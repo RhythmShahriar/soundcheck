@@ -1,0 +1,10 @@
+{
+  "name": "soundcheck-lighthouse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The pinned Unlighthouse tree rhythm-soundcheck --lighthouse installs.",
+  "license": "MIT",
+  "dependencies": {
+    "unlighthouse-ci": "0.19.1"
+  }
+}
