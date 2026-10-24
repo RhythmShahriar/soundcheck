@@ -4,11 +4,14 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 )
 
 func write(t *testing.T, body string) string {
@@ -117,6 +120,23 @@ func TestRate(t *testing.T) {
 			t.Errorf("%q: %v", body, err)
 		case !ok && (err == nil || !strings.Contains(err.Error(), "config.yaml line 1: rate: ") || !strings.Contains(err.Error(), "between 0.01 and 1000")):
 			t.Errorf("%q: err = %v, want a rate error", body, err)
+		}
+	}
+}
+
+// Every rate Soundcheck accepts is one the kit's limiter accepts too.
+func TestRateAgreesWithKit(t *testing.T) {
+	for _, r := range []float64{MinRate, 0.5, 1, 5, MaxRate} {
+		if err := CheckRate(r); err != nil {
+			t.Errorf("CheckRate(%v) = %v", r, err)
+		}
+		if err := ratelimit.Validate(r); err != nil {
+			t.Errorf("ratelimit.Validate(%v) = %v", r, err)
+		}
+	}
+	for _, r := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), -1, 0, 1e-300} {
+		if CheckRate(r) == nil {
+			t.Errorf("CheckRate(%v) = nil", r)
 		}
 	}
 }

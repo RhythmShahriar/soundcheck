@@ -21,6 +21,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/RhythmShahriar/rhythm/kit/httpx"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 )
 
@@ -247,7 +248,7 @@ func ParseFailOn(v string) (string, error) {
 // production entries for IsProduction. Its errors are *SettingError.
 func (c *Config) Validate() error {
 	if c.Site != "" {
-		if _, _, err := ratelimit.ParseTarget(c.Site); err != nil {
+		if _, _, err := httpx.ParseTarget(c.Site); err != nil {
 			return settingErr("site", "%q isn't a site like staging.example.com", c.Site)
 		}
 	}
@@ -380,9 +381,12 @@ const (
 
 // CheckRate reports a rate outside MinRate to MaxRate. NaN, infinities and
 // rates so small they overflow all make the limiter wait zero, so a typo
-// would hammer the site; the comparison is written to catch NaN too.
+// would hammer the site; the comparison is written to catch NaN too. The
+// kit's ratelimit.Validate is asked as well, so a rate the limiter itself
+// would refuse never gets through. Soundcheck is stricter: 0 (no limit)
+// isn't a rate here.
 func CheckRate(rate float64) error {
-	if !(rate >= MinRate && rate <= MaxRate) {
+	if ratelimit.Validate(rate) != nil || !(rate >= MinRate && rate <= MaxRate) {
 		return fmt.Errorf("%v isn't between %v and %v page loads a second", rate, MinRate, MaxRate)
 	}
 	return nil
