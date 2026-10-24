@@ -1,0 +1,16 @@
+
+  BROKE  1 ───────────────────────────────────────────────────────────────────
+
+ ▌  BROKE      Server error 500                                        /down/
+ ▌             → Check the PHP error log.                                    
+
+  UNSTABLE  1 ────────────────────────────────────────────────────────────────
+
+    ~  Server error 500                                               /flaky/
+
+ ╭─────────────────────────────────────────────────────────────────────────────╮
+ │  SOUNDCHECK   Something broke                                               │
+ │  ✗ 1 broke   ▲ 0 new   ■ 0 changed   ◆ 0 slower   ✓ 0 fixed   ~ 1 unstable  │
+ ╰─────────────────────────────────────────────────────────────────────────────╯
+  compared with snapshot "good" · 3 pages · 6s
+

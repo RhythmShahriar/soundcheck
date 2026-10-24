@@ -65,11 +65,22 @@ type classInfo struct {
 }
 
 var classes = map[string]classInfo{
-	model.Broke:   {"BROKE", "✗", "worked in the snapshot, fails now"},
-	model.New:     {"NEW", "▲", "problems that weren't there before"},
-	model.Changed: {"CHANGED", "■", "looks or reads differently; check it's intended"},
-	model.Slower:  {"SLOWER", "◆", "measurably slower than the snapshot"},
-	model.Fixed:   {"FIXED", "✓", "problems from the snapshot that are gone"},
+	model.Broke:    {"BROKE", "✗", "worked in the snapshot, fails now"},
+	model.New:      {"NEW", "▲", "problems that weren't there before"},
+	model.Changed:  {"CHANGED", "■", "looks or reads differently; check it's intended"},
+	model.Slower:   {"SLOWER", "◆", "measurably slower than the snapshot"},
+	model.Fixed:    {"FIXED", "✓", "problems from the snapshot that are gone"},
+	model.Unstable: {"UNSTABLE", "~", "seen once, gone when the page was checked again; not counted"},
+}
+
+// shownClasses are the classes a comparison's counts list: every class
+// but UNSTABLE, which appears only when there is some, so results
+// without a second visit read as before.
+func shownClasses(c *model.Comparison) []string {
+	if c.Count(model.Unstable) > 0 {
+		return model.Classes
+	}
+	return slices.DeleteFunc(slices.Clone(model.Classes), func(class string) bool { return class == model.Unstable })
 }
 
 // Glyphs are plain text symbols: emoji-capable ones (✖ ✔) have no agreed
@@ -95,7 +106,8 @@ const partialNote = "stopped before it finished; these results are partial"
 
 // FailOn reports whether a result should fail a CI build at threshold.
 // For a comparison the threshold is a change class: "new" fails on BROKE
-// or NEW, "changed" also on CHANGED, and so on (FIXED never fails). For a
+// or NEW, "changed" also on CHANGED, and so on (FIXED and UNSTABLE never
+// fail, and neither do ignored changes, which aren't in Changes). For a
 // single run it's an issue level: "warning" fails on errors or warnings.
 // A partial result never fails: what it lacks isn't a finding.
 func FailOn(r Result, threshold string) bool {
@@ -105,7 +117,7 @@ func FailOn(r Result, threshold string) bool {
 	if r.Compared() {
 		limit := slices.Index(model.Classes, threshold)
 		for _, c := range r.Comparison.Changes {
-			if i := slices.Index(model.Classes, c.Class); i >= 0 && i <= limit && c.Class != model.Fixed {
+			if i := slices.Index(model.Classes, c.Class); i >= 0 && i <= limit && c.Class != model.Fixed && c.Class != model.Unstable {
 				return true
 			}
 		}

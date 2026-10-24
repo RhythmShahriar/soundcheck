@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="soundcheck" tests="3" failures="1" errors="0" time="6">
+  <testsuite name="soundcheck.broke" tests="1" failures="1" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="Server error 500" classname="health.status">
+      <failure message="BROKE: Server error 500" type="broke">where: /down/&#xA;fix: Check the PHP error log.</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.new" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.changed" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.slower" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.fixed" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.unstable" tests="1" failures="0" errors="0" skipped="1" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="Server error 500" classname="health.status">
+      <skipped></skipped>
+      <system-out>where: /flaky/&#xA;fix: Check the PHP error log.</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.pages" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="3 pages checked" classname="soundcheck"></testcase>
+  </testsuite>
+</testsuites>

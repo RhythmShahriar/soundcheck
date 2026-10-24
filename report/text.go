@@ -70,8 +70,13 @@ func Markdown(w io.Writer, r Result) error {
 	if r.Compared() {
 		c := r.Comparison
 		fmt.Fprintf(&b, "**%s.** %s of %s compared with %s.\n\n", verdict(c), plural(c.Pages, "page", "pages"), MarkdownText(run.Target), MarkdownText(snapshotAt(c.Before)))
-		b.WriteString("| Broke | New | Changed | Slower | Fixed |\n|---:|---:|---:|---:|---:|\n|")
-		for _, class := range model.Classes {
+		shown := shownClasses(c)
+		b.WriteString("|")
+		for _, class := range shown {
+			fmt.Fprintf(&b, " %s |", capitalize(class))
+		}
+		b.WriteString("\n|" + strings.Repeat("---:|", len(shown)) + "\n|")
+		for _, class := range shown {
 			fmt.Fprintf(&b, " %d |", c.Count(class))
 		}
 		b.WriteString("\n\n")
@@ -219,12 +224,18 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 			limit = slices.Index(model.Classes, model.New)
 		}
 		groups := byClass(r.Comparison.Changes)
-		for i, class := range model.Classes {
+		for i, class := range shownClasses(r.Comparison) {
 			s := junitSuite{Name: "soundcheck." + class, Timestamp: stamp}
 			for _, ch := range groups[class] {
 				tc := junitCase{Name: xmlText(ch.Title), Classname: xmlText(strings.ReplaceAll(ch.Check, "/", ".")),
 					Out: caseText(ch.Pages, beforeAfter(ch), ch.Source, ch.Detail, ch.Fix)}
-				if i <= limit && class != model.Fixed {
+				// An unstable change didn't reproduce: CI shows it as
+				// skipped, neither a pass nor a failure.
+				if class == model.Unstable {
+					tc.Skipped = &struct{}{}
+					s.Skipped++
+				}
+				if i <= limit && class != model.Fixed && class != model.Unstable {
 					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
 					tc.Out = ""
 					s.Failures++

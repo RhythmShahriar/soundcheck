@@ -320,10 +320,14 @@ const (
 	Changed = "changed" // looks or reads differently
 	Slower  = "slower"  // measurably slower
 	Fixed   = "fixed"   // a problem from the snapshot is gone
+	// Unstable is a BROKE or NEW change that didn't show again when its
+	// page was checked a second time (see compare.Confirm). It's
+	// reported last and never fails a build: noise isn't a regression.
+	Unstable = "unstable"
 )
 
 // Classes lists change classes in report order.
-var Classes = []string{Broke, New, Changed, Slower, Fixed}
+var Classes = []string{Broke, New, Changed, Slower, Fixed, Unstable}
 
 // Change is one difference between a snapshot and the current run.
 type Change struct {
@@ -344,6 +348,11 @@ type Change struct {
 	// Reason says why an ignored change was ignored: the reason its
 	// ignore rule gives. Changes that count leave it empty.
 	Reason string `json:"reason,omitempty"`
+	// FromPageIssue says the change is a page issue that appeared or went
+	// away (compare.Issues sets it), so checking the page again tells
+	// whether it's real. It isn't stored: Confirm runs on a fresh
+	// comparison.
+	FromPageIssue bool `json:"-"`
 }
 
 // Comparison is the result of `compare`: what changed between two runs.

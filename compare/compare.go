@@ -146,6 +146,7 @@ func Issues(before, after *model.Run) []model.Change {
 	type at struct {
 		issue model.Issue
 		pages []string
+		site  bool // a site-level issue, which re-visiting pages doesn't check again
 	}
 	index := func(r *model.Run, other *model.Run) map[string]*at {
 		m := map[string]*at{}
@@ -161,7 +162,7 @@ func Issues(before, after *model.Run) []model.Change {
 			}
 		}
 		for _, i := range r.Issues {
-			m[i.Key+"@site"] = &at{issue: i, pages: i.Pages}
+			m[i.Key+"@site"] = &at{issue: i, pages: i.Pages, site: true}
 		}
 		return m
 	}
@@ -185,11 +186,12 @@ func Issues(before, after *model.Run) []model.Change {
 		}
 		if g == nil {
 			g = &group{change: model.Change{Class: class, Check: x.issue.Check, Title: x.issue.Title, Detail: x.issue.Detail,
-				Source: x.issue.Source, Fix: x.issue.Fix}, pages: map[string]bool{}, detailFrom: first}
+				Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site}, pages: map[string]bool{}, detailFrom: first}
 			groups[k] = g
 		} else if first < g.detailFrom {
 			g.change.Detail, g.detailFrom = x.issue.Detail, first
 		}
+		g.change.FromPageIssue = g.change.FromPageIssue && !x.site
 		for _, p := range x.pages {
 			g.pages[p] = true
 		}

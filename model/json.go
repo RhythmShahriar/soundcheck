@@ -17,11 +17,6 @@ const (
 	KindComparison = "comparison"
 )
 
-// Unstable is the class of a change that didn't show again when its
-// page was checked a second time. Summary counts it already so the JSON
-// contract doesn't change when Soundcheck starts confirming changes.
-const Unstable = "unstable"
-
 // Verdicts of a comparison, in Summary.
 const (
 	VerdictClean       = "clean"       // nothing broke, appeared, changed or slowed down

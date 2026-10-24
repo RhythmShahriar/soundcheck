@@ -119,7 +119,7 @@ func HTML(w io.Writer, r Result) error {
 		}
 		groups := byClass(c.Changes)
 		embedded := 0
-		for _, class := range model.Classes {
+		for _, class := range shownClasses(c) {
 			info := classes[class]
 			d.Chips = append(d.Chips, htmlChip{class, info.Label, info.Glyph, len(groups[class])})
 			if len(groups[class]) == 0 {

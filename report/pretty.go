@@ -338,7 +338,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 			return
 		}
 		var parts []string
-		for _, class := range model.Classes {
+		for _, class := range shownClasses(c) {
 			parts = append(parts, fmt.Sprintf("%d %s", len(groups[class]), class))
 		}
 		fmt.Fprintf(p.w, "\n%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
@@ -700,7 +700,7 @@ func comparePanel(c *model.Comparison) string {
 	}
 	head := bold.Render("SOUNDCHECK") + "   " + lipgloss.NewStyle().Foreground(color).Bold(true).Render(verdict(c))
 	var parts []string
-	for _, class := range model.Classes {
+	for _, class := range shownClasses(c) {
 		n := c.Count(class)
 		style := muted
 		if n > 0 {
