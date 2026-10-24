@@ -439,6 +439,20 @@ func (s *session) failOnTip(res report.Result) string {
 	return fmt.Sprintf("tip: add --fail-on %s to make this exit 1 in scripts", class)
 }
 
+// discard removes the folder of a check that saved nothing, and the
+// folders above it up to the store that it left empty, so a site that
+// couldn't be checked leaves no .soundcheck behind. os.Remove takes only
+// empty folders, so stored runs and snapshots stay.
+func (s *session) discard(dir string) {
+	_ = os.RemoveAll(dir) //nolint:gosec // a folder this command made in the store
+	root := filepath.Clean(s.st.Root)
+	for p := filepath.Dir(dir); strings.HasPrefix(p, root); p = filepath.Dir(p) {
+		if os.Remove(p) != nil || p == root { //nolint:gosec // a parent of that folder, inside the store
+			return
+		}
+	}
+}
+
 func cmdSnapshot(s *session) int {
 	site, err := s.site("snapshot", "staging.example.com")
 	if err != nil {
@@ -452,7 +466,7 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	defer func() { _ = os.RemoveAll(dir) }() //nolint:gosec // our own incoming folder; gone once promoted, cleans up a failed snapshot
+	defer s.discard(dir) // gone once promoted; cleans up a failed snapshot
 	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q", name))
 	run, err := s.check(site, nil, true, name, dir)
@@ -550,6 +564,7 @@ func cmdAgainst(s *session) int {
 	s.view.Step("Against", s.o.against)
 	before, err := s.check(s.o.against, nil, true, "", beforeDir)
 	if err != nil {
+		s.discard(dir)
 		return s.fail(fmt.Errorf("%s: %w", s.o.against, err))
 	}
 	if err := store.SaveRun(beforeDir, before); err != nil {
@@ -567,6 +582,7 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	after, err := s.check(site, paths, false, "", dir)
 	if err != nil && after == nil {
+		s.discard(dir)
 		return s.fail(err)
 	}
 	if err := store.SaveRun(dir, after); err != nil {
@@ -600,6 +616,7 @@ func cmdRun(s *session) int {
 	s.start(site)
 	run, err := s.check(site, nil, false, "", dir)
 	if err != nil && run == nil {
+		s.discard(dir)
 		return s.fail(err)
 	}
 	if err := store.SaveRun(dir, run); err != nil {
