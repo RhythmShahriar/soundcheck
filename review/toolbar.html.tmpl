@@ -1,0 +1,79 @@
+<style>
+.rv-banner { position: sticky; bottom: 0; z-index: 6; margin: 24px 0 0; padding: 10px 16px; background: var(--text); color: var(--bg); font-size: 13px; text-align: center; }
+.rv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.rv-bar button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.rv-bar button:hover:not(:disabled) { border-color: var(--dot); }
+.rv-bar button:disabled { opacity: .5; cursor: default; }
+.rv-bar .rv-accept { background: var(--text); color: var(--bg); border-color: var(--text); }
+.rv-bar .rv-state { color: var(--muted); font-size: 13px; }
+.rv-bar .rv-state.rv-error { color: var(--broke); }
+.rv-bar .rv-id { margin-left: auto; color: var(--muted); font: 12px var(--mono); }
+.item.rv-done { opacity: .6; }
+@media print { .rv-bar, .rv-banner { display: none; } }
+</style>
+<div class="rv-banner" id="rv-banner">Review mode: Accept makes a change the new baseline; Ignore always leaves it out of future comparisons.</div>
+<script>
+(function () {
+  var rv = {{.}};
+  var banner = document.getElementById("rv-banner");
+  var articles = document.querySelectorAll("article.item");
+  // Pair each article with its change by position, and refuse to add any
+  // button when the titles don't line up: a button on the wrong change
+  // would accept something nobody looked at.
+  if (articles.length !== rv.items.length) { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; return; }
+  for (var i = 0; i < articles.length; i++) {
+    var it = rv.items[i], h = articles[i].querySelector("h3");
+    if (it && (!h || h.textContent.slice(-it.title.length) !== it.title)) { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; return; }
+  }
+  articles.forEach(function (art, i) {
+    var it = rv.items[i];
+    if (!it) return;
+    var bar = document.createElement("div");
+    bar.className = "rv-bar";
+    var state = document.createElement("span");
+    state.className = "rv-state";
+    state.setAttribute("role", "status");
+    function button(label, action, cls) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = cls;
+      b.textContent = label;
+      b.setAttribute("aria-label", label + ": " + it.title);
+      b.addEventListener("click", function () { send(action); });
+      bar.appendChild(b);
+      return b;
+    }
+    var buttons = [button("Accept", "accept", "rv-accept"), button("Ignore always", "ignore", "rv-ignore"), button("Skip", "skip", "rv-skip")];
+    bar.appendChild(state);
+    var id = document.createElement("span");
+    id.className = "rv-id";
+    id.textContent = it.id;
+    bar.appendChild(id);
+    function send(action) {
+      buttons.forEach(function (b) { b.disabled = true; });
+      state.className = "rv-state";
+      state.textContent = "Saving…";
+      var headers = { "Content-Type": "application/json" };
+      headers[rv.header] = rv.token;
+      fetch("/decide", { method: "POST", headers: headers, body: JSON.stringify({ id: it.id, action: action }) })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, text: t }; }); })
+        .then(function (r) {
+          if (!r.ok) {
+            var msg = r.text;
+            try { msg = JSON.parse(r.text).error || msg; } catch (e) {}
+            throw new Error(msg);
+          }
+          state.textContent = action === "accept" ? "Accepted" : action === "ignore" ? "Ignored from now on" : "Skipped";
+          art.classList.toggle("rv-done", action !== "skip");
+          buttons.forEach(function (b) { b.disabled = action !== "skip"; });
+        })
+        .catch(function (e) {
+          state.className = "rv-state rv-error";
+          state.textContent = "Couldn't save: " + e.message;
+          buttons.forEach(function (b) { b.disabled = false; });
+        });
+    }
+    art.appendChild(bar);
+  });
+})();
+</script>
