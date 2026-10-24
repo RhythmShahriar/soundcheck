@@ -16,8 +16,9 @@ import (
 // A page that is BROKE because it no longer loads or now answers 4xx/5xx
 // shows the server's error page and whatever health notices that page
 // raises (no favicon, a JS error in the error template) say nothing about
-// the site. They are dropped for that page: NEW and CHANGED health/*
-// changes lose it from their pages and go away when no page is left.
+// the site. They are dropped for that page: NEW, CHANGED and FIXED
+// health/* changes lose it from their pages and go away when no page is
+// left. A page that now fails hasn't fixed its old issues: it's gone.
 // Other BROKE changes stay and so do site-level issues such as broken
 // links (site reports whether a change came from one).
 //
@@ -36,11 +37,11 @@ func oneCause(cs []model.Change, site func(model.Change) bool) []model.Change {
 	}
 	if len(broken) > 0 {
 		cs = slices.DeleteFunc(cs, func(c model.Change) bool {
-			return (c.Class == model.New || c.Class == model.Changed) && strings.HasPrefix(c.Check, "health/") && !site(c) &&
+			return echo(c) && strings.HasPrefix(c.Check, "health/") && !site(c) &&
 				len(c.Pages) > 0 && !slices.ContainsFunc(c.Pages, func(p string) bool { return !broken[p] })
 		})
 		for i, c := range cs {
-			if (c.Class == model.New || c.Class == model.Changed) && strings.HasPrefix(c.Check, "health/") && !site(c) &&
+			if echo(c) && strings.HasPrefix(c.Check, "health/") && !site(c) &&
 				slices.ContainsFunc(c.Pages, func(p string) bool { return broken[p] }) {
 				cs[i].Pages = slices.DeleteFunc(slices.Clone(c.Pages), func(p string) bool { return broken[p] })
 				if cs[i].Score == float64(len(c.Pages)) { // a page count, as Issues sets it
@@ -50,6 +51,12 @@ func oneCause(cs []model.Change, site func(model.Change) bool) []model.Change {
 		}
 	}
 	return merge(cs)
+}
+
+// echo reports whether c is of a class a broken page's error page can
+// cause: NEW and CHANGED, or FIXED for the issues the page had before.
+func echo(c model.Change) bool {
+	return c.Class == model.New || c.Class == model.Changed || c.Class == model.Fixed
 }
 
 // merge folds changes that differ only in their pages, detail and score

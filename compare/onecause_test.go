@@ -136,14 +136,16 @@ func TestOneCauseOnlyHealthOnBrokenPages(t *testing.T) {
 		{Class: model.Broke, Check: "health/unreachable", Title: "Page didn't load: net::ERR_CONNECTION_REFUSED", Pages: []string{"/x"}},
 		{Class: model.New, Check: "health/js-error", Title: "JS error: a", Pages: []string{"/x", "/y"}, Score: 2},
 		{Class: model.Changed, Check: "health/redirect", Title: "Page now ends somewhere else", Pages: []string{"/x"}},
+		// The page is gone, not fixed: its old issues don't read as FIXED.
 		{Class: model.Fixed, Check: "health/no-title", Title: "Page has no <title>", Pages: []string{"/x"}},
+		{Class: model.Fixed, Check: "health/broken-asset", Title: "Broken image: /missing.png (404)", Pages: []string{"/x", "/z"}, Score: 2},
 		{Class: model.Changed, Check: "visual/page", Title: "Page looks different", Pages: []string{"/x"}},
 	}
 	got := lines(oneCause(cs, func(model.Change) bool { return false }))
 	want := []string{
 		"broke Page didn't load: net::ERR_CONNECTION_REFUSED [/x]",
 		"new JS error: a [/y]",
-		"fixed Page has no <title> [/x]",
+		"fixed Broken image: /missing.png (404) [/z]",
 		"changed Page looks different [/x]",
 	}
 	if !slices.Equal(got, want) {
