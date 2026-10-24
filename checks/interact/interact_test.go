@@ -48,7 +48,7 @@ const home = `<!doctype html><html><head><title>Brew</title>
   <nav id="nav" style="display:none"><a href="/">Home</a> <a href="/contact/">Contact</a></nav>
 </header>
 <main>
-  <button type="button" id="dead">Subscribe</button>
+  <button type="button" id="dead">Notify me</button>
   <button type="button" id="boom">Show offers</button>
   <button type="button" id="stock">Check stock</button>
   <button type="button" id="del">Delete account</button>
@@ -217,7 +217,7 @@ func checkHome(t *testing.T, fx *fixture, p *model.Page) {
 	t.Helper()
 	got := issues(p)
 	for title, level := range map[string]model.Level{
-		"Button does nothing: Subscribe":                        model.Warning,
+		"Button does nothing: Notify me":                        model.Warning,
 		"Clicking Show offers throws a JS error":                model.Error,
 		"Clicking Check stock makes a request that fails":       model.Error,
 		"Link does nothing: Share":                              model.Warning,
@@ -266,7 +266,7 @@ func checkHome(t *testing.T, fx *fixture, p *model.Page) {
 		}
 	}
 	clicks := outcomes(p, "click")
-	if clicks["Menu"] != "ok" || clicks["Shipping"] != "ok" || clicks["Subscribe"] != "dead" {
+	if clicks["Menu"] != "ok" || clicks["Shipping"] != "ok" || clicks["Notify me"] != "dead" {
 		t.Errorf("click outcomes: %v", clicks)
 	}
 	if clicks["Delete account"] != "skipped" {

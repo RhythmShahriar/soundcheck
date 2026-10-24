@@ -3,7 +3,9 @@
 
 // Package check defines how Soundcheck's modules plug into a run. A
 // module implements any of the hook interfaces below; the runner calls
-// each hook at its point in a page visit or at the end of the run.
+// each hook at its point in a page visit or at the end of the run. A hook
+// that panics doesn't end the run: the runner calls each one through
+// Safe, which turns the panic into a warning.
 package check
 
 import (
@@ -50,6 +52,14 @@ type SiteChecker interface {
 	CheckSite(ctx context.Context, cc *Context)
 }
 
+// NeedsText is a module that reads Page.Text after the page's
+// PageCheckers ran, e.g. in CheckSite. The text can be 200,000
+// characters a page, so without such a module the runner drops it from
+// each page as soon as its PageCheckers are done.
+type NeedsText interface {
+	NeedsText()
+}
+
 // Comparer reports differences between two runs beyond new and fixed
 // issues: visual changes, slowdowns, lost content.
 type Comparer interface {
@@ -91,11 +101,27 @@ type Context struct {
 	// Echo records the messages form submits and flows make the site
 	// send. Nil unless Echo is configured and running.
 	Echo *echolink.Link
+	// OnProgress, set by the runner, shows how far a long step has got.
+	// Modules call Progress rather than this.
+	OnProgress func(label string, done, total int)
 
 	mu sync.Mutex
 }
 
-// Lock serializes access to Run from hooks running in parallel.
+// Progress reports that a long step, such as a SiteChecker probing every
+// link, has done of total items. label names the step ("Checking
+// links"). It does nothing when the run shows no progress.
+func (c *Context) Progress(label string, done, total int) {
+	if c.OnProgress != nil {
+		c.OnProgress(label, done, total)
+	}
+}
+
+// Lock serializes access to Run from hooks running in parallel. Hold it
+// only around the Run fields a hook reads or changes and release it with
+// a deferred Unlock when anything in between could panic: Safe turns the
+// panic into a warning through Warn, which takes the same lock, so a lock
+// left held would stop the whole run instead.
 func (c *Context) Lock()   { c.mu.Lock() }
 func (c *Context) Unlock() { c.mu.Unlock() }
 

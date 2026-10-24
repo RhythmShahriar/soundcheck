@@ -5,13 +5,22 @@ package echolink
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-rod/rod/lib/proto"
+
 	"github.com/RhythmShahriar/echo/catcher"
+	"github.com/RhythmShahriar/echo/client"
 	echomodel "github.com/RhythmShahriar/echo/model"
+	"github.com/RhythmShahriar/echo/wire"
+	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -104,5 +113,81 @@ func TestConnect(t *testing.T) {
 	srv.Close()
 	if _, err := Connect(context.Background(), cfg, "secret"); err == nil || !strings.Contains(err.Error(), "start it with: rhythm echo up") {
 		t.Errorf("not running: %v", err)
+	}
+}
+
+// Tag shares the tab's interceptor with the run's other handlers (the -H
+// headers): the site gets both, another origin neither.
+func TestTagSharesTheInterceptor(t *testing.T) {
+	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
+		t.Skip("no Chrome or Chromium installed: ", err)
+	}
+	var mu sync.Mutex
+	got := map[string]string{} // host+path → "tag|header|cookie"
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := r.Cookie(wire.RunHeader)
+		v := ""
+		if c != nil {
+			v = c.Value
+		}
+		mu.Lock()
+		got[r.Host+r.URL.Path] = r.Header.Get(wire.RunHeader) + "|" + r.Header.Get("X-Staging") + "|" + v
+		mu.Unlock()
+		if r.URL.Path == "/" {
+			fmt.Fprintf(w, `<!doctype html><title>t</title><script>fetch('/api'); fetch('%s/x', {mode: 'no-cors'});</script>`, r.URL.Query().Get("other"))
+		}
+	})
+	srv, other := httptest.NewServer(h), httptest.NewServer(h)
+	defer srv.Close()
+	defer other.Close()
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab = tab.Timeout(20 * time.Second)
+	removeHeaders, err := intercept.Add(tab, func(r *intercept.Request) {
+		if r.URL != nil && r.URL.Host == strings.TrimPrefix(srv.URL, "http://") {
+			r.SetHeader("X-Staging", "yes")
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer removeHeaders()
+	l := (&Link{}).ForRun(time.Unix(1, 0))
+	untag, err := l.Tag(context.Background(), tab, srv.URL+"/", "form:/#f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = tab.Navigate(srv.URL + "/?other=" + other.URL)
+	_ = tab.WaitLoad()
+	tab.WaitRequestIdle(300*time.Millisecond, nil, nil, nil)()
+	untag()
+	_ = tab.Navigate(srv.URL + "/after")
+	_ = tab.WaitLoad()
+
+	mu.Lock()
+	defer mu.Unlock()
+	site, oth := strings.TrimPrefix(srv.URL, "http://"), strings.TrimPrefix(other.URL, "http://")
+	tag := client.RunValue(l.Run, "form:/#f")
+	for _, path := range []string{"/", "/api"} {
+		if v := got[site+path]; v != tag+"|yes|"+tag {
+			t.Errorf("site %s: %q", path, v)
+		}
+	}
+	if v, ok := got[oth+"/x"]; !ok || strings.HasPrefix(v, tag) || strings.Contains(v, "yes") {
+		t.Errorf("other origin: %q (seen %v)", v, ok)
+	}
+	if v := got[site+"/after"]; v != "|yes|" {
+		t.Errorf("after untag: %q", v)
 	}
 }

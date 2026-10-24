@@ -10,7 +10,8 @@
 //   - click clicks menus, tabs, accordions, modals, sliders and other
 //     controls, and reports dead clicks, JS errors and failed requests
 //     they cause. Destructive-looking controls and /wp-admin are never
-//     clicked.
+//     clicked. Requests a click would send other than GET and HEAD are
+//     held in the browser and listed ("would have sent POST /x").
 //   - submit (opt-in) submits forms with fake data: empty first, expecting
 //     validation, then valid, expecting success. It refuses production
 //     URLs unless a form is allowlisted.
@@ -107,7 +108,7 @@ func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, 
 	base, _ := url.Parse(p.URL)
 	for _, fm := range f.Forms {
 		target, err := url.Parse(fm.Action)
-		sameSite := fm.Action != "" && err == nil && base != nil && strings.EqualFold(target.Host, base.Host)
+		sameSite := fm.Action != "" && err == nil && check.SameSite(base, target)
 		if sameSite && strip(fm.Action) != strip(p.URL) && strip(fm.Action) != strip(p.FinalURL) {
 			code := m.probe(ctx, cc, strip(fm.Action))
 			if code == http.StatusNotFound || code == http.StatusGone || (code == http.StatusMethodNotAllowed && fm.Method == "get") {

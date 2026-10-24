@@ -8,25 +8,39 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 // destructive matches controls Soundcheck never clicks unless allowlisted:
-// anything that deletes, logs out, cancels, empties or buys, and links
+// anything that deletes, logs out, cancels, empties or buys, links
 // carrying a WordPress nonce or an action. It's matched against the
 // element's text, aria-label, id, class, href, title, value and name.
 var destructive = regexp.MustCompile(`(?i)delete|remove|unsubscribe|log ?out|log-out|logoff|sign ?out|sign-out|cancel|deactivate|trash|destroy|erase|purge|revoke|wipe|uninstall|disconnect|unlink|empty[ _-]?cart|clear[ _-]?cart|reset[ _-]?password|lost[ _-]?password|close[ _-]?account|add[ _-]?to[ _-]?cart|place[ _-]?order|buy[ _-]?now|pay[ _-]?now|checkout|purchase|_wpnonce|/wp-admin|[?&]action=`)
 
+// acts matches controls that act for the visitor (vote, like, follow,
+// subscribe, send, request, book, apply, publish, approve). The words
+// match whole only, so "Booking policy" and "likely" don't count. They're
+// matched against what the control says (its text, aria-label, title,
+// value, name and data-action) and not its href, class or id: links like
+// /books/ or /request-a-quote/ only navigate. The write a click on such
+// a control sends is held anyway (see holdWrites).
+var acts = regexp.MustCompile(`(?i)\b(?:up|down)?(?:vote|like|follow|subscribe|send|request|book|apply|publish|approve)(?:s|d|ed)?\b`)
+
 // isDestructive reports whether a control looks like it changes data.
-func isDestructive(words string) bool { return destructive.MatchString(words) }
+func isDestructive(c candidate) bool {
+	return destructive.MatchString(c.Words) || acts.MatchString(c.Says)
+}
 
 // Clicks wait this long for a reaction before calling the click dead.
 const deadAfter = 1500 * time.Millisecond
@@ -86,6 +100,13 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 	if _, err := tab.Timeout(10 * time.Second).Eval(guardJS); err != nil {
 		return clicked
 	}
+	release, err := holdWrites(tab)
+	if err != nil {
+		// Without the guard a click could post, vote or send for real.
+		m.warnOnce(cc, "hold-writes", "interact: skipped the click level, because requests a click sends couldn't be held: "+err.Error())
+		return clicked
+	}
+	defer release()
 	w := watch(ctx, tab)
 	defer w.stop()
 
@@ -108,7 +129,7 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 		case c.Nav:
 			record(c, "skipped", "navigates away")
 			continue
-		case !c.Allowed && isDestructive(c.Words):
+		case !c.Allowed && isDestructive(c):
 			record(c, "skipped", "looks destructive")
 			continue
 		}
@@ -145,6 +166,8 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 		case e.dead:
 			record(c, "dead", "no DOM change, request or navigation within 1.5 s")
 			set.add(deadIssue(c.Label, c.Tag == "a", "Clicking it changed nothing on the page, made no request and didn't navigate."), c.Sel)
+		case len(e.held) > 0:
+			record(c, "ok", wouldSend(e.held, base))
 		default:
 			record(c, "ok", c.Kind)
 		}
@@ -157,13 +180,44 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 	if left > 0 {
 		cc.Warn(fmt.Sprintf("interact %s: stopped clicking after %s with %d controls left (the page is slow)", p.Path, clickBudget, left))
 	}
-	// Leave the page as it was loaded for the submit level. Otherwise the
-	// runner's mobile pass reloads it anyway, so don't load it twice.
-	if n > 0 && cc.Config.Level("submit") {
+	// Leave the page as it was loaded, while writes are still held: a
+	// click may have set a timer that posts later, which would otherwise
+	// go out once the hold ends. The submit level and the hooks that run
+	// after this one get a fresh page too.
+	if n > 0 {
 		_ = reload(ctx, tab, pageURL)
 	}
 	return clicked
 }
+
+// holdWrites keeps the requests clicks make from changing anything:
+// until release is called, every request on tab other than GET and HEAD
+// (fetch, XHR, sendBeacon, a form post) fails as blocked by the client
+// and never reaches the server. Clicks only explore; only the submit and
+// flows levels may send data. They don't run under this guard.
+func holdWrites(tab *rod.Page) (release func(), err error) {
+	return intercept.Add(tab, func(r *intercept.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			r.Block()
+		}
+	})
+}
+
+// wouldSend describes the requests a click's guard held:
+// "would have sent POST /api/vote".
+func wouldSend(held []model.Request, base *url.URL) string {
+	var parts []string
+	for _, q := range held {
+		if s := q.Method + " " + shortURL(base, q.URL); !slices.Contains(parts, s) {
+			parts = append(parts, s)
+		}
+	}
+	return "would have sent " + strings.Join(parts, ", ")
+}
+
+// heldError matches the errors browsers throw for a request that never
+// got an answer (fetch's rejection, a blocked request).
+var heldError = regexp.MustCompile(`(?i)failed to fetch|networkerror|network error|load failed|err_blocked_by_client`)
 
 var errCovered = errors.New("covered by another element")
 
@@ -176,6 +230,7 @@ func (e *notThere) Error() string { return e.why }
 type clickResult struct {
 	errors []string
 	failed []model.Request
+	held   []model.Request // what the guard kept the click from sending
 	dead   bool
 	left   bool // the page navigated: reload before the next click
 }
@@ -290,7 +345,12 @@ func (m *Module) clickOne(ctx context.Context, tab *rod.Page, w *watcher, c cand
 			break
 		}
 	}
-	r.errors, r.failed = e.errors, e.failed
+	r.errors, r.failed, r.held = e.errors, e.failed, e.held
+	if len(r.held) > 0 {
+		// The page's own code sees a held request fail; the error it then
+		// throws is the guard's doing, not the site's.
+		r.errors = slices.DeleteFunc(r.errors, heldError.MatchString)
+	}
 	r.dead = !st.reacted(c.Void) && e.requests == 0 && e.nav == nil && len(e.errors) == 0
 	r.left = e.nav != nil || st.Moved || !st.Armed
 	// Close whatever opened (menus, modals) before the next click.

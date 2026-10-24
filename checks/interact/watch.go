@@ -13,6 +13,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -143,7 +144,7 @@ type effects struct {
 	failed   []model.Request
 	errors   []string
 	nav      *wreq
-	posts    []wreq // non-GET requests and their outcome
+	held     []model.Request // what the click guard kept from being sent (see holdWrites)
 }
 
 func (w *watcher) report() effects {
@@ -164,12 +165,13 @@ func (w *watcher) report() effects {
 		if isTracker(q.url) || strings.HasSuffix(q.url, "/favicon.ico") {
 			continue
 		}
-		e.requests++
+		e.requests++ // a held request still shows the click did something
 		if !q.done {
 			e.pending++
 		}
-		if q.method != "" && q.method != "GET" && q.method != "HEAD" {
-			e.posts = append(e.posts, *q)
+		if intercept.IsBlocked(q.failed) {
+			e.held = append(e.held, model.Request{URL: q.url, Method: q.method, Type: string(q.typ)})
+			continue
 		}
 		if q.failed != "" || q.status >= 400 {
 			e.failed = append(e.failed, model.Request{URL: q.url, Method: q.method, Type: string(q.typ), Status: q.status, Error: q.failed})
