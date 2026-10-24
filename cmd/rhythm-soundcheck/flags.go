@@ -189,6 +189,9 @@ type plan struct {
 	siteFrom string
 	chosen   chosen // settings the user set, which compare keeps
 	quick    string // what --quick set, for the header
+	// noReportHint leaves the "full report:" hint out of the summary,
+	// for the demo, whose run folder is removed when it ends.
+	noReportHint bool
 	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.

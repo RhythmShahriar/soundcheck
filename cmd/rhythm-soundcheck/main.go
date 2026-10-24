@@ -69,6 +69,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdFlows(args[1:], stdout, stderr)
 	case "update":
 		return cmdUpdate(args[1:], stdout, stderr)
+	case "demo":
+		return cmdDemo(args[1:], stdout, stderr)
 	}
 	// `rhythm soundcheck staging.example.com --against example.com`
 	if len(args) > 1 || looksLikeTarget(args[0]) {
@@ -102,6 +104,8 @@ Usage:
   rhythm soundcheck init                     write .soundcheck/config.yaml to edit
   rhythm soundcheck flows init               write an example flow to edit
   rhythm soundcheck update [--clear]         install or refresh the browser it uses
+  rhythm soundcheck demo [--keep]            try it on a built-in site: snapshot,
+                                             break, compare (nothing to set up)
 
 Snapshots:
       --name <name>          snapshot name (default: date and time); compare

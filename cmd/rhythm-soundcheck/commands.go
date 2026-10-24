@@ -338,7 +338,7 @@ func (s *session) finish(res report.Result, hint string) int {
 			break
 		}
 	}
-	if hint == "" && open != "" {
+	if hint == "" && open != "" && !s.noReportHint {
 		hint = "full report: " + rel(open)
 	}
 	if s.live {

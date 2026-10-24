@@ -68,6 +68,8 @@ Soundcheck drives a real browser. It uses Chrome or Chromium if you have one, an
 
 ## Check a change
 
+No site handy? `rhythm-soundcheck demo` serves a small built-in site, snapshots it, breaks it and shows the comparison, in a few seconds and without touching your project folder.
+
 ```sh
 rhythm-soundcheck snapshot staging.yoursite.com   # before: record how every page works
 # …update plugins, switch PHP, deploy…
