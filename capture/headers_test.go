@@ -139,3 +139,27 @@ func TestHeaderNotes(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 }
+
+// --cookie goes to the site's host and its www. or bare counterpart,
+// which the run treats as the same site.
+func TestCookieHosts(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://shop.test/":           "shop.test www.shop.test",
+		"https://www.shop.test/":       "www.shop.test shop.test",
+		"http://WWW.Shop.test:8080/":   "WWW.Shop.test:8080 Shop.test:8080",
+		"http://staging.shop.test/":    "staging.shop.test www.staging.shop.test",
+		"http://127.0.0.1:21200/":      "127.0.0.1:21200",
+		"http://[::1]:21200/":          "[::1]:21200",
+		"http://localhost:21200/":      "localhost:21200",
+		"http://www.localhost:21200/":  "www.localhost:21200",
+		"https://shop.test:443/a/b?c=": "shop.test:443 www.shop.test:443",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(cookieHosts(u), " "); got != want {
+			t.Errorf("%s: %q, want %q", raw, got, want)
+		}
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"image/png"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -177,10 +178,12 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 				// HttpOnly keeps them from the page's own scripts, third-party
 				// ones included. Secure keeps an https site's cookies off its
 				// http links.
-				_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/",
-					HTTPOnly: true, Secure: strings.EqualFold(site.Scheme, "https")}.Call(tab)
-				if err != nil {
-					return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
+				for _, host := range cookieHosts(site) {
+					_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + host + "/", Path: "/",
+						HTTPOnly: true, Secure: strings.EqualFold(site.Scheme, "https")}.Call(tab)
+					if err != nil {
+						return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
+					}
 				}
 			}
 		default:
@@ -197,6 +200,32 @@ func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (relea
 			}
 		}
 	})
+}
+
+// cookieHosts are the hosts a --cookie is set for: site's own and its
+// www. or bare counterpart, which the run treats as the same site (see
+// check.SameSite), so a page reached there gets the cookie as it gets
+// the -H headers. An IP address or a one-label host (localhost) has no
+// counterpart.
+func cookieHosts(site *url.URL) []string {
+	host, port := site.Hostname(), site.Port()
+	other := ""
+	switch {
+	case net.ParseIP(host) != nil || !strings.Contains(host, "."):
+	case strings.HasPrefix(strings.ToLower(host), "www."):
+		if bare := host[len("www."):]; strings.Contains(bare, ".") {
+			other = bare
+		}
+	default:
+		other = "www." + host
+	}
+	if other == "" {
+		return []string{site.Host}
+	}
+	if port != "" {
+		other = net.JoinHostPort(other, port)
+	}
+	return []string{site.Host, other}
 }
 
 // HeaderNotes are the run's warnings about headers the browser won't
