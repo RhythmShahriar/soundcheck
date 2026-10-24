@@ -24,16 +24,23 @@ import (
 
 // destructive matches controls Soundcheck never clicks unless allowlisted:
 // anything that deletes, logs out, cancels, empties or buys, links
-// carrying a WordPress nonce or an action plus controls that act for the
-// visitor (vote, like, follow, subscribe, send, request, book, apply,
-// publish, approve). Those words match whole only, so "Booking policy"
-// and "likely" don't count. It's matched against the element's text,
-// aria-label, id, class, href, title, value and name.
-var destructive = regexp.MustCompile(`(?i)delete|remove|unsubscribe|log ?out|log-out|logoff|sign ?out|sign-out|cancel|deactivate|trash|destroy|erase|purge|revoke|wipe|uninstall|disconnect|unlink|empty[ _-]?cart|clear[ _-]?cart|reset[ _-]?password|lost[ _-]?password|close[ _-]?account|add[ _-]?to[ _-]?cart|place[ _-]?order|buy[ _-]?now|pay[ _-]?now|checkout|purchase|_wpnonce|/wp-admin|[?&]action=|` +
-	`\b(?:up|down)?(?:vote|like|follow|subscribe|send|request|book|apply|publish|approve)(?:s|d|ed)?\b`)
+// carrying a WordPress nonce or an action. It's matched against the
+// element's text, aria-label, id, class, href, title, value and name.
+var destructive = regexp.MustCompile(`(?i)delete|remove|unsubscribe|log ?out|log-out|logoff|sign ?out|sign-out|cancel|deactivate|trash|destroy|erase|purge|revoke|wipe|uninstall|disconnect|unlink|empty[ _-]?cart|clear[ _-]?cart|reset[ _-]?password|lost[ _-]?password|close[ _-]?account|add[ _-]?to[ _-]?cart|place[ _-]?order|buy[ _-]?now|pay[ _-]?now|checkout|purchase|_wpnonce|/wp-admin|[?&]action=`)
+
+// acts matches controls that act for the visitor (vote, like, follow,
+// subscribe, send, request, book, apply, publish, approve). The words
+// match whole only, so "Booking policy" and "likely" don't count. They're
+// matched against what the control says (its text, aria-label, title,
+// value, name and data-action) and not its href, class or id: links like
+// /books/ or /request-a-quote/ only navigate. The write a click on such
+// a control sends is held anyway (see holdWrites).
+var acts = regexp.MustCompile(`(?i)\b(?:up|down)?(?:vote|like|follow|subscribe|send|request|book|apply|publish|approve)(?:s|d|ed)?\b`)
 
 // isDestructive reports whether a control looks like it changes data.
-func isDestructive(words string) bool { return destructive.MatchString(words) }
+func isDestructive(c candidate) bool {
+	return destructive.MatchString(c.Words) || acts.MatchString(c.Says)
+}
 
 // Clicks wait this long for a reaction before calling the click dead.
 const deadAfter = 1500 * time.Millisecond
@@ -122,7 +129,7 @@ func (m *Module) clicks(ctx context.Context, cc *check.Context, tab *rod.Page, p
 		case c.Nav:
 			record(c, "skipped", "navigates away")
 			continue
-		case !c.Allowed && isDestructive(c.Words):
+		case !c.Allowed && isDestructive(c):
 			record(c, "skipped", "looks destructive")
 			continue
 		}

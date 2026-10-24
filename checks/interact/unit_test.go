@@ -13,17 +13,30 @@ func TestDestructive(t *testing.T) {
 		"Delete account", "Remove item", "btn | unsubscribe-link", "Log out", "logout", "Sign out", "Cancel order",
 		"Empty cart", "empty_cart", "Deactivate", "Move to Trash", "Reset password", "/?action=trash&post=4",
 		"/wp-admin/post.php", "x | /cart/?_wpnonce=abc", "Add to cart", "Place order",
-		"Like", "btn | like-button", "Upvote", "Vote", "Follow us", "Subscribe", "Send", "Request a callback",
-		"Book now", "Apply", "Publish", "Approve", "Approved", "Liked", "Followed",
 	} {
-		if !isDestructive(words) {
+		if !isDestructive(candidate{Words: words}) {
 			t.Errorf("%q should be destructive", words)
 		}
 	}
-	for _, words := range []string{"Menu | menu-toggle", "Show more", "Next slide", "Dropdown | dropdown-toggle", "Load more posts",
-		"Booking policy", "likely", "Sender details", "Bookmarks", "Applications"} {
-		if isDestructive(words) {
-			t.Errorf("%q isn't destructive", words)
+	for _, says := range []string{
+		"Like", "Upvote", "Vote", "Follow us", "Subscribe", "Send", "Request a callback",
+		"Book now", "Apply", "Publish", "Approve", "Approved", "Liked", "Followed", " | like",
+	} {
+		if !isDestructive(candidate{Words: says, Says: says}) {
+			t.Errorf("a control that says %q should be destructive", says)
+		}
+	}
+	for _, c := range []candidate{
+		{Words: "Menu | menu-toggle", Says: "Menu"}, {Words: "Show more", Says: "Show more"}, {Words: "Next slide"},
+		{Words: "Dropdown | dropdown-toggle"}, {Words: "Load more posts"}, {Words: "Booking policy", Says: "Booking policy"},
+		{Words: "likely", Says: "likely"}, {Words: "Sender details", Says: "Sender details"}, {Words: "Bookmarks"},
+		{Words: "Applications", Says: "Applications"},
+		// Action words in an href, class or id are navigation and styling.
+		{Words: "Reading list | /books/", Says: "Reading list"}, {Words: "Get a quote | /request-a-quote/", Says: "Get a quote"},
+		{Words: "Jobs | /apply/", Says: "Jobs"}, {Words: "Go | btn like-button", Says: "Go"},
+	} {
+		if isDestructive(c) {
+			t.Errorf("%+v isn't destructive", c)
 		}
 	}
 }

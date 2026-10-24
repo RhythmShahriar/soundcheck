@@ -241,6 +241,7 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
     }
     const cls = typeof e.className === 'string' ? e.className : '';
     const words = [e.innerText, e.getAttribute('aria-label'), e.id, cls, href, e.title, e.value, e.name, e.getAttribute('data-action')].map(clean).join(' | ');
+    const says = [e.innerText, e.getAttribute('aria-label'), e.title, e.value, e.name, e.getAttribute('data-action')].map(clean).join(' | ');
     let kind = 'button';
     const k = (cls + ' ' + (e.id || '') + ' ' + (e.getAttribute('role') || '')).toLowerCase();
     if (/menu|nav|hamburger|burger/.test(k) && (e.hasAttribute('aria-expanded') || /toggle/.test(k))) kind = 'menu';
@@ -252,7 +253,7 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
     else if (/toggle/.test(k) || e.hasAttribute('aria-expanded')) kind = 'toggle';
     else if (e.tagName === 'A') kind = 'link';
     const prio = e.hasAttribute('aria-expanded') || e.hasAttribute('aria-controls') || e.tagName === 'SUMMARY' || kind !== 'button' && kind !== 'link' ? 0 : e.__scL ? 1 : 2;
-    out.cands.push({sel, label: labelOf(e), kind, nav, void: href !== null && voidHref(href), words, allowed: allowed(e), prio, tag: e.tagName.toLowerCase()});
+    out.cands.push({sel, label: labelOf(e), kind, nav, void: href !== null && voidHref(href), words, says, allowed: allowed(e), prio, tag: e.tagName.toLowerCase()});
   }
   return out;
 }`
@@ -302,8 +303,9 @@ type candidate struct {
 	Label   string `json:"label"`
 	Kind    string `json:"kind"`
 	Nav     bool   `json:"nav"`
-	Void    bool   `json:"void"` // a link to "#" or javascript:void(0)
-	Words   string `json:"words"`
+	Void    bool   `json:"void"`  // a link to "#" or javascript:void(0)
+	Words   string `json:"words"` // everything that names it, href, class and id included
+	Says    string `json:"says"`  // what it says to a visitor (see acts)
 	Allowed bool   `json:"allowed"`
 	Prio    int    `json:"prio"`
 	Tag     string `json:"tag"`
