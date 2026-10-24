@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
@@ -190,6 +191,31 @@ func TestCheckSiteCapsTheSitemaps(t *testing.T) {
 	s = checkSite(t, site(t, "", map[string]string{"/sitemap.xml": `<urlset><url><loc>a</loc></url></urlset>`}))
 	if s.Sitemap.Capped {
 		t.Errorf("small sitemap = %+v", s.Sitemap)
+	}
+}
+
+// An index listing many sitemaps that fail costs at most maxFiles
+// requests, not one per entry.
+func TestCheckSiteCapsFailingSitemaps(t *testing.T) {
+	var index strings.Builder
+	index.WriteString("<sitemapindex>")
+	for i := range maxFiles + 20 {
+		fmt.Fprintf(&index, "<sitemap><loc>{site}/gone%d.xml</loc></sitemap>", i)
+	}
+	inner := site(t, "Sitemap: {site}/sitemap_index.xml\n", map[string]string{"/sitemap_index.xml": index.String() + "</sitemapindex>"})
+	var asked atomic.Int32
+	counting := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/gone") || r.URL.Path == "/sitemap_index.xml" {
+			asked.Add(1)
+		}
+		inner.Config.Handler.ServeHTTP(w, r)
+	}))
+	s := checkSite(t, counting)
+	if n := asked.Load(); n > maxFiles {
+		t.Errorf("%d sitemap requests, want at most %d", n, maxFiles)
+	}
+	if !s.Sitemap.Capped || s.Sitemap.Files != 1 {
+		t.Errorf("sitemap = %+v", s.Sitemap)
 	}
 }
 

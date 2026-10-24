@@ -41,7 +41,7 @@ type Sitemap struct {
 	Status int    `json:"status"`
 	Pages  int    `json:"pages"`
 	Files  int    `json:"files,omitempty"` // sitemap files read
-	// Capped is set when the run stopped at maxFiles or maxTotal with
+	// Capped is set when the run stopped at maxFiles requests or maxTotal with
 	// sitemaps left to read, so Pages is a lower bound that depends on
 	// the order the index lists them in.
 	Capped bool `json:"capped,omitempty"`
@@ -163,19 +163,22 @@ func sitemap(ctx context.Context, cc *check.Context, root *url.URL, listed []str
 		}
 	}
 	s := Sitemap{URL: start[0]}
-	queue, seen, total := slices.Clone(start), map[string]bool{}, 0
+	// Every request counts toward maxFiles, read or not: an index that
+	// lists thousands of missing sitemaps must not get them all asked for.
+	queue, seen, total, requests := slices.Clone(start), map[string]bool{}, 0, 0
 	for len(queue) > 0 {
 		u := queue[0]
 		if seen[u] {
 			queue = queue[1:]
 			continue
 		}
-		if s.Files >= maxFiles || total >= maxTotal {
+		if requests >= maxFiles || total >= maxTotal {
 			s.Capped = true
 			break
 		}
 		queue = queue[1:]
 		seen[u] = true
+		requests++
 		status, body := fetch(ctx, cc, u)
 		total += len(body)
 		if u == s.URL {
