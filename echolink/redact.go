@@ -1,0 +1,50 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package echolink
+
+import (
+	"regexp"
+
+	echomodel "github.com/RhythmShahriar/echo/model"
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
+)
+
+// masked replaces what Redact hides, the kit's mask for a value shown
+// with no leading characters.
+var masked = secrets.Mask("", 0)
+
+var (
+	// longQuery matches a long URL query value, the shape of a password
+	// reset key, a magic login link or a confirmation token. "&amp;"
+	// covers links inside HTML.
+	longQuery = regexp.MustCompile(`([?&](?:amp;)?[A-Za-z0-9_.~%\[\]-]+=)([^&#\s"'<>]{16,})`)
+	// code matches a one-time code: 6 to 8 digits standing alone. Digits
+	// after "#", "&" (an HTML entity), "." or "," are colors, entities
+	// and decimals, not codes.
+	code = regexp.MustCompile(`(^|[^\w#&.,-])(\d{6,8})\b`)
+)
+
+// Redact returns msgs with the credentials, reset links and one-time
+// codes in their subject, text, HTML and raw body masked, for storing in
+// a run. Runs end up in CI artifacts and shared reports, while a
+// password reset email holds a working link. Both runs of a comparison
+// are masked the same way, so a code that changes on every send no
+// longer reads as a changed message.
+func Redact(msgs []echomodel.Message) []echomodel.Message {
+	out := make([]echomodel.Message, len(msgs))
+	for i, m := range msgs {
+		m.Subject, m.Text, m.HTML, m.Body = redactText(m.Subject), redactText(m.Text), redactText(m.HTML), redactText(m.Body)
+		out[i] = m
+	}
+	return out
+}
+
+func redactText(s string) string {
+	if s == "" {
+		return s
+	}
+	s = secrets.Redact(s)
+	s = longQuery.ReplaceAllString(s, "${1}"+masked)
+	return code.ReplaceAllString(s, "${1}"+masked)
+}

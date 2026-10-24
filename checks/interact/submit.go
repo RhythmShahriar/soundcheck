@@ -266,7 +266,9 @@ func (m *Module) messages(ctx context.Context, cc *check.Context, p *model.Page,
 		m.warnOnce(cc, "echo-wait", "echo: couldn't get the messages form submits sent: "+err.Error())
 		return "", false
 	}
-	act.Messages = msgs
+	// Stored and judged masked: reset links and one-time codes mustn't
+	// reach the run's files.
+	act.Messages = echolink.Redact(msgs)
 	p.Echo = append(p.Echo, act)
 	for _, i := range echolink.Issues(act, base.Hostname()) {
 		check.Page(p, i)

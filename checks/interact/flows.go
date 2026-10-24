@@ -132,7 +132,9 @@ func (m *Module) flowMessages(ctx context.Context, cc *check.Context, act model.
 		m.warnOnce(cc, "echo-wait", "echo: couldn't get the messages flows sent: "+err.Error())
 		return
 	}
-	act.Messages = msgs
+	// Stored and judged masked: reset links and one-time codes mustn't
+	// reach the run's files.
+	act.Messages = echolink.Redact(msgs)
 	cc.Lock()
 	cc.Run.Echo = append(cc.Run.Echo, act)
 	cc.Unlock()
