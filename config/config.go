@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,8 +22,13 @@ import (
 // Dir is the project folder Soundcheck keeps snapshots and reports in.
 const Dir = ".soundcheck"
 
-// Modules Soundcheck can run, in order.
-var Modules = []string{"health", "visual", "interact", "cache", "speed"}
+// Modules Soundcheck can run, in order. echo runs only when Echo is
+// configured (Echo.URL), so it isn't in the default list: the CLI adds it
+// when --echo, SOUNDCHECK_ECHO or echo.url is set.
+var Modules = []string{"health", "visual", "interact", "cache", "speed", "echo"}
+
+// EchoURL is where `rhythm echo up` listens by default.
+const EchoURL = "http://127.0.0.1:8025"
 
 // Interaction levels, from safest to most invasive.
 var Levels = []string{"inspect", "click", "submit", "flows"}
@@ -39,6 +46,7 @@ type Config struct {
 	Rate         float64      `yaml:"rate"` // page loads per second per host
 	Tabs         int          `yaml:"tabs"`
 	Timeout      int          `yaml:"timeout"` // seconds per page
+	Echo         Echo         `yaml:"echo"`
 }
 
 type Pages struct {
@@ -67,6 +75,15 @@ type Login struct {
 	Flow string `yaml:"flow"` // a YAML flow that logs in, for non-WordPress sites
 }
 
+// Echo ties form submits and flows to the emails, SMS and webhooks they
+// make the site send, through a running Echo (`rhythm echo up`).
+type Echo struct {
+	URL      string        `yaml:"url"`       // empty: off
+	TokenEnv string        `yaml:"token_env"` // environment variable holding Echo's token, if it needs one
+	Quiet    time.Duration `yaml:"quiet"`     // after a submit, wait until nothing new arrives for this long…
+	Timeout  time.Duration `yaml:"timeout"`   // …or at most this long
+}
+
 type Speed struct {
 	Slower float64 `yaml:"slower"` // % slower before a page is reported SLOWER
 }
@@ -76,7 +93,7 @@ func Default() Config {
 	return Config{
 		Pages:        Pages{Limit: 300, PerGroup: 3},
 		Viewports:    []string{"desktop", "mobile"},
-		Modules:      slices.Clone(Modules),
+		Modules:      slices.Clone(Modules[:len(Modules)-1]), // not echo: it needs Echo.URL
 		Visual:       Visual{Threshold: 0.5},
 		Interactions: Interactions{Levels: []string{"inspect", "click"}, MaxClicks: 15},
 		Flows:        filepath.Join(Dir, "flows"),
@@ -84,6 +101,7 @@ func Default() Config {
 		Rate:         5,
 		Tabs:         8,
 		Timeout:      30,
+		Echo:         Echo{TokenEnv: "RHYTHM_ECHO_TOKEN", Quiet: 1500 * time.Millisecond, Timeout: 10 * time.Second}, //nolint:gosec // the name of a variable, not a token
 	}
 }
 
@@ -132,6 +150,27 @@ func (c Config) Validate() error {
 		return errors.New("visual.threshold is a percentage, 0 to 100")
 	case c.Timeout < 5:
 		return errors.New("timeout must be at least 5 seconds")
+	}
+	return c.Echo.validate(c.Has("echo"))
+}
+
+func (e Echo) validate(on bool) error {
+	if on && e.URL == "" {
+		return errors.New("modules: echo needs Echo's address: --echo, SOUNDCHECK_ECHO or echo.url")
+	}
+	if e.URL != "" {
+		u, err := url.Parse(e.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("echo.url: %q isn't an http(s) URL like %s", e.URL, EchoURL)
+		}
+	}
+	switch {
+	case e.Quiet < 100*time.Millisecond || e.Quiet > 30*time.Second:
+		return errors.New("echo.quiet must be between 100ms and 30s")
+	case e.Timeout < e.Quiet || e.Timeout > time.Minute:
+		return errors.New("echo.timeout must be at least echo.quiet and at most 1m")
+	case strings.ContainsAny(e.TokenEnv, " =$"):
+		return fmt.Errorf("echo.token_env: %q isn't an environment variable name", e.TokenEnv)
 	}
 	return nil
 }
