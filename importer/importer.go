@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -52,6 +53,11 @@ func (r *Result) YAML(source string) ([]byte, error) {
 		Viewports []string `yaml:"viewports,omitempty"`
 		Visual    visual   `yaml:"visual,omitempty"`
 	}{r.Site, pages{r.Pages}, r.Viewports, visual{r.Ignore}}
+	// A file name with a line break would end the comment and put a
+	// setting of its own in the config, so such a name is quoted.
+	if strings.IndexFunc(source, func(r rune) bool { return !strconv.IsPrint(r) }) >= 0 {
+		source = strconv.Quote(source)
+	}
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# Imported from %s. Settings left out keep their defaults; the\n", source)
 	b.WriteString("# init command writes a file that lists them all.\n")

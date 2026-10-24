@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/RhythmShahriar/soundcheck/config"
 )
 
@@ -212,6 +214,25 @@ func TestReadsOnly(t *testing.T) {
 				t.Errorf("%s imports %s", f, path)
 			}
 		}
+	}
+}
+
+// A file name can't add a setting: one with a line break is quoted, so
+// the comment stays one line.
+func TestYAMLQuotesAFileNameWithALineBreak(t *testing.T) {
+	data, err := (&Result{Site: "https://shop.test"}).YAML("b\nfail_on: none\n#.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc["fail_on"]; ok || len(doc) != 1 {
+		t.Errorf("the file name set a key: %v\n%s", doc, data)
+	}
+	if !strings.HasPrefix(string(data), `# Imported from "b\nfail_on: none\n#.json". `) {
+		t.Errorf("header:\n%s", data)
 	}
 }
 
