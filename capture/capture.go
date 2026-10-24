@@ -353,7 +353,7 @@ const factsJS = `async () => {
 }`
 
 // How long factsJS waits for long tasks: until none came in for
-// taskQuietMs, and never more than taskWaitMs.
+// taskQuietMs and never more than taskWaitMs.
 const (
 	taskQuietMs = "300"
 	taskWaitMs  = "2000"

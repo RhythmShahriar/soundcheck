@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Safe calls fn, a module's hook, and turns a panic in it into a warning
+// Safe calls fn (a module's hook) and turns a panic in it into a warning
 // instead of a crashed run: one bug in one module (a nil map, an index
 // out of range) mustn't lose every other module's results or leave
 // Chrome running. The warning reads

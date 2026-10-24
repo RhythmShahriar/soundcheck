@@ -297,7 +297,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 // accepted, so each new page is queued by the one visit that found it
 // first. Taking the frontier's pages added since some earlier count
 // instead would let two visits that add links at the same time both
-// queue the other's pages, and visit them twice.
+// queue the other's pages and visit them twice.
 func addLinks(f *crawl.Frontier, start *url.URL, links []string, depth int) []crawl.Page {
 	if addHook != nil {
 		addHook(false)
@@ -334,8 +334,8 @@ func addLinks(f *crawl.Frontier, start *url.URL, links []string, depth int) []cr
 var addHook func(added bool)
 
 // canceled is the Error of a page whose visit the run's cancel cut
-// short (Ctrl+C). Such a page has no facts, issues or shots: what it
-// recorded before the cancel is partial, and compared with a snapshot it
+// short (Ctrl+C). Such a page has no facts, issues or shots. What it
+// recorded before the cancel is partial; compared with a snapshot it
 // would read as a page that lost its title or went blank.
 var canceled = context.Canceled.Error()
 
@@ -413,7 +413,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 			check.Safe(m.Name(), "CheckPage", cc.Warn, func() { c.CheckPage(cc, p) })
 		}
 	}
-	// The text can run to 200,000 characters a page, and nothing past the
+	// The text can run to 200,000 characters a page. Nothing past the
 	// page's own checks reads it unless a module says so.
 	if !slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.NeedsText); return ok }) {
 		p.Text = ""
