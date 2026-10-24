@@ -21,13 +21,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/proc"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -118,6 +118,9 @@ type Log struct {
 	// Works says the site's final state passed its compare: no change
 	// at or above StopOn.
 	Works bool `json:"works"`
+	// WP is the WP-CLI command prefix the loop ran (Options.WP), for the
+	// roll-back hint; empty reads as plain "wp".
+	WP []string `json:"wp,omitempty"`
 	// Note explains a loop that ended early, e.g. a break bisect
 	// couldn't pin on one plugin.
 	Note  string   `json:"note,omitempty"`
@@ -159,7 +162,7 @@ func Run(ctx context.Context, o Options) (*Log, error) {
 		}
 	}
 	r := &runner{ctx: ctx, o: o, out: cleanWriter{cmp.Or[io.Writer](o.Out, io.Discard)}}
-	r.log = &Log{Target: o.Target, Mode: ModeOneByOne, StopOn: cmp.Or(o.StopOn, model.Broke), Started: time.Now()}
+	r.log = &Log{Target: o.Target, WP: o.WP, Mode: ModeOneByOne, StopOn: cmp.Or(o.StopOn, model.Broke), Started: time.Now()}
 	if o.Bisect {
 		r.log.Mode = ModeBisect
 	}
@@ -344,8 +347,21 @@ func (r *runner) oneByOne(todo []*Plugin) error {
 			return err
 		}
 		p.Status = RolledBack
-		// The site is back where the last good compare left it.
-		r.log.Works = true
+		// A failed or partial reinstall can leave the site broken, so
+		// the rollback gets a compare of its own before the loop goes on.
+		res, err = r.compare()
+		if err != nil {
+			r.log.Works = false
+			p.Error = "the rollback wasn't checked: " + err.Error()
+			return err
+		}
+		r.log.Works = !res.reaches(r.log.StopOn)
+		fmt.Fprintf(r.out, "      after the rollback: %s\n", res.verdict())
+		if !r.log.Works {
+			p.Error = "the site still breaks after the rollback"
+			r.log.Note = fmt.Sprintf("the site still breaks after rolling %s back to %s; check it by hand", p.Slug, p.Old)
+			stopped = p.Slug
+		}
 	}
 	return nil
 }
@@ -479,7 +495,7 @@ func (r *runner) wp(args ...string) ([]byte, error) {
 	cmd.Stdout, cmd.Stderr = &stdout, stderr
 	// Interrupt rather than kill, so WP-CLI can finish writing a plugin's
 	// files; one that hangs is killed after WaitDelay.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	proc.Interrupt(cmd)
 	cmd.WaitDelay = 30 * time.Second
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("wp %s: %s", strings.Join(args[:min(2, len(args))], " "), lastLine(stderr.String(), err))
@@ -501,7 +517,7 @@ func (r *runner) soundcheck(cmdArgs ...string) ([]byte, error) {
 	cmd := exec.CommandContext(r.ctx, r.o.Bin, args...) //nolint:gosec // the Soundcheck binary, with argv and no shell
 	cmd.Dir, cmd.Stdout, cmd.Stderr = r.o.Dir, &stdout, stderr
 	// On cancel, interrupt: Soundcheck then closes its browser.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	proc.Interrupt(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	err := cmd.Run()
 	var exitErr *exec.ExitError

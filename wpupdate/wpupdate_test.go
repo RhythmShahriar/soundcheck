@@ -41,6 +41,7 @@ type fakePlugin struct {
 type fakeState struct {
 	Plugins  []fakePlugin
 	Breaks   []string // plugins whose new version breaks the site
+	Stuck    []string // plugins whose install --force succeeds but changes nothing
 	WP       [][]string
 	Compares int
 	Snapshot []string // the snapshot's argv
@@ -95,7 +96,9 @@ func fakeWP(args []string) int {
 		if p == nil || !ok {
 			return 1
 		}
-		p.Installed = v
+		if !slices.Contains(st.Stuck, p.Name) {
+			p.Installed = v
+		}
 	default:
 		fmt.Fprintln(os.Stderr, "Error: unknown command")
 		return 1
@@ -217,7 +220,8 @@ func TestOneByOneRollsBackTheCulprit(t *testing.T) {
 	if inst["p07"] != "1.0" || inst["p06"] != "1.1" || inst["p10"] != "1.1" {
 		t.Errorf("installed %v", inst)
 	}
-	if st.Compares != 10 || l.Compares != 10 || !l.Works {
+	// One compare per plugin and one to check the rollback.
+	if st.Compares != 11 || l.Compares != 11 || !l.Works {
 		t.Errorf("compares %d/%d works %v", st.Compares, l.Compares, l.Works)
 	}
 	// The snapshot and compares run fast, against the snapshot taken.
@@ -232,7 +236,7 @@ func TestOneByOneRollsBackTheCulprit(t *testing.T) {
 		"Updated 9 plugins, 1 rolled back: p07 1.0 → 1.1 broke the site (" + want + ").",
 		"The site still works.",
 		"rolled back: broke the site, " + want,
-		"10 compares in",
+		"11 compares in",
 	} {
 		if !strings.Contains(txt, w) {
 			t.Errorf("log lacks %q:\n%s", w, txt)
@@ -245,6 +249,56 @@ func TestOneByOneRollsBackTheCulprit(t *testing.T) {
 	}
 	if len(l.Files) != 2 || !strings.HasSuffix(l.Files[1], ".md") || !strings.Contains(l.Files[0], filepath.Join(config.Dir, LogDir)) {
 		t.Errorf("files %v", l.Files)
+	}
+}
+
+// A rollback that leaves the site broken (a partial reinstall) doesn't
+// pass as a site that works: the loop stops there and says so.
+func TestOneByOneChecksTheRollback(t *testing.T) {
+	o, path := setup(t, 10, "p03")
+	st := readState(t, path)
+	st.Stuck = []string{"p03"}
+	b, _ := json.Marshal(st)
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o.Rollback = true
+	l, err := Run(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Works || l.Compares != 4 {
+		t.Errorf("works %v after %d compares", l.Works, l.Compares)
+	}
+	p := l.Plugins[slices.IndexFunc(l.Plugins, func(p Plugin) bool { return p.Slug == "p03" })]
+	if p.Status != RolledBack || p.Error != "the site still breaks after the rollback" {
+		t.Errorf("p03: %+v", p)
+	}
+	if got := byStatus(l, NotUpdated); len(got) != 7 {
+		t.Errorf("not updated %v", got)
+	}
+	if want := "the site still breaks after rolling p03 back to 1.0; check it by hand"; l.Note != want {
+		t.Errorf("note %q", l.Note)
+	}
+	if txt := text(t, l); strings.Contains(txt, "still works") {
+		t.Errorf("a broken site still works:\n%s", txt)
+	}
+}
+
+// The roll-back hint goes through the --wp command the loop ran.
+func TestRollbackCommandUsesTheWPPrefix(t *testing.T) {
+	p := Plugin{Slug: "p04", Old: "1.0"}
+	for _, tc := range []struct {
+		wp   []string
+		want string
+	}{
+		{nil, "wp plugin install p04 --version=1.0 --force"},
+		{[]string{"ssh", "deploy@staging", "--", "wp", "--path=/srv/www"}, "ssh deploy@staging -- wp --path=/srv/www plugin install p04 --version=1.0 --force"},
+		{[]string{"/home/me/bin/wp cli.sh"}, "'/home/me/bin/wp cli.sh' plugin install p04 --version=1.0 --force"},
+	} {
+		if got := (&Log{WP: tc.wp}).rollbackCommand(p); got != tc.want {
+			t.Errorf("%q: got %s\nwant %s", tc.wp, got, tc.want)
+		}
 	}
 }
 
@@ -270,7 +324,8 @@ func TestOneByOneStopsWithoutRollback(t *testing.T) {
 	txt := text(t, l)
 	for _, w := range []string{
 		"Updated 4 plugins.",
-		"p04 1.0 → 1.1 broke the site (PHP Fatal error: Uncaught TypeError on /contact/, plugins/p04/includes/submit.php:412) and is still installed. Roll it back with: wp plugin install p04 --version=1.0 --force",
+		"p04 1.0 → 1.1 broke the site (PHP Fatal error: Uncaught TypeError on /contact/, plugins/p04/includes/submit.php:412) and is still installed. Roll it back with: " +
+			shellQuote(os.Args[0]) + " fake-wp plugin install p04 --version=1.0 --force",
 		"not updated: stopped at p04",
 	} {
 		if !strings.Contains(txt, w) {

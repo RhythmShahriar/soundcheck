@@ -15,7 +15,7 @@ func TestSummaryQuotesAndCleans(t *testing.T) {
 	l := &Log{Target: "https://staging.test", Plugins: []Plugin{{Slug: "evil;rm -rf ~", Old: "1.0 $(id)", New: "1.1",
 		Status: Kept, Verdict: "broke", Evidence: "Fatal \x1b[31merror\x1b[0m on /x/"}}}
 	sum := strings.Join(l.Summary(), "\n")
-	if !strings.Contains(sum, `Roll it back with: wp plugin install 'evil;rm -rf ~' --version='1.0 $(id)' --force`) {
+	if !strings.Contains(sum, `Roll it back with: wp plugin install 'evil;rm -rf ~' '--version=1.0 $(id)' --force`) {
 		t.Errorf("hint isn't quoted:\n%s", sum)
 	}
 	if strings.ContainsRune(sum, '\x1b') {

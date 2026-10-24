@@ -22,6 +22,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/history"
+	"github.com/RhythmShahriar/soundcheck/internal/proc"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -233,7 +234,7 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site) Result {
 	// On cancel, interrupt rather than kill: Soundcheck then closes its
 	// browser and drops the half-made snapshot. A run that doesn't stop
 	// within WaitDelay is killed.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	proc.Interrupt(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	runErr := cmd.Run()
 	r.Exit = cmd.ProcessState.ExitCode()

@@ -60,6 +60,20 @@ func count(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
+// rollbackCommand is the shell command that puts p back at its old
+// version through the same WP-CLI command the loop ran, quoted to paste.
+func (l *Log) rollbackCommand(p Plugin) string {
+	prefix := l.WP
+	if len(prefix) == 0 {
+		prefix = []string{"wp"}
+	}
+	argv := wpArgv(prefix, "plugin", "install", p.Slug, "--version="+p.Old, "--force")
+	for i, a := range argv {
+		argv[i] = shellQuote(a)
+	}
+	return strings.Join(argv, " ")
+}
+
 func (p Plugin) versions() string { return p.Old + " → " + p.New }
 
 // Summary is the log's opening lines: what was updated, what broke and
@@ -111,8 +125,8 @@ func (l *Log) summary() []string {
 	}
 	out = append(out, line+".")
 	for _, p := range kept {
-		out = append(out, fmt.Sprintf("%s %s %s (%s) and is still installed. Roll it back with: wp plugin install %s --version=%s --force",
-			p.Slug, p.versions(), effect(p.Verdict), p.Evidence, shellQuote(p.Slug), shellQuote(p.Old)))
+		out = append(out, fmt.Sprintf("%s %s %s (%s) and is still installed. Roll it back with: %s",
+			p.Slug, p.versions(), effect(p.Verdict), p.Evidence, l.rollbackCommand(p)))
 	}
 	if len(failed) > 0 {
 		out = append(out, count(len(failed), "update")+" failed: "+slugs(failed)+".")
