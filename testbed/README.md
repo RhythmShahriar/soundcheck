@@ -12,7 +12,7 @@ make -C testbed up      # about 30 s once the images are pulled
 
 | Site | URL | What it is |
 |---|---|---|
-| WordPress | http://localhost:18800/ | WordPress 6.8.3 on PHP 8.3 with MariaDB 11.4: a coffee roaster's site with pages, posts, a menu, a contact form, a shop and a cart. Each WordPress scenario has its own page (`/s01-fatal/`, `/s02-warning/`…), and `/scenarios/` lists them. |
+| WordPress | http://localhost:18800/ | WordPress 6.8.3 on PHP 8.3 with MariaDB 11.4: a coffee roaster's site with pages, posts, a menu, a contact form, a shop and a cart. Each WordPress scenario has its own page (`/s01-fatal/`, `/s02-warning/`…) and `/scenarios/` lists them. |
 | Plain PHP | http://localhost:18810/ | "Ledger", a few pages of plain PHP 8.3 (no framework), for s03 and s34 to s45 |
 | Plain PHP, https | https://localhost:18811/ | the same site over https with a self-signed certificate made at start (use `-k`), for s25 |
 
@@ -65,7 +65,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 
 ## Scenarios
 
-[`scenarios.yaml`](scenarios.yaml) is the manifest. For each scenario it gives the page, the module that should catch it, the expected change (class, check, title), and where the broken state is implemented.
+[`scenarios.yaml`](scenarios.yaml) is the manifest. For each scenario it gives the page, the module that should catch it, the expected change (class, check, title) and where the broken state is implemented.
 
 | ID | Page | Broken state | Expected |
 |---|---|---|---|
@@ -94,9 +94,9 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s23 | `/s23-fatal/` | every front-end page runs out of memory, so WordPress shows its critical error screen site-wide | BROKE health |
 | s24 | `/s24-styles/` | theme 2.0 enqueues a stylesheet that wasn't deployed, so the site renders unstyled | NEW health (broken stylesheet) / CHANGED visual |
 | s25 | `:18811/mixed.php` | over https, the logo still loads from the old http:// URL | NEW health (mixed content) |
-| s26 | `/s26-robots/` | robots.txt says `Disallow: /` | BROKE seo (pending) |
-| s27 | `/s27-seo/` | canonical, hreflang, Open Graph and JSON-LD are gone | seo (pending) |
-| s28 | `/s28-sitemap/` | `/wp-sitemap.xml` answers 500 | seo (pending) |
+| s26 | `/s26-robots/` | robots.txt says `Disallow: /` | BROKE seo |
+| s27 | `/s27-seo/` | canonical, hreflang, Open Graph and JSON-LD are gone | seo |
+| s28 | `/s28-sitemap/` | `/wp-sitemap.xml` answers 500 | seo |
 | s29 | `/s29-redirect/` | a new redirect rule sends the page to the home page | CHANGED health (redirect) |
 | s30 | `/s30-stale/` | the page cache serves a 36-hour-old copy with old content and an expired nonce | NEW cache (stale, expired nonce) |
 | s31 | `/checkout/` | Place order hits a fatal error in the payment step | BROKE interact (submit level) |
@@ -104,23 +104,23 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s33 | `/s33-mail/` | the form still says sent while no email goes out | BROKE echo (needs Echo) |
 | s34 | `:18810/ttfb.php` | the server waits 1.5 s before answering; nothing else changes | SLOWER speed (TTFB) |
 | s35 | `:18810/late.php` | the section a script loads 1.5 s after load shows a missing photo | NEW health (broken image) |
-| s36 | `:18810/about.php` | the whole site answers with a Cloudflare-style bot challenge (403) | BROKE health/blocked (pending) |
-| s37 | `:18810/about.php` | the whole site asks for basic auth (401) | BROKE health/auth-required (pending) |
-| s38 | `:18810/archive.php` | each page takes 3 s; the benchmark presses Ctrl+C during compare | marked interrupted, no false BROKE (pending) |
-| s39 | `:18810/` | nothing; the benchmark runs two compares in one folder at once | both clean, separate folders (pending) |
-| s40 | `:18810/banner.php` | a red banner appears; the benchmark deletes the snapshot's screenshots | a "screenshots missing" warning (pending) |
-| s41 | `:18810/slow.php` | the page answers after 5 s with a 6 s timeout | SLOWER speed, no white screen (pending) |
-| s42 | `:18810/flaky.php` | one request in five answers 500 | UNSTABLE (pending) |
-| s43 | `:18810/moved.php` | the page redirects to another host name | exit 3 (pending) |
+| s36 | `:18810/about.php` | the whole site answers with a Cloudflare-style bot challenge (403) | BROKE health/blocked |
+| s37 | `:18810/about.php` | the whole site asks for basic auth (401) | BROKE health/auth-required |
+| s38 | `:18810/archive.php` | each page takes 3 s; the benchmark presses Ctrl+C during compare | marked interrupted, no false BROKE |
+| s39 | `:18810/` | nothing; the benchmark runs two compares in one folder at once | both clean, separate folders |
+| s40 | `:18810/banner.php` | a red banner appears; the benchmark deletes the snapshot's screenshots | a "screenshots missing" warning |
+| s41 | `:18810/slow.php` | the page answers after 5 s with a 6 s timeout | SLOWER speed, no white screen |
+| s42 | `:18810/flaky.php` | one request in five answers 500 | UNSTABLE |
+| s43 | `:18810/moved.php` | the page redirects to another host name | exit 3 |
 | s44 | `:18810/` | nothing; the benchmark keeps every CPU busy during compare | nothing at or above NEW |
 | s45 | `:18810/catalog.php` | page 317 of 320 prints a PHP warning | NEW health |
-| s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | NEW health (pending) |
-| s47 | `/contact/` | ten plugin updates, one of which (testbed-update-07 1.1) breaks the contact page; `wp-update --bisect --rollback` | culprit testbed-update-07 in at most 4 compares (pending) |
-| s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares (pending) |
+| s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | NEW health |
+| s47 | `/contact/` | ten plugin updates, one of which (testbed-update-07 1.1) breaks the contact page; `wp-update --bisect --rollback` | culprit testbed-update-07 in at most 4 compares |
+| s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares |
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
-**Pending** scenarios expect a detector or fix that another part of the roadmap is building (the seo module, `health/blocked`, the interrupted marker, unique run folders, the UNSTABLE class, YAML rules). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
+**Pending** scenarios expect a detector or fix that isn't built yet (today only s32: Soundcheck has no CAPTCHA detector). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
 
 ### Mail through Echo (s33)
 
@@ -147,7 +147,7 @@ The benchmark does the same with each scenario's `args`. It resets the plugins b
 
 ### Page cache
 
-`wp/mu-plugins/testbed-cache.php` stands in for a page cache such as WP Super Cache or a CDN. It caches anonymous GET requests for pages for ten minutes and sends `X-Cache: MISS|HIT|BYPASS`, `Age` and `Cache-Control: public, max-age=0, s-maxage=600`. In the good state, `/cart/`, `/checkout/` and `/my-account/` bypass the cache with `no-store, private`, and logged-in visitors (with a `wordpress_logged_in_*` cookie) neither read nor fill it. s18 and s19 break each of those rules.
+`wp/mu-plugins/testbed-cache.php` stands in for a page cache such as WP Super Cache or a CDN. It caches anonymous GET requests for pages for ten minutes and sends `X-Cache: MISS|HIT|BYPASS`, `Age` and `Cache-Control: public, max-age=0, s-maxage=600`. In the good state `/cart/`, `/checkout/` and `/my-account/` bypass the cache with `no-store, private`. Logged-in visitors (with a `wordpress_logged_in_*` cookie) neither read nor fill it. s18 and s19 break each of those rules.
 
 To see the s19 leak by hand:
 
@@ -182,11 +182,11 @@ Scenarios with `login: true` get `SOUNDCHECK_USER=soundcheck` and `SOUNDCHECK_PA
 
 BackstopJS, lychee and Unlighthouse run on the same states when they're available:
 
-- `-tools auto` (the default) uses the tools that are already installed, and lychee's Docker image if it has been pulled.
+- `-tools auto` (the default) uses the tools that are already installed and lychee's Docker image if it has been pulled.
 - `-tools all` (or e.g. `-tools lychee,unlighthouse`) fetches them through npx and Docker.
 - `-tools none` skips them.
 
-Tools that don't run show "not run" in the scoreboard, and the scoreboard says how to include them.
+Tools that don't run show "not run" in the scoreboard, which says how to include them.
 
 Flags:
 
@@ -222,4 +222,4 @@ go test -tags testbed -v ./testbed/bench/
 1. Add a page in `wp/seed.sh`, or a file in `php/`.
 2. Implement the broken state behind `testbed_broken( 'sNN' )`, next to the code it breaks (theme, plugin or `wp/mu-plugins/testbed-scenarios.php`). `TestManifest` checks that every scenario that changes the site has one.
 3. Add it to `scenarios.yaml` with a precise `expect` (and `forbid` for the false alarm it must not cause). Mark it `pending: true` with a `note` when its detector isn't merged yet.
-4. Check both states with curl or the tests, and make sure the good state stays clean (`TestGoodStateIsClean`).
+4. Check both states with curl or the tests and make sure the good state stays clean (`TestGoodStateIsClean`).

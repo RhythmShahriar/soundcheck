@@ -2,7 +2,7 @@
 
 # Soundcheck benchmark
 
-The testbed (`testbed/`) is a WordPress site and a plain-PHP site with 20 scenarios. Each scenario has a good state and a broken state, switched by `testbed/toggle.sh`. For every scenario the benchmark sets the good state, runs `rhythm-soundcheck snapshot`, breaks the scenario, runs `rhythm-soundcheck compare`, and checks the comparison for the change listed in `testbed/scenarios.yaml`.
+The testbed (`testbed/`) is a WordPress site and a plain-PHP site with 20 scenarios. Each scenario has a good state and a broken state, switched by `testbed/toggle.sh`. For every scenario the benchmark sets the good state, runs `rhythm-soundcheck snapshot`, breaks the scenario, runs `rhythm-soundcheck compare` and checks the comparison for the change listed in `testbed/scenarios.yaml`.
 
 **Soundcheck caught 20 of 20 scenarios.**
 

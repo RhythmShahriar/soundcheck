@@ -361,8 +361,6 @@ scenarios:
     include: ["/s26-robots*"]
     module: seo
     modules: [health, seo]
-    pending: true
-    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
     toggle: "a staging robots.txt reaches the site: \"Disallow: /\" (wp/mu-plugins/testbed-scenarios.php)"
     expect:
       - {class: broke, check: seo/robots-txt}
@@ -375,8 +373,6 @@ scenarios:
     include: ["/s27-seo*"]
     module: seo
     modules: [health, seo]
-    pending: true
-    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
     toggle: "an SEO plugin update drops the canonical, hreflang, og: tags and the JSON-LD (wp/mu-plugins/testbed-scenarios.php)"
     expect:
       - {check: seo/canonical}
@@ -392,8 +388,6 @@ scenarios:
     include: ["/s28-sitemap*"]
     module: seo
     modules: [health, seo]
-    pending: true
-    note: "Needs the seo module (checks lane) and --modules seo in the CLI."
     toggle: "/wp-sitemap.xml and its sub-sitemaps answer 500 (wp/mu-plugins/testbed-scenarios.php)"
     expect:
       - {check: seo/sitemap}
@@ -494,8 +488,6 @@ scenarios:
     path: /about.php
     include: ["/about.php*"]
     module: health
-    pending: true
-    note: "Needs health/blocked (checks lane)."
     toggle: "the whole site answers 403 with cf-mitigated: challenge and \"Just a moment...\" (php/layout.php)"
     expect:
       - {class: broke, check: health/blocked, title: Cloudflare}
@@ -507,8 +499,6 @@ scenarios:
     path: /about.php
     include: ["/about.php*"]
     module: health
-    pending: true
-    note: "Needs health/auth-required (checks lane); today it shows as Page blocked (401)."
     toggle: "the whole site answers 401 with WWW-Authenticate: Basic (php/layout.php)"
     expect:
       - {class: broke, check: health/auth-required, title: "Password required (401)"}
@@ -524,8 +514,6 @@ scenarios:
     module: health
     harness: interrupt
     interrupt_after: 5s
-    pending: true
-    note: "Needs the results lane's interrupted marker (Comparison.Interrupted)."
     toggle: "each archive page takes 3 s, so the interrupt lands mid-run (php/archive.php)"
     expect:
       - {interrupted: true}
@@ -541,8 +529,6 @@ scenarios:
     include: ["/", "/about.php*", "/report.php*"]
     module: health
     harness: parallel
-    pending: true
-    note: "Needs unique run folders (results lane); today both runs share one folder."
     toggle: "none: the site doesn't change; the benchmark starts two compares in one folder at the same time"
     expect:
       - {clean: true}
@@ -555,11 +541,9 @@ scenarios:
     include: ["/banner.php*"]
     module: visual
     harness: delete-shots
-    pending: true
-    note: "Needs the checks lane's missing-screenshot warning to reach the comparison."
     toggle: "a large red banner appears; the benchmark deletes the snapshot's shots/ first (php/banner.php)"
     expect:
-      - {warning: screenshots from the snapshot are missing}
+      - {warning: from the snapshot is missing or unreadable}
       - {class: changed, check: visual/}
     tools: [backstop]
 
@@ -570,8 +554,6 @@ scenarios:
     include: ["/slow.php*"]
     module: speed
     args: [--timeout, 6s]
-    pending: true
-    note: "Needs the engine lane's fix that treats a timed-out page read as a page error, not a blank page."
     toggle: "the page waits 5 s before it answers; the run's timeout is 6 s (php/slow.php)"
     expect:
       - {class: slower, check: speed/}
@@ -586,8 +568,6 @@ scenarios:
     path: /flaky.php
     include: ["/flaky.php*"]
     module: health
-    pending: true
-    note: "Needs the UNSTABLE class and the re-visit of BROKE and NEW changes (results and engine lanes)."
     toggle: "every fifth request to the payment pages answers 500 (php/flaky.php)"
     expect:
       - {class: unstable}
@@ -599,8 +579,6 @@ scenarios:
     path: /moved.php
     include: ["/moved.php*"]
     module: health
-    pending: true
-    note: "Needs the engine lane's cross-host check, which stops with exit 3 instead of checking the other host."
     toggle: "the page answers 302 to the same path on another host name, localhost and 127.0.0.1 swapped (php/moved.php)"
     expect:
       - {exit: 3}
@@ -640,8 +618,6 @@ scenarios:
     include: ["/s46-widgets*"]
     module: health
     rules: [rules/elementor-missing-widget.yaml]
-    pending: true
-    note: "Needs YAML rules (checks lane); the rule comes from testbed/rules/."
     toggle: "an Elementor add-on is deactivated, so its widget shows \"Widget ... not found\" (wp/mu-plugins/testbed-scenarios.php)"
     expect:
       - {class: new, check: health/elementor-missing-widget, title: Elementor widget missing}
@@ -655,8 +631,6 @@ scenarios:
     module: wp-update
     harness: wp-update
     args: [--bisect, --rollback]
-    pending: true
-    note: "Needs the wp-update command (workflows lane, wired in wave 2)."
     toggle: "testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates"
     expect:
       - {culprit: testbed-update-07, compares: 4}
@@ -670,8 +644,6 @@ scenarios:
     module: wp-update
     harness: wp-update
     args: [--one-by-one, --rollback]
-    pending: true
-    note: "Needs the wp-update command (workflows lane, wired in wave 2)."
     toggle: "testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates"
     expect:
       - {culprit: testbed-update-07, compares: 10}

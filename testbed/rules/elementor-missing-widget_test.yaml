@@ -4,8 +4,12 @@
 # Samples for elementor-missing-widget.yaml: the rule must match every
 # positive and none of the negatives.
 positive:
-  - 'Widget "tb-carousel" not found.'
-  - Widget testbed-slider not found
+  - name: a quoted widget name
+    text: 'Widget "tb-carousel" not found.'
+  - name: a bare widget name
+    text: Widget testbed-slider not found
 negative:
-  - Kenya Nyeri · Guatemala Huehuetenango · Decaf Colombia
-  - The widget was found and loaded.
+  - name: the shop's product list
+    text: Kenya Nyeri · Guatemala Huehuetenango · Decaf Colombia
+  - name: a widget that loaded
+    text: The widget was found and loaded.

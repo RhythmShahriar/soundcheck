@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/rules"
 )
 
 // manifest writes a scenarios.yaml with one scenario made from body and
@@ -240,5 +242,21 @@ func TestShellJoin(t *testing.T) {
 	want := `docker compose -f '/tmp/my testbed/docker-compose.yml' 'it'\''s' ''`
 	if got != want {
 		t.Errorf("shellJoin: %s, want %s", got, want)
+	}
+}
+
+// TestTestbedRules loads every rule the scenarios copy into a run and runs
+// its samples, so a scenario can't fail on a rule file that doesn't load.
+func TestTestbedRules(t *testing.T) {
+	dir := filepath.Join("..", "rules")
+	if _, err := health.LoadRules(dir); err != nil {
+		t.Fatalf("load %s: %v", dir, err)
+	}
+	rep, err := rules.Test(dir, health.Checks...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Rules == 0 || len(rep.Failures) > 0 {
+		t.Errorf("%d rules, failures: %v", rep.Rules, rep.Failures)
 	}
 }
