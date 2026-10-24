@@ -146,7 +146,7 @@ func TestFailOnKey(t *testing.T) {
 		t.Errorf("--fail-on broke on run: exit %d %q", code, errOut)
 	}
 	if code, _, errOut := runCLI(t, "run", "a.test", "--fail-on", "brok"); code != exitUsage || errOut !=
-		"rhythm-soundcheck: --fail-on (fail_on): \"brok\" isn't one of broke, new, changed, slower, error, warning, notice (did you mean \"broke\"?)\n" {
+		"rhythm-soundcheck: --fail-on (fail_on): \"brok\" isn't one of broke, new, changed, slower, error, warning, notice, none (did you mean \"broke\"?)\n" {
 		t.Errorf("--fail-on brok: exit %d %q", code, errOut)
 	}
 	if want := append(slices.Clone(model.Classes[:4]), func() (l []string) {
@@ -223,5 +223,50 @@ func TestInitLoads(t *testing.T) {
 	}
 	if c.Timeout != 30 || c.Site != "" || c.FailOn != "" || len(c.Headers) != 0 {
 		t.Errorf("%+v", c)
+	}
+}
+
+func TestFailOnNoneAndCase(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	for _, v := range []string{"none", "None", "NONE"} {
+		if p, err := parse([]string{"a.test", "--fail-on", v}); err != nil || p.o.failOn != "" || !p.failOnSet {
+			t.Errorf("--fail-on %s: %+v %v", v, p, err)
+		}
+	}
+	for _, v := range []string{"broke", "BROKE", "Broke"} {
+		if p, err := parse([]string{"a.test", "--fail-on", v}); err != nil || p.o.failOn != "broke" {
+			t.Errorf("--fail-on %s: %v", v, err)
+		}
+	}
+	code, _, errOut := runCLI(t, "compare", "--fail-on", "nope")
+	if want := "rhythm-soundcheck: --fail-on (fail_on): \"nope\" isn't one of broke, new, changed, slower, error, warning, notice, none (did you mean \"none\"?)\n"; code != exitUsage || errOut != want {
+		t.Errorf("--fail-on nope: exit %d %q", code, errOut)
+	}
+
+	// none fits run and compare alike, and turns off the config's fail_on.
+	dir := storedComparison(t, model.Broke)
+	writeConfig(t, "fail_on: broke\n")
+	if code, _, errOut := runCLI(t, "report", dir, "--plain"); code != exitFindings {
+		t.Errorf("fail_on: broke: exit %d %q", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "report", dir, "--plain", "--fail-on", "BROKE"); code != exitFindings {
+		t.Errorf("--fail-on BROKE: exit %d %q", code, errOut)
+	}
+	for _, args := range [][]string{{"--fail-on", "none"}, {"--fail-on", "None"}} {
+		if code, _, errOut := runCLI(t, append([]string{"report", dir, "--plain"}, args...)...); code != exitOK || strings.Contains(errOut, "tip:") {
+			t.Errorf("%v: exit %d %q", args, code, errOut)
+		}
+	}
+	writeConfig(t, "fail_on: None\n")
+	if code, _, errOut := runCLI(t, "report", dir, "--plain"); code != exitOK || strings.Contains(errOut, "tip:") || strings.Contains(errOut, "Note:") {
+		t.Errorf("fail_on: None: exit %d %q", code, errOut)
+	}
+	if p, err := parse([]string{"a.test"}); err != nil || p.o.failOn != "" || p.failOnFrom != "" {
+		t.Errorf("fail_on: None for run: %+v %v", p, err)
+	}
+	writeConfig(t, "fail_on: Error\n")
+	if p, err := parse([]string{"a.test"}); err != nil || p.o.failOn != "error" {
+		t.Errorf("fail_on: Error: %v", err)
 	}
 }

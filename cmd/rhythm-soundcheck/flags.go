@@ -285,6 +285,16 @@ func parse(args []string) (*plan, error) {
 	if !set["fail-on"] && cfg.FailOn != "" {
 		o.failOn, p.failOnFrom = cfg.FailOn, path
 	}
+	if o.failOn != "" {
+		v, err := config.ParseFailOn(o.failOn)
+		if err != nil {
+			return nil, cli.Usagef("--fail-on (fail_on): %v", err)
+		}
+		if v == config.FailOnNone {
+			v, p.failOnFrom = "", ""
+		}
+		o.failOn = v
+	}
 	if cfg.Echo.URL == "" {
 		p.echoFrom = ""
 	}
@@ -422,10 +432,7 @@ func (s *session) failOn(compared bool) error {
 	if v == "" {
 		return nil
 	}
-	if err := config.OneOf(v, config.FailOnValues); err != nil {
-		return cli.Usagef("--fail-on (fail_on): %v", err)
-	}
-	err := report.ValidFailOn(v, compared)
+	err := report.ValidFailOn(v, compared) // parse lowercased it
 	if err == nil {
 		return nil
 	}

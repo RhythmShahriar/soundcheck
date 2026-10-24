@@ -174,7 +174,8 @@ Requests and browser:
 CI:
       --fail-on <level>      exit 1 when a comparison has changes at or above
                              broke, new, changed or slower; for run and
-                             snapshot: issues at or above error, warning, notice
+                             snapshot: issues at or above error, warning, notice;
+                             none never fails (overrides fail_on)
 
 Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
 test that caches don't leak logged-in pages to visitors, and to run flows that

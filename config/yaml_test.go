@@ -4,6 +4,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -84,16 +85,23 @@ func TestNewKeys(t *testing.T) {
 	if c := Default(); c.Site != "" || c.FailOn != "" || len(c.Headers) != 0 {
 		t.Errorf("defaults: %+v", c)
 	}
-	for _, v := range FailOnValues {
+	for _, v := range append(slices.Clone(FailOnValues), "none") {
 		if _, err := Load(write(t, "fail_on: "+v+"\n")); err != nil {
 			t.Errorf("fail_on %s: %v", v, err)
+		}
+	}
+	// Any case, stored lowercased.
+	for _, v := range []string{"BROKE", "Broke", " broke", "None"} {
+		c, err := Load(write(t, "fail_on: \""+v+"\"\n"))
+		if want := strings.ToLower(strings.TrimSpace(v)); err != nil || c.FailOn != want {
+			t.Errorf("fail_on %q: %q %v, want %q", v, c.FailOn, err, want)
 		}
 	}
 	for body, want := range map[string]string{
 		"site: \"http://\"\n":                     `line 1: site: "http://" isn't a site like staging.example.com`,
 		"site: ftp://example.com\n":               `site: "ftp://example.com" isn't a site`,
-		"fail_on: brok\n":                         `line 1: fail_on: "brok" isn't one of broke, new, changed, slower, error, warning, notice (did you mean "broke"?)`,
-		"fail_on: BROKE\n":                        `fail_on: "BROKE" isn't one of`,
+		"fail_on: brok\n":                         `line 1: fail_on: "brok" isn't one of broke, new, changed, slower, error, warning, notice, none (did you mean "broke"?)`,
+		"fail_on: NOPE\n":                         `fail_on: "nope" isn't one of broke, new, changed, slower, error, warning, notice, none (did you mean "none"?)`,
 		"headers:\n  Bad Name: SOUNDCHECK_A\n":    `line 1: headers: "Bad Name" isn't a header name like X-Staging-Auth`,
 		"headers:\n  X-Auth: \"secret-value\"\n":  `headers: X-Auth: "secret-value" isn't the name of an environment variable`,
 		"headers:\n  X-Auth: \"$SOUNDCHECK_A\"\n": `isn't the name of an environment variable`,

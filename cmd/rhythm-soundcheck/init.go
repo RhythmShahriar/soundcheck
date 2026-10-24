@@ -80,7 +80,8 @@ timeout: 30s            # per page: 30s, 1m or a number of seconds
 headers: {}
 
 # Exit 1 at or above this, when --fail-on isn't given: broke, new, changed
-# or slower for compare; error, warning or notice for run and snapshot.
+# or slower for compare; error, warning or notice for run and snapshot;
+# none never fails.
 fail_on: ""
 `
 

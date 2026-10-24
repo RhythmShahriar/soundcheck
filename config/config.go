@@ -59,8 +59,9 @@ type Config struct {
 	Timeout      Seconds      `yaml:"timeout"` // per page
 	Echo         Echo         `yaml:"echo"`
 	// FailOn is --fail-on's value when the flag isn't given: a class
-	// (broke, new, changed, slower) for comparisons or a level (error,
-	// warning, notice) for run and snapshot.
+	// (broke, new, changed, slower) for comparisons, a level (error,
+	// warning, notice) for run and snapshot, or none. Validate lowercases
+	// it.
 	FailOn string `yaml:"fail_on"`
 	// Headers are extra request headers, each read from an environment
 	// variable (header name -> variable name), so the file holds no
@@ -203,6 +204,17 @@ func (c Config) InFile(key string) bool { _, ok := c.inFile[key]; return ok }
 // classes, then the issue levels.
 var FailOnValues = []string{"broke", "new", "changed", "slower", "error", "warning", "notice"}
 
+// FailOnNone is the fail_on and --fail-on value that never fails, so a
+// command line or CI input can turn off a fail_on from the config file.
+const FailOnNone = "none"
+
+// ParseFailOn reads a fail_on or --fail-on value in any case: one of
+// FailOnValues or FailOnNone, lowercased.
+func ParseFailOn(v string) (string, error) {
+	v = strings.ToLower(strings.TrimSpace(v))
+	return v, OneOf(v, append(slices.Clone(FailOnValues), FailOnNone))
+}
+
 // Validate checks values a user could get wrong and parses the
 // production entries for IsProduction. Its errors are *SettingError.
 func (c *Config) Validate() error {
@@ -227,9 +239,11 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.FailOn != "" {
-		if err := OneOf(c.FailOn, FailOnValues); err != nil {
+		v, err := ParseFailOn(c.FailOn)
+		if err != nil {
 			return &SettingError{Key: "fail_on", Msg: err.Error()}
 		}
+		c.FailOn = v
 	}
 	prod, err := parseProductions(c.Production)
 	if err != nil {
