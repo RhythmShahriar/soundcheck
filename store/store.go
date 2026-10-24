@@ -46,6 +46,11 @@ const maxSuffix = 1000
 // folder: when kind/name exists, another run made it (two commands in
 // the same millisecond, or a crashed one), so it creates name-2, name-3
 // and so on instead.
+//
+// For Incoming it first removes snapshots that were never finished (see
+// cleanIncoming), and when it creates the Incoming folder itself it adds
+// the store to git's exclude list, so screenshots of a snapshot that
+// gets killed are never committed.
 func (s Store) NewDir(kind, name string) (string, error) {
 	if err := CheckName(name); err != nil {
 		return "", err
@@ -59,8 +64,15 @@ func (s Store) NewDir(kind, name string) (string, error) {
 			return "", err
 		}
 	}
+	_, statErr := os.Stat(parent)
 	if err := os.MkdirAll(parent, 0o750); err != nil {
 		return "", err
+	}
+	if kind == Incoming {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			s.ExcludeFromGit()
+		}
+		s.cleanIncoming()
 	}
 	for n := 1; n <= maxSuffix; n++ {
 		dir := filepath.Join(parent, name)

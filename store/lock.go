@@ -115,3 +115,38 @@ func holder(path string, maxAge time.Duration) (int, bool) {
 	}
 	return pid, time.Since(at) < maxAge && processAlive(pid)
 }
+
+// cleanIncoming removes the folders in Incoming that no process is
+// writing any more: their owner has exited (SIGHUP, kill -9, a CI job
+// timeout) or is older than staleOwner. Nothing else would ever remove
+// them. A folder without an owner file (from an older version, or one
+// just created) is removed once it's older than staleOwner. It's best
+// effort: a folder that can't be read or removed is left for next time.
+func (s Store) cleanIncoming() {
+	dir := filepath.Join(s.Root, Incoming)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if held(path) {
+			continue
+		}
+		_ = os.RemoveAll(path) //nolint:gosec // a folder in our own .incoming
+	}
+}
+
+// held reports whether a folder NewDir made may still be in use.
+func held(dir string) bool {
+	path := filepath.Join(dir, owner)
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		info, err := os.Stat(dir)
+		return err != nil || time.Since(info.ModTime()) < staleOwner
+	}
+	_, alive := holder(path, staleOwner)
+	return alive
+}
