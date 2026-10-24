@@ -431,7 +431,9 @@ Records how the site works now: each page's errors, screenshots, forms,
 cache and timing, kept in .soundcheck/snapshots/<name>. compare checks the
 site again against it. --name names it (default: date and time). --resume
 carries on with a stopped snapshot of the same --name and keeps the pages it
-finished. Every flag in rhythm soundcheck help applies.
+finished, with the modules, levels, viewports and browser it ran with; a flag
+that sets them differently is refused. Every flag in rhythm soundcheck help
+applies.
 `
 
 const compareUsage = `Usage:

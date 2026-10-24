@@ -287,3 +287,27 @@ func paths(pages []model.Page) string {
 	}
 	return strings.Join(out, ",")
 }
+
+func TestResumeOptionsAreKeptUntilPromote(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	dir := snapshot(t, s, "big", "x")
+	if o, err := ResumeOptions(dir); err != nil || o != nil {
+		t.Fatalf("a snapshot that recorded no settings: %+v, %v", o, err)
+	}
+	want := model.Options{Viewports: []string{"desktop"}, Levels: []string{"inspect", "click"}, Modules: []string{"health"}, Engine: "firefox"}
+	if err := SaveResumeOptions(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResumeOptions(dir)
+	if err != nil || got == nil || !slices.Equal(got.Viewports, want.Viewports) || !slices.Equal(got.Modules, want.Modules) ||
+		!slices.Equal(got.Levels, want.Levels) || got.Engine != want.Engine {
+		t.Fatalf("ResumeOptions = %+v, %v", got, err)
+	}
+	final, err := s.Promote(dir, "big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(final, resumeFile)); !os.IsNotExist(err) {
+		t.Errorf("the promoted snapshot still has %s: %v", resumeFile, err)
+	}
+}

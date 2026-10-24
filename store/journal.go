@@ -16,8 +16,34 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
+
+// resumeFile holds the settings a snapshot in Incoming runs with, so
+// --resume carries on with the same ones. Promote removes it.
+const resumeFile = "resume.json"
+
+// SaveResumeOptions records the settings a snapshot in incomingDir runs
+// with (see ResumeOptions).
+func SaveResumeOptions(incomingDir string, o model.Options) error {
+	return cache.WriteJSON(filepath.Join(incomingDir, resumeFile), o)
+}
+
+// ResumeOptions returns the settings a stopped snapshot in incomingDir
+// ran with, or nil when it didn't record them (one stopped by an older
+// Soundcheck).
+func ResumeOptions(incomingDir string) (*model.Options, error) {
+	var o model.Options
+	err := cache.ReadJSON(filepath.Join(incomingDir, resumeFile), &o)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", incomingDir, err)
+	}
+	return &o, nil
+}
 
 // keepResumable is how long an abandoned snapshot that finished some
 // pages is kept in Incoming for --resume, counted from its last page.

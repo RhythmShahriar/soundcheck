@@ -276,6 +276,7 @@ func (s Store) Promote(dir, name string) (string, error) {
 	if err := caseClash(snapshots, name); err != nil {
 		return "", err
 	}
+	_ = os.Remove(filepath.Join(dir, resumeFile)) // only --resume needs it
 	final := filepath.Join(snapshots, name)
 	if _, err := os.Lstat(final); err != nil {
 		if err := move(dir, final); err != nil {

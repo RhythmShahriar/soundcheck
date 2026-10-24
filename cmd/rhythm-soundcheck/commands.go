@@ -518,11 +518,26 @@ func cmdSnapshot(s *session) int {
 		if dir, done, err = s.st.Resumable(name); err != nil {
 			return s.fail(err)
 		}
+		if dir != "" {
+			if err := s.resumeSettings(name, dir); err != nil {
+				return s.fail(err)
+			}
+		}
 	}
 	if dir == "" {
 		if dir, err = s.st.NewDir(store.Incoming, name); err != nil {
 			return s.fail(err)
 		}
+	}
+	// --resume carries on with the settings recorded here.
+	engine := string(s.engine)
+	if engine == string(capture.Chrome) {
+		engine = ""
+	}
+	if err := store.SaveResumeOptions(dir, model.Options{Viewports: s.cfg.Viewports, Levels: s.cfg.Interactions.Levels,
+		Modules: s.cfg.Modules, Engine: engine}); err != nil {
+		s.discard(dir)
+		return s.fail(err)
 	}
 	// The pages journal lets a stopped snapshot carry on with --resume.
 	journal, err := store.NewPageWriter(dir)
@@ -555,7 +570,7 @@ func cmdSnapshot(s *session) int {
 		if errors.Is(err, context.Canceled) {
 			if journal.Len()+len(done) > 0 {
 				keep = true
-				fmt.Fprintf(s.stderr, "%s snapshot canceled; %s kept: to carry on, run %s snapshot %s --name %s --resume\n",
+				fmt.Fprintf(s.stderr, "%s snapshot canceled; %s kept: to carry on with the same modules, levels, viewports and browser, run %s snapshot %s --name %s --resume\n",
 					prefix(), plural(journal.Len()+len(done), "finished page"), cmdName(), site, name)
 				return exitCanceled
 			}
@@ -586,6 +601,28 @@ func cmdSnapshot(s *session) int {
 	s.record(run, nil)
 	return s.finish(report.Result{Run: run, Dir: final},
 		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
+}
+
+// resumeSettings gives the session the modules, levels, viewports and
+// browser of the stopped snapshot in dir where the user didn't choose
+// them, so its pages and the new ones are checked alike. Settings the
+// user chose that differ are a usage error: the snapshot would mix
+// pages checked two ways. A snapshot stopped by an older Soundcheck
+// recorded none and carries on with the settings given.
+func (s *session) resumeSettings(name, dir string) error {
+	prev, err := store.ResumeOptions(dir)
+	if err != nil || prev == nil {
+		return err
+	}
+	changes := inherit(&s.cfg, *prev, s.chosen, s.o.skip)
+	if c := inheritEngine(&s.engine, *prev, s.chosen); c != nil {
+		changes = append(changes, *c)
+	}
+	if len(changes) > 0 {
+		return cli.Usagef("--resume: snapshot %q stopped with other settings (%s); carry on with the same ones, or leave out --resume to start afresh",
+			name, joinChanges(changes))
+	}
+	return nil
 }
 
 // resumed is what snapshot --resume carries: the pages the stopped
