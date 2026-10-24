@@ -81,6 +81,16 @@ func TestSaveRunRoundTripsBigRuns(t *testing.T) {
 	}
 }
 
+func TestSaveRunCreatesItsFolder(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "run", "against")
+	if err := SaveRun(dir, &model.Run{Pages: synthPages(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := LoadRun(dir); err != nil || len(r.Pages) != 1 {
+		t.Errorf("LoadRun: %v", err)
+	}
+}
+
 func TestOldSingleFileRunsStillLoad(t *testing.T) {
 	dir := t.TempDir()
 	pages := synthPages(3)

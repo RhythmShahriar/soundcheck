@@ -69,6 +69,11 @@ func currentPagesFile(dir string) string {
 // file that is synced and renamed into place, so path holds the old
 // pages or all the new ones.
 func writePages(path string, pages []model.Page) (err error) {
+	// Like run.json, the pages may be the first file in their folder (a
+	// comparison's "against" run).
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".pages-*")
 	if err != nil {
 		return err
