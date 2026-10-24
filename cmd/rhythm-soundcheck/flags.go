@@ -575,7 +575,7 @@ var (
 )
 
 // flagError rewords a flag parse error the way every other value error
-// reads: "--tabs (tabs): "abc" isn't a whole number", and "unknown flag
+// reads: "--tabs (tabs): "abc" isn't a whole number" or "unknown flag
 // --modlues (did you mean --modules?)".
 func flagError(fs *flag.FlagSet, err error) error {
 	msg := err.Error()
@@ -613,7 +613,7 @@ func dashed(name string) string {
 	return "--" + name
 }
 
-// flagLabel names a flag for an error: its long name, and the config key
+// flagLabel names a flag for an error: its long name plus the config key
 // that sets the same value when there is one, "--tabs (tabs)".
 func flagLabel(name string) string {
 	if long, ok := shortFlags[name]; ok {

@@ -302,7 +302,7 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 }
 
 // browserInfo names the browser a run will use, for -v. It never
-// downloads: the run itself does that, and says so.
+// downloads: the run itself does that and says so.
 func (s *session) browserInfo() string {
 	bin, downloaded, err := browser.Find(browser.Options{Bin: s.o.browser, NoDownload: true})
 	switch {

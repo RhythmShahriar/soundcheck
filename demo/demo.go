@@ -143,7 +143,7 @@ func (s *Site) contact(w http.ResponseWriter, r *http.Request, broken bool) {
 <form id="order" method="post" action="/contact/" aria-label="Cake order">
 <p><label for="name">Name</label> <input id="name" name="name" autocomplete="name" required></p>
 <p><label for="email">Email</label> <input id="email" name="email" type="email" autocomplete="email" required></p>
-<p><label for="message">Which cake, and for when?</label><br><textarea id="message" name="message" required></textarea></p>
+<p><label for="message">Which cake and for when?</label><br><textarea id="message" name="message" required></textarea></p>
 <p><button type="submit">Send the order</button></p>
 </form>`, "")
 }

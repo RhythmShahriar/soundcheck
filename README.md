@@ -62,7 +62,7 @@ irm https://rythm.sh/install.ps1 | iex
 go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 ```
 
-`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have, and `rhythm-soundcheck --help` every command and flag.
+`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag.
 
 Soundcheck drives a real browser. It uses Chrome or Chromium if you have one, and otherwise downloads Chromium once, on first use, into your cache folder. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 

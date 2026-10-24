@@ -51,7 +51,7 @@ func TestHelpGolden(t *testing.T) {
 }
 
 // Every value error reads "<flag> (<config key>): <what's wrong>", or
-// "<flag>: ..." for flags with no config key, and suggests the closest
+// "<flag>: ..." for flags with no config key; it suggests the closest
 // value or flag.
 func TestValueErrorWording(t *testing.T) {
 	t.Chdir(t.TempDir())
