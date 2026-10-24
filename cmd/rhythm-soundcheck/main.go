@@ -236,7 +236,8 @@ What to check:
       --allow-exec           let the exec module run the commands the config
                              lists under exec: (also SOUNDCHECK_ALLOW_EXEC=1)
       --lighthouse           also run Unlighthouse (needs Node.js and npm);
-                             never on a production site
+                             never on a production site (also
+                             SOUNDCHECK_LIGHTHOUSE=1)
       --echo[=<url>]         record the emails, SMS and webhooks each form
                              submit and flow sends and compare them, through
                              Echo (default http://127.0.0.1:8025; start it with

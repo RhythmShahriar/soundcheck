@@ -159,6 +159,10 @@ func validate(sites []Site, dir string) error {
 			if strings.HasPrefix(a, "-") && name == "allow-exec" {
 				return fmt.Errorf("%s: args can't set %s; to let this site's exec commands run, set %s_SOUNDCHECK_ALLOW_EXEC=1", where, a, s.EnvPrefix)
 			}
+			// Nor install and run Unlighthouse through npm.
+			if strings.HasPrefix(a, "-") && name == "lighthouse" {
+				return fmt.Errorf("%s: args can't set %s, which installs and runs Unlighthouse with npm; to run it for this site, set %s_SOUNDCHECK_LIGHTHOUSE=1", where, a, s.EnvPrefix)
+			}
 			// Nor run one as the browser: a site picks an engine by name.
 			if strings.HasPrefix(a, "-") && name == "browser" {
 				if !hasValue && j+1 < len(s.Args) {

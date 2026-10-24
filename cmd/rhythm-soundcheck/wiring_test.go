@@ -564,6 +564,20 @@ func TestHelpTopics(t *testing.T) {
 	}
 }
 
+// SOUNDCHECK_LIGHTHOUSE=1 turns --lighthouse on, as a fleet passes it
+// from <PREFIX>_SOUNDCHECK_LIGHTHOUSE.
+func TestLighthouseFromTheEnvironment(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_LIGHTHOUSE", "")
+	if p, err := parse([]string{"run", "127.0.0.1:22200"}); err != nil || p.o.lighthouse {
+		t.Errorf("unset: lighthouse %v, %v", p != nil && p.o.lighthouse, err)
+	}
+	t.Setenv("SOUNDCHECK_LIGHTHOUSE", "1")
+	if p, err := parse([]string{"run", "127.0.0.1:22200"}); err != nil || !p.o.lighthouse {
+		t.Errorf("SOUNDCHECK_LIGHTHOUSE=1: lighthouse %v, %v", p != nil && p.o.lighthouse, err)
+	}
+}
+
 // Every command takes --plain and --no-color, the subcommands too.
 func TestSubcommandsTakeColorFlags(t *testing.T) {
 	t.Chdir(t.TempDir())

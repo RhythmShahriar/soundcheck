@@ -332,6 +332,11 @@ func parse(args []string) (*plan, error) {
 		cfg.Modules = append(cfg.Modules, "exec")
 	}
 	p.allowExec = o.allowExec || os.Getenv("SOUNDCHECK_ALLOW_EXEC") == "1"
+	// A fleet's sites.yaml can't set --lighthouse (it installs and runs
+	// Unlighthouse); the person running the fleet turns it on per site
+	// with <PREFIX>_SOUNDCHECK_LIGHTHOUSE=1, which reaches the site's run
+	// as this.
+	o.lighthouse = o.lighthouse || os.Getenv("SOUNDCHECK_LIGHTHOUSE") == "1"
 	if len(cfg.Exec) > 0 {
 		if _, err := execmod.New(execCommands(*cfg), false); err != nil {
 			return nil, cli.Usagef("%s: %v", path, err)

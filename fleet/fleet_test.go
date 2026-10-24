@@ -139,6 +139,8 @@ func TestLoadRejects(t *testing.T) {
 		"output arg":       {"- {name: acme, url: a.test, args: ['-o=x.html']}", "can't set -o=x.html"},
 		"config arg":       {"- {name: acme, url: a.test, args: [--config, x]}", "can't set --config"},
 		"allow-exec arg":   {"- {name: acme, url: a.test, args: [--allow-exec]}", "can't set --allow-exec; to let this site's exec commands run, set ACME_SOUNDCHECK_ALLOW_EXEC=1"},
+		"lighthouse arg":   {"- {name: acme, url: a.test, args: [--lighthouse]}", "can't set --lighthouse, which installs and runs Unlighthouse with npm; to run it for this site, set ACME_SOUNDCHECK_LIGHTHOUSE=1"},
+		"lighthouse=true":  {"- {name: acme, url: a.test, args: [--lighthouse=true]}", "can't set --lighthouse=true"},
 		"browser path":     {"- {name: acme, url: a.test, args: [--browser, ./evil.sh]}", "can't set --browser ./evil.sh; a site's args name an engine (chrome, firefox or webkit), since the file can't let a site run programs"},
 		"browser= path":    {"- {name: acme, url: a.test, args: ['--browser=/usr/bin/x']}", "can't set --browser /usr/bin/x"},
 		"engine= path":     {"- {name: acme, url: a.test, args: ['-browser=firefox=/tmp/x']}", "can't set --browser firefox=/tmp/x"},

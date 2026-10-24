@@ -162,7 +162,9 @@ const fleetUsage = `Usage:
 Checks every site listed in sites.yaml, --tabs at a time (default 3), each
 in its own folder under .soundcheck-fleet next to the file, then ranks
 them worst first in .soundcheck-fleet/fleet.html. A site's variables come
-from <PREFIX>_SOUNDCHECK_* (env_prefix, default from its name).
+from <PREFIX>_SOUNDCHECK_* (env_prefix, default from its name). A site's
+args can't run programs: set <PREFIX>_SOUNDCHECK_ALLOW_EXEC=1 or
+<PREFIX>_SOUNDCHECK_LIGHTHOUSE=1 for --allow-exec or --lighthouse.
 `
 
 // cmdFleet runs snapshot or compare for every site in a sites file.

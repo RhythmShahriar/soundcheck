@@ -127,7 +127,16 @@ func (s *session) lighthouse(site, dir string) {
 		return
 	}
 	out := filepath.Join(dir, "lighthouse")
-	s.view.Step("Lighthouse", "running Unlighthouse (this takes a while)…")
+	// Machine output on stdout hides the live view, so the steps go to
+	// stderr then: a fleet's per-site log is that stderr.
+	step := func(msg string) {
+		if s.live {
+			s.view.Step("Lighthouse", msg)
+		} else if !s.o.quiet {
+			fmt.Fprintln(s.stderr, "Lighthouse:", msg)
+		}
+	}
+	step("running Unlighthouse (this takes a while)…")
 	chrome, _, _ := browser.Find(browser.Options{Bin: s.o.browser, NoDownload: true})
 	err := lighthouse.RunWith(s.ctx, site, out, lighthouse.Options{
 		Log:        func(msg string) { fmt.Fprintln(s.stderr, msg) },
@@ -139,7 +148,7 @@ func (s *session) lighthouse(site, dir string) {
 		fmt.Fprintln(s.stderr, prefix(), err)
 		return
 	}
-	s.view.Step("Lighthouse", "results in "+rel(filepath.Join(out, lighthouse.Result)))
+	step("results in " + rel(filepath.Join(out, lighthouse.Result)))
 }
 
 // cmdFlows handles `flows init`.
