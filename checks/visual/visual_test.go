@@ -797,8 +797,8 @@ func TestCompareLargestAreaWording(t *testing.T) {
 	}
 }
 
-// A snapshot can be retaken; the other site of --against can't, so the
-// advice there is to hide the area.
+// A snapshot takes an expected change with accept; the other site of
+// --against can't, so the advice there is to hide the area.
 func TestComparePageFixByMode(t *testing.T) {
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	a := page(800, 1200)
@@ -806,7 +806,7 @@ func TestComparePageFixByMode(t *testing.T) {
 	for _, c := range []struct {
 		name, snapshot, want string
 	}{
-		{"snapshot", "before-update", "If the change is expected, take a new snapshot."},
+		{"snapshot", "before-update", "If the change is expected, accept it into the snapshot with accept <id> or review."},
 		{"against", "", "If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."},
 	} {
 		t.Run(c.name, func(t *testing.T) {

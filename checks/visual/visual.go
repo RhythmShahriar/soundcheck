@@ -237,14 +237,15 @@ func diffJobs(ctx context.Context, cmp *check.CompareContext, jobs []shotJob) ([
 	return append(out, resizes(results, told)...), unreadable(errs)
 }
 
-// pageFix is the advice for a page that looks different. A snapshot can
-// be retaken; the other site of --against can't, so there the way to
-// accept a difference is to hide the area. Only snapshots have a name.
+// pageFix is the advice for a page that looks different. A snapshot
+// takes an expected change with accept (or review); the other site of
+// --against can't, so there the way to accept a difference is to hide
+// the area. Only snapshots have a name.
 func pageFix(before *model.Run) string {
 	if before == nil || before.Name == "" {
 		return "Open the report to compare the screenshots. If this difference is expected, hide the area with visual.ignore in .soundcheck/config.yaml."
 	}
-	return "Open the report to compare the screenshots. If the change is expected, take a new snapshot."
+	return "Open the report to compare the screenshots. If the change is expected, accept it into the snapshot with accept <id> or review."
 }
 
 // shotError is a screenshot diffShot couldn't read.

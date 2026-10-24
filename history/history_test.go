@@ -255,29 +255,49 @@ func golden(t *testing.T, name, got string) {
 func TestRenderGolden(t *testing.T) {
 	time.Local = time.UTC
 	var site, page, tbt bytes.Buffer
-	if err := Render(&site, sampleEntries(), "", ""); err != nil {
+	if err := Render(&site, sampleEntries(), "", "", false); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "render.golden.txt", site.String())
-	if err := Render(&page, sampleEntries(), "/p1/", "lcp"); err != nil {
+	if err := Render(&page, sampleEntries(), "/p1/", "lcp", false); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "render-page.golden.txt", page.String())
-	if err := Render(&tbt, sampleEntries(), "", "tbt"); err != nil {
+	if err := Render(&tbt, sampleEntries(), "", "tbt", false); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "render-tbt.golden.txt", tbt.String())
 }
 
+// --plain has no sparkline and no other glyphs. It keeps the trend's
+// first and last values.
+func TestRenderPlain(t *testing.T) {
+	time.Local = time.UTC
+	var b bytes.Buffer
+	if err := Render(&b, sampleEntries(), "", "", true); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, r := range out {
+		if r > 127 {
+			t.Fatalf("plain output has %q:\n%s", r, out)
+		}
+	}
+	last := strings.Split(strings.TrimSpace(out), "\n")
+	if line := last[len(last)-1]; !strings.HasPrefix(line, "LCP  ") || !strings.Contains(line, " to ") {
+		t.Errorf("trend line %q", line)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
-	if err := Render(io.Discard, sampleEntries(), "", "cls"); err == nil || !strings.Contains(err.Error(), "want lcp, tbt or ttfb") {
+	if err := Render(io.Discard, sampleEntries(), "", "cls", false); err == nil || !strings.Contains(err.Error(), "want lcp, tbt or ttfb") {
 		t.Errorf("unknown metric: %v", err)
 	}
-	if err := Render(io.Discard, sampleEntries(), "/nosuch/", "lcp"); err == nil || !strings.Contains(err.Error(), "/nosuch/") {
+	if err := Render(io.Discard, sampleEntries(), "/nosuch/", "lcp", false); err == nil || !strings.Contains(err.Error(), "/nosuch/") {
 		t.Errorf("unknown page: %v", err)
 	}
 	var b bytes.Buffer
-	if err := Render(&b, nil, "", ""); err != nil || !strings.Contains(b.String(), "No history yet") {
+	if err := Render(&b, nil, "", "", false); err != nil || !strings.Contains(b.String(), "No history yet") {
 		t.Errorf("empty history: %q, %v", b.String(), err)
 	}
 }

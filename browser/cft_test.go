@@ -382,7 +382,7 @@ func TestDescribe(t *testing.T) {
 }
 
 // Prune leaves hidden entries alone: another process may be unpacking a
-// download into a .unpack-* folder, and with no pin every folder would
+// download into a .unpack-* folder. With no pin every folder would
 // otherwise go.
 func TestPruneSkipsHiddenEntries(t *testing.T) {
 	cache := t.TempDir()

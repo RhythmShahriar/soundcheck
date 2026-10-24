@@ -83,3 +83,33 @@ func TestNextHintName(t *testing.T) {
 		}
 	}
 }
+
+// The usage rows' wrapped descriptions stay in their column under any
+// command name.
+func TestUsageLinesUpForAnyName(t *testing.T) {
+	for _, name := range []string{"rhythm-soundcheck", "rhythm soundcheck", "sc", "my-very-long-soundcheck-name"} {
+		text := withName(help, name)
+		lines := strings.Split(text, "\n")
+		col := -1
+		for i, l := range lines {
+			if strings.HasPrefix(l, "  "+name+" report ") {
+				col = strings.Index(l, "show the last result again")
+				if next := lines[i+1]; strings.Index(next, "(--serve") != col {
+					t.Errorf("%s: %q under %q", name, next, l)
+				}
+			}
+			if strings.HasPrefix(l, "  "+name+" help ") {
+				at := strings.Index(l, "more on")
+				if next := lines[i+1]; strings.Index(next, "import,") != at {
+					t.Errorf("%s: %q under %q", name, next, l)
+				}
+			}
+		}
+		if col < 0 {
+			t.Errorf("%s: no report row", name)
+		}
+		if strings.Contains(text, "rhythm soundcheck") && name != "rhythm soundcheck" {
+			t.Errorf("%s: the placeholder name is left", name)
+		}
+	}
+}

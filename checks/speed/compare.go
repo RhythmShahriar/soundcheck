@@ -90,7 +90,7 @@ func (*Module) ComparePages(_ context.Context, cmp *check.CompareContext) check.
 		before: map[string]*cost{}, after: map[string]*cost{}}
 }
 
-// pairSink keeps the pages that moved, per metric, and what plugins and
+// pairSink keeps the pages that moved (per metric) and what plugins and
 // themes cost in each run, one pair of pages at a time.
 type pairSink struct {
 	bar            float64

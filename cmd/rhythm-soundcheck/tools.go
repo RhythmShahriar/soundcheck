@@ -64,6 +64,17 @@ func colorFlags(fs *flag.FlagSet) (apply func()) {
 	}
 }
 
+// boolFlag reports whether the bool flag name of fs is set.
+func boolFlag(fs *flag.FlagSet, name string) bool {
+	if f := fs.Lookup(name); f != nil {
+		if g, ok := f.Value.(flag.Getter); ok {
+			on, _ := g.Get().(bool)
+			return on
+		}
+	}
+	return false
+}
+
 // listChecks prints every check of every module, in config.Modules
 // order, for --list-checks.
 func listChecks(w io.Writer) {
@@ -134,7 +145,7 @@ func cmdHistory(args []string, stdout, stderr io.Writer) int {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return failed(stderr, err)
 	}
-	if err := history.Render(stdout, entries, *page, *metric); err != nil {
+	if err := history.Render(stdout, entries, *page, *metric, boolFlag(fs, "plain")); err != nil {
 		return failed(stderr, cli.UsageError{Msg: err.Error()})
 	}
 	return exitOK
@@ -209,7 +220,8 @@ under production: in the config.
 
 Flags after -- go to every snapshot and compare, e.g. -- --limit 50.
 Logs go to .soundcheck/wp-update/. Exit codes: 0 the site works, 1 an
-update broke it, 2 usage error, 3 an update or check failed.
+update broke it, 2 usage error, 3 an update or check failed, 130
+interrupted.
 `
 
 // cmdWPUpdate runs the WordPress update loop.
@@ -406,7 +418,7 @@ func (s *session) clientReport(res report.Result) int {
 	return code
 }
 
-// helpTopics are the commands with their own --help, and the main ones
+// helpTopics are the commands with their own --help plus the main ones
 // that `help <command>` describes before the full list of flags.
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
 	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage,

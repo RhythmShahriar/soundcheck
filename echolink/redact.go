@@ -88,8 +88,8 @@ func redactText(s string) string {
 	return code.ReplaceAllString(s, "${1}"+masked)
 }
 
-// RedactURL masks a URL the way Redact masks text, and also the value of
-// every query parameter named like a credential, however short.
+// RedactURL masks a URL the way Redact masks text. It also masks the
+// value of every query parameter named like a credential, however short.
 func RedactURL(u string) string {
 	if u == "" {
 		return u

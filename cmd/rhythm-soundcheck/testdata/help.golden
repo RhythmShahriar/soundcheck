@@ -114,9 +114,9 @@ Requests and browser:
   -A, --user-agent <ua>      User-Agent header
   -H, --header <h>           extra header, "Name: value" (repeatable), sent to
                              the checked site only
-      --cookie <c>           cookie for the checked site, e.g.
-                             "staging_auth=abc" (browsers send it to every
-                             port of the host)
+      --cookie <c>           cookie for the checked site and its www. or
+                             bare host, e.g. "staging_auth=abc" (browsers
+                             send it to every port of the host)
       --proxy <url>          http, https or socks5 proxy
   -k, --insecure             don't verify TLS certificates (local sites)
       --browser <name|path>  chrome (default), firefox or webkit, or the path

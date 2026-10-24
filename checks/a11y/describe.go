@@ -10,10 +10,13 @@ import (
 
 func init() { check.Register(Module{}) }
 
-// Checks lists the checks the module reports.
-// Rules from axe-core are reported as a11y/<rule id> as well.
+// Checks lists the checks the module reports. Every axe-core rule that
+// fails is reported as a11y/<rule id>, so the list names the pattern
+// next to the most common one.
 func (Module) Checks() []check.CheckInfo {
 	return []check.CheckInfo{
 		{ID: "a11y/label", Level: model.Warning, Title: "Form field without a label", Doc: "A field has no label for screen readers."},
+		{ID: "a11y/<axe rule id>", Level: model.Warning, Title: "Every axe-core rule that fails, e.g. a11y/color-contrast (a notice when axe rates it minor or moderate)",
+			Doc: "The rule ids are axe-core's (https://dequeuniversity.com/rules/axe/); ignore: rules in the config name them as a11y/<rule id>."},
 	}
 }

@@ -109,7 +109,28 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, kit.Banner(name, version))
 	// help says "rhythm soundcheck" where the command goes. The lined-up
 	// rows start with it, so their columns stay lined up for any name.
-	fmt.Fprint(w, strings.ReplaceAll(help, "rhythm soundcheck", name))
+	fmt.Fprint(w, withName(help, name))
+}
+
+// helpName is what help says where the command goes.
+const helpName = "rhythm soundcheck"
+
+// withName puts name into text where it says helpName. A row's
+// description wraps onto lines indented to its column, which moves with
+// the name's length, so those lines move with it.
+func withName(text, name string) string {
+	col := strings.Repeat(" ", 2+len(helpName)+26) // "  rhythm soundcheck <command, 25>  "
+	moved := strings.Repeat(" ", max(2+len(name)+26, 1))
+	lines := strings.Split(text, "\n")
+	row := false // the line before is a usage row or its continuation
+	for i, l := range lines {
+		cont := row && len(l) > len(col) && strings.HasPrefix(l, col) && l[len(col)] != ' '
+		row = cont || strings.HasPrefix(l, "  "+helpName)
+		if cont {
+			lines[i] = moved + l[len(col):]
+		}
+	}
+	return strings.ReplaceAll(strings.Join(lines, "\n"), helpName, name)
 }
 
 // help is the usage text.

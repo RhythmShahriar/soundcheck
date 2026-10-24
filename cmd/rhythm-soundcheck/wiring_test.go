@@ -88,7 +88,7 @@ func TestListChecks(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	for _, want := range []string{"health: on by default\n  health/unreachable", "a11y: off unless asked for (+a11y)", "seo/sitemap",
-		"health/php-error", "interact/dead-click", "exec: on when the config lists exec: commands"} {
+		"health/php-error", "interact/dead-click", "exec: on when the config lists exec: commands", "a11y/<axe rule id>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("--list-checks has no %q:\n%s", want, out)
 		}

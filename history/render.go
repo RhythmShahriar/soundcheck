@@ -57,8 +57,13 @@ func positive(v float64) float64 {
 // Render prints entries as a table, oldest first, with a column for the
 // metric (lcp, tbt or ttfb; empty is lcp) and a sparkline of it at the
 // end. With page set, the column is that page's value instead of the
-// site median.
-func Render(w io.Writer, entries []Entry, page, metric string) error {
+// site median. plain (--plain, for screen readers and logs) leaves out
+// the sparkline and writes every glyph as text: "160 ms to 276 ms".
+func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error {
+	text := func(s string) string { return s }
+	if plain {
+		text = strings.NewReplacer("→", "to", "–", "-", "…", "...").Replace
+	}
 	if metric == "" {
 		metric = "lcp"
 	}
@@ -95,10 +100,13 @@ func Render(w io.Writer, entries []Entry, page, metric string) error {
 	}
 	row("When", "Kind", "Name", "Pages", "Errors", "Warnings", "Verdict", col)
 	for i, e := range entries {
-		row(e.At.Local().Format("2006-01-02 15:04"), e.Kind, truncate(e.Name, nameW), fmt.Sprint(e.Pages),
-			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Verdict, ms(values[i]))
+		row(e.At.Local().Format("2006-01-02 15:04"), e.Kind, text(truncate(e.Name, nameW)), fmt.Sprint(e.Pages),
+			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Verdict, text(ms(values[i])))
 	}
-	fmt.Fprintf(w, "\n%s  %s", strings.ToUpper(metric), Sparkline(values))
+	fmt.Fprintf(w, "\n%s", strings.ToUpper(metric))
+	if !plain {
+		fmt.Fprintf(w, "  %s", Sparkline(values))
+	}
 	first, last := math.NaN(), math.NaN()
 	for _, v := range values {
 		if !math.IsNaN(v) {
@@ -109,7 +117,7 @@ func Render(w io.Writer, entries []Entry, page, metric string) error {
 		}
 	}
 	if known > 1 {
-		fmt.Fprintf(w, "  %s → %s", ms(first), ms(last))
+		fmt.Fprintf(w, "  %s", text(ms(first)+" → "+ms(last)))
 		if first > 0 {
 			fmt.Fprintf(w, " (%+.0f%%)", (last-first)/first*100)
 		}
