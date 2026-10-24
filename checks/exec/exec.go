@@ -98,13 +98,13 @@ func New(cmds []Command, allowed bool) (*Module, error) {
 	for i, c := range cmds {
 		switch {
 		case !validName.MatchString(c.Name):
-			return nil, fmt.Errorf("modules.exec[%d]: name %q: use lower-case letters, digits and dashes, up to 40", i, c.Name)
+			return nil, fmt.Errorf("exec[%d]: name %q: use lower-case letters, digits and dashes, up to 40", i, c.Name)
 		case seen[c.Name]:
-			return nil, fmt.Errorf("modules.exec: two commands are named %q", c.Name)
+			return nil, fmt.Errorf("exec: two commands are named %q", c.Name)
 		case len(c.Run) == 0 || c.Run[0] == "":
-			return nil, fmt.Errorf("modules.exec %q: run is missing: the program and its arguments, as a list", c.Name)
+			return nil, fmt.Errorf("exec %q: run is missing: the program and its arguments, as a list", c.Name)
 		case c.Timeout < 0 || c.Timeout > MaxTimeout:
-			return nil, fmt.Errorf("modules.exec %q: timeout %s: want up to %s", c.Name, c.Timeout, MaxTimeout)
+			return nil, fmt.Errorf("exec %q: timeout %s: want up to %s", c.Name, c.Timeout, MaxTimeout)
 		}
 		seen[c.Name] = true
 	}
@@ -333,3 +333,5 @@ func (l *limited) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+func init() { check.Register(&Module{}) }

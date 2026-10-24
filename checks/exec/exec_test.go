@@ -291,7 +291,7 @@ func TestNewRejects(t *testing.T) {
 		{[]Command{{Name: "Laravel Log", Run: ok}}, `name "Laravel Log": use lower-case letters`},
 		{[]Command{{Name: "", Run: ok}}, `name ""`},
 		{[]Command{{Name: "a", Run: ok}, {Name: "a", Run: ok}}, `two commands are named "a"`},
-		{[]Command{{Name: "a"}}, `modules.exec "a": run is missing`},
+		{[]Command{{Name: "a"}}, `exec "a": run is missing`},
 		{[]Command{{Name: "a", Run: []string{""}}}, "run is missing"},
 		{[]Command{{Name: "a", Run: ok, Timeout: time.Hour}}, "timeout 1h0m0s: want up to 5m0s"},
 		{[]Command{{Name: "a", Run: ok, Timeout: -time.Second}}, "timeout -1s"},

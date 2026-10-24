@@ -35,31 +35,23 @@ type plain string
 func (p plain) Name() string { return string(p) }
 
 func TestCaptureNeeds(t *testing.T) {
-	with := func(mods ...string) config.Config {
-		cfg := config.Default()
-		cfg.Modules = mods
-		return cfg
-	}
 	for _, c := range []struct {
 		name               string
-		cfg                config.Config
 		mods               []check.Module
 		snapshot           bool
 		wantShots, wantTwo bool
 	}{
-		{"no module asks", with("health"), []check.Module{plain("health")}, true, false, false},
-		{"a module asks for shots", with("health"), []check.Module{shooter{"a11y", true, false}}, true, true, false},
-		{"and a second one in snapshots", with("x"), []check.Module{shooter{"x", true, true}}, true, true, true},
-		{"but not in runs", with("x"), []check.Module{shooter{"x", true, true}}, false, true, false},
-		{"no second shot without shots", with("x"), []check.Module{shooter{"x", false, true}}, true, false, false},
-		// The fallback for a visual module without CaptureNeeds.
-		{"legacy visual, snapshot", with("visual"), []check.Module{plain("visual")}, true, true, true},
-		{"legacy visual, run", with("visual"), []check.Module{plain("visual")}, false, true, false},
-		{"visual enabled without the module", with("health", "visual"), []check.Module{plain("health")}, true, true, true},
-		{"visual that says no", with("visual"), []check.Module{shooter{"visual", false, false}}, true, false, false},
+		{"no module asks", []check.Module{plain("health")}, true, false, false},
+		{"a module asks for shots", []check.Module{shooter{"a11y", true, false}}, true, true, false},
+		{"and a second one in snapshots", []check.Module{shooter{"x", true, true}}, true, true, true},
+		{"but not in runs", []check.Module{shooter{"x", true, true}}, false, true, false},
+		{"no second shot without shots", []check.Module{shooter{"x", false, true}}, true, false, false},
+		// No fallback: a module named visual gets shots only by asking.
+		{"visual without CaptureNeeds", []check.Module{plain("visual")}, true, false, false},
+		{"visual that says no", []check.Module{shooter{"visual", false, false}}, true, false, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			shots, two := captureNeeds(c.cfg, c.mods, c.snapshot)
+			shots, two := captureNeeds(c.mods, c.snapshot)
 			if shots != c.wantShots || two != c.wantTwo {
 				t.Errorf("captureNeeds = %v, %v; want %v, %v", shots, two, c.wantShots, c.wantTwo)
 			}

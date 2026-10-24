@@ -90,13 +90,14 @@ func TestHealthScenarios(t *testing.T) {
 		cfg.Viewports = []string{"desktop"}
 		cfg.Pages.Include = s.Include
 		cfg.Pages.Limit = 20
+		mods := modules
 		if s.ID == "s15" {
 			// Screenshots (the visual module's capture) give health the
 			// rendered mobile width.
-			cfg.Modules = []string{"health", "visual"}
+			mods = []check.Module{health.Module{}, shotsOnly{}}
 			cfg.Viewports = []string{"desktop", "mobile"}
 		}
-		res, err := runScenario(ctx, dir, m, s, cfg, modules, t.TempDir())
+		res, err := runScenario(ctx, dir, m, s, cfg, mods, t.TempDir())
 		if err != nil {
 			t.Fatalf("%s: %v", s.ID, err)
 		}
@@ -489,3 +490,11 @@ func TestWPUpdateTestbed(t *testing.T) {
 		t.Errorf("updates after the rollback: %q, want only testbed-update-07", out)
 	}
 }
+
+// shotsOnly asks the runner for screenshots without the visual module's
+// comparison.
+type shotsOnly struct{}
+
+func (shotsOnly) Name() string                { return "shots" }
+func (shotsOnly) NeedsShots() bool            { return true }
+func (shotsOnly) NeedsSecondShot(_ bool) bool { return false }

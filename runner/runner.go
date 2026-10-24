@@ -526,7 +526,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: msg,
 			Duration: float64(time.Since(start).Milliseconds())}
 	}
-	shots, twice := captureNeeds(cfg, opts.Modules, opts.Snapshot)
+	shots, twice := captureNeeds(opts.Modules, opts.Snapshot)
 	copts := capture.Options{
 		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: twice,
 		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base, Engine: cmpEngine(opts.Engine),
@@ -625,29 +625,12 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 
 // captureNeeds reports whether the run stores screenshots and whether
 // each gets a second capture, from the modules' CaptureNeeds.
-//
-// A visual module that doesn't implement CaptureNeeds yet gets the shots
-// it always had: whenever cfg enables "visual" (which the testbed uses
-// to give health the rendered mobile width without the module) plus a
-// second one in snapshots. The fallback goes once visual implements
-// CaptureNeeds.
-func captureNeeds(cfg config.Config, modules []check.Module, snapshot bool) (shots, twice bool) {
-	legacy := cfg.Has("visual")
+func captureNeeds(modules []check.Module, snapshot bool) (shots, twice bool) {
 	for _, m := range modules {
-		n, ok := m.(check.CaptureNeeds)
-		if !ok {
-			continue
-		}
-		if m.Name() == "visual" {
-			legacy = false
-		}
-		if n.NeedsShots() {
+		if n, ok := m.(check.CaptureNeeds); ok && n.NeedsShots() {
 			shots = true
 			twice = twice || n.NeedsSecondShot(snapshot)
 		}
-	}
-	if legacy {
-		shots, twice = true, twice || snapshot
 	}
 	return shots, twice
 }

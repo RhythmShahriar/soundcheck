@@ -83,9 +83,10 @@ func healthIssues(t *testing.T, srv *httptest.Server, engine capture.Engine) ([]
 	cfg := config.Default()
 	cfg.Rate, cfg.Tabs = 0, 2
 	cfg.Viewports = []string{"desktop", "mobile"}
-	cfg.Modules = []string{"health", "visual"} // visual: screenshots, without the module
+	cfg.Modules = []string{"health"}
+	// shooter{"shots", ...}: screenshots, without the visual module.
 	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
-		Engine: engine, Modules: []check.Module{health.Module{}}, Browser: browser.Options{NoDownload: true}})
+		Engine: engine, Modules: []check.Module{health.Module{}, shooter{"shots", true, false}}, Browser: browser.Options{NoDownload: true}})
 	if err != nil {
 		t.Fatalf("%s: %v", engine, err)
 	}
