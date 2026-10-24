@@ -67,21 +67,21 @@ func TestSettingsHeader(t *testing.T) {
 		args []string
 		want string
 	}{
-		{nil, `rhythm soundcheck 1.0.0-test - 127.0.0.1:20260
+		{nil, `rhythm-soundcheck 1.0.0-test - 127.0.0.1:20260
 
 Modules: health, visual, interact, cache, speed, echo
 Levels: inspect, click
 Viewports: desktop, mobile
 Production: none listed: submit and flows run on any site
 `},
-		{[]string{"--level", "submit", "--viewport", "mobile", "--skip", "visual,cache,speed"}, `rhythm soundcheck 1.0.0-test - 127.0.0.1:20260
+		{[]string{"--level", "submit", "--viewport", "mobile", "--skip", "visual,cache,speed"}, `rhythm-soundcheck 1.0.0-test - 127.0.0.1:20260
 
 Modules: health, interact, echo
 Levels: inspect, click, submit
 Viewports: mobile
 Production: none listed: submit and flows run on any site
 `},
-		{[]string{"--modules", "health"}, `rhythm soundcheck 1.0.0-test - 127.0.0.1:20260
+		{[]string{"--modules", "health"}, `rhythm-soundcheck 1.0.0-test - 127.0.0.1:20260
 
 Modules: health, echo
 Levels: none: the interact module is off

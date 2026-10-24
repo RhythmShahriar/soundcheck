@@ -56,6 +56,12 @@ func TestCmdName(t *testing.T) {
 		if want := "take one first: " + tc.want + " snapshot <url>"; !strings.Contains(errOut, want) {
 			t.Errorf("compare with no snapshot: %q, want %q", errOut, want)
 		}
+		// The run header uses the same name as the hints.
+		t.Setenv("SOUNDCHECK_ECHO", "")
+		_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--echo="+deadSite(t), "--plain", "--modules", "health")
+		if want := tc.want + " 1.0.0-test - 127.0.0.1:20260\n"; !strings.HasPrefix(out, want) {
+			t.Errorf("header: %q, want it to start with %q", out, want)
+		}
 	}
 }
 

@@ -90,6 +90,9 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 	}
 	s.view = report.NewPretty(out, stderr, report.PrettyOptions{
 		Plain: plain, Quiet: p.o.quiet, Progress: s.tty && s.live && !p.o.verbose, Verbose: p.o.verbose,
+		// The header names the command the same way the hints do,
+		// with cmdName's filter on RHYTHM_INVOKED_AS.
+		Name: cmdName(),
 	})
 	return s
 }

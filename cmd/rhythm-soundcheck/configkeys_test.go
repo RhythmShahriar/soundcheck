@@ -22,13 +22,13 @@ func TestSiteKey(t *testing.T) {
 	writeConfig(t, "site: 127.0.0.1:20261\n")
 	for _, cmd := range []string{"run", "snapshot"} {
 		_, out, errOut := runCLI(t, cmd, "--echo="+echo, "--plain", "--modules", "health")
-		if !strings.HasPrefix(out, "rhythm soundcheck 1.0.0-test - 127.0.0.1:20261\n\nSite: from .soundcheck/config.yaml (site)\nModules:") ||
+		if !strings.HasPrefix(out, "rhythm-soundcheck 1.0.0-test - 127.0.0.1:20261\n\nSite: from .soundcheck/config.yaml (site)\nModules:") ||
 			!strings.Contains(errOut, "Echo isn't running") {
 			t.Errorf("%s with site:\n%s\n%s", cmd, out, errOut)
 		}
 		// A site on the command line wins.
 		_, out, _ = runCLI(t, cmd, "127.0.0.1:20262", "--echo="+echo, "--plain", "--modules", "health")
-		if !strings.HasPrefix(out, "rhythm soundcheck 1.0.0-test - 127.0.0.1:20262\n\nModules:") {
+		if !strings.HasPrefix(out, "rhythm-soundcheck 1.0.0-test - 127.0.0.1:20262\n\nModules:") {
 			t.Errorf("%s with an argument:\n%s", cmd, out)
 		}
 	}

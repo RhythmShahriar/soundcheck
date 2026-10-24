@@ -66,7 +66,7 @@ func TestQuick(t *testing.T) {
 	// The header shows it.
 	echo := deadSite(t)
 	_, out, _ := runCLI(t, "run", "127.0.0.1:20260", "--quick", "--echo="+echo, "--plain")
-	if want := `rhythm soundcheck 1.0.0-test - 127.0.0.1:20260
+	if want := `rhythm-soundcheck 1.0.0-test - 127.0.0.1:20260
 
 Preset: --quick: viewport desktop; modules health, interact
 Modules: health, interact, echo
