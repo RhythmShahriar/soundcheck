@@ -45,6 +45,8 @@ EOF
 wp theme activate testbed
 wp plugin activate testbed-pricing testbed-widgets testbed-shop testbed-forms testbed-heavy
 wp plugin delete akismet hello >/dev/null 2>&1 || true
+# Ten plugins at 1.0 with a 1.1 update each, for wp-update (s47, s48).
+sh /testbed-updates/reset.sh
 wp post delete 1 2 3 --force >/dev/null 2>&1 || true # sample post, page and privacy page
 
 # The account Soundcheck logs in with (cache leak, logged-in checks):

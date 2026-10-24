@@ -26,9 +26,18 @@ function testbed_broken( string $id ): bool {
 /**
  * A fingerprint of every scenario's state. The page cache keys on it, so
  * toggling a scenario never serves a page rendered in the other state.
+ * The wp-update scenarios (s47, s48) change the site by updating plugins
+ * rather than through a state file, so the installed version of each
+ * testbed-update-* plugin counts too.
  */
 function testbed_state_hash(): string {
 	$files = glob( testbed_state_dir() . '/s*' ) ?: array();
 	sort( $files );
-	return md5( implode( ',', array_map( 'basename', $files ) ) );
+	$parts = array_map( 'basename', $files );
+	foreach ( glob( WP_PLUGIN_DIR . '/testbed-update-*/testbed-update-*.php' ) ?: array() as $plugin ) {
+		$head = (string) file_get_contents( $plugin, false, null, 0, 1024 );
+		preg_match( '/^\s*\*\s*Version:\s*(\S+)/m', $head, $m );
+		$parts[] = basename( $plugin, '.php' ) . '@' . ( $m[1] ?? '' );
+	}
+	return md5( implode( ',', $parts ) );
 }

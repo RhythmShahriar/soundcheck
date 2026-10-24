@@ -7,7 +7,7 @@ WP_URL   := http://localhost:$(or $(TESTBED_WP_PORT),18800)
 PHP_URL  := http://localhost:$(or $(TESTBED_PHP_PORT),18810)
 PHPS_URL := https://localhost:$(or $(TESTBED_PHP_HTTPS_PORT),18811)
 
-.PHONY: up down reset good broken status logs wp
+.PHONY: up down reset good broken status logs wp wp-update-reset wp-updates
 
 up: ## start and seed the sites (a fresh install every time)
 	@mkdir -p state
@@ -37,3 +37,9 @@ logs: ## follow the web server logs
 
 wp: ## run WP-CLI, e.g. make wp ARGS="post list --post_type=page"
 	$(COMPOSE) run --rm --entrypoint wp cli $(ARGS)
+
+wp-update-reset: ## put the ten testbed-update plugins back at 1.0 (s47, s48)
+	$(COMPOSE) run --rm --no-deps -T --entrypoint sh cli /testbed-updates/reset.sh
+
+wp-updates: ## list the plugin updates WordPress offers
+	$(COMPOSE) run --rm --no-deps -T --entrypoint wp cli plugin list --update=available --fields=name,version,update_version

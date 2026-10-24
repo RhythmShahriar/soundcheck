@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -391,5 +392,100 @@ func TestManifest(t *testing.T) {
 	}
 	if err := Toggle(dir, "all", "good"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWPUpdateTestbed checks what the wp-update scenarios (s47, s48)
+// stand on, through the stack's WP-CLI: after a reset all ten
+// testbed-update-* plugins offer 1.0 → 1.1, updating testbed-update-07
+// breaks the contact page and nothing else and the rollback wp-update
+// runs (wp plugin install --version=1.0 --force) fixes it. It needs the
+// testbed (make -C testbed up) and Docker, not Chrome. Set
+// COMPOSE_PROJECT_NAME and TESTBED_WP_PORT for a stack started with them.
+func TestWPUpdateTestbed(t *testing.T) {
+	dir, err := Testbed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest(filepath.Join(dir, "scenarios.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := m.Sites["wp"]
+	if port := os.Getenv("TESTBED_WP_PORT"); port != "" {
+		site = "http://localhost:" + port
+	}
+	status := func(path string) int {
+		t.Helper()
+		resp, err := http.Get(site + path) //nolint:gosec,noctx // the local testbed
+		if err != nil {
+			t.Skipf("testbed isn't running (make -C testbed up): %v", err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	status("/")
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker isn't installed")
+	}
+	compose := []string{"compose", "-f", filepath.Join(dir, "docker-compose.yml"), "run", "--rm", "--no-deps", "-T"}
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("docker", append(slices.Clone(compose), args...)...) //nolint:gosec // our own stack
+		var stdout, stderr strings.Builder
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("docker %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
+		}
+		return stdout.String()
+	}
+	wp := func(args ...string) string { return run(append([]string{"--entrypoint", "wp", "cli"}, args...)...) }
+	reset := func() { run("--entrypoint", "sh", "cli", "/testbed-updates/reset.sh") }
+	t.Cleanup(reset)
+
+	reset()
+	var updates []struct {
+		Name          string `json:"name"`
+		Version       string `json:"version"`
+		UpdateVersion string `json:"update_version"`
+	}
+	out := wp("plugin", "list", "--update=available", "--format=json", "--fields=name,version,update_version")
+	if err := json.Unmarshal([]byte(out[strings.Index(out, "["):]), &updates); err != nil {
+		t.Fatalf("plugin list: %v\n%s", err, out)
+	}
+	var names []string
+	for _, u := range updates {
+		if strings.HasPrefix(u.Name, "testbed-update-") {
+			names = append(names, u.Name)
+			if u.Version != "1.0" || u.UpdateVersion != "1.1" {
+				t.Errorf("%s: %s → %s, want 1.0 → 1.1", u.Name, u.Version, u.UpdateVersion)
+			}
+		}
+	}
+	slices.Sort(names)
+	if len(names) != 10 || names[0] != "testbed-update-01" || names[9] != "testbed-update-10" {
+		t.Fatalf("updates available: %v, want testbed-update-01 to 10", names)
+	}
+	if got := status("/contact/"); got != http.StatusOK {
+		t.Fatalf("/contact/ at 1.0: %d, want 200", got)
+	}
+
+	wp("plugin", "update", "testbed-update-07")
+	if got := status("/contact/"); got != http.StatusInternalServerError {
+		t.Errorf("/contact/ after testbed-update-07 1.1: %d, want 500", got)
+	}
+	if got := status("/about/"); got != http.StatusOK {
+		t.Errorf("/about/ after testbed-update-07 1.1: %d, want 200 (the break is on the contact page only)", got)
+	}
+
+	// The other nine 1.1s change nothing.
+	wp("plugin", "install", "testbed-update-07", "--version=1.0", "--force")
+	wp("plugin", "update", "--all")
+	wp("plugin", "install", "testbed-update-07", "--version=1.0", "--force")
+	if got := status("/contact/"); got != http.StatusOK {
+		t.Errorf("/contact/ with the other nine at 1.1 and testbed-update-07 rolled back: %d, want 200", got)
+	}
+	if out := wp("plugin", "list", "--update=available", "--field=name"); strings.TrimSpace(out) != "testbed-update-07" {
+		t.Errorf("updates after the rollback: %q, want only testbed-update-07", out)
 	}
 }
