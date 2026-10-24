@@ -144,6 +144,8 @@ What to check:
                              Each level includes the ones before it, so
                              submit also clicks; +submit works too
       --viewport <list>      desktop, mobile (default both)
+      --quick                a fast pass: --viewport desktop and --modules
+                             health,interact, unless you set those flags
       --no-login             skip the login (leak test, login flows) even if
                              SOUNDCHECK_USER is set
       --allow-env <name>     let flows read this variable too (repeatable);

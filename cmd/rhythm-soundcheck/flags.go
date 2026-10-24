@@ -40,6 +40,7 @@ type options struct {
 	modules, skip          cli.ListFlag
 	levels, viewports      cli.ListFlag
 	noLogin, lighthouse    bool
+	quick                  bool
 	allowEnv, allowHosts   cli.RepeatFlag
 	insecureLogin          bool
 	rate                   float64
@@ -141,6 +142,7 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.Var(&o.skip, "skip", "")
 	fs.Var(&o.levels, "level", "")
 	fs.Var(&o.viewports, "viewport", "")
+	fs.BoolVar(&o.quick, "quick", false, "")
 	fs.BoolVar(&o.noLogin, "no-login", false, "")
 	fs.BoolVar(&o.lighthouse, "lighthouse", false, "")
 	fs.Var(&o.allowEnv, "allow-env", "")
@@ -186,6 +188,7 @@ type plan struct {
 	// the environment is sent to it.
 	siteFrom string
 	chosen   chosen // settings the user set, which compare keeps
+	quick    string // what --quick set, for the header
 	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.
@@ -232,6 +235,7 @@ func parse(args []string) (*plan, error) {
 	if o.ignoreRobots {
 		cfg.Pages.IgnoreRobots = true
 	}
+	p.quickPreset(set)
 	if len(o.modules) > 0 {
 		if cfg.Modules, err = config.AddList(cfg.Modules, o.modules); err != nil {
 			return nil, cli.Usagef("--modules (modules): %v", err)
@@ -344,6 +348,45 @@ func parse(args []string) (*plan, error) {
 	}
 	p.storeDir = config.Dir
 	return p, nil
+}
+
+// Quick is what --quick checks: one viewport and the modules that find
+// what breaks, leaving out the screenshots, cache and timing passes.
+var (
+	quickModules   = []string{"health", "interact"}
+	quickViewports = []string{"desktop"}
+)
+
+// quickPreset applies --quick over the config file. --modules and
+// --viewport still win, so --quick --viewport mobile checks mobile only.
+// compare then keeps --quick's settings over the snapshot's.
+func (p *plan) quickPreset(set map[string]bool) {
+	if !p.o.quick {
+		return
+	}
+	var applied, kept []string
+	if set["viewport"] {
+		kept = append(kept, "--viewport")
+	} else {
+		p.cfg.Viewports = slices.Clone(quickViewports)
+		p.chosen.viewports = "--quick"
+		applied = append(applied, "viewport "+strings.Join(quickViewports, ", "))
+	}
+	if set["modules"] {
+		kept = append(kept, "--modules")
+	} else {
+		p.cfg.Modules = slices.Clone(quickModules)
+		p.chosen.modules = "--quick"
+		applied = append(applied, "modules "+strings.Join(quickModules, ", "))
+	}
+	switch {
+	case len(applied) == 0:
+		p.quick = "--quick: nothing, " + strings.Join(kept, " and ") + " set it all"
+	case len(kept) == 0:
+		p.quick = "--quick: " + strings.Join(applied, "; ")
+	default:
+		p.quick = "--quick: " + strings.Join(applied, "; ") + " (" + strings.Join(kept, " and ") + " kept)"
+	}
 }
 
 // output is one report file -o asked for.

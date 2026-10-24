@@ -90,6 +90,7 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 |---|---|
 | Compare staging with production right now | `rhythm-soundcheck staging.site.com --against site.com` |
 | Check a site once, no snapshot | `rhythm-soundcheck run site.test` |
+| A fast pass: desktop only, health and interactions | `rhythm-soundcheck run site.test --quick` |
 | Test that forms still send (staging only) | `rhythm-soundcheck snapshot staging.site.com --level submit` |
 | Catch a cache serving logged-in pages to visitors | `SOUNDCHECK_USER=test SOUNDCHECK_PASSWORD=… rhythm-soundcheck snapshot …` |
 | A report for the pull request | `rhythm-soundcheck compare --md -o soundcheck.md` |

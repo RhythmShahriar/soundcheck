@@ -148,6 +148,9 @@ func (s *session) start(target string) {
 	}
 	// What will run, after the config file, flags and (for compare) the
 	// snapshot had their say, so nothing is dropped silently.
+	if s.quick != "" {
+		s.view.Step("Preset", s.quick)
+	}
 	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
 	s.view.Step("Levels", levels(s.cfg))
 	s.view.Step("Viewports", strings.Join(s.cfg.Viewports, ", "))
