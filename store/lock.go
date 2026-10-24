@@ -111,8 +111,8 @@ func beatLoop() {
 }
 
 // touchBeats touches every file in beats and forgets the ones that are
-// gone. It reports false, and marks the loop as stopped, when there are
-// none.
+// gone. When there are none it marks the loop as stopped and reports
+// false.
 func touchBeats() bool {
 	beats.Lock()
 	defer beats.Unlock()

@@ -294,7 +294,7 @@ func TestHolderAcrossContainers(t *testing.T) {
 }
 
 // This process keeps its owner files fresh while it runs, so another
-// container sees them held, and stops once they're released.
+// container sees them held. It stops once they're released.
 func TestHeartbeatTouchesOwnerFiles(t *testing.T) {
 	s := Store{Root: t.TempDir()}
 	dir, err := s.NewDir("runs", "x")

@@ -683,7 +683,7 @@ func TestLoginURLOnAnotherSite(t *testing.T) {
 
 // The speed: block goes to the speed module (check.Configurable): its
 // errors stop the command before anything runs, naming the file and
-// line, and its value reaches the module a comparison uses.
+// line. Its value reaches the module a comparison uses.
 func TestSpeedBlockReachesTheModule(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for body, want := range map[string]string{

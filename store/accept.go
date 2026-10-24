@@ -319,7 +319,7 @@ func (a *acceptor) page(ch model.Change, path string) (bool, error) {
 // viewportOf returns the viewport a visual change is about. A
 // comparison written before changes named it has it at the end of the
 // title, as in "Page looks different (mobile)". "" means it can't be
-// told, and every viewport is accepted.
+// told: every viewport is accepted then.
 func viewportOf(ch model.Change) string {
 	if ch.Viewport != "" {
 		return ch.Viewport
