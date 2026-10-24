@@ -37,19 +37,47 @@ inputs:
     required: false
     default: ""
   args:
-    description: Extra flags, e.g. "--limit 100 --skip speed -k".
+    description: >
+      Extra flags, e.g. "--limit 100 --skip speed -k". Split on spaces, so a value with spaces or
+      quotes can't go here: use the headers and config inputs for those.
     required: false
     default: ""
+  headers:
+    description: >
+      Extra request headers, one "Name: value" per line, each passed whole as its own -H, so spaces
+      and quotes are kept. For a staging site behind basic auth, "Authorization: Basic" and the
+      base64 of user:password, from a secret. Values of four or more characters are masked in the
+      log.
+    required: false
+    default: ""
+  config:
+    description: >
+      Settings file, passed as --config. Relative to working-directory. Default
+      .soundcheck/config.yaml there, when it exists.
+    required: false
+    default: ""
+  working-directory:
+    description: >
+      Folder every step runs in, e.g. apps/web in a monorepo. Soundcheck reads its config and keeps
+      its snapshots in .soundcheck/ there.
+    required: false
+    default: "."
   echo:
     description: >
-      Record what forms and flows send with Echo: "true" for Echo at http://127.0.0.1:8025, or its
-      URL. Start Echo first, e.g. with RhythmShahriar/echo@v1 and mode up. Default off.
+      Record the emails, SMS and webhooks each form submit and flow sends, with Echo, and compare
+      them with the snapshot's, so a form that says "sent" but no longer sends its email is caught.
+      "true" for Echo at http://127.0.0.1:8025, or Echo's URL. Start Echo in an earlier step, e.g.
+      with RhythmShahriar/echo@v1 and mode up, and point the site's mail at it. Default off.
     required: false
     default: ""
   version:
-    description: Soundcheck version to install, e.g. 1.0.0. Default the latest release.
+    description: >
+      Soundcheck version to install, e.g. 1.2.3, or latest. Default the release that matches the
+      action's tag (RhythmShahriar/soundcheck@v1.2.3 installs 1.2.3), so results only change when
+      you move the tag. At a branch or a major tag such as @v1 it installs the latest release and
+      warns. Later Soundcheck steps in the same job reuse the install.
     required: false
-    default: latest
+    default: ""
   upload:
     description: Upload the HTML and JUnit reports as a workflow artifact.
     required: false
@@ -59,6 +87,9 @@ outputs:
   exit-code:
     description: Soundcheck's exit code (0 ok, 1 --fail-on hit, 2 usage error, 3 couldn't check).
     value: ${{ steps.check.outputs.exit-code }}
+  version:
+    description: The Soundcheck version that ran, e.g. 1.2.3.
+    value: ${{ steps.version.outputs.version }}
   report:
     description: Path of the standalone HTML report.
     value: ${{ steps.check.outputs.report }}
@@ -68,37 +99,31 @@ runs:
   steps:
     # Every action is pinned by commit, so a moved tag can't change what
     # runs in your job. Dependabot keeps the pins current.
+    - name: Pick the Soundcheck version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-install.sh" check'
+
     - name: Install cosign
+      if: steps.version.outputs.skip != 'true'
       uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
     - name: Install Soundcheck
+      if: steps.version.outputs.skip != 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
-        VERSION: ${{ inputs.version }}
-      run: |
-        set -euo pipefail
-        case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "unsupported CPU $(uname -m)"; exit 1 ;; esac
-        os=$(uname -s | tr '[:upper:]' '[:lower:]')
-        if [ "$VERSION" = latest ]; then
-          base=https://github.com/RhythmShahriar/soundcheck/releases/latest/download
-        else
-          base=https://github.com/RhythmShahriar/soundcheck/releases/download/v${VERSION#v}
-        fi
-        dir="$RUNNER_TEMP/soundcheck-bin"
-        mkdir -p "$dir" && cd "$dir"
-        archive="rhythm-soundcheck_${os}_${arch}.tar.gz"
-        curl -fsSLO "$base/$archive"
-        curl -fsSLO "$base/checksums.txt"
-        curl -fsSLO "$base/checksums.txt.sigstore.json"
-        # The signature, then the checksum: see scripts/verify-release.sh.
-        "$GITHUB_ACTION_PATH/scripts/verify-release.sh" "$archive"
-        tar -xzf "$archive" rhythm-soundcheck
-        echo "$dir" >> "$GITHUB_PATH"
-        ./rhythm-soundcheck --version
+        VERSION: ${{ steps.version.outputs.version }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action-install.sh" install'
 
     - name: Run Soundcheck
       id: check
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         URL: ${{ inputs.url }}
         AGAINST: ${{ inputs.against }}
@@ -106,47 +131,10 @@ runs:
         NAME: ${{ inputs.name }}
         FAIL_ON: ${{ inputs.fail-on }}
         ARGS: ${{ inputs.args }}
+        HEADERS: ${{ inputs.headers }}
+        CONFIG: ${{ inputs.config }}
         ECHO: ${{ inputs.echo }}
-      run: |
-        set -uo pipefail
-        mode=$MODE
-        [ -n "$mode" ] || { [ -n "$AGAINST" ] && mode=against || mode=run; }
-        level=$FAIL_ON
-        if [ -z "$level" ]; then
-          case "$mode" in against|compare) level=broke ;; *) level=error ;; esac
-        fi
-        fail=()
-        [ "$level" = none ] || fail=(--fail-on "$level")
-        # shellcheck disable=SC2206 # ARGS is a flag string to split
-        extra=($ARGS)
-        case "$ECHO" in
-          ""|false) ;;
-          true) extra+=(--echo) ;;
-          *) extra+=("--echo=$ECHO") ;;
-        esac
-        case "$mode" in
-          against)  [ -n "$AGAINST" ] || { echo "::error::mode against needs the against input"; exit 2; }
-                    cmd=(rhythm-soundcheck "$URL" --against "$AGAINST") ;;
-          snapshot) cmd=(rhythm-soundcheck snapshot "$URL" --name "$NAME") ;;
-          compare)  cmd=(rhythm-soundcheck compare "$URL") ;;
-          run)      cmd=(rhythm-soundcheck run "$URL") ;;
-          *) echo "::error::unknown mode $mode"; exit 2 ;;
-        esac
-        "${cmd[@]}" "${fail[@]}" "${extra[@]}" --plain
-        code=$?
-        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        [ "$code" -ge 2 ] && exit "$code"
-
-        # Reports: the job summary, JUnit and the standalone HTML.
-        which=()
-        [ "$mode" = snapshot ] && which=("$NAME")
-        out="$RUNNER_TEMP/soundcheck-report"
-        mkdir -p "$out"
-        rhythm-soundcheck report "${which[@]}" --md >> "$GITHUB_STEP_SUMMARY" || true
-        rhythm-soundcheck report "${which[@]}" "${fail[@]}" --junit -o "$out/soundcheck-junit.xml" -q || true
-        rhythm-soundcheck report "${which[@]}" --html -o "$out/soundcheck-report.html" -q || true
-        echo "report=$out/soundcheck-report.html" >> "$GITHUB_OUTPUT"
-        exit 0
+      run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
     - name: Upload reports
       if: always() && inputs.upload == 'true' && steps.check.outputs.report != ''
@@ -159,6 +147,7 @@ runs:
     - name: Fail on changes
       if: steps.check.outputs.exit-code == '1'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         FAIL_ON: ${{ inputs.fail-on }}
       run: |

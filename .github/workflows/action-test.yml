@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 # SPDX-License-Identifier: MIT
 
-# Runs the Action itself against a small local site, checks that a
-# release with a changed checksums.txt is refused and lints the
+# Runs the Action itself against a small local site (headers, config,
+# working-directory, reused installs, a site that is down), checks that
+# a release with a changed checksums.txt is refused and lints the
 # workflows. Everything is pinned by commit.
 name: action-test
 on:
@@ -17,16 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Serve a test site on 127.0.0.1
-        run: |
-          site="$RUNNER_TEMP/site"
-          mkdir -p "$site"
-          page() { printf '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>%s</title></head><body><h1>%s</h1><a href="/">Home</a> <a href="/about.html">About</a></body></html>\n' "$1" "$1"; }
-          page Home > "$site/index.html"
-          page About > "$site/about.html"
-          : > "$site/favicon.ico"
-          nohup python3 -m http.server 20340 --bind 127.0.0.1 --directory "$site" > "$RUNNER_TEMP/http.log" 2>&1 &
-          for _ in $(seq 30); do curl -fsS -o /dev/null http://127.0.0.1:20340/ && exit 0; sleep 1; done
-          cat "$RUNNER_TEMP/http.log"; exit 1
+        run: .github/action-test/serve.sh 20340
 
       - name: Check once
         id: run
@@ -35,6 +27,8 @@ jobs:
           url: http://127.0.0.1:20340/
           fail-on: none
           upload: "false"
+      - name: Remember the installed binary
+        run: stat -c %i:%Y "$RUNNER_TEMP/soundcheck-bin/rhythm-soundcheck" > "$RUNNER_TEMP/first-install"
       - name: Snapshot
         uses: ./
         with:
@@ -54,12 +48,91 @@ jobs:
         env:
           RUN_CODE: ${{ steps.run.outputs.exit-code }}
           RUN_REPORT: ${{ steps.run.outputs.report }}
+          RUN_VERSION: ${{ steps.run.outputs.version }}
           COMPARE_CODE: ${{ steps.compare.outputs.exit-code }}
+          COMPARE_VERSION: ${{ steps.compare.outputs.version }}
         run: |
           set -x
           case "$RUN_CODE" in 0|1) ;; *) exit 1 ;; esac
           test -s "$RUN_REPORT"
           test "$COMPARE_CODE" = 0
+          test -n "$RUN_VERSION"
+          test "$RUN_VERSION" = "$COMPARE_VERSION"
+      - name: Later steps reused the first install
+        run: |
+          # The same inode and time stamp: nothing was downloaded again.
+          test "$(stat -c %i:%Y "$RUNNER_TEMP/soundcheck-bin/rhythm-soundcheck")" = "$(cat "$RUNNER_TEMP/first-install")"
+
+  inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Serve a test site on 127.0.0.1
+        run: .github/action-test/serve.sh 20341
+      - name: A folder with its own settings file
+        run: |
+          mkdir -p site-dir
+          printf 'pages:\n  limit: 1\n' > site-dir/one-page.yaml
+
+      - name: Headers, config and working-directory
+        id: check
+        uses: ./
+        with:
+          url: http://127.0.0.1:20341/
+          working-directory: site-dir
+          config: one-page.yaml
+          fail-on: none
+          upload: "false"
+          headers: |
+            X-Soundcheck-Test: a "quoted" value with 'single' quotes and  two spaces
+            Authorization: Basic dXNlcjpwYXNz
+
+      - name: The headers arrived whole
+        run: |
+          python3 - "$RUNNER_TEMP/headers.jsonl" <<'PY'
+          import json, sys
+          want = {"X-Soundcheck-Test": "a \"quoted\" value with 'single' quotes and  two spaces",
+                  "Authorization": "Basic dXNlcjpwYXNz"}
+          seen = [json.loads(line)["headers"] for line in open(sys.argv[1])]
+          got = [h for h in seen if all(h.get(k) == v for k, v in want.items())]
+          print(f"{len(got)} of {len(seen)} requests carried both headers")
+          sys.exit(0 if got else 1)
+          PY
+      - name: It ran in working-directory with that config
+        working-directory: site-dir
+        run: |
+          set -x
+          test -d .soundcheck/runs
+          test ! -d "$GITHUB_WORKSPACE/.soundcheck"
+          test "$(rhythm-soundcheck report --json | jq '.pages | length')" = 1
+
+  unreachable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check a site that isn't there
+        id: check
+        continue-on-error: true
+        uses: ./
+        with:
+          url: http://127.0.0.1:20349/
+          upload: "false"
+      - name: The summary says why
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          set -x
+          test "$OUTCOME" = failure
+          cat "$RUNNER_TEMP/soundcheck-summary.md"
+          grep -q "Soundcheck could not check:" "$RUNNER_TEMP/soundcheck-summary.md"
+          grep -q "127.0.0.1:20349" "$RUNNER_TEMP/soundcheck-summary.md"
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Test the Action's helper scripts offline
+        run: scripts/action-test.sh
 
   verify:
     runs-on: ubuntu-latest
