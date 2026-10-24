@@ -18,7 +18,7 @@
 //
 // To update the tree, change the version in npm/package.json, then in
 // that folder run `npm install --package-lock-only --ignore-scripts` and
-// `npm audit --omit=dev`, and update Package.
+// `npm audit --omit=dev`. Then update Package.
 package lighthouse
 
 import (

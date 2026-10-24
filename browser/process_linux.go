@@ -16,8 +16,8 @@ import (
 
 // process is a Chrome that Soundcheck started itself. On Linux it runs
 // in its own process group, so Close can kill the renderers and helpers
-// along with it, and with a parent-death signal, so the kernel kills it
-// when Soundcheck dies, even by SIGKILL or a panic that skips Close.
+// along with it. It also gets a parent-death signal, so the kernel kills
+// it when Soundcheck dies, even by SIGKILL or a panic that skips Close.
 //
 // Pdeathsig fires when the OS thread that started Chrome exits, not the
 // whole process. Go only ends threads that a goroutine left locked with

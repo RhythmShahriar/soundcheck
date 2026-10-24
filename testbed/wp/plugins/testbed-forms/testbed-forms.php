@@ -4,7 +4,7 @@
 
 /**
  * Plugin Name: Testbed Forms
- * Description: A contact form, [testbed_contact_form]. It posts to the page it's on, checks the fields and the nonce, and shows a success or error message after redirecting back. A good submission is counted; with mail="1" it is also emailed to the admin address. Scenario s11 broken: the mail step fails, so every valid message gets "could not be sent". Scenario s32 broken: a form with captcha="1" gets a reCAPTCHA that automated submits can't pass. Scenario s33 broken: a form with mail="1" says "sent" but sends nothing.
+ * Description: A contact form, [testbed_contact_form]. It posts to the page it's on, checks the fields and the nonce, then shows a success or error message after redirecting back. A good submission is counted; with mail="1" it is also emailed to the admin address. Scenario s11 broken: the mail step fails, so every valid message gets "could not be sent". Scenario s32 broken: a form with captcha="1" gets a reCAPTCHA that automated submits can't pass. Scenario s33 broken: a form with mail="1" says "sent" but sends nothing.
  * Version: 1.0.0
  */
 

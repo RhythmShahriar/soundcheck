@@ -4,7 +4,7 @@
 
 /**
  * Plugin Name: Testbed page cache
- * Description: A tiny full-page cache, standing in for WP Super Cache or a CDN. Anonymous GET requests for pages are cached for ten minutes and answered with X-Cache: HIT and an Age header. Good state: the cart and checkout bypass the cache, and logged-in visitors neither read nor fill it. Scenario s18 broken: the cart is cached. Scenario s19 broken: pages rendered for a logged-in user are stored and served to everyone. Scenario s30 broken: one page's copy is a day and a half old and out of date.
+ * Description: A tiny full-page cache, standing in for WP Super Cache or a CDN. Anonymous GET requests for pages are cached for ten minutes and answered with X-Cache: HIT and an Age header. Good state: the cart and checkout bypass the cache and logged-in visitors neither read nor fill it. Scenario s18 broken: the cart is cached. Scenario s19 broken: pages rendered for a logged-in user are stored and served to everyone. Scenario s30 broken: one page's copy is a day and a half old and out of date.
  */
 
 defined( 'ABSPATH' ) || exit;

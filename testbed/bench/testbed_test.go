@@ -269,7 +269,7 @@ func firstLine(s string) string {
 }
 
 // TestStateFromEnv serves the plain-PHP site with PHP's built-in server
-// and a state folder from TESTBED_STATE, the way the README shows, and
+// and a state folder from TESTBED_STATE, the way the README shows. It
 // checks that toggle.sh switches s03's deprecated notice on and off.
 // It needs php but not Docker or Chrome.
 func TestStateFromEnv(t *testing.T) {

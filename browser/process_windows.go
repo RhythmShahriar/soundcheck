@@ -19,8 +19,8 @@ import (
 // false positive, which quarantines it and breaks every run. Instead
 // Soundcheck puts itself in a job object that kills everything in it
 // when its last handle closes. The handle is never closed, so the
-// kernel closes it when Soundcheck exits, however it exits, and Chrome
-// and its children, which inherit the job, go with it.
+// kernel closes it when Soundcheck exits, however it exits. Chrome and
+// its children inherit the job, so they go with it.
 type process struct{ l *launcher.Launcher }
 
 var jobOnce sync.Once
