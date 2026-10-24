@@ -119,7 +119,9 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 	screen := false
 	for _, h := range set.Check(p) {
 		check.Page(p, h.Issue)
-		screen = screen || h.Rule.Group == errorScreen
+		// Only built-in screens stand in for the white-screen and title
+		// checks below: a project rule must not hide a built-in detection.
+		screen = screen || h.Rule.Builtin && h.Rule.Group == errorScreen
 	}
 	switch {
 	case screen:

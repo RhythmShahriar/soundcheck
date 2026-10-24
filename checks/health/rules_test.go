@@ -117,6 +117,34 @@ func TestCheckPageUsesProjectRules(t *testing.T) {
 	}
 }
 
+// A project rule in the error-screen group adds its issue but doesn't
+// hide the built-in Whoops title check.
+func TestProjectErrorScreenKeepsBuiltins(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"oops.yaml": "id: health/oops\nmatch: text\npattern: '(?i)something broke'\nlevel: warning\ngroup: error-screen\n" +
+			"title: The shop says something broke\nfix: Look at the shop's log.\n",
+		"oops_test.yaml": "positive:\n  - text: Something broke on our end.\nnegative:\n  - text: Fresh coffee.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set, err := LoadRules(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &model.Page{URL: "http://x.test/", Path: "/", Status: 200, Title: "Whoops! There was an error.", TextLength: 27, Text: "Something broke on our end."}
+	Module{Rules: set}.CheckPage(&check.Context{}, p)
+	var checks []string
+	for _, i := range p.Issues {
+		checks = append(checks, i.Check)
+	}
+	if !slices.Equal(checks, []string{"health/oops", "health/error-page"}) {
+		t.Errorf("issues = %+v", p.Issues)
+	}
+}
+
 // Every check this package reports from Go is in Checks, so no rule file
 // can take its id.
 func TestChecksListsEveryGoCheck(t *testing.T) {
