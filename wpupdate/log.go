@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -67,6 +68,14 @@ func (p Plugin) versions() string { return p.Old + " → " + p.New }
 //	Updated 9 plugins, 1 rolled back: contact-form 4.2.0 → 4.2.1 broke the site (Server error 500 on /contact/, plugins/contact-form/includes/submit.php:412).
 //	2 vulnerable plugins fixed, site still works.
 func (l *Log) Summary() []string {
+	lines := l.summary()
+	for i, line := range lines {
+		lines[i] = clean(line)
+	}
+	return lines
+}
+
+func (l *Log) summary() []string {
 	var updated, rolled, kept, failed, vulnFixed []Plugin
 	var stillVuln []string
 	for _, p := range l.Plugins {
@@ -103,7 +112,7 @@ func (l *Log) Summary() []string {
 	out = append(out, line+".")
 	for _, p := range kept {
 		out = append(out, fmt.Sprintf("%s %s %s (%s) and is still installed. Roll it back with: wp plugin install %s --version=%s --force",
-			p.Slug, p.versions(), effect(p.Verdict), p.Evidence, p.Slug, p.Old))
+			p.Slug, p.versions(), effect(p.Verdict), p.Evidence, shellQuote(p.Slug), shellQuote(p.Old)))
 	}
 	if len(failed) > 0 {
 		out = append(out, count(len(failed), "update")+" failed: "+slugs(failed)+".")
@@ -191,8 +200,33 @@ func (l *Log) Text(w io.Writer) error {
 		fmt.Fprintf(&b, "\nNo update available for %s.\n", strings.Join(l.Missing, ", "))
 	}
 	fmt.Fprintf(&b, "\n%s\n", l.footer())
-	_, err := w.Write(b.Bytes())
+	_, err := io.WriteString(w, clean(b.String()))
 	return err
+}
+
+// clean shows control characters in site-sourced text (titles, evidence,
+// slugs) as spaces, keeping line breaks and tabs, so a page can't send
+// terminal escape sequences through the log or the progress lines.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t':
+			return r
+		case unicode.IsControl(r), r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069:
+			return ' '
+		}
+		return r
+	}, s)
+}
+
+// cleanWriter passes what it's given through clean.
+type cleanWriter struct{ w io.Writer }
+
+func (c cleanWriter) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(c.w, clean(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 // Markdown writes the log as Markdown, for a ticket or a client email.

@@ -158,7 +158,7 @@ func Run(ctx context.Context, o Options) (*Log, error) {
 			return nil, fmt.Errorf("--from-tuner: %w", err)
 		}
 	}
-	r := &runner{ctx: ctx, o: o, out: cmp.Or[io.Writer](o.Out, io.Discard)}
+	r := &runner{ctx: ctx, o: o, out: cleanWriter{cmp.Or[io.Writer](o.Out, io.Discard)}}
 	r.log = &Log{Target: o.Target, Mode: ModeOneByOne, StopOn: cmp.Or(o.StopOn, model.Broke), Started: time.Now()}
 	if o.Bisect {
 		r.log.Mode = ModeBisect
