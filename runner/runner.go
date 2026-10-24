@@ -511,9 +511,11 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	cfg := opts.Config
 	start := time.Now()
 	fail := func(err error) *model.Page {
+		// Once the run's context ends the visit's own error ("navigation
+		// failed") hides why: the run was canceled or ran out of time.
 		msg := err.Error()
-		if ctx.Err() != nil {
-			msg = canceled
+		if cerr := ctx.Err(); cerr != nil {
+			msg = cerr.Error()
 		}
 		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: msg,
 			Duration: float64(time.Since(start).Milliseconds())}

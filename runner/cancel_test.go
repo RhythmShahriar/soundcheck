@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -92,5 +94,35 @@ func TestCancelMarksUnfinishedPages(t *testing.T) {
 	}
 	if !slices.Equal(stored, []string{"/fast"}) {
 		t.Errorf("OnPage got %v, want only the finished /fast", stored)
+	}
+}
+
+// noTabs is a driver whose tabs never open before ctx ends.
+type noTabs struct{}
+
+func (noTabs) Engine() capture.Engine { return capture.Firefox }
+func (noTabs) Close() error           { return nil }
+func (noTabs) NewTab(ctx context.Context) (capture.Tab, error) {
+	<-ctx.Done()
+	return nil, errors.New("navigation failed")
+}
+
+// A visit cut short says why: a cancel is "context canceled" and the
+// run's deadline is not.
+func TestVisitErrorNamesTheContextsEnd(t *testing.T) {
+	cfg := config.Default()
+	cc := &check.Context{Config: cfg, Run: &model.Run{}}
+	opts := Options{Config: cfg, driver: noTabs{}}
+	pg := crawl.Page{URL: "http://127.0.0.1:20280/"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if p := visit(ctx, cc, opts, nil, pg); p.Error != canceled {
+		t.Errorf("canceled: %q", p.Error)
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if p := visit(ctx, cc, opts, nil, pg); p.Error != context.DeadlineExceeded.Error() {
+		t.Errorf("deadline: %q", p.Error)
 	}
 }
