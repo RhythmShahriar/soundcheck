@@ -127,3 +127,20 @@ func TestPartialNeverFails(t *testing.T) {
 		t.Error("a full run isn't partial")
 	}
 }
+
+// JUnit for a partial result with findings at the --fail-on threshold
+// writes them as output, not failures: CI's test report must not fail a
+// run that FailOn doesn't fail. Only the interrupted case is an error.
+func TestInterruptedJUnitHasNoFailures(t *testing.T) {
+	r := Result{Run: sampleRun(), Comparison: sampleComparison("")}
+	r.Comparison.Interrupted = true
+	var b bytes.Buffer
+	if err := JUnit(&b, r, "broke"); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if strings.Contains(out, "<failure") || !strings.Contains(out, `failures="0" errors="1"`) {
+		t.Errorf("want no failures and one error:\n%s", out)
+	}
+	golden(t, "interrupted-findings.xml.golden", out)
+}

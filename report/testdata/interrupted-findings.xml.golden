@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="soundcheck" tests="7" failures="0" errors="1" time="61">
+  <testsuite name="soundcheck.broke" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="Page returns HTTP 500" classname="health.status">
+      <system-out>where: /shop/&#xA;before → after: 200 → 500&#xA;fix: Check the PHP error log.</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.new" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="PHP Warning: Undefined array key &#34;id&#34;" classname="health.php-error">
+      <system-out>where: /, /shop/&#xA;source: themes/brew/functions.php:212</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.changed" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="Layout changed | header" classname="visual.changed">
+      <system-out>where: /</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.slower" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="LCP slower" classname="speed.lcp">
+      <system-out>where: /&#xA;before → after: 1.2 s → 2.4 s</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.fixed" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <testcase name="JS error: jQuery is not defined" classname="health.js-error">
+      <system-out>where: /shop/&#xA;fix: never shown</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.pages" tests="2" failures="0" errors="1" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <properties>
+      <property name="interrupted" value="true"></property>
+    </properties>
+    <testcase name="2 pages checked" classname="soundcheck"></testcase>
+    <testcase name="Run was interrupted" classname="soundcheck">
+      <error message="Stopped before it finished; these results are partial" type="interrupted"></error>
+    </testcase>
+  </testsuite>
+</testsuites>

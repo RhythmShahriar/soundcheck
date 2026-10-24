@@ -218,6 +218,10 @@ type junitFailure struct {
 func JUnit(w io.Writer, r Result, failOn string) error {
 	out := junitSuites{Name: "soundcheck", Time: r.Run.Duration / 1000}
 	stamp := r.Run.Started.UTC().Format(time.RFC3339)
+	// A partial result's findings are written as output, never as
+	// failures: FailOn doesn't fail it either, and the one error case
+	// below says the run didn't finish.
+	partial := Partial(r)
 	if r.Compared() {
 		limit := slices.Index(model.Classes, failOn)
 		if failOn == "" {
@@ -235,7 +239,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 					tc.Skipped = &struct{}{}
 					s.Skipped++
 				}
-				if i <= limit && class != model.Fixed && class != model.Unstable {
+				if !partial && i <= limit && class != model.Fixed && class != model.Unstable {
 					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
@@ -259,7 +263,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 				}
 				tc := junitCase{Name: xmlText(i.Title), Classname: xmlText(strings.ReplaceAll(i.Check, "/", ".")),
 					Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
-				if level.Rank() <= limit {
+				if !partial && level.Rank() <= limit {
 					tc.Failure = &junitFailure{Message: tc.Name, Type: string(level), Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
@@ -276,7 +280,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 		Cases: []junitCase{{Name: fmt.Sprintf("%d pages checked", len(r.Run.Pages)), Classname: "soundcheck"}}}
 	// A partial result is an error, not a pass or a failure: CI shows
 	// the check didn't finish and --fail-on findings don't count.
-	if Partial(r) {
+	if partial {
 		pages.Properties = &junitProperties{List: []junitProperty{{Name: "interrupted", Value: "true"}}}
 		pages.Cases = append(pages.Cases, junitCase{Name: "Run was interrupted", Classname: "soundcheck",
 			Error: &junitFailure{Message: capitalize(partialNote), Type: "interrupted"}})
