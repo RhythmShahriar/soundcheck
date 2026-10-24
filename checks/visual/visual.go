@@ -128,8 +128,8 @@ type shotDiff struct {
 // warning, so a missing baseline never reads as "Nothing changed".
 func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
 	out, warnings := compareShots(ctx, cmp)
-	// CompareContext has no Warn yet; until it does the warnings are
-	// still counted (and tested) here, and reach the comparison as soon
+	// CompareContext has no Warn yet. Until it does the warnings are
+	// still counted (and tested) here. They reach the comparison as soon
 	// as it grows the method Context already has.
 	if w, ok := any(cmp).(interface{ Warn(string) }); ok {
 		for _, msg := range warnings {
@@ -645,7 +645,7 @@ func placeOf(r model.Rect, width int) string {
 
 // nearBlock is how far apart (in px) two blocks may be and still be one
 // block: row alignment can split a notice around a couple of rows that
-// happen to match, and the pieces have one cause.
+// happen to match. The pieces have one cause.
 const nearBlock = 8
 
 // bandRows is where a block's rows are: in the after image for an
@@ -679,7 +679,7 @@ func looseBlocks(blocks []Band, grouped map[int]bool) []Band {
 	var out []Band
 	for i := 0; i < len(order); {
 		merged, told := blocks[order[i]], grouped[order[i]]
-		_, end := bandRows(merged)
+		first, end := bandRows(merged)
 		j := i + 1
 		for ; j < len(order); j++ {
 			b := blocks[order[j]]
@@ -687,9 +687,15 @@ func looseBlocks(blocks []Band, grouped map[int]bool) []Band {
 			if (b.H < 0) != (merged.H < 0) || start-end > nearBlock {
 				break
 			}
-			merged.H += b.H
 			end = max(end, e)
 			told = told || grouped[order[j]]
+		}
+		// The merged block spans its pieces and the rows between them,
+		// which only matched by chance.
+		if merged.H > 0 {
+			merged.H = end - first
+		} else {
+			merged.H = first - end
 		}
 		if !told {
 			out = append(out, merged)

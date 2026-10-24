@@ -670,9 +670,10 @@ func TestCompareOneLinePerCause(t *testing.T) {
 	if !ok || strings.Join(p.Pages, ",") != "/shop/" {
 		t.Fatalf("shop's own change = %+v (all %v)", p, keys(got))
 	}
-	// The two pieces are one block, and the notice's piece is told with
-	// the grouped notice, not again here.
-	if n := strings.Count(p.Detail, "block was inserted"); n != 1 || !strings.Contains(p.Detail, "A 32 px tall block was inserted 647 px down") {
+	// The two pieces are one block, 34 px tall with the 2 rows between
+	// them. The notice's piece is told with the grouped notice, not again
+	// here.
+	if n := strings.Count(p.Detail, "block was inserted"); n != 1 || !strings.Contains(p.Detail, "A 34 px tall block was inserted 647 px down") {
 		t.Errorf("detail = %q", p.Detail)
 	}
 	if len(got) != 2 {
@@ -717,14 +718,14 @@ func TestCompareDistinctBlocksStaySeparate(t *testing.T) {
 
 func TestLooseBlocks(t *testing.T) {
 	blocks := []Band{
-		{Y: 147, H: 16, At: 147}, {Y: 149, H: 16, At: 165}, // pieces of one block
-		{Y: 600, H: -20, At: 632}, {Y: 625, H: -10, At: 632}, // two removed blocks 5 px apart
+		{Y: 147, H: 16, At: 147}, {Y: 149, H: 16, At: 165}, // pieces of one block 2 px apart: 147 to 181
+		{Y: 600, H: -20, At: 632}, {Y: 625, H: -10, At: 632}, // two removed blocks 5 px apart: 600 to 635
 		{Y: 900, H: 30, At: 902}, // grouped elsewhere
 		{Y: 900, H: 8, At: 934},  // its piece
 		{Y: 1400, H: 12, At: 1442},
 	}
 	got := looseBlocks(blocks, map[int]bool{4: true})
-	want := []Band{{Y: 147, H: 32, At: 147}, {Y: 600, H: -30, At: 632}, {Y: 1400, H: 12, At: 1442}}
+	want := []Band{{Y: 147, H: 34, At: 147}, {Y: 600, H: -35, At: 632}, {Y: 1400, H: 12, At: 1442}}
 	if !slices.Equal(got, want) {
 		t.Errorf("looseBlocks = %+v, want %+v", got, want)
 	}
