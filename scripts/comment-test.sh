@@ -167,6 +167,18 @@ if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run (event 
   ok "no pull request, no comment"
 else bad "no pull request, no comment"; fi
 
+# issue_comment on a pull request comments there; on a plain issue, not.
+echo '{"issue": {"number": 21, "pull_request": {"url": "https://api.github.com/repos/acme/site/pulls/21"}}}' > "$work/prcomment.json"
+post GITHUB_EVENT_PATH="$work/prcomment.json" GITHUB_EVENT_NAME=issue_comment
+if [ "$code" = 0 ] && contains "$work/gh.log" "-X POST repos/acme/site/issues/21/comments"; then
+  ok "a comment on a pull request is answered there"
+else bad "a comment on a pull request is answered there"; fi
+echo '{"issue": {"number": 22}}' > "$work/issue.json"
+post GITHUB_EVENT_PATH="$work/issue.json" GITHUB_EVENT_NAME=issue_comment
+if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run (event issue_comment)" && ! contains "$work/gh.log" POST; then
+  ok "a comment on a plain issue gets no comment"
+else bad "a comment on a plain issue gets no comment"; fi
+
 # A read-only token: a warning. The step still succeeds.
 post GITHUB_EVENT_PATH="$work/pr.json" FAKE_GH_FAIL=1
 if [ "$code" = 0 ] && contains "$work/out" '::warning::Soundcheck: couldn'"'"'t comment on the pull request' && contains "$work/out" 'pull-requests: write'; then

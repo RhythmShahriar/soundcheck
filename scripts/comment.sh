@@ -56,9 +56,11 @@ body() {
 # deployment_status event has none of its own, so it uses the open pull
 # request of the deployed commit. Other events without one (a push to
 # main) get none: their commit's pull request is usually merged by then.
+# An issue_comment event names a pull request only when the comment is on
+# one: a plain issue gets no comment.
 pr() {
   local n sha
-  n=$(jq -r '.pull_request.number // .issue.number // empty' "${GITHUB_EVENT_PATH:?}")
+  n=$(jq -r '.pull_request.number // (if .issue.pull_request then .issue.number else empty end) // empty' "${GITHUB_EVENT_PATH:?}")
   if [ -z "$n" ]; then
     sha=$(jq -r '.deployment.sha // empty' "$GITHUB_EVENT_PATH")
     [ -z "$sha" ] || n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" --jq '[.[] | select(.state == "open")][0].number // empty' 2> /dev/null || true)
