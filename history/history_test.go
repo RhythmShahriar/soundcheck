@@ -174,7 +174,7 @@ func TestBackfill(t *testing.T) {
 	old := sampleRun(t0.Add(72*time.Hour), "", 900)
 	old.Schema = "rhythm-soundcheck/v0"
 	save(filepath.Join(root, "runs", "2026-10-04T09-00-00"), old, nil)
-	// Already in the history: the snapshot, and a run since pruned.
+	// Already in the history: the snapshot and a run since pruned.
 	if err := Append(root, good, nil); err != nil {
 		t.Fatal(err)
 	}

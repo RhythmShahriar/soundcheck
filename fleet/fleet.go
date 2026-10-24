@@ -3,7 +3,7 @@
 
 // Package fleet checks many sites in one go, for agencies: a sites.yaml
 // lists each client site, Run takes a snapshot of every one or compares
-// every one with its snapshot, and fleet.html ranks them worst first.
+// every one with its snapshot; fleet.html ranks them worst first.
 //
 // Each site runs as its own Soundcheck process in its own folder
 // (.soundcheck-fleet/<name>/, next to sites.yaml), with only its own
@@ -175,7 +175,7 @@ func checkURL(raw string) error {
 }
 
 // DefaultPrefix is the env prefix for a site name: upper case, with
-// anything but letters and digits turned into "_", and SITE_ in front
+// anything but letters and digits turned into "_" and SITE_ in front
 // when the name starts with a digit.
 func DefaultPrefix(name string) string {
 	p := strings.Map(func(r rune) rune {

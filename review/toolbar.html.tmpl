@@ -17,7 +17,7 @@
   var rv = {{.}};
   var banner = document.getElementById("rv-banner");
   var articles = document.querySelectorAll("article.item");
-  // Pair each article with its change by position, and refuse to add any
+  // Pair each article with its change by position and refuse to add any
   // button when the titles don't line up: a button on the wrong change
   // would accept something nobody looked at.
   if (articles.length !== rv.items.length) { banner.textContent = "Review buttons are off: this report doesn't match the changes on record."; return; }

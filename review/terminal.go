@@ -206,7 +206,7 @@ func firstLine(s string) string {
 }
 
 // clean replaces control characters with spaces. Titles and details come
-// from the site, and an escape sequence in a page title must not be able
+// from the site: an escape sequence in a page title must not be able
 // to move the cursor or recolor the terminal.
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {

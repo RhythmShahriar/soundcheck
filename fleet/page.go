@@ -18,7 +18,7 @@ var pageSource string
 
 var pageTemplate = template.Must(template.New("fleet").Parse(pageSource))
 
-// Page is everything on the fleet page, and what fleet.json holds.
+// Page is everything on the fleet page and what fleet.json holds.
 type Page struct {
 	Mode    string    `json:"mode"` // snapshot or compare
 	Created time.Time `json:"created"`

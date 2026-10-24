@@ -125,8 +125,8 @@ func (b *Brand) LoadLogo(dir string) error {
 	return nil
 }
 
-// logoType says what kind of image data is, by its content rather than
-// its name, and refuses anything else.
+// logoType tells a PNG, JPEG or SVG logo by its content rather than its
+// name and refuses anything else.
 func logoType(data []byte) (string, error) {
 	if _, format, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
 		switch format {

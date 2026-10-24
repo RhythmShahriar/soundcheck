@@ -225,7 +225,7 @@ func (e Entry) key() string {
 }
 
 // Backfill adds entries for the snapshots, runs and comparisons already
-// in storeRoot that the history doesn't have yet, and returns how many
+// in storeRoot that the history doesn't have yet and returns how many
 // it added. Entries for runs that were since pruned are kept. Runs made
 // by an incompatible Soundcheck are skipped.
 func Backfill(storeRoot string) (int, error) {
