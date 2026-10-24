@@ -32,20 +32,33 @@ import (
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
+// Options is what to check and how. Config holds the project's
+// settings; the rest comes from the command line.
 type Options struct {
-	Config    config.Config
-	Target    string
-	Paths     []string // visit exactly these paths (a compare re-checks the snapshot's pages); empty discovers
-	Snapshot  bool
-	Name      string
-	Dir       string // where the run's files go
-	Version   string
+	Config config.Config
+	// Target is the site as the user named it: a hostname (tried on
+	// https first) or a URL.
+	Target string
+	// Paths visits exactly these paths (a compare re-checks the
+	// snapshot's pages, see Revisit) with no discovery; empty discovers
+	// pages from sitemaps and links.
+	Paths    []string
+	Snapshot bool   // the run is a snapshot: modules learn what varies on its own
+	Name     string // the snapshot's name
+	Dir      string // where the run's files go
+	Version  string // Soundcheck's version, recorded in the run
+	// UserAgent replaces the browser's; empty keeps Chrome's own.
 	UserAgent string
-	Headers   map[string]string
-	Proxy     *url.URL
-	Insecure  bool
-	Browser   browser.Options
-	Modules   []check.Module
+	// Headers go with every request to the site (-H and --cookie as a
+	// Cookie header), never to other hosts.
+	Headers map[string]string
+	Proxy   *url.URL // for the run's requests outside the browser; Browser.Proxy is the browser's
+	// Insecure accepts invalid TLS certificates (--insecure).
+	Insecure bool
+	Browser  browser.Options
+	// Modules run in ascending phase (check.Phaser), keeping this order
+	// within a phase.
+	Modules []check.Module
 	// Login returns how to log the test account in on the resolved site;
 	// nil (or a nil result) when no credentials are set. See
 	// check.Context.Login.
@@ -80,6 +93,7 @@ type Hooks struct {
 func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
+	opts.Modules = check.SortByPhase(opts.Modules)
 	target, _, err := ratelimit.ParseTarget(opts.Target)
 	if err != nil {
 		return nil, err
@@ -428,11 +442,12 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		return fail(err)
 	}
 	defer func() { _ = tab.Close() }()
+	shots, twice := captureNeeds(cfg, opts.Modules, opts.Snapshot)
 	copts := capture.Options{
-		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: opts.Snapshot && cfg.Has("visual"),
+		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: twice,
 		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base,
 	}
-	if cfg.Has("visual") {
+	if shots {
 		copts.Save = cc.Save
 	}
 	rec, err := capture.Start(ctx, tab, copts)
@@ -440,13 +455,18 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		return fail(err)
 	}
 	defer rec.Stop()
+	ctab := check.RodTab(tab)
+	prepared := func(m check.Module, err error) {
+		if err != nil {
+			cc.Warn(fmt.Sprintf("%s: %v", m.Name(), err))
+		}
+	}
 	for _, m := range opts.Modules {
 		if pr, ok := m.(check.Preparer); ok {
-			check.Safe(m.Name(), "Prepare", cc.Warn, func() {
-				if err := pr.Prepare(ctx, cc, tab); err != nil {
-					cc.Warn(fmt.Sprintf("%s: %v", m.Name(), err))
-				}
-			})
+			check.Safe(m.Name(), "Prepare", cc.Warn, func() { prepared(m, pr.Prepare(ctx, cc, tab)) })
+		}
+		if pr, ok := m.(check.TabPreparer); ok {
+			check.Safe(m.Name(), "PrepareTab", cc.Warn, func() { prepared(m, pr.PrepareTab(ctx, cc, ctab)) })
 		}
 	}
 	host := hostOf(pg.URL)
@@ -465,6 +485,9 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		for _, m := range opts.Modules {
 			if l, ok := m.(check.Live); ok {
 				check.Safe(m.Name(), "Live", cc.Warn, func() { l.Live(ctx, cc, tab, p) })
+			}
+			if l, ok := m.(check.TabLive); ok {
+				check.Safe(m.Name(), "LiveTab", cc.Warn, func() { l.LiveTab(ctx, cc, ctab, p) })
 			}
 		}
 		if slices.Contains(cfg.Viewports, "mobile") {
@@ -491,6 +514,35 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		p.Text = ""
 	}
 	return p
+}
+
+// captureNeeds reports whether the run stores screenshots and whether
+// each gets a second capture, from the modules' CaptureNeeds.
+//
+// A visual module that doesn't implement CaptureNeeds yet gets the shots
+// it always had: whenever cfg enables "visual" (which the testbed uses
+// to give health the rendered mobile width without the module), and a
+// second one in snapshots. The fallback goes once visual implements
+// CaptureNeeds.
+func captureNeeds(cfg config.Config, modules []check.Module, snapshot bool) (shots, twice bool) {
+	legacy := cfg.Has("visual")
+	for _, m := range modules {
+		n, ok := m.(check.CaptureNeeds)
+		if !ok {
+			continue
+		}
+		if m.Name() == "visual" {
+			legacy = false
+		}
+		if n.NeedsShots() {
+			shots = true
+			twice = twice || n.NeedsSecondShot(snapshot)
+		}
+	}
+	if legacy {
+		shots, twice = true, twice || snapshot
+	}
+	return shots, twice
 }
 
 // resolve fetches the target once, following redirects, and returns the
