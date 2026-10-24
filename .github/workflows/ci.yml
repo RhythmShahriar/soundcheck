@@ -12,6 +12,8 @@ permissions:
 # repository can't change what runs here; Dependabot bumps the pins.
 jobs:
   go:
-    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@d296f34c9b6629211c68561504d938c404afaf74 # master
+    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@fb09694450362b6d4b68c631182d78a69b653c83 # master
+    with:
+      os: '["ubuntu-latest", "windows-latest", "macos-latest"]'
   commitlint:
-    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@d296f34c9b6629211c68561504d938c404afaf74 # master
+    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@fb09694450362b6d4b68c631182d78a69b653c83 # master
