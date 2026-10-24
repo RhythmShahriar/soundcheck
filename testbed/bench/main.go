@@ -10,7 +10,9 @@
 // (BackstopJS, lychee, Unlighthouse) run on the same states when they're
 // available. A control pass then snapshots the sites with nothing broken
 // and compares twice, counting every change at or above NEW as a false
-// alarm. The scoreboard is written to docs/benchmark.md.
+// alarm. The wp-update scenarios run the binary's wp-update on the
+// testbed's ten plugin updates instead and score the culprit it names.
+// The scoreboard is written to docs/benchmark.md.
 //
 // Run from the module root with the testbed up (make -C testbed up):
 //
@@ -52,13 +54,14 @@ type options struct {
 	tools          string
 	timeout        time.Duration
 	sites          map[string]string
-	echo           string // Echo's URL for scenarios that need it
-	control        int    // control pass rounds
+	echo           string   // Echo's URL for scenarios that need it
+	control        int      // control pass rounds
+	compose        []string // the testbed's docker compose command, for wp-update
 }
 
 func main() {
 	var o options
-	var only, wp, php, phpHTTPS string
+	var only, wp, php, phpHTTPS, compose string
 	flag.StringVar(&o.bin, "bin", "bin/rhythm-soundcheck", "the rhythm-soundcheck binary to benchmark")
 	flag.StringVar(&o.out, "out", "docs/benchmark.md", "where to write the scoreboard")
 	flag.StringVar(&o.work, "work", "", "working folder for runs (default testbed/bench/work)")
@@ -70,6 +73,7 @@ func main() {
 	flag.StringVar(&phpHTTPS, "php-https", "", "plain-PHP testbed https URL (default from scenarios.yaml)")
 	flag.StringVar(&o.echo, "echo", "", "Echo's URL (e.g. http://127.0.0.1:8025) for scenarios that need it; without it they're not run")
 	flag.IntVar(&o.control, "control", 10, "control pass rounds (snapshot, then compare twice); 0 skips it. Default 0 with -only")
+	flag.StringVar(&compose, "compose", "", "docker compose command for the testbed's WP-CLI, split at spaces (default: docker compose -f testbed/docker-compose.yml)")
 	flag.Parse()
 	if only != "" {
 		o.only = strings.Split(only, ",")
@@ -81,6 +85,7 @@ func main() {
 		}
 	}
 	o.sites = map[string]string{"wp": wp, "php": php, "php-https": phpHTTPS}
+	o.compose = strings.Fields(compose)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -127,6 +132,9 @@ func run(ctx context.Context, o options) error {
 	}
 	if o.work, err = filepath.Abs(o.work); err != nil {
 		return err
+	}
+	if len(o.compose) == 0 {
+		o.compose = []string{"docker", "compose", "-f", filepath.Join(dir, "docker-compose.yml")}
 	}
 	bin, version, binErr := soundcheck(ctx, o.bin)
 	tools, err := pickTools(o.tools)
@@ -201,6 +209,9 @@ func run(ctx context.Context, o options) error {
 // broken → compare (and tools' check). Third-party results go into tools.
 func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Scenario, wd, bin string, binErr error,
 	tools []*Tool, results map[string]Result) Result {
+	if s.Harness == "wp-update" {
+		return wpUpdateScenario(ctx, o, m, s, wd, bin, binErr)
+	}
 	url := m.URL(s)
 	cfgPath := filepath.Join(wd, ".soundcheck", "config.yaml")
 	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels); err != nil {

@@ -71,11 +71,14 @@ type Scenario struct {
 }
 
 // Harnesses are what the benchmark can do besides switching the state.
-var harnesses = []string{"", "interrupt", "parallel", "delete-shots", "stress"}
+var harnesses = []string{"", "interrupt", "parallel", "delete-shots", "stress", "wp-update"}
 
-// ChangesSite reports whether the scenario's broken state changes the
-// site. The parallel and stress cases only change how Soundcheck runs.
-func (s Scenario) ChangesSite() bool { return s.Harness != "parallel" && s.Harness != "stress" }
+// ChangesSite reports whether the scenario's state file changes the
+// site. The parallel and stress cases only change how Soundcheck runs;
+// wp-update breaks the site by updating plugins, not through a state file.
+func (s Scenario) ChangesSite() bool {
+	return s.Harness != "parallel" && s.Harness != "stress" && s.Harness != "wp-update"
+}
 
 // Expect is one acceptable result. Exactly one kind is set:
 //
@@ -85,6 +88,9 @@ func (s Scenario) ChangesSite() bool { return s.Harness != "parallel" && s.Harne
 //   - Interrupted: the comparison is marked interrupted
 //   - Clean: nothing at or above NEW
 //   - Exit: compare's exit code
+//   - Culprit: wp-update names this plugin as the one that broke the
+//     site, in at most Compares compares when that is set (harness
+//     wp-update only)
 //
 // Forbid entries use the change form only.
 type Expect struct {
@@ -95,6 +101,8 @@ type Expect struct {
 	Interrupted bool   `yaml:"interrupted"`
 	Clean       bool   `yaml:"clean"`
 	Exit        *int   `yaml:"exit"`
+	Culprit     string `yaml:"culprit"`
+	Compares    int    `yaml:"compares"`
 }
 
 // Kinds of Expect.
@@ -104,6 +112,7 @@ const (
 	kindInterrupted = "interrupted"
 	kindClean       = "clean"
 	kindExit        = "exit"
+	kindCulprit     = "culprit"
 )
 
 // kind says which kind of expectation e is; "" when it sets none or more
@@ -124,6 +133,9 @@ func (e Expect) kind() string {
 	}
 	if e.Exit != nil {
 		kinds = append(kinds, kindExit)
+	}
+	if e.Culprit != "" || e.Compares != 0 {
+		kinds = append(kinds, kindCulprit)
 	}
 	if len(kinds) != 1 {
 		return ""
@@ -152,6 +164,11 @@ func (e Expect) String() string {
 		return "nothing at or above NEW"
 	case kindExit:
 		return fmt.Sprintf("exit %d", *e.Exit)
+	case kindCulprit:
+		if e.Compares > 0 {
+			return fmt.Sprintf("culprit %s in at most %d %s", e.Culprit, e.Compares, plural(e.Compares, "compare"))
+		}
+		return "culprit " + e.Culprit
 	}
 	s := strings.ToUpper(e.Class)
 	if s == "" {
@@ -216,6 +233,8 @@ func (m *Manifest) check() error {
 			return fmt.Errorf("%s: harness interrupt needs interrupt_after", s.ID)
 		case s.Limit < 0:
 			return fmt.Errorf("%s: negative limit", s.ID)
+		case s.Harness == "wp-update" && len(s.Forbid) > 0:
+			return fmt.Errorf("%s: harness wp-update scores culprits; forbid doesn't apply", s.ID)
 		}
 		for _, e := range s.Expect {
 			if err := checkExpect(s, e, false); err != nil {
@@ -236,7 +255,11 @@ func checkExpect(s Scenario, e Expect, forbid bool) error {
 	kind := e.kind()
 	switch {
 	case kind == "":
-		return fmt.Errorf("%s: expect %+v must set exactly one of class/check/title, warning, interrupted, clean or exit", s.ID, e)
+		return fmt.Errorf("%s: expect %+v must set exactly one of class/check/title, warning, interrupted, clean, exit or culprit", s.ID, e)
+	case (kind == kindCulprit) != (s.Harness == "wp-update"):
+		return fmt.Errorf("%s: only harness wp-update expects culprits and it expects nothing else", s.ID)
+	case kind == kindCulprit && (e.Culprit == "" || e.Compares < 0):
+		return fmt.Errorf("%s: culprit needs a plugin slug and compares can't be negative", s.ID)
 	case forbid && kind != kindChange:
 		return fmt.Errorf("%s: forbid entries are changes (class, check, title)", s.ID)
 	case kind != kindChange || e.Class == "" || slices.Contains(model.Classes, e.Class):

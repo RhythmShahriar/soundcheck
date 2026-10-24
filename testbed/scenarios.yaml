@@ -30,6 +30,11 @@
 #               parallel      runs two compares in the same folder at once
 #               delete-shots  deletes the snapshot's screenshots before comparing
 #               stress        keeps every CPU busy while compare runs
+#               wp-update     runs `rhythm-soundcheck wp-update` with `args`
+#                             on the ten testbed-update-* plugins (one 1.1
+#                             breaks the contact page) instead of snapshot
+#                             and compare; wp/updates/reset.sh puts them
+#                             back at 1.0 before and after
 #   pending   the detector the expectation needs isn't merged yet; the
 #             scoreboard counts these separately (see note)
 #   forbid    changes that must not be reported (false alarms), same
@@ -41,6 +46,8 @@
 #   {interrupted: true}               the comparison is marked interrupted
 #   {clean: true}                     nothing at or above NEW was reported
 #   {exit: N}                         compare exited with N
+#   {culprit: slug, compares: N}      wp-update named this plugin, in at most N
+#                                     compares (wp-update harness only)
 #
 # Checks for modules that aren't merged yet are matched by module prefix
 # only, e.g. "interact/".
@@ -638,4 +645,34 @@ scenarios:
     toggle: "an Elementor add-on is deactivated, so its widget shows \"Widget ... not found\" (wp/mu-plugins/testbed-scenarios.php)"
     expect:
       - {class: new, check: health/elementor-missing-widget, title: Elementor widget missing}
+    tools: []
+
+  - id: s47
+    name: "One of ten plugin updates breaks the contact page (wp-update --bisect)"
+    site: wp
+    path: /contact/
+    include: ["/contact*"]
+    module: wp-update
+    harness: wp-update
+    args: [--bisect, --rollback]
+    pending: true
+    note: "Needs the wp-update command (workflows lane, wired in wave 2)."
+    toggle: "testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates"
+    expect:
+      - {culprit: testbed-update-07, compares: 4}
+    tools: []
+
+  - id: s48
+    name: "One of ten plugin updates breaks the contact page (wp-update --one-by-one)"
+    site: wp
+    path: /contact/
+    include: ["/contact*"]
+    module: wp-update
+    harness: wp-update
+    args: [--one-by-one, --rollback]
+    pending: true
+    note: "Needs the wp-update command (workflows lane, wired in wave 2)."
+    toggle: "testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates"
+    expect:
+      - {culprit: testbed-update-07, compares: 10}
     tools: []

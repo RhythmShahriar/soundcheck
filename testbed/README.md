@@ -1,6 +1,6 @@
 # Soundcheck testbed
 
-46 broken-site scenarios in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
+48 broken-site scenarios in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
 
 Each scenario breaks one thing the way a plugin update, a theme update, a PHP upgrade, a host or a setting would, or puts Soundcheck itself in a hard spot (Ctrl+C, two runs at once, a busy machine). Every scenario has a **good** and a **broken** state. `toggle.sh` switches between them right away, without a rebuild or restart.
 
@@ -49,6 +49,8 @@ If your `php.ini` hides errors (`display_errors = Off`), add `-d display_errors=
 | `make status` | list broken scenarios |
 | `make logs` | follow the web server logs |
 | `make wp ARGS="post list --post_type=page"` | run WP-CLI against the site |
+| `make wp-update-reset` | put the ten testbed-update plugins back at 1.0 (s47, s48) |
+| `make wp-updates` | list the plugin updates WordPress offers |
 
 ## Switching a scenario
 
@@ -113,6 +115,8 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s44 | `:18810/` | nothing; the benchmark keeps every CPU busy during compare | nothing at or above NEW |
 | s45 | `:18810/catalog.php` | page 317 of 320 prints a PHP warning | NEW health |
 | s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | NEW health (pending) |
+| s47 | `/contact/` | ten plugin updates, one of which (testbed-update-07 1.1) breaks the contact page; `wp-update --bisect --rollback` | culprit testbed-update-07 in at most 4 compares (pending) |
+| s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares (pending) |
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
@@ -121,6 +125,25 @@ Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) sho
 ### Mail through Echo (s33)
 
 s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers. Start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up` and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run".
+
+### Plugin updates (s47, s48)
+
+s47 and s48 are the target for `rhythm-soundcheck wp-update`, which updates plugins and finds the one that broke the site. They don't use a state file. The site has ten small plugins, `testbed-update-01` to `testbed-update-10`, installed at 1.0, each with a 1.1 update. Nine of the updates change nothing anyone can see. `testbed-update-07` 1.1 calls a function the release left out on the contact page, so `/contact/` shows WordPress's critical error screen with a 500 and every other page still works.
+
+- `wp/updates/` holds the plugins' sources. `reset.sh` builds a 1.0 and a 1.1 zip of each in `wp-content/testbed-updates/` and installs every plugin at 1.0. `make up` runs it once and `make wp-update-reset` runs it again.
+- `wp/mu-plugins/testbed-updates.php` is the update server. It adds each plugin's newest zip to the `update_plugins` transient (the `pre_set_site_transient_update_plugins` and `site_transient_update_plugins` filters) and answers `plugins_api` and the downloads, so `wp plugin update` and the rollback `wp plugin install <slug> --version=1.0 --force` work the way they do with WordPress.org. Nothing leaves the containers: requests to WordPress.org get an empty update check or an error.
+- The page cache keys on the installed versions of these plugins too, so an update is seen at once.
+
+The WordPress image has no WP-CLI, so wp-update drives the `cli` container:
+
+```sh
+make -C testbed wp-updates       # ten updates, 1.0 → 1.1
+rhythm-soundcheck wp-update http://localhost:18800/contact/ --bisect --rollback \
+  --wp 'docker compose -f testbed/docker-compose.yml run --rm --no-deps -T --entrypoint wp cli'
+make -C testbed wp-update-reset  # back to 1.0
+```
+
+The benchmark does the same with each scenario's `args`. It resets the plugins before and after, reads the culprit and the number of compares from wp-update's output and scores it against the scenario's `culprit` and `compares`. It shows "not run" while the binary has no `wp-update` command. The bisect count starts at the compare that saw the break; one by one counts every compare up to the culprit's.
 
 ### Page cache
 
@@ -177,6 +200,7 @@ Flags:
 | `-wp`, `-php`, `-php-https` | from `scenarios.yaml` | site URLs |
 | `-control` | `10` | control pass rounds; `0` skips it (and so does `-only`, unless `-control` is set) |
 | `-echo` | none | Echo's URL, for the scenarios that need it (s33) |
+| `-compose` | `docker compose -f testbed/docker-compose.yml` | the compose command for the stack's WP-CLI (s47, s48), split at spaces; set `COMPOSE_PROJECT_NAME` for a stack started under another name |
 | `-timeout` | `5m` | per command |
 
 The bench package has the `testbed` build tag, so a plain `go test ./...` never needs Docker. With the testbed up, its tests check the sites themselves with the packages directly (health module, runner and compare):
@@ -189,6 +213,8 @@ go test -tags testbed -v ./testbed/bench/
 - `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
 - `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestExpectString`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
+- `TestWPUpdateTestbed`: through the stack's WP-CLI, checks that all ten plugin updates are offered after a reset, that testbed-update-07 1.1 breaks `/contact/` and nothing else and that the rollback fixes it. It needs Docker and the stack, not Chrome. Set `TESTBED_WP_PORT` (and `COMPOSE_PROJECT_NAME`) for a stack started with them.
+- `TestParseWPUpdate`, `TestEvaluateWPUpdate`: reading and scoring wp-update's output, without the testbed.
 - `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario

@@ -8,6 +8,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,6 +46,13 @@ func TestLoadManifestRejects(t *testing.T) {
 		"unknown harness":     {"  - id: s01\n" + ok + "    harness: wobble\n    expect: [{clean: true}]\n", "unknown harness"},
 		"interrupt delay":     {"  - id: s01\n" + ok + "    harness: interrupt\n    expect: [{interrupted: true}]\n", "interrupt_after"},
 		"misspelled field":    {"  - id: s01\n" + ok + "    expcet: [{clean: true}]\n", "expcet"},
+		"wp-update":           {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{culprit: testbed-update-07, compares: 4}]\n", ""},
+		"culprit elsewhere":   {"  - id: s01\n" + ok + "    expect: [{culprit: testbed-update-07}]\n", "only harness wp-update"},
+		"wp-update change":    {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{class: broke}]\n", "only harness wp-update"},
+		"compares alone":      {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{compares: 4}]\n", "plugin slug"},
+		"negative compares":   {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{culprit: p, compares: -1}]\n", "negative"},
+		"culprit and clean":   {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{culprit: p, clean: true}]\n", "exactly one"},
+		"wp-update forbid":    {"  - id: s01\n" + ok + "    harness: wp-update\n    expect: [{culprit: p}]\n    forbid: [{class: broke}]\n", "forbid"},
 	}
 	for name, c := range cases {
 		err := manifest(t, c.body)
@@ -132,17 +140,105 @@ func TestScoreboardPendingAndControl(t *testing.T) {
 
 func TestExpectString(t *testing.T) {
 	cases := map[string]Expect{
-		"BROKE health/status “503”": {Class: "broke", Check: "health/status", Title: "503"},
-		"BROKE":                     {Class: "broke"},
-		"any seo/og":                {Check: "seo/og"},
-		"warning “captcha”":         {Warning: "captcha"},
-		"marked interrupted":        {Interrupted: true},
-		"nothing at or above NEW":   {Clean: true},
-		"exit 3":                    {Exit: intp(3)},
+		"BROKE health/status “503”":         {Class: "broke", Check: "health/status", Title: "503"},
+		"BROKE":                             {Class: "broke"},
+		"any seo/og":                        {Check: "seo/og"},
+		"warning “captcha”":                 {Warning: "captcha"},
+		"marked interrupted":                {Interrupted: true},
+		"nothing at or above NEW":           {Clean: true},
+		"exit 3":                            {Exit: intp(3)},
+		"culprit p07 in at most 4 compares": {Culprit: "p07", Compares: 4},
+		"culprit p07 in at most 1 compare":  {Culprit: "p07", Compares: 1},
+		"culprit p07":                       {Culprit: "p07"},
 	}
 	for want, e := range cases {
 		if got := e.String(); got != want {
 			t.Errorf("%+v: %q, want %q", e, got, want)
 		}
+	}
+}
+
+// wp-update's progress, as package wpupdate printed it on the testbed
+// (one-by-one with a failed update added).
+const (
+	bisectOutput = `Snapshot wp-update-2026-10-24T17-36-02 of http://localhost:18800/contact/
+Updating 10 plugins
+All 10 updated: broke
+Rolling back testbed-update-03 to 1.0
+Rolling back testbed-update-05 to 1.0
+Rolling back testbed-update-01 to 1.0
+Rolling back testbed-update-06 to 1.0
+Rolling back testbed-update-04 to 1.0
+  testbed-update-08, testbed-update-02, testbed-update-10, testbed-update-07, testbed-update-09: broke
+Rolling back testbed-update-10 to 1.0
+Rolling back testbed-update-07 to 1.0
+Rolling back testbed-update-09 to 1.0
+  testbed-update-08, testbed-update-02: clean
+  testbed-update-10: clean
+  testbed-update-07: broke
+Culprit: testbed-update-07 1.0 → 1.1 (Server error 500 on /contact/), found in 4 compares
+Rolling back testbed-update-07 to 1.0
+Without testbed-update-07: clean
+`
+	oneByOneOutput = `Snapshot wp-update-2026-10-24T17-37-10 of http://localhost:18800/contact/
+[1/10] testbed-update-08 1.0 → 1.1: clean
+[2/10] testbed-update-02 1.0 → 1.1: clean
+[3/10] testbed-update-10: update failed: wp plugin update: disk full
+[4/10] testbed-update-07 1.0 → 1.1: broke: Server error 500 on /contact/
+Rolling back testbed-update-07 to 1.0
+[5/10] testbed-update-09 1.0 → 1.1: clean
+`
+)
+
+func TestParseWPUpdate(t *testing.T) {
+	cases := map[string]struct {
+		out  string
+		want []Culprit
+	}{
+		"bisect":      {bisectOutput, []Culprit{{Slug: "testbed-update-07", Old: "1.0", New: "1.1", Evidence: "Server error 500 on /contact/", Compares: 4}}},
+		"one by one":  {oneByOneOutput, []Culprit{{Slug: "testbed-update-07", Old: "1.0", New: "1.1", Evidence: "Server error 500 on /contact/", Compares: 4}}},
+		"one compare": {"Culprit: p01 1.0 → 1.1 (x (y)), found in 1 compare\n", []Culprit{{Slug: "p01", Old: "1.0", New: "1.1", Evidence: "x (y)", Compares: 1}}},
+		"nothing":     {"No plugin updates available.\n", nil},
+		"clean only":  {"[1/1] p01 1.0 → 1.1: clean\n", nil},
+	}
+	for name, c := range cases {
+		got := parseWPUpdate(c.out)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: %+v, want %+v", name, got, c.want)
+		}
+	}
+}
+
+func TestEvaluateWPUpdate(t *testing.T) {
+	s := Scenario{Harness: "wp-update", Expect: []Expect{{Culprit: "p07", Compares: 4}}}
+	p07 := func(n int) Culprit { return Culprit{Slug: "p07", Old: "1.0", New: "1.1", Compares: n} }
+	cases := []struct {
+		name     string
+		culprits []Culprit
+		want     string
+		found    string
+	}{
+		{"caught", []Culprit{p07(4)}, Caught, "p07 1.0 → 1.1, found in 4 compares"},
+		{"too many compares", []Culprit{p07(5)}, Missed, "p07 1.0 → 1.1, found in 5 compares; want at most 4"},
+		{"none", nil, Missed, ""},
+		{"wrong plugin", []Culprit{{Slug: "p03", Old: "1.0", New: "1.1", Compares: 2}}, FalseAlarm, "blamed p03 1.0 → 1.1, found in 2 compares"},
+		{"right and wrong", []Culprit{p07(3), {Slug: "p03", Compares: 1}}, FalseAlarm, ""},
+	}
+	for _, c := range cases {
+		got := EvaluateWPUpdate(s, c.culprits, 1)
+		if got.Outcome != c.want || c.found != "" && got.Found != c.found {
+			t.Errorf("%s: %s %q, want %s %q", c.name, got.Outcome, got.Found, c.want, c.found)
+		}
+	}
+	if got := EvaluateWPUpdate(Scenario{Expect: []Expect{{Culprit: "p07"}}}, []Culprit{p07(9)}, 1); got.Outcome != Caught {
+		t.Errorf("no compare budget: %s, want caught", got.Outcome)
+	}
+}
+
+func TestShellJoin(t *testing.T) {
+	got := shellJoin([]string{"docker", "compose", "-f", "/tmp/my testbed/docker-compose.yml", "it's", ""})
+	want := `docker compose -f '/tmp/my testbed/docker-compose.yml' 'it'\''s' ''`
+	if got != want {
+		t.Errorf("shellJoin: %s, want %s", got, want)
 	}
 }
