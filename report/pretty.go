@@ -9,7 +9,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/rhythm/kit/ui"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -379,8 +381,29 @@ func (r Result) stats() string {
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d couldn't be loaded", failed))
 	}
+	if r.Run.Options.Echo {
+		parts = append(parts, echoSummary(r.Run))
+	}
 	parts = append(parts, (time.Duration(r.Run.Duration) * time.Millisecond).Round(time.Second).String())
 	return strings.Join(parts, " · ")
+}
+
+// echoSummary counts what form submits and flows sent: "2 forms and flows
+// sent 3 emails, 1 webhook".
+func echoSummary(run *model.Run) string {
+	acts := run.EchoActions()
+	if len(acts) == 0 {
+		return "Echo: no form submits or flows"
+	}
+	var all []echomodel.Message
+	for _, a := range acts {
+		all = append(all, a.Messages...)
+	}
+	sent := strings.TrimPrefix(echolink.Summary(all), "sent ")
+	if len(all) == 0 {
+		sent = "no messages"
+	}
+	return fmt.Sprintf("Echo: %s from %s", sent, plural(len(acts), "form or flow", "forms and flows"))
 }
 
 // changeCard renders a BROKE or NEW change with its evidence and fix.

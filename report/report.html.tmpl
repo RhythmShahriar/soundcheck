@@ -106,6 +106,9 @@ td.path { font-family: var(--mono); white-space: normal; overflow-wrap: anywhere
 tr.bad td.path { color: var(--broke); }
 td.num, th.num { text-align: right; }
 .notes ul { color: var(--muted); font-size: 13px; }
+td.wrap { white-space: normal; overflow-wrap: anywhere; }
+tr.none td[colspan] { color: var(--muted); font-style: italic; }
+.echo-open { color: var(--muted); font-size: 13px; margin: 12px 0 0; overflow-wrap: anywhere; }
 footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .hidden { display: none !important; }
 @media (max-width: 640px) {
@@ -183,6 +186,16 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
 
   {{if .Notes}}
   <details class="notes"><summary>Notes ({{len .Notes}})</summary><ul>{{range .Notes}}<li>{{.}}</li>{{end}}</ul></details>
+  {{end}}
+
+  {{with .Echo}}
+  <details class="allpages echo" open><summary>Messages sent · {{.Summary}}</summary>
+    {{if .Rows}}<div class="tablewrap"><table>
+      <thead><tr><th>Form or flow</th><th>Page</th><th>Channel</th><th>To</th><th>Subject</th></tr></thead>
+      <tbody>{{range .Rows}}<tr{{if .None}} class="none"{{end}}><td>{{.Action}}</td><td class="path">{{.Page}}</td>{{if .None}}<td colspan="3">no message went out</td>{{else}}<td>{{.Channel}}</td><td class="path">{{.To}}</td><td class="wrap">{{.Subject}}</td>{{end}}</tr>{{end}}</tbody>
+    </table></div>{{end}}
+    <p class="echo-open">Read them in full in Echo's live view{{if .URL}}: <a href="{{.URL}}" rel="noreferrer">{{.URL}}</a>{{end}} (rhythm echo up), while it runs.</p>
+  </details>
   {{end}}
 
   <details class="allpages"><summary>All pages ({{len .Pages}})</summary>

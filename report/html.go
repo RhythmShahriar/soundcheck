@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"cmp"
 	_ "embed"
 	"encoding/base64"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 
 	"golang.org/x/image/draw"
 
+	echomodel "github.com/RhythmShahriar/echo/model"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -42,6 +45,18 @@ type htmlData struct {
 	Groups                                 []htmlGroup
 	Pages                                  []htmlPage
 	Notes                                  []string
+	Echo                                   *htmlEcho
+}
+
+// htmlEcho lists what each form submit and flow sent, when Echo ran.
+type htmlEcho struct {
+	Summary, URL string
+	Rows         []htmlMessage
+}
+
+type htmlMessage struct {
+	Action, Page, Channel, To, Subject string
+	None                               bool // the action sent nothing
 }
 
 type htmlChip struct {
@@ -174,7 +189,31 @@ func HTML(w io.Writer, r Result) error {
 		}
 		d.Pages = append(d.Pages, hp)
 	}
+	d.Echo = echoTable(run)
 	return htmlTemplate.Execute(w, d)
+}
+
+// echoTable is one row per message, and one for each action that sent
+// nothing. Bodies stay in Echo: its live view shows them in full.
+func echoTable(run *model.Run) *htmlEcho {
+	if !run.Options.Echo {
+		return nil
+	}
+	e := &htmlEcho{Summary: echoSummary(run), URL: run.Options.EchoURL}
+	for _, a := range run.EchoActions() {
+		if len(a.Messages) == 0 {
+			e.Rows = append(e.Rows, htmlMessage{Action: a.Label, Page: a.Page, None: true})
+		}
+		for _, m := range a.Messages {
+			ch := string(m.Channel)
+			if m.Status == echomodel.Failed || m.Status == echomodel.Blocked { // faked is normal when sealed
+				ch += " (" + string(m.Status) + ")"
+			}
+			e.Rows = append(e.Rows, htmlMessage{Action: a.Label, Page: a.Page, Channel: ch,
+				To: echolink.Recipient(m), Subject: cmp.Or(m.Subject, m.Event)})
+		}
+	}
+	return e
 }
 
 // shots loads and shrinks a change's before, after and diff images. It
