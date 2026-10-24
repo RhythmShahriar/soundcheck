@@ -102,7 +102,7 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 		if !strings.HasPrefix(f, "visual/") {
 			t.Fatalf("files = %v", about.Files)
 		}
-		img, err := load(filepath.Join(cmpDir, f))
+		img, err := load(cmpDir, f)
 		if err != nil {
 			t.Fatalf("%s: %v", k, err)
 		}
@@ -496,5 +496,121 @@ func TestCompareFooterAtDifferentHeights(t *testing.T) {
 	if c.Title != "Footer changed on 5 pages (desktop)" || !strings.Contains(c.Detail, "2 different changes") ||
 		!strings.Contains(c.Detail, "The pages are 25 px taller.") {
 		t.Errorf("footer = %+v", c)
+	}
+}
+
+// twoViewportRuns is a snapshot and a run of two pages, each with a
+// desktop and a mobile screenshot, where the after pages changed.
+func twoViewportRuns(t *testing.T) (*check.CompareContext, string) {
+	t.Helper()
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for _, path := range []string{"/", "/about/"} {
+		for _, vp := range Viewports {
+			addShot(t, before, beforeDir, path, vp, page(400, 600))
+			a := page(400, 600)
+			fill(a, image.Rect(50, 200, 350, 400), red)
+			addShot(t, after, afterDir, path, vp, a)
+		}
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	return cc, beforeDir
+}
+
+func TestCompareWarnsAboutUnreadableShots(t *testing.T) {
+	const four = "visual: 4 screenshots from the snapshot are missing or unreadable; visual changes on these pages weren't checked"
+
+	t.Run("intact", func(t *testing.T) {
+		cc, _ := twoViewportRuns(t)
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(warnings) != 0 || len(cs) == 0 {
+			t.Errorf("an intact snapshot: changes %d, warnings %q", len(cs), warnings)
+		}
+	})
+	t.Run("shots deleted", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		if err := os.RemoveAll(filepath.Join(dir, "shots")); err != nil {
+			t.Fatal(err)
+		}
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(cs) != 0 || !slices.Equal(warnings, []string{four}) {
+			t.Errorf("changes %+v, warnings %q", cs, warnings)
+		}
+	})
+	t.Run("truncated", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		f := filepath.Join(dir, filepath.FromSlash(cc.Before.Pages[0].Shots["desktop"].File))
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, raw[:len(raw)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, warnings := compareShots(context.Background(), cc)
+		want := "visual: 1 screenshot from the snapshot is missing or unreadable; visual changes on this page weren't checked"
+		if !slices.Equal(warnings, []string{want}) {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+	t.Run("not a png", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		f := filepath.Join(dir, filepath.FromSlash(cc.Before.Pages[1].Shots["mobile"].File))
+		lfs := "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1234\n"
+		if err := os.WriteFile(f, []byte(lfs), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, warnings := compareShots(context.Background(), cc); len(warnings) != 1 || !strings.Contains(warnings[0], "1 screenshot from the snapshot") {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+	t.Run("paths outside the run folder", func(t *testing.T) {
+		cc, dir := twoViewportRuns(t)
+		// A real PNG sits outside the snapshot's folder; run.json points
+		// at it with an absolute path and with ../ paths.
+		outside := filepath.Join(t.TempDir(), "private.png")
+		writePNG(t, filepath.Dir(outside), "private.png", page(400, 600))
+		rel, err := filepath.Rel(dir, outside)
+		if err != nil {
+			t.Fatal(err)
+		}
+		set := func(i int, vp, file string) {
+			s := cc.Before.Pages[i].Shots[vp]
+			s.File = file
+			cc.Before.Pages[i].Shots[vp] = s
+		}
+		set(0, "desktop", outside)
+		set(0, "mobile", filepath.ToSlash(rel))
+		set(1, "desktop", "shots/../../"+filepath.Base(dir)+"/shots/"+cc.Before.Pages[1].ID+"-desktop.png")
+		set(1, "mobile", "../x.png")
+		cs, warnings := compareShots(context.Background(), cc)
+		if len(cs) != 0 || !slices.Equal(warnings, []string{four}) {
+			t.Errorf("changes %+v, warnings %q", cs, warnings)
+		}
+	})
+	t.Run("this run's shot", func(t *testing.T) {
+		cc, _ := twoViewportRuns(t)
+		if err := os.RemoveAll(filepath.Join(cc.AfterDir, "shots")); err != nil {
+			t.Fatal(err)
+		}
+		_, warnings := compareShots(context.Background(), cc)
+		want := "visual: 4 screenshots from this run are missing or unreadable; visual changes on these pages weren't checked"
+		if !slices.Equal(warnings, []string{want}) {
+			t.Errorf("warnings %q", warnings)
+		}
+	})
+}
+
+func TestShotPath(t *testing.T) {
+	for file, ok := range map[string]bool{
+		"shots/a-desktop.png": true,
+		"/etc/passwd":         false,
+		"../shots/a.png":      false,
+		"shots/../../a.png":   false,
+		"":                    false,
+	} {
+		if _, err := shotPath("/run", file); (err == nil) != ok {
+			t.Errorf("shotPath(%q) error = %v", file, err)
+		}
 	}
 }

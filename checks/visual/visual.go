@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -61,8 +62,8 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 		if !ok || s.Second == "" {
 			continue
 		}
-		first, err1 := load(filepath.Join(cc.Dir, filepath.FromSlash(s.File)))
-		second, err2 := load(filepath.Join(cc.Dir, filepath.FromSlash(s.Second)))
+		first, err1 := load(cc.Dir, s.File)
+		second, err2 := load(cc.Dir, s.Second)
 		if err1 != nil || err2 != nil {
 			continue
 		}
@@ -121,7 +122,25 @@ type shotDiff struct {
 // for pages that changed, and reports them. Areas that changed the same
 // way on several pages (a new header) become one change listing those
 // pages, so a site-wide tweak is one line instead of hundreds.
+//
+// Screenshots that can't be read (deleted, truncated, not a PNG, or a
+// path that leaves the run's folder) are counted and reported as a
+// warning, so a missing baseline never reads as "Nothing changed".
 func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Change {
+	out, warnings := compareShots(ctx, cmp)
+	// CompareContext has no Warn yet; until it does the warnings are
+	// still counted (and tested) here, and reach the comparison as soon
+	// as it grows the method Context already has.
+	if w, ok := any(cmp).(interface{ Warn(string) }); ok {
+		for _, msg := range warnings {
+			w.Warn(msg)
+		}
+	}
+	return out
+}
+
+// compareShots is Compare, returning the warnings it would show.
+func compareShots(ctx context.Context, cmp *check.CompareContext) ([]model.Change, []string) {
 	threshold := cmp.Config.Visual.Threshold
 	type job struct {
 		pair [2]*model.Page
@@ -143,6 +162,7 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 	// Decoding and diffing dominate; a few at a time keeps memory bounded
 	// (a tall page is tens of MB decoded).
 	results := make([]*shotDiff, len(jobs))
+	errs := make([]error, len(jobs))
 	sem := make(chan struct{}, min(runtime.GOMAXPROCS(0), 4))
 	var wg sync.WaitGroup
 	for i, j := range jobs {
@@ -152,7 +172,7 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			results[i] = diffShot(cmp, j.pair[0], j.pair[1], j.vp, threshold)
+			results[i], errs[i] = diffShot(cmp, j.pair[0], j.pair[1], j.vp, threshold)
 		})
 	}
 	wg.Wait()
@@ -160,27 +180,55 @@ func (Module) Compare(ctx context.Context, cmp *check.CompareContext) []model.Ch
 
 	told := map[*shotDiff]bool{} // pages whose height change a change already tells
 	out := changes(results, threshold, told)
-	return append(out, resizes(results, told)...)
+	return append(out, resizes(results, told)...), unreadable(errs)
+}
+
+// shotError is a screenshot diffShot couldn't read.
+type shotError struct {
+	snapshot bool // the snapshot's file, not this run's
+	err      error
+}
+
+func (e *shotError) Error() string { return e.err.Error() }
+func (e *shotError) Unwrap() error { return e.err }
+
+// unreadable turns diffShot's errors into warnings, one per side.
+func unreadable(errs []error) []string {
+	var snap, run int
+	for _, err := range errs {
+		var se *shotError
+		switch {
+		case errors.As(err, &se) && se.snapshot:
+			snap++
+		case err != nil:
+			run++
+		}
+	}
+	var out []string
+	for _, x := range []struct {
+		n     int
+		where string
+	}{{snap, "the snapshot"}, {run, "this run"}} {
+		switch {
+		case x.n == 1:
+			out = append(out, fmt.Sprintf("visual: 1 screenshot from %s is missing or unreadable; visual changes on this page weren't checked", x.where))
+		case x.n > 1:
+			out = append(out, fmt.Sprintf("visual: %d screenshots from %s are missing or unreadable; visual changes on these pages weren't checked", x.n, x.where))
+		}
+	}
+	return out
 }
 
 // diffShot loads and compares one page's screenshots at one viewport.
-func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold float64) *shotDiff {
+func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold float64) (*shotDiff, error) {
 	sb, sa := b.Shots[vp], a.Shots[vp]
-	rawB, err := os.ReadFile(filepath.Join(cmp.BeforeDir, filepath.FromSlash(sb.File)))
+	rawB, imgB, err := readShot(cmp.BeforeDir, sb.File)
 	if err != nil {
-		return nil
+		return nil, &shotError{snapshot: true, err: err}
 	}
-	rawA, err := os.ReadFile(filepath.Join(cmp.AfterDir, filepath.FromSlash(sa.File)))
+	rawA, imgA, err := readShot(cmp.AfterDir, sa.File)
 	if err != nil {
-		return nil
-	}
-	imgB, err := png.Decode(bytes.NewReader(rawB))
-	if err != nil {
-		return nil
-	}
-	imgA, err := png.Decode(bytes.NewReader(rawA))
-	if err != nil {
-		return nil
+		return nil, &shotError{err: err}
 	}
 	d := Compare(imgB, imgA, DiffOptions{
 		// Rows are lined up before pixels are compared, so each side's
@@ -198,7 +246,36 @@ func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold 
 		r.files = save(cmp, a, vp, rawB, rawA, d)
 	}
 	d.release() // keep only the summary; hundreds of pages don't fit in memory
-	return r
+	return r, nil
+}
+
+// shotPath is where a screenshot recorded in run.json lives. A run's
+// files are always inside its folder; a path that is absolute or climbs
+// out of it (a run.json someone else edited) is refused rather than read.
+func shotPath(dir, file string) (string, error) {
+	rel := filepath.FromSlash(file)
+	if !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("screenshot path %q is outside the run folder", file)
+	}
+	return filepath.Join(dir, rel), nil
+}
+
+// readShot reads and decodes a screenshot, keeping the file's bytes for
+// the report.
+func readShot(dir, file string) ([]byte, image.Image, error) {
+	path, err := shotPath(dir, file)
+	if err != nil {
+		return nil, nil, err
+	}
+	raw, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, nil, err
+	}
+	img, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", file, err)
+	}
+	return raw, img, nil
 }
 
 // blocks returns the blocks inserted into or removed from the page that
@@ -763,7 +840,11 @@ func concat(rs ...[]model.Rect) []model.Rect {
 	return out
 }
 
-func load(path string) (image.Image, error) {
+func load(dir, file string) (image.Image, error) {
+	path, err := shotPath(dir, file)
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return nil, err
