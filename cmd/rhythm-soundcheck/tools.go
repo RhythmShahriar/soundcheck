@@ -299,10 +299,11 @@ when one doesn't behave.
 // cmdRules lists the error rules or tests a folder of them.
 func cmdRules(args []string, stdout, stderr io.Writer) int {
 	dir := filepath.Join(config.Dir, "rules")
+	args, code, ok := subFlags(flag.NewFlagSet("rules", flag.ContinueOnError), args, rulesUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
 	switch {
-	case len(args) == 1 && (args[0] == "-h" || args[0] == "--help"):
-		fmt.Fprint(stdout, named(rulesUsage))
-		return exitOK
 	case len(args) == 1 && args[0] == "list":
 		set, err := health.LoadRules(dir)
 		if err != nil {

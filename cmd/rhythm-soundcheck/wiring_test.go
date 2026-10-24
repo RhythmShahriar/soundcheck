@@ -551,6 +551,7 @@ func TestSubcommandsTakeColorFlags(t *testing.T) {
 		{"history", "--plain"}, {"history", "--no-color"},
 		{"accept", "c1", "--plain"}, {"accept", "--no-color", "c1"},
 		{"review", "--plain"}, {"review", "--no-color"},
+		{"rules", "list", "--plain"}, {"rules", "--no-color", "list"}, {"rules", "test", "--plain"},
 	} {
 		_, _, errOut := runCLI(t, args...)
 		if strings.Contains(errOut, "unknown flag") {
@@ -559,6 +560,11 @@ func TestSubcommandsTakeColorFlags(t *testing.T) {
 	}
 	if code, _, errOut := runCLI(t, "review", "--frobnicate"); code != exitUsage || !strings.Contains(errOut, "unknown flag --frobnicate") {
 		t.Errorf("review --frobnicate: exit %d %s", code, errOut)
+	}
+	for _, args := range [][]string{{"rules", "list", "--plain"}, {"rules", "test", "--plain"}} {
+		if code, out, errOut := runCLI(t, args...); code != exitOK || strings.Contains(errOut, "--plain") || strings.Contains(out, "Usage") {
+			t.Errorf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
 	}
 }
 
