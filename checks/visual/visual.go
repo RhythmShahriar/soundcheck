@@ -483,8 +483,8 @@ func changes(results []*shotDiff, threshold float64, told map[*shotDiff]bool) []
 		ch.Title = fmt.Sprintf("%s changed on %d pages (%s)", sh.label, len(ch.Pages), sh.viewport)
 		r := sh.members[0].region
 		if sh.groups == 1 {
-			ch.Detail = fmt.Sprintf("The same area (%d×%d px at %d,%d on %s) changed the same way on every page listed.",
-				r.W, r.H, r.X, r.Y, sh.members[0].r.page.Path)
+			ch.Detail = fmt.Sprintf("The same area (%s, on %s) changed the same way on every page listed.",
+				placeOf(r.Rect, sh.members[0].r.sizeA.X), sh.members[0].r.page.Path)
 		} else {
 			ch.Detail = fmt.Sprintf("%d different changes in this part of the pages listed, each the same on several pages.", sh.groups)
 		}
@@ -590,7 +590,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 			p += " besides the changes shared with other pages"
 		}
 		big := rest[0]
-		parts = append(parts, p+fmt.Sprintf("; the largest at %d,%d (%d×%d px)", big.X, big.Y, big.W, big.H))
+		parts = append(parts, p+"; the largest "+placeOf(big.Rect, r.sizeA.X))
 	}
 	for _, b := range blocks {
 		parts = append(parts, bandDetail(b))
@@ -608,6 +608,24 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
 		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
 		Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."}, true
+}
+
+// placeOf tells an area's size and where it is, e.g. "377×314 px, 143 px
+// from the top and 8 px from the left". The left offset is left out for
+// an area as wide as the page. Coordinates as "8,143" read as one number.
+func placeOf(r model.Rect, width int) string {
+	top := fmt.Sprintf("%d px from the top", r.Y)
+	if r.Y == 0 {
+		top = "at the top"
+	}
+	s := fmt.Sprintf("%d×%d px, %s", r.W, r.H, top)
+	switch {
+	case r.X == 0 && r.W >= width:
+		return s
+	case r.X == 0:
+		return s + " at the left edge"
+	}
+	return s + fmt.Sprintf(" and %d px from the left", r.X)
 }
 
 // nearBlock is how far apart (in px) two blocks may be and still be one

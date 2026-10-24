@@ -733,3 +733,45 @@ func TestLooseBlocks(t *testing.T) {
 		t.Errorf("mixed = %+v", got)
 	}
 }
+
+func TestPlaceOf(t *testing.T) {
+	for _, c := range []struct {
+		r    model.Rect
+		want string
+	}{
+		{model.Rect{X: 8, Y: 143, W: 377, H: 314}, "377×314 px, 143 px from the top and 8 px from the left"},
+		{model.Rect{X: 0, Y: 143, W: 800, H: 60}, "800×60 px, 143 px from the top"},
+		{model.Rect{X: 0, Y: 0, W: 800, H: 60}, "800×60 px, at the top"},
+		{model.Rect{X: 0, Y: 40, W: 200, H: 60}, "200×60 px, 40 px from the top at the left edge"},
+	} {
+		if got := placeOf(c.r, 800); got != c.want {
+			t.Errorf("placeOf(%+v) = %q, want %q", c.r, got, c.want)
+		}
+	}
+}
+
+// Where the largest area is reads as a size and distances, not as
+// "8,143", which looks like eight thousand.
+func TestCompareLargestAreaWording(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		area image.Rectangle
+		want string
+	}{
+		{"offset", image.Rect(120, 300, 400, 420), "; the largest 280×120 px, 300 px from the top and 120 px from the left."},
+		{"full width", image.Rect(0, 300, 800, 340), "; the largest 800×40 px, 300 px from the top."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			beforeDir, afterDir := t.TempDir(), t.TempDir()
+			a := page(800, 1200)
+			fill(a, c.area, red)
+			before := &model.Run{Pages: []model.Page{shotPage(t, beforeDir, "/", page(800, 1200))}}
+			after := &model.Run{Pages: []model.Page{shotPage(t, afterDir, "/", a)}}
+			cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+			got := Module{}.Compare(context.Background(), cc)
+			if len(got) != 1 || !strings.HasSuffix(got[0].Detail, c.want) {
+				t.Fatalf("changes = %+v, want a detail ending %q", got, c.want)
+			}
+		})
+	}
+}
