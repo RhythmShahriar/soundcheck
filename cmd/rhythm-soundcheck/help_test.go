@@ -60,11 +60,11 @@ func TestValueErrorWording(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"--modules", "visul"}, `--modules (modules): "visul" isn't one of health, visual, interact, cache, speed, echo (did you mean "visual"?)`},
+		{[]string{"--modules", "visul"}, `--modules (modules): "visul" isn't one of health, visual, interact, cache, speed, a11y, seo, echo, exec (did you mean "visual"?)`},
 		{[]string{"--level", "submitt"}, `--level (interactions.levels): "submitt" isn't one of inspect, click, submit, flows (did you mean "submit"?)`},
 		{[]string{"--level", "click,+submit"}, `--level (interactions.levels): put + before the first value to add to the list, e.g. +submit`},
 		{[]string{"--viewport", "tablet"}, `--viewport (viewports): "tablet" isn't one of desktop, mobile`},
-		{[]string{"--skip", "visul"}, `--skip: "visul" isn't one of health, visual, interact, cache, speed, echo (did you mean "visual"?)`},
+		{[]string{"--skip", "visul"}, `--skip: "visul" isn't one of health, visual, interact, cache, speed, a11y, seo, echo, exec (did you mean "visual"?)`},
 		{[]string{"--fail-on", "brok"}, `--fail-on (fail_on): "brok" isn't one of broke, new, changed, slower, error, warning, notice, none (did you mean "broke"?)`},
 		{[]string{"--fail-on", "broke"}, `--fail-on (fail_on): "broke" is for comparisons; run and snapshot take error, warning or notice`},
 		{[]string{"--tabs", "abc"}, `--tabs (tabs): "abc" isn't a whole number`},

@@ -35,14 +35,17 @@ Optional interfaces tune how the runner treats the module:
   (`NeedsSecondShot`). Without it no screenshots are taken for the module.
 - `NeedsText` keeps `Page.Text` after the page's `PageChecker`s ran, for a module that reads it in
   `CheckSite`.
-- `Configurable` decodes the module's own block of `config.yaml`.
+- `Configurable` is meant to decode a module's own block of `config.yaml`. The config doesn't
+  hand blocks to modules yet, so a module's settings still go in `config.Config`.
 - `IssueOwner` is a `Comparer` that reports every change in its own issues itself.
 - `NeedsChrome` marks a module whose `TabPreparer` or `TabLive` hooks use `Tab.Rod()`. See
   [Browser engines](#browser-engines).
 
-A module registers itself with `check.Register` from its package's `init`. The command then only
-blank-imports the package (until every module does, it also lists them in
-`cmd/rhythm-soundcheck/modules.go`).
+A module registers itself with `check.Register` from its package's `init`; `--list-checks` reads
+the registry. Add its name to `config.Modules` (and to `config.DefaultModules` when it should run
+by default) and a builder to `cmd/rhythm-soundcheck/modules.go`, which makes the module for each
+command. A test fails when the three don't agree, or when a `Check:` id in `checks/` is missing
+from its module's `Checks()`.
 
 ### A page's life cycle
 
@@ -75,7 +78,8 @@ the whole run.
 
 ### Browser engines
 
-Pages are captured in Chrome by default and in Firefox or WebKit when a run asks for them. Chrome
+Pages are captured in Chrome by default and in Firefox or WebKit when a run asks for them
+(`--browser firefox`, `--browser webkit`, or `firefox=<path>` for a binary of your own). Chrome
 is driven through its DevTools protocol (rod); the other engines through WebDriver BiDi, or
 classic WebDriver for a WebKit driver without BiDi (package
 [`capture/webdriver`](capture/webdriver)). Every engine gives a `capture.Tab`, which is a

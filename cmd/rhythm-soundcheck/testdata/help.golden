@@ -9,13 +9,25 @@ Usage:
   rhythm-soundcheck <url> --against <url>    compare staging with live, now
   rhythm-soundcheck run <url> [flags]        check once, no comparison
   rhythm-soundcheck report [run] [flags]     show the last result again
+                                             (--serve to review it in the
+                                             browser, --client --brand
+                                             <agency.yaml> for a client)
+  rhythm-soundcheck accept <id>...           make changes part of the snapshot
+  rhythm-soundcheck review                   accept or ignore changes one by one
   rhythm-soundcheck snapshots [--json]       list (delete <name> removes one)
+  rhythm-soundcheck history                  every result so far, with trends
+  rhythm-soundcheck fleet <sites.yaml> <cmd> snapshot or compare many sites
+  rhythm-soundcheck wp-update <url> --wp ... update plugins, find the culprit
+  rhythm-soundcheck rules list|test [dir]    your own error rules
   rhythm-soundcheck init                     write a config file to edit
   rhythm-soundcheck import <file>            settings from backstop.json or
                                              lostpixel.config.ts --pages-only
   rhythm-soundcheck flows init               write an example flow to edit
   rhythm-soundcheck update [--clear]         install or refresh its browser
   rhythm-soundcheck demo [--keep]            try it on a built-in site
+  rhythm-soundcheck --list-checks            every check each module makes
+  rhythm-soundcheck help <command>           more on accept, review, history,
+                                             fleet, wp-update or rules
 
 Snapshots:
       --name <name>          snapshot name (default: date and time); compare
@@ -25,6 +37,11 @@ Snapshots:
       --against <url>        compare with another site instead of a snapshot
       --strict               stop (exit 2) when compare wouldn't run with the
                              snapshot's modules, levels and viewports
+      --confirm[=off]        compare visits BROKE and NEW pages again and
+                             shows the ones that don't come back as UNSTABLE
+                             (default on)
+      --resume               snapshot: carry on with a stopped snapshot of
+                             the same --name, keeping the pages it finished
 
 compare runs with the snapshot's modules, levels and viewports unless a flag
 or the config file sets them. It says what you changed.
@@ -52,9 +69,11 @@ What to check:
       --exclude <globs>      skip pages matching
       --page <path>          always check this page too (repeatable)
       --ignore-robots        crawl pages robots.txt disallows (your own site)
-      --modules <list>       health, visual, interact, cache, speed (default
-                             all), echo (on with --echo); +<list> adds to
-                             the default or config list, e.g. +echo
+      --modules <list>       health, visual, interact, cache, speed (default),
+                             a11y, seo (off unless asked for), echo (on with
+                             --echo), exec (on when the config lists exec:
+                             commands); +<list> adds to the default or config
+                             list, e.g. +a11y,seo
       --skip <list>          leave these modules out
       --level <list>         interactions: inspect, click, submit, flows
                              (default inspect,click; submit sends test data).
@@ -71,7 +90,10 @@ What to check:
                              page (repeatable); otherwise only the site
       --insecure-login       type the test password over plain http to a
                              site that isn't this machine
-      --lighthouse           also run Unlighthouse (needs Node.js and npx)
+      --allow-exec           let the exec module run the commands the config
+                             lists under exec: (also SOUNDCHECK_ALLOW_EXEC=1)
+      --lighthouse           also run Unlighthouse (needs Node.js and npm);
+                             never on a production site
       --echo[=<url>]         record the emails, SMS and webhooks each form
                              submit and flow sends and compare them, through
                              Echo (default http://127.0.0.1:8025; start it with
@@ -83,12 +105,24 @@ Requests and browser:
       --tabs <n>             pages checked at once (default 8)
       --timeout <d>          per page, e.g. 45s, 1m or 45 (default 30s)
   -A, --user-agent <ua>      User-Agent header
-  -H, --header <h>           extra header, "Name: value" (repeatable)
-      --cookie <c>           Cookie header, e.g. "staging_auth=abc"
+  -H, --header <h>           extra header, "Name: value" (repeatable), sent to
+                             the checked site only
+      --cookie <c>           cookie for the checked site, e.g.
+                             "staging_auth=abc" (browsers send it to every
+                             port of the host)
       --proxy <url>          http, https or socks5 proxy
   -k, --insecure             don't verify TLS certificates (local sites)
-      --browser <path>       Chrome or Chromium to use
-      --no-download          never download Chromium; fail if none is installed
+      --browser <name|path>  chrome (default), firefox or webkit, or the path
+                             to a Chrome binary; firefox=<path> names another
+                             engine's binary
+      --no-download          never download Chrome for Testing (checked
+                             against a pinned SHA-256); fail if none is
+                             installed
+      --no-sandbox           run Chrome without its sandbox, as root in a
+                             container (also SOUNDCHECK_NO_SANDBOX=1); only for
+                             sites you trust
+      --follow-host          check the site a cross-site redirect leads to,
+                             instead of stopping
       --show-browser         show the browser window (debugging flows)
 
 CI:
@@ -114,8 +148,10 @@ only when --echo or SOUNDCHECK_ECHO names it, not echo.url alone.
 
 Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
 Settings: .soundcheck/config.yaml (rhythm-soundcheck init writes one) can set
-most flags, plus site (checked when no URL is given), fail_on and headers
-(each read from a SOUNDCHECK_* variable).
+most flags, plus site (checked when no URL is given), fail_on, headers (each
+read from a SOUNDCHECK_* variable), ignore (changes that don't count) and exec
+(programs that check every page). Your own error rules go in
+.soundcheck/rules (rhythm-soundcheck help rules).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check the
 site · 130 interrupted
 

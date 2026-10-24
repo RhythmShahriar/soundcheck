@@ -64,7 +64,7 @@ go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 
 `rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag.
 
-Soundcheck drives a real browser. It uses Chrome or Chromium if you have one, and otherwise downloads Chromium once, on first use, into your cache folder. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
+Soundcheck drives a real browser. It uses Chrome or Chromium if you have one. Otherwise it downloads Chrome for Testing once, on first use, into your cache folder, and checks the download against the SHA-256 pinned in the binary. `--browser firefox` or `--browser webkit` captures pages in those engines instead. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
 ## Check a change
 
@@ -100,8 +100,52 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 | Fail CI when something broke | `rhythm-soundcheck compare --fail-on broke` |
 | Move over from BackstopJS | `rhythm-soundcheck import backstop.json` |
 | Move over from Lost Pixel (page paths only) | `rhythm-soundcheck import lostpixel.config.ts --pages-only` |
+| Accept a change you meant to make | `rhythm-soundcheck accept 3f2a9c01` |
+| Go through the changes one by one | `rhythm-soundcheck review` |
+| Also check accessibility and what search engines see | `rhythm-soundcheck compare --modules +a11y,seo` |
+| Carry on with a big snapshot that stopped | `rhythm-soundcheck snapshot shop.test --name before --resume` |
+| Check many client sites in one go | `rhythm-soundcheck fleet sites.yaml compare` |
+| Update WordPress plugins and find the one that breaks | `rhythm-soundcheck wp-update staging.site.com --wp "wp --path=/srv/www" --bisect` |
 
 Every flag is in the [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference).
+
+### Accept, ignore and review
+
+A change you meant to make (a new header, a renamed page) shows up until the snapshot knows it. Each change has an id, shown next to CHANGED lines and as `id` in `--json`:
+
+```sh
+rhythm-soundcheck accept 3f2a9c01                          # this change is the new normal
+rhythm-soundcheck accept --page '/team/*' --check 'visual/*'  # every visual change on the team pages
+rhythm-soundcheck review                                   # a: accept, i: ignore always, s: skip, q: quit
+rhythm-soundcheck report --serve                           # the same, with buttons in the HTML report
+```
+
+Changes that are known and shouldn't count go under `ignore:` in `.soundcheck/config.yaml`. They are listed as ignored, never fail a build, and a rule with `until` counts again after that day:
+
+```yaml
+ignore:
+  - check: visual/page
+    pages: ["/team/*"]
+    until: "2026-12-31"
+    reason: photos change weekly
+```
+
+Before reporting BROKE or NEW, `compare` visits those pages once more. A change that doesn't come back is UNSTABLE: shown, but it doesn't fail `--fail-on`. `--confirm=off` skips the second visit.
+
+### More checks
+
+- `--modules +a11y` runs axe-core's accessibility rules on every page; `+seo` compares canonical links, meta descriptions, robots rules, headings, hreflang, structured data, robots.txt and the sitemap. Both are off by default.
+- Your own error signatures go in `.soundcheck/rules/*.yaml`, each with a `<name>_test.yaml` of positive and negative samples. `rhythm-soundcheck rules list` shows every rule; `rhythm-soundcheck rules test` runs the samples.
+- Programs in any language can check every page: list them under `exec:` in the config and pass `--allow-exec`. Each gets the page as JSON on stdin and answers with issues on stdout. `rhythm-soundcheck --list-checks` lists every check.
+
+### For agencies
+
+- `rhythm-soundcheck fleet sites.yaml snapshot|compare` checks every site in the file, a few at a time, and ranks them worst first in `.soundcheck-fleet/fleet.html`.
+- `rhythm-soundcheck report --client --brand agency.yaml -o client.html` writes a plain-language report with your name, logo and color, for a client.
+- `rhythm-soundcheck history` lists every snapshot, run and comparison with the site's LCP trend; the HTML report draws it too.
+- `rhythm-soundcheck wp-update <url> --wp "<wp-cli command>"` updates plugins with WP-CLI, compares after each (or halves the suspects with `--bisect`), names the plugin that broke the site and can roll it back with `--rollback`. It never runs on a site listed as production.
+
+`rhythm-soundcheck help <command>` explains each one.
 
 > [!IMPORTANT]
 > Check only sites you own or have permission to test. Soundcheck browses like a visitor at 5 page loads a second; it only submits forms when you turn the `submit` level on, and refuses to on sites you list as production. See [Responsible use](#responsible-use--disclaimer).

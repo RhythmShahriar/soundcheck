@@ -10,17 +10,20 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
 
+	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/checks/a11y"
 	"github.com/RhythmShahriar/soundcheck/checks/cache"
 	echomod "github.com/RhythmShahriar/soundcheck/checks/echo"
+	execmod "github.com/RhythmShahriar/soundcheck/checks/exec"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/checks/interact"
+	"github.com/RhythmShahriar/soundcheck/checks/seo"
 	"github.com/RhythmShahriar/soundcheck/checks/speed"
 	"github.com/RhythmShahriar/soundcheck/checks/visual"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -32,24 +35,48 @@ import (
 // speedModule keeps per-run state between its hooks; one per process.
 var speedModule = speed.New()
 
-// modules returns the enabled modules in config.Modules order, except that
-// interact comes last: its clicks and submits change the page, and the
-// other modules' Live hooks must measure it as loaded.
-func modules(cfg config.Config) []check.Module {
-	all := map[string]check.Module{
-		"health":   health.Module{},
-		"visual":   visual.Module{},
-		"interact": interact.New(),
-		"cache":    cache.Module{},
-		"speed":    speedModule,
-		"echo":     echomod.Module{},
-	}
-	var out []check.Module
-	order := append(slices.DeleteFunc(slices.Clone(config.Modules), func(m string) bool { return m == "interact" }), "interact")
-	for _, name := range order {
-		if m, ok := all[name]; ok && cfg.Has(name) {
-			out = append(out, m)
+// builders make each module for a command, by name. Every module the
+// binary registers (check.Registered) has one, in config.Modules order;
+// a test keeps the three in step.
+var builders = map[string]func(p *plan) check.Module{
+	"health":   func(p *plan) check.Module { return health.Module{Rules: p.rules} },
+	"visual":   func(*plan) check.Module { return visual.Module{} },
+	"interact": func(*plan) check.Module { return interact.New() },
+	"cache":    func(*plan) check.Module { return cache.Module{} },
+	"speed":    func(*plan) check.Module { return speedModule },
+	"a11y":     func(*plan) check.Module { return a11y.Module{} },
+	"seo":      func(*plan) check.Module { return seo.Module{} },
+	"echo":     func(*plan) check.Module { return echomod.Module{} },
+	"exec": func(p *plan) check.Module {
+		m, err := execmod.New(execCommands(p.cfg), p.allowExec)
+		if err != nil { // parse checked the commands
+			return nil
 		}
+		return m
+	},
+}
+
+// modules returns the enabled modules in config.Modules order. The runner
+// runs interact's hooks last on each page (it declares check.PhaseMutate):
+// its clicks and submits change the page, and the other modules' Live
+// hooks must measure it as loaded.
+func (p *plan) modules(cfg config.Config) []check.Module {
+	var out []check.Module
+	for _, name := range config.Modules {
+		if b, ok := builders[name]; ok && cfg.Has(name) {
+			if m := b(p); m != nil {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// execCommands converts the config's exec: list for the exec module.
+func execCommands(cfg config.Config) []execmod.Command {
+	out := make([]execmod.Command, 0, len(cfg.Exec))
+	for _, c := range cfg.Exec {
+		out = append(out, execmod.Command(c))
 	}
 	return out
 }
@@ -67,16 +94,28 @@ func loginFunc(cfg config.Config, off bool) (func(*url.URL) func(context.Context
 }
 
 // lighthouse hands the site to Unlighthouse for full Lighthouse audits,
-// next to the run's own files.
+// next to the run's own files. It never runs on a production site:
+// Unlighthouse crawls every page with its own settings.
 func (s *session) lighthouse(site, dir string) {
+	if s.cfg.IsProduction(site) {
+		fmt.Fprintf(s.stderr, "%s --lighthouse: %s is listed as production; Unlighthouse crawls every page with its own settings, so it won't run there\n", prefix(), site)
+		return
+	}
 	if !lighthouse.Available() {
-		fmt.Fprintln(s.stderr, prefix(), "--lighthouse needs npx; install Node.js from https://nodejs.org")
+		fmt.Fprintln(s.stderr, prefix(), "--lighthouse needs Node.js and npm; install Node.js from https://nodejs.org")
 		return
 	}
 	out := filepath.Join(dir, "lighthouse")
 	s.view.Step("Lighthouse", "running Unlighthouse (this takes a while)…")
-	if err := lighthouse.Run(s.ctx, site, out); err != nil {
-		fmt.Fprintln(s.stderr, prefix(), "lighthouse:", err)
+	chrome, _, _ := browser.Find(browser.Options{Bin: s.o.browser, NoDownload: true})
+	err := lighthouse.RunWith(s.ctx, site, out, lighthouse.Options{
+		Log:        func(msg string) { fmt.Fprintln(s.stderr, msg) },
+		Production: s.cfg.IsProduction,
+		Proxy:      s.o.proxy, Insecure: s.o.insecure, Headers: len(s.headers) > 0,
+		Chrome: chrome,
+	})
+	if err != nil {
+		fmt.Fprintln(s.stderr, prefix(), err)
 		return
 	}
 	s.view.Step("Lighthouse", "results in "+rel(filepath.Join(out, lighthouse.Result)))

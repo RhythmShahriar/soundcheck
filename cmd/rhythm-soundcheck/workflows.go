@@ -1,0 +1,284 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/RhythmShahriar/rhythm/kit/cli"
+	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/report"
+	"github.com/RhythmShahriar/soundcheck/review"
+	"github.com/RhythmShahriar/soundcheck/store"
+)
+
+// stored is the latest comparison with a snapshot, as accept and review
+// work on it.
+type stored struct {
+	runDir, snapDir string
+	run             *model.Run
+	c               *model.Comparison
+}
+
+// latestComparison loads the newest result in the store, which must be a
+// comparison with a snapshot: accept changes that snapshot.
+func latestComparison(st store.Store, cmd string) (stored, error) {
+	dir, err := st.LatestRun()
+	if err != nil {
+		return stored{}, cli.UsageError{Msg: named(err.Error())}
+	}
+	return comparisonIn(st, dir, cmd)
+}
+
+// comparisonIn loads the comparison stored in dir and the snapshot it
+// compared with.
+func comparisonIn(st store.Store, dir, cmd string) (stored, error) {
+	c, err := store.LoadComparison(dir)
+	if err != nil {
+		return stored{}, cli.Usagef("%s works on a comparison and %s has none; run %s compare first", cmd, rel(dir), cmdName())
+	}
+	if c.Before.Name == "" {
+		return stored{}, cli.Usagef("%s works on a comparison with a snapshot; %s compared two sites (--against)", cmd, rel(dir))
+	}
+	// The snapshot is found by its name in this store, never by the
+	// folder comparison.json names: the file is in the project folder.
+	snapDir, err := st.Snapshot(c.Before.Name)
+	if err != nil {
+		return stored{}, cli.UsageError{Msg: named(err.Error())}
+	}
+	run, err := store.LoadRun(dir)
+	if err != nil {
+		return stored{}, err
+	}
+	return stored{runDir: dir, snapDir: snapDir, run: run, c: c}, nil
+}
+
+// who names the person accepting a change, for snapshot.json: git's
+// user.email, else $USER.
+func who() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "git", "config", "user.email").Output(); err == nil {
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	for _, v := range []string{"USER", "USERNAME"} {
+		if s := os.Getenv(v); s != "" {
+			return s
+		}
+	}
+	return "unknown"
+}
+
+const acceptUsage = `Usage:
+  rhythm soundcheck accept <id>...                    accept changes by id
+  rhythm soundcheck accept --page <glob> --check <glob>
+
+Accept makes changes of the latest comparison part of its snapshot, so the
+next compare doesn't report them. Ids are shown next to each change (in
+--json as "id"). --page /team/* --check visual/* accepts every visual
+change on the team pages; either glob alone matches everything else.
+`
+
+// cmdAccept accepts changes of the latest comparison into its snapshot.
+func cmdAccept(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("accept", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	page := fs.String("page", "", "")
+	check := fs.String("check", "", "")
+	ids, err := cli.ParseInterspersed(fs, args)
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Fprint(stdout, named(acceptUsage))
+		return exitOK
+	}
+	switch {
+	case err != nil:
+		fmt.Fprintln(stderr, prefix(), flagError(fs, err))
+		return exitUsage
+	case len(ids) == 0 && *page == "" && *check == "":
+		fmt.Fprint(stderr, named(acceptUsage))
+		return exitUsage
+	case len(ids) > 0 && (*page != "" || *check != ""):
+		fmt.Fprintln(stderr, prefix(), "give change ids or --page and --check, not both")
+		return exitUsage
+	}
+	st := store.Store{Root: config.Dir}
+	sc, err := latestComparison(st, "accept")
+	if err != nil {
+		return failed(stderr, err)
+	}
+	accepted, err := store.Accept(sc.snapDir, sc.runDir, sc.c, store.Selector{IDs: ids, Page: *page, Check: *check}, who())
+	if err != nil {
+		return failed(stderr, cli.UsageError{Msg: err.Error()})
+	}
+	for _, a := range accepted {
+		where := a.Page
+		if where == "" {
+			where = "site-wide"
+		}
+		fmt.Fprintf(stdout, "Accepted %s %s (%s)\n", a.ID, report.Term(a.Title), report.Term(where))
+	}
+	fmt.Fprintf(stdout, "Snapshot %q now holds %s. Run %s compare to check again.\n", sc.c.Before.Name, plural(len(accepted), "accepted change"), cmdName())
+	return exitOK
+}
+
+// failed prints err and returns its exit code: 2 for a usage error.
+func failed(stderr io.Writer, err error) int {
+	fmt.Fprintln(stderr, prefix(), named(err.Error()))
+	var ue cli.UsageError
+	if errors.As(err, &ue) {
+		return exitUsage
+	}
+	return exitError
+}
+
+// decider makes review's decisions: accept into the snapshot, or ignore
+// from now on with a rule in the config file.
+func decider(sc stored, configPath string) review.Decide {
+	return func(ch model.Change, a review.Action) error {
+		switch a {
+		case review.Accept:
+			_, err := store.Accept(sc.snapDir, sc.runDir, sc.c, store.Selector{IDs: []string{ch.ID}}, who())
+			return err
+		case review.Ignore:
+			r := config.IgnoreRule{Check: ch.Check, Title: ch.Title, Pages: ch.Pages,
+				Reason: fmt.Sprintf("ignored in review by %s on %s", who(), time.Now().Format("2006-01-02"))}
+			return appendIgnore(configPath, r)
+		}
+		return nil
+	}
+}
+
+// appendIgnore adds an ignore rule to the config file, keeping the rest
+// of the file and its comments. The file is created when missing.
+func appendIgnore(path string, r config.IgnoreRule) error {
+	data, err := os.ReadFile(path) //nolint:gosec // the project's own config file
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	var doc yaml.Node
+	if len(bytes.TrimSpace(data)) > 0 {
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	if len(doc.Content) == 0 {
+		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: the file must be a list of settings", path)
+	}
+	var list *yaml.Node
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "ignore" {
+			list = root.Content[i+1]
+		}
+	}
+	if list == nil || list.Kind != yaml.SequenceNode {
+		if list == nil {
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "ignore"}, &yaml.Node{})
+			list = root.Content[len(root.Content)-1]
+		}
+		*list = yaml.Node{Kind: yaml.SequenceNode} // an empty "ignore:" or "ignore: []"
+	}
+	var item yaml.Node
+	if err := item.Encode(r); err != nil {
+		return err
+	}
+	// Leave out the fields the rule doesn't set.
+	var kept []*yaml.Node
+	for i := 0; i+1 < len(item.Content); i += 2 {
+		v := item.Content[i+1]
+		if (v.Kind == yaml.ScalarNode && v.Value == "") || (v.Kind == yaml.SequenceNode && len(v.Content) == 0) {
+			continue
+		}
+		if v.Kind == yaml.SequenceNode {
+			v.Style = yaml.FlowStyle
+		}
+		kept = append(kept, item.Content[i], v)
+	}
+	item.Content = kept
+	list.Content = append(list.Content, &item)
+	var out bytes.Buffer
+	enc := yaml.NewEncoder(&out)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return err
+	}
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	// The file must still load: a rule that breaks it would stop every
+	// later run.
+	tmp := path + ".tmp"
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { //nolint:gosec // the project's config file, named by the command
+		return err
+	}
+	if err := os.WriteFile(tmp, out.Bytes(), 0o644); err != nil { //nolint:gosec // a project file meant to be committed
+		return err
+	}
+	if _, err := config.Load(tmp); err != nil {
+		_ = os.Remove(tmp) //nolint:gosec // the temporary file written just above
+		return err
+	}
+	return os.Rename(tmp, path) //nolint:gosec // as above
+}
+
+const reviewUsage = `Usage:
+  rhythm soundcheck review [run]
+
+Steps through the changes of the latest comparison (or the run folder
+given): a accepts a change into the snapshot, i ignores it from now on (a
+rule in .soundcheck/config.yaml), s skips it and q quits. It needs a
+terminal; in scripts use accept, or report --serve for the browser.
+`
+
+// cmdReview reviews the latest comparison's changes in the terminal.
+func cmdReview(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprint(stdout, named(reviewUsage))
+		return exitOK
+	}
+	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
+		fmt.Fprint(stderr, named(reviewUsage))
+		return exitUsage
+	}
+	st := store.Store{Root: config.Dir}
+	var sc stored
+	var err error
+	if len(args) == 1 {
+		sc, err = comparisonIn(st, args[0], "review")
+	} else {
+		sc, err = latestComparison(st, "review")
+	}
+	if err != nil {
+		return failed(stderr, err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
+	defer stop()
+	err = review.Terminal(ctx, os.Stdin, stdout, review.Reviewable(sc.c.Changes), decider(sc, filepath.Join(config.Dir, "config.yaml")))
+	switch {
+	case errors.Is(err, review.ErrNoTTY):
+		return failed(stderr, cli.UsageError{Msg: err.Error()})
+	case err != nil:
+		return failed(stderr, err)
+	}
+	return exitOK
+}

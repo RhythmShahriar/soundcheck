@@ -19,9 +19,13 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
+	"github.com/RhythmShahriar/soundcheck/capture"
+	execmod "github.com/RhythmShahriar/soundcheck/checks/exec"
+	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/report"
+	"github.com/RhythmShahriar/soundcheck/rules"
 )
 
 type options struct {
@@ -52,11 +56,48 @@ type options struct {
 	cookie, proxy, browser string
 	insecure               bool
 	noDownload, show       bool
+	noSandbox, followHost  bool
+	allowExec              bool
 
 	echo echoFlag
 
 	failOn string
+
+	confirm onOffFlag // compare: re-visit BROKE and NEW pages first
+	resume  bool      // snapshot: carry on with a stopped snapshot
+
+	// report
+	serve, client bool
+	brand         string
 }
+
+// onOffFlag is a flag that is on by default: --confirm, --confirm=off.
+type onOffFlag struct {
+	set, off bool
+}
+
+func (f *onOffFlag) String() string {
+	if f.off {
+		return "off"
+	}
+	return "on"
+}
+
+func (f *onOffFlag) Set(v string) error {
+	f.set = true
+	switch strings.ToLower(v) {
+	case "", "on", "true", "1", "yes":
+		f.off = false
+	case "off", "false", "0", "no":
+		f.off = true
+	default:
+		return fmt.Errorf("%q isn't on or off", v)
+	}
+	return nil
+}
+
+// IsBoolFlag lets --confirm stand alone.
+func (f *onOffFlag) IsBoolFlag() bool { return true }
 
 // echoFlag is --echo with an optional value: a bare --echo means Echo at
 // its default address, --echo=<url> another one. Like --color[=when] in
@@ -161,6 +202,14 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.StringVar(&o.browser, "browser", "", "")
 	fs.BoolVar(&o.noDownload, "no-download", false, "")
 	fs.BoolVar(&o.show, "show-browser", false, "")
+	fs.BoolVar(&o.noSandbox, "no-sandbox", false, "")
+	fs.BoolVar(&o.followHost, "follow-host", false, "")
+	fs.BoolVar(&o.allowExec, "allow-exec", false, "")
+	fs.Var(&o.confirm, "confirm", "")
+	fs.BoolVar(&o.resume, "resume", false, "")
+	fs.BoolVar(&o.serve, "serve", false, "")
+	fs.BoolVar(&o.client, "client", false, "")
+	fs.StringVar(&o.brand, "brand", "", "")
 
 	fs.Var(&o.echo, "echo", "")
 
@@ -171,7 +220,8 @@ func flagSet(o *options) *flag.FlagSet {
 // plan is a command's validated settings.
 type plan struct {
 	o        options
-	args     []string // positional arguments
+	set      map[string]bool // the flags given
+	args     []string        // positional arguments
 	cfg      config.Config
 	format   string   // json, md, junit or html for stdout, or "" for the live view
 	outputs  []output // files to write, from -o
@@ -188,8 +238,14 @@ type plan struct {
 	// checked. Such a site is as untrusted as the file, so nothing from
 	// the environment is sent to it.
 	siteFrom string
-	chosen   chosen // settings the user set, which compare keeps
-	quick    string // what --quick set, for the header
+	// siteKey is what siteFrom set: "site" (the config file's key) or
+	// "target" (a snapshot's run.json).
+	siteKey string
+	// siteTrusted is set when siteFrom is a snapshot this machine took
+	// (not one committed to git): the user's own, so it may get secrets.
+	siteTrusted bool
+	chosen      chosen // settings the user set, which compare keeps
+	quick       string // what --quick set, for the header
 	// noReportHint leaves the "full report:" hint out of the summary,
 	// for the demo, whose run folder is removed when it ends.
 	noReportHint bool
@@ -197,6 +253,16 @@ type plan struct {
 	// A token goes to an Echo on another machine only when the person
 	// running Soundcheck named it, never the project's config alone.
 	echoFrom string
+	// rules are health's error signatures: the built-in ones and the
+	// project's own from .soundcheck/rules.
+	rules *rules.Set
+	// allowExec is --allow-exec or SOUNDCHECK_ALLOW_EXEC=1: the exec
+	// module may run the programs the config lists.
+	allowExec bool
+	// engine is the browser engine --browser named; empty is Chrome.
+	engine capture.Engine
+	// bin is the browser binary --browser named, if any.
+	bin string
 }
 
 func parse(args []string) (*plan, error) {
@@ -216,6 +282,7 @@ func parse(args []string) (*plan, error) {
 	p.args = pos
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	p.set = set
 
 	// Settings: the config file, then flags on top.
 	path := o.configPath
@@ -254,6 +321,23 @@ func parse(args []string) (*plan, error) {
 			return nil, cli.Usagef("--skip: %v", config.OneOf(m, config.Modules))
 		}
 		cfg.Modules = slices.DeleteFunc(cfg.Modules, func(x string) bool { return x == m })
+	}
+	// exec is on whenever the config lists commands, unless --skip exec.
+	// Without --allow-exec it runs nothing and says so.
+	if len(cfg.Exec) > 0 && !slices.Contains(o.skip, "exec") && !cfg.Has("exec") {
+		cfg.Modules = append(cfg.Modules, "exec")
+	}
+	p.allowExec = o.allowExec || os.Getenv("SOUNDCHECK_ALLOW_EXEC") == "1"
+	if len(cfg.Exec) > 0 {
+		if _, err := execmod.New(execCommands(*cfg), false); err != nil {
+			return nil, cli.Usagef("%s: %v", path, err)
+		}
+	}
+	if p.rules, err = health.LoadRules(filepath.Join(config.Dir, "rules")); err != nil {
+		return nil, cli.Usagef("%s: %v", filepath.Join(config.Dir, "rules"), err)
+	}
+	if err := p.browserFlag(); err != nil {
+		return nil, err
 	}
 	// Echo: --echo, then SOUNDCHECK_ECHO, then echo.url. It's on whenever
 	// it's configured, unless --skip echo.
@@ -356,6 +440,28 @@ func parse(args []string) (*plan, error) {
 	}
 	p.storeDir = config.Dir
 	return p, nil
+}
+
+// browserFlag reads --browser: an engine (chrome, firefox, webkit), a
+// path to a Chrome binary, or engine=path for another engine's binary.
+func (p *plan) browserFlag() error {
+	v := p.o.browser
+	if v == "" {
+		return nil
+	}
+	name, bin, hasBin := strings.Cut(v, "=")
+	if e, err := capture.ParseEngine(name); err == nil && !strings.ContainsAny(name, `/\`) {
+		if hasBin && bin == "" {
+			return cli.Usagef("--browser: %s= needs the path to its binary, e.g. --browser %s=/usr/bin/%s", name, name, name)
+		}
+		p.engine, p.bin = e, bin
+		return nil
+	}
+	if hasBin {
+		return cli.Usagef("--browser: %q isn't chrome, firefox or webkit", name)
+	}
+	p.bin = v // a path to Chrome, as before
+	return nil
 }
 
 // Quick is what --quick checks: one viewport and the modules that find
@@ -505,6 +611,19 @@ func (p *plan) configHeaders() error {
 		p.envHeaders = append(p.envHeaders, name)
 	}
 	return nil
+}
+
+// headerFlags names the command line's -H and --cookie when given, as
+// "-H and --cookie", for refusing to send them to an untrusted site.
+func (p *plan) headerFlags() string {
+	var f []string
+	if len(p.o.headers) > 0 {
+		f = append(f, "-H")
+	}
+	if p.o.cookie != "" {
+		f = append(f, "--cookie")
+	}
+	return strings.Join(f, " and ")
 }
 
 func hasHeader(h map[string]string, name string) bool {

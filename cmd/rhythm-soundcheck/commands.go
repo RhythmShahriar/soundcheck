@@ -35,6 +35,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/flow"
+	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/runner"
@@ -72,6 +73,8 @@ type session struct {
 	notice         <-chan string
 	echo           *echolink.Link // connected on the first check, when Echo is on
 	flowsChecked   bool           // checkFlows ran
+	loginShown     bool           // the Login line was printed
+	resume         *resumed       // snapshot --resume: the pages kept and the journal
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -92,7 +95,8 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 		Plain: plain, Quiet: p.o.quiet, Progress: s.tty && s.live && !p.o.verbose, Verbose: p.o.verbose,
 		// The header names the command the same way the hints do,
 		// with cmdName's filter on RHYTHM_INVOKED_AS.
-		Name: cmdName(),
+		Name:   cmdName(),
+		Accept: cmdName() + " accept",
 	})
 	return s
 }
@@ -117,22 +121,35 @@ func (s *session) site(cmd, example string) (string, error) {
 	case len(s.args) == 1:
 		return s.args[0], target(s.args[0])
 	case len(s.args) == 0 && s.cfg.Site != "":
-		s.siteFrom = s.configPath
+		s.siteFrom, s.siteKey = s.configPath, "site"
 		return s.cfg.Site, nil // Validate checked it
 	}
 	return "", cli.Usagef("%[1]s needs one site\n  try: %[2]s %[1]s %[3]s", cmd, cmdName(), example)
 }
 
-// untrusted reports whether target is the config file's site on another
-// machine. Nothing from the environment goes there: a pull request could
-// point site at its own server and collect the test password, the
-// headers' secrets or what flows type.
+// untrusted reports whether target is the config file's site, or the
+// target stored in a snapshot's run.json, on another machine: one the
+// user didn't name. Nothing from the environment or the command line's
+// -H and --cookie goes there: a pull request could point site at its own
+// server (or commit a snapshot that does) and collect the test password,
+// the headers' secrets or what flows type.
 func (s *session) untrusted(target string) bool {
-	if s.siteFrom == "" {
+	if s.siteFrom == "" || s.siteTrusted {
 		return false
 	}
 	u, _, err := ratelimit.ParseTarget(target)
 	return err != nil || !config.IsLoopback(u.Hostname())
+}
+
+// gitTracked reports whether git tracks path: it was committed, so it
+// came with the project rather than from a run on this machine. Without
+// git, or outside a repository, nothing is tracked.
+func gitTracked(path string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", "--", path) //nolint:gosec // fixed program; the path is an argument
+	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+	return cmd.Run() == nil
 }
 
 // start prints the header, the effective settings, the production guard
@@ -147,7 +164,7 @@ func (s *session) start(target string) {
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
 	if s.siteFrom != "" {
-		s.view.Step("Site", "from "+s.siteFrom+" (site)")
+		s.view.Step("Site", "from "+s.siteFrom+" ("+s.siteKey+")")
 	}
 	// What will run, after the config file, flags and (for compare) the
 	// snapshot had their say, so nothing is dropped silently.
@@ -229,8 +246,8 @@ func (s *session) checkFlows(target string, loggingIn bool) error {
 		}
 		s.view.Step("Flows", fmt.Sprintf("%q reads %s", f.Name, strings.Join(names, ", ")))
 		if s.untrusted(target) {
-			return cli.Usagef("%s: not letting it read %s on %s: the site came from %s (site); name it on the command line",
-				f.File, strings.Join(names, ", "), target, s.siteFrom)
+			return cli.Usagef("%s: not letting it read %s on %s: the site came from %s (%s); name it on the command line",
+				f.File, strings.Join(names, ", "), target, s.siteFrom, s.siteKey)
 		}
 		if err := f.CheckEnv(s.cfg.Trust.AllowEnv); err != nil {
 			return cli.UsageError{Msg: fmt.Sprintf("%s: %v", f.File, err)}
@@ -261,37 +278,12 @@ func (s *session) echoToken() string {
 
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
-	login, who := loginFunc(s.cfg, s.o.noLogin)
-	if s.untrusted(target) {
-		if len(s.envHeaders) > 0 {
-			return nil, cli.Usagef("not sending the headers %s to %s: the site came from %s (site); name it on the command line to send them",
-				strings.Join(s.envHeaders, ", "), target, s.siteFrom)
-		}
-		if login != nil {
-			fmt.Fprintf(s.stderr, "%s not logging in to %s: the site came from %s (site); name it on the command line to log in\n",
-				prefix(), target, s.siteFrom)
-			login, who = nil, ""
-		}
-	}
-	if err := s.checkFlows(target, login != nil); err != nil {
+	opts, err := s.options(target, paths, snapshot, name, dir)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.connectEcho(); err != nil {
-		return nil, err
-	}
-	if s.o.verbose {
-		s.view.Step("Browser", s.browserInfo())
-	}
-	if who != "" {
-		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
-	}
-	opts := runner.Options{
-		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,
-		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: modules(s.cfg), Login: login,
-		Echo: s.echo,
-		Browser: browser.Options{Bin: s.o.browser, NoDownload: s.o.noDownload, Proxy: s.o.proxy, Insecure: s.o.insecure,
-			Visible: s.o.show, Log: func(msg string) { s.view.Log("!" + msg) }},
-		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log},
+	if s.resume != nil {
+		opts.Done, opts.OnPage = s.resume.done, s.resume.add
 	}
 	run, err := runner.Run(s.ctx, opts)
 	if s.o.verbose && run != nil {
@@ -304,6 +296,48 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	return run, err
 }
 
+// options builds the runner's options for one check of target, after
+// the trust checks: what may be sent to a site the user didn't name.
+func (s *session) options(target string, paths []string, snapshot bool, name, dir string) (runner.Options, error) {
+	login, who := loginFunc(s.cfg, s.o.noLogin)
+	if s.untrusted(target) {
+		if len(s.envHeaders) > 0 {
+			return runner.Options{}, cli.Usagef("not sending the headers %s to %s: the site came from %s (%s); name it on the command line to send them",
+				strings.Join(s.envHeaders, ", "), target, s.siteFrom, s.siteKey)
+		}
+		if flags := s.headerFlags(); flags != "" {
+			return runner.Options{}, cli.Usagef("not sending %s to %s: the site came from %s (%s); name it on the command line to send them",
+				flags, target, s.siteFrom, s.siteKey)
+		}
+		if login != nil {
+			fmt.Fprintf(s.stderr, "%s not logging in to %s: the site came from %s (%s); name it on the command line to log in\n",
+				prefix(), target, s.siteFrom, s.siteKey)
+			login, who = nil, ""
+		}
+	}
+	if err := s.checkFlows(target, login != nil); err != nil {
+		return runner.Options{}, err
+	}
+	if err := s.connectEcho(); err != nil {
+		return runner.Options{}, err
+	}
+	if s.o.verbose {
+		s.view.Step("Browser", s.browserInfo())
+	}
+	if who != "" && !s.loginShown {
+		s.loginShown = true
+		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
+	}
+	return runner.Options{
+		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,
+		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: s.modules(s.cfg), Login: login,
+		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
+		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
+			Visible: s.o.show, Log: func(msg string) { s.view.Log("!" + msg) }},
+		Hooks: runner.Hooks{Discovered: s.view.Discovered, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress},
+	}, nil
+}
+
 // browserInfo names the browser a run will use, for -v. It never
 // downloads: the run itself does that and says so.
 func (s *session) browserInfo() string {
@@ -312,9 +346,9 @@ func (s *session) browserInfo() string {
 	case err != nil && s.o.noDownload:
 		return "none found"
 	case err != nil:
-		return "none installed; Chromium is downloaded once, now"
+		return "none installed; Chrome for Testing is downloaded once, now"
 	case downloaded:
-		return bin + " (the Chromium Soundcheck downloaded)"
+		return bin + " (the Chrome for Testing Soundcheck downloaded)"
 	}
 	return bin
 }
@@ -353,6 +387,8 @@ func (s *session) render(w io.Writer, res report.Result, format string) error {
 // finish saves the HTML report, writes the chosen formats, prints the
 // summary and picks the exit code.
 func (s *session) finish(res report.Result, hint string) int {
+	res.FailOn = s.o.failOn // JSON's summary.failed
+	res.Trend = s.trend(res.Run)
 	html := filepath.Join(res.Dir, "report.html")
 	if err := writeFile(html, func(w io.Writer) error { return report.HTML(w, res) }); err != nil {
 		fmt.Fprintln(s.stderr, prefix(), "writing the HTML report:", err)
@@ -415,6 +451,13 @@ func (s *session) finish(res report.Result, hint string) int {
 	if len(written) < len(s.outputs) {
 		return exitError
 	}
+	// A stored result that was interrupted (report of it, also with
+	// --fail-on) exits as the interrupted run did: its findings are
+	// partial, so neither 0 nor 1 would be true.
+	if report.Partial(res) {
+		fmt.Fprintln(s.stderr, prefix(), "this result is partial (interrupted); run it again")
+		return exitCanceled
+	}
 	if report.FailOn(res, s.o.failOn) {
 		return exitFindings
 	}
@@ -442,10 +485,10 @@ func (s *session) failOnTip(res report.Result) string {
 	return fmt.Sprintf("tip: add --fail-on %s to make this exit 1 in scripts", class)
 }
 
-// discard removes the folder of a check that saved nothing, and the
-// folders above it up to the store that it left empty, so a site that
-// couldn't be checked leaves no .soundcheck behind. os.Remove takes only
-// empty folders, so stored runs and snapshots stay.
+// discard removes the folder of a check that saved nothing. It also
+// removes the folders above it up to the store that it left empty, so a
+// site that couldn't be checked leaves no .soundcheck behind. os.Remove
+// takes only empty folders, so stored runs and snapshots stay.
 func (s *session) discard(dir string) {
 	_ = os.RemoveAll(dir) //nolint:gosec // a folder this command made in the store
 	root := filepath.Clean(s.st.Root)
@@ -461,23 +504,67 @@ func cmdSnapshot(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("snapshot", "confirm", "serve", "client", "brand")); err != nil {
 		return s.fail(err)
+	}
+	if s.o.resume && s.o.name == "" {
+		return s.fail(cli.Usagef("--resume carries on with a snapshot by its name: add --name, as in the snapshot that stopped"))
 	}
 	name := cmp.Or(s.o.name, store.Stamp(time.Now()))
-	dir, err := s.st.NewDir(store.Incoming, name)
+	var dir string
+	var done []model.Page
+	if s.o.resume {
+		if dir, done, err = s.st.Resumable(name); err != nil {
+			return s.fail(err)
+		}
+	}
+	if dir == "" {
+		if dir, err = s.st.NewDir(store.Incoming, name); err != nil {
+			return s.fail(err)
+		}
+	}
+	// The pages journal lets a stopped snapshot carry on with --resume.
+	journal, err := store.NewPageWriter(dir)
 	if err != nil {
+		s.discard(dir)
 		return s.fail(err)
 	}
-	defer s.discard(dir) // gone once promoted; cleans up a failed snapshot
+	s.resume = &resumed{journal: journal}
+	for i := range done {
+		s.resume.done = append(s.resume.done, &done[i])
+	}
+	keep := false
+	defer func() {
+		_ = journal.Close()
+		if !keep {
+			s.discard(dir) // gone once promoted; cleans up a failed snapshot
+		}
+	}()
 	s.start(site)
 	s.view.Step("Snapshot", fmt.Sprintf("%q", name))
+	if s.o.resume {
+		if len(done) > 0 {
+			s.view.Step("Resume", fmt.Sprintf("keeping %s the stopped snapshot finished", plural(len(done), "page")))
+		} else {
+			s.view.Step("Resume", fmt.Sprintf("no stopped snapshot %q to carry on with; starting afresh", name))
+		}
+	}
 	run, err := s.check(site, nil, true, name, dir)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			if journal.Len()+len(done) > 0 {
+				keep = true
+				fmt.Fprintf(s.stderr, "%s snapshot canceled; %s kept: to carry on, run %s snapshot %s --name %s --resume\n",
+					prefix(), plural(journal.Len()+len(done), "finished page"), cmdName(), site, name)
+				return exitCanceled
+			}
 			fmt.Fprintln(s.stderr, prefix(), "snapshot canceled; nothing was saved")
 			return exitCanceled
 		}
+		return s.fail(err)
+	}
+	// Windows can't rename a folder with a file open in it.
+	if err := journal.Close(); err != nil {
 		return s.fail(err)
 	}
 	if err := store.SaveRun(dir, run); err != nil {
@@ -495,8 +582,64 @@ func cmdSnapshot(s *session) int {
 	if s.o.lighthouse && s.ctx.Err() == nil {
 		s.lighthouse(run.Target, final)
 	}
+	s.record(run, nil)
 	return s.finish(report.Result{Run: run, Dir: final},
 		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
+}
+
+// resumed is what snapshot --resume carries: the pages the stopped
+// snapshot finished and the journal each new page is written to.
+type resumed struct {
+	done    []*model.Page
+	journal *store.PageWriter
+}
+
+// add writes a finished page to the journal (runner.Options.OnPage).
+// A page that can't be written only costs the resume, never the run.
+func (r *resumed) add(p *model.Page) { _ = r.journal.Append(p) }
+
+// record adds a finished run or comparison to the history, for trends.
+// A partial result is left out: its numbers would read as a change.
+func (s *session) record(run *model.Run, c *model.Comparison) {
+	if run == nil || run.Interrupted || (c != nil && c.Interrupted) {
+		return
+	}
+	if err := history.Append(s.st.Root, run, c); err != nil {
+		fmt.Fprintln(s.stderr, prefix(), "history:", err)
+	}
+}
+
+// trendRuns is how many of the latest history entries the HTML report's
+// trend shows.
+const trendRuns = 12
+
+// trend is the median LCP of the latest runs of run's site, from the
+// history, for the HTML report.
+func (s *session) trend(run *model.Run) []float64 {
+	if run == nil {
+		return nil
+	}
+	entries, err := history.Read(s.st.Root)
+	if err != nil {
+		return nil
+	}
+	var out []float64
+	for _, e := range entries {
+		if e.Target == run.Target && e.LCP > 0 {
+			out = append(out, e.LCP)
+		}
+	}
+	return out[max(0, len(out)-trendRuns):]
+}
+
+// only refuses flags that belong to another command.
+func (s *session) only(cmd string, flags ...string) error {
+	for _, f := range flags {
+		if s.set[f] {
+			return cli.Usagef("--%s doesn't apply to %s", f, cmd)
+		}
+	}
+	return nil
 }
 
 func cmdCompare(s *session) int {
@@ -506,7 +649,7 @@ func cmdCompare(s *session) int {
 	if len(s.args) > 1 {
 		return s.fail(cli.Usagef("compare takes at most one site (default: the snapshot's)"))
 	}
-	if err := s.failOn(true); err != nil {
+	if err := cmp.Or(s.failOn(true), s.only("compare", "resume", "serve", "client", "brand")); err != nil {
 		return s.fail(err)
 	}
 	snapDir, err := s.st.Snapshot(s.o.snapshot)
@@ -523,6 +666,13 @@ func cmdCompare(s *session) int {
 			return s.fail(err)
 		}
 		site = s.args[0]
+	} else {
+		// The header says where the site came from. A snapshot committed
+		// to git came with the project (a pull request can add one), so
+		// its target is as untrusted as a config's site:. One this
+		// machine took is the user's own.
+		runJSON := rel(filepath.Join(snapDir, "run.json"))
+		s.siteFrom, s.siteKey, s.siteTrusted = runJSON, "target", !gitTracked(runJSON)
 	}
 	changes := inherit(&s.cfg, before.Options, s.chosen, s.o.skip)
 	if len(s.cfg.Modules) == 0 {
@@ -543,6 +693,7 @@ func cmdCompare(s *session) int {
 	if len(changes) > 0 {
 		s.view.Step("You changed", joinChanges(changes))
 	}
+	s.view.Step("Confirm", s.confirmSetting())
 	return s.compareWith(before, snapDir, site, dir)
 }
 
@@ -555,7 +706,7 @@ func cmdAgainst(s *session) int {
 	if len(s.args) != 1 {
 		return s.fail(cli.Usagef("--against compares one site with another: %s staging.example.com --against example.com", cmdName()))
 	}
-	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict()); err != nil {
+	if err := cmp.Or(target(s.args[0]), target(s.o.against), s.failOn(true), s.notStrict(), s.only("--against", "resume", "serve", "client", "brand")); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -565,6 +716,7 @@ func cmdAgainst(s *session) int {
 	beforeDir := filepath.Join(dir, "against")
 	s.start(s.args[0])
 	s.view.Step("Against", s.o.against)
+	s.view.Step("Confirm", s.confirmSetting())
 	before, err := s.check(s.o.against, nil, true, "", beforeDir)
 	if err != nil {
 		s.discard(dir)
@@ -577,7 +729,9 @@ func cmdAgainst(s *session) int {
 	return s.compareWith(before, beforeDir, s.args[0], dir)
 }
 
-// compareWith checks site again on before's pages and compares.
+// compareWith checks site again on before's pages and compares. BROKE
+// and NEW pages are visited once more to confirm them (unless
+// --confirm=off), then the config's ignore rules apply.
 func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) int {
 	var paths []string
 	for _, p := range before.Pages {
@@ -593,7 +747,9 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	}
 	cc := &check.CompareContext{Config: s.cfg, Before: before, After: after, BeforeDir: beforeDir, AfterDir: dir,
 		Dir: dir, Save: store.Saver(dir)}
-	c := compare.Compare(context.WithoutCancel(s.ctx), cc, modules(s.cfg), version)
+	c := compare.Compare(context.WithoutCancel(s.ctx), cc, s.modules(s.cfg), version)
+	s.confirm(c, before, site, dir)
+	compare.ApplyIgnore(c, ignoreRules(s.cfg), time.Now())
 	if err := store.SaveComparison(dir, c); err != nil {
 		return s.fail(err)
 	}
@@ -601,7 +757,63 @@ func (s *session) compareWith(before *model.Run, beforeDir, site, dir string) in
 	if err := s.st.Prune(keepRuns); err != nil {
 		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
+	s.record(after, c)
 	return s.finish(report.Result{Run: after, Comparison: c, Dir: dir}, "")
+}
+
+// confirm visits the pages of c's BROKE and NEW changes again and moves
+// the ones that don't come back to UNSTABLE: a flaky 500 or a timeout
+// under load then doesn't fail a build.
+func (s *session) confirm(c *model.Comparison, before *model.Run, site, dir string) {
+	if s.o.confirm.off || s.ctx.Err() != nil || c.Interrupted {
+		return
+	}
+	var paths []string
+	for _, ch := range c.Changes {
+		if ch.Class != model.Broke && ch.Class != model.New {
+			continue
+		}
+		for _, p := range ch.Pages {
+			if !slices.Contains(paths, p) {
+				paths = append(paths, p)
+			}
+		}
+	}
+	if len(paths) == 0 {
+		return
+	}
+	s.view.Step("Confirming", fmt.Sprintf("visiting %s again, to tell a real break from a flaky one", plural(len(paths), "page")))
+	again := filepath.Join(dir, "confirm")
+	defer func() { _ = os.RemoveAll(again) }() //nolint:gosec // a folder of this run
+	opts, err := s.options(site, paths, false, "", again)
+	if err == nil {
+		opts.Hooks = runner.Hooks{Log: s.view.Log}
+		var run *model.Run
+		if run, err = runner.Revisit(s.ctx, opts, paths); err == nil {
+			compare.Confirm(c, before, run)
+			return
+		}
+	}
+	if s.ctx.Err() == nil {
+		c.Warnings = append(c.Warnings, "confirm: couldn't visit the pages again ("+err.Error()+"); BROKE and NEW changes aren't confirmed")
+	}
+}
+
+// confirmSetting describes the confirm pass for the run header.
+func (s *session) confirmSetting() string {
+	if s.o.confirm.off {
+		return "off (--confirm=off): BROKE and NEW pages aren't visited again"
+	}
+	return "BROKE and NEW pages are visited again before they're reported; --confirm=off skips it"
+}
+
+// ignoreRules converts the config's ignore: rules for compare.
+func ignoreRules(cfg config.Config) []compare.IgnoreRule {
+	out := make([]compare.IgnoreRule, 0, len(cfg.Ignore))
+	for _, r := range cfg.Ignore {
+		out = append(out, compare.IgnoreRule(r))
+	}
+	return out
 }
 
 func cmdRun(s *session) int {
@@ -609,7 +821,7 @@ func cmdRun(s *session) int {
 	if err != nil {
 		return s.fail(err)
 	}
-	if err := cmp.Or(s.failOn(false), s.notStrict()); err != nil {
+	if err := cmp.Or(s.failOn(false), s.notStrict(), s.only("run", "confirm", "resume", "serve", "client", "brand")); err != nil {
 		return s.fail(err)
 	}
 	dir, err := s.st.NewDir("runs", store.Stamp(time.Now()))
@@ -629,6 +841,7 @@ func cmdRun(s *session) int {
 	if err := s.st.Prune(keepRuns); err != nil {
 		fmt.Fprintln(s.stderr, prefix(), "pruning old runs:", err)
 	}
+	s.record(run, nil)
 	return s.finish(report.Result{Run: run, Dir: dir}, "")
 }
 
@@ -669,8 +882,18 @@ func cmdReport(s *session) int {
 	if c, err := store.LoadComparison(dir); err == nil {
 		res.Comparison = c
 	}
-	if err := s.failOn(res.Compared()); err != nil {
+	if err := cmp.Or(s.failOn(res.Compared()), s.only("report", "confirm", "resume")); err != nil {
 		return s.fail(err)
+	}
+	switch {
+	case s.o.serve && s.o.client:
+		return s.fail(cli.Usagef("pick --serve or --client, not both"))
+	case s.o.serve:
+		return s.serve(res)
+	case s.o.client:
+		return s.clientReport(res)
+	case s.o.brand != "":
+		return s.fail(cli.Usagef("--brand goes with --client"))
 	}
 	s.view.Header(version, run.Target)
 	return s.finish(res, "")
@@ -768,7 +991,7 @@ func snapshotsJSON(w io.Writer, st store.Store, names []string) error {
 func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	clear := fs.Bool("clear", false, "delete the downloaded Chromium")
+	clear := fs.Bool("clear", false, "delete the downloaded Chrome for Testing")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -785,14 +1008,17 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Cleared", dir)
 		return exitOK
 	}
-	bin, downloaded, err := browser.Find(browser.Options{Log: func(m string) { fmt.Fprintln(stdout, m) }})
+	// Ctrl+C stops a download too.
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
+	defer stop()
+	bin, downloaded, err := browser.FindContext(ctx, browser.Options{Log: func(m string) { fmt.Fprintln(stdout, m) }})
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
 	removed, err := browser.Prune(!downloaded)
 	for _, r := range removed {
-		fmt.Fprintln(stdout, "Removed unused Chromium", r)
+		fmt.Fprintln(stdout, "Removed unused Chrome for Testing", r)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
@@ -800,7 +1026,7 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	if !downloaded {
 		fmt.Fprintln(stdout, "Browser: installed Chrome at", bin, "(updated with your system)")
 	} else {
-		fmt.Fprintln(stdout, "Browser: Chromium at", bin)
+		fmt.Fprintln(stdout, "Browser: Chrome for Testing at", bin)
 	}
 	return exitOK
 }

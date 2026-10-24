@@ -1,0 +1,398 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"slices"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/RhythmShahriar/rhythm/kit/cli"
+	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/checks/health"
+	"github.com/RhythmShahriar/soundcheck/clientreport"
+	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/fleet"
+	"github.com/RhythmShahriar/soundcheck/history"
+	"github.com/RhythmShahriar/soundcheck/report"
+	"github.com/RhythmShahriar/soundcheck/review"
+	"github.com/RhythmShahriar/soundcheck/rules"
+	"github.com/RhythmShahriar/soundcheck/wpupdate"
+)
+
+// subFlags parses a subcommand's own flags, anywhere among its arguments.
+// It returns ok false with the exit code when the command should stop:
+// after --help (0) or a bad flag (2).
+func subFlags(fs *flag.FlagSet, args []string, usage string, stdout, stderr io.Writer) (pos []string, code int, ok bool) {
+	fs.SetOutput(io.Discard)
+	pos, err := cli.ParseInterspersed(fs, args)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		fmt.Fprint(stdout, named(usage))
+		return nil, exitOK, false
+	case err != nil:
+		fmt.Fprintln(stderr, prefix(), flagError(fs, err))
+		return nil, exitUsage, false
+	}
+	return pos, 0, true
+}
+
+// listChecks prints every check of every module, in config.Modules
+// order, for --list-checks.
+func listChecks(w io.Writer) {
+	mods := check.Registered()
+	slices.SortStableFunc(mods, func(a, b check.Module) int {
+		return slices.Index(config.Modules, a.Name()) - slices.Index(config.Modules, b.Name())
+	})
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for i, m := range mods {
+		if i > 0 {
+			fmt.Fprintln(tw)
+		}
+		state := "off unless asked for (+" + m.Name() + ")"
+		switch {
+		case slices.Contains(config.DefaultModules, m.Name()):
+			state = "on by default"
+		case m.Name() == "echo":
+			state = "on with --echo"
+		case m.Name() == "exec":
+			state = "on when the config lists exec: commands, which run with --allow-exec"
+		}
+		fmt.Fprintf(tw, "%s: %s\n", m.Name(), state)
+		d, ok := m.(check.Describer)
+		if !ok {
+			continue
+		}
+		for _, c := range d.Checks() {
+			fmt.Fprintf(tw, "  %s\t%s\t%s\n", c.ID, c.Level, c.Title)
+		}
+	}
+	_ = tw.Flush()
+}
+
+const historyUsage = `Usage:
+  rhythm soundcheck history [--page <path>] [--metric lcp|tbt|ttfb] [--backfill]
+
+Shows every snapshot, run and comparison in .soundcheck/history.jsonl,
+oldest first, with the site's median LCP (or --metric) and a sparkline.
+--page shows that page's timing instead. --backfill adds the runs and
+snapshots still in .soundcheck that the history doesn't have.
+`
+
+// cmdHistory prints the history of runs with a trend.
+func cmdHistory(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("history", flag.ContinueOnError)
+	page := fs.String("page", "", "")
+	metric := fs.String("metric", "", "")
+	backfill := fs.Bool("backfill", false, "")
+	pos, code, ok := subFlags(fs, args, historyUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
+	if len(pos) > 0 {
+		fmt.Fprint(stderr, named(historyUsage))
+		return exitUsage
+	}
+	root := config.Dir
+	if _, err := os.Stat(filepath.Join(root, history.File)); *backfill || errors.Is(err, os.ErrNotExist) {
+		n, err := history.Backfill(root)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return failed(stderr, err)
+		}
+		if n > 0 {
+			fmt.Fprintf(stderr, "Added %s still in %s to the history\n", plural(n, "past result"), root)
+		}
+	}
+	entries, err := history.Read(root)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return failed(stderr, err)
+	}
+	if err := history.Render(stdout, entries, *page, *metric); err != nil {
+		return failed(stderr, cli.UsageError{Msg: err.Error()})
+	}
+	return exitOK
+}
+
+const fleetUsage = `Usage:
+  rhythm soundcheck fleet <sites.yaml> snapshot|compare [--tabs <n>] [--open]
+
+Checks every site listed in sites.yaml, --tabs at a time (default 3), each
+in its own folder under .soundcheck-fleet next to the file, then ranks
+them worst first in .soundcheck-fleet/fleet.html. A site's variables come
+from <PREFIX>_SOUNDCHECK_* (env_prefix, default from its name).
+`
+
+// cmdFleet runs snapshot or compare for every site in a sites file.
+func cmdFleet(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("fleet", flag.ContinueOnError)
+	tabs := fs.Int("tabs", 3, "")
+	open := fs.Bool("open", false, "")
+	pos, code, ok := subFlags(fs, args, fleetUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
+	if len(pos) != 2 || (pos[1] != fleet.Snapshot && pos[1] != fleet.Compare) {
+		fmt.Fprint(stderr, named(fleetUsage))
+		return exitUsage
+	}
+	if *tabs < 1 || *tabs > 16 {
+		fmt.Fprintln(stderr, prefix(), "--tabs: must be between 1 and 16")
+		return exitUsage
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		return failed(stderr, err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
+	defer stop()
+	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, stdout)
+	if err != nil {
+		if code == 0 { // the file was refused before any site ran
+			return failed(stderr, cli.UsageError{Msg: err.Error()})
+		}
+		fmt.Fprintln(stderr, prefix(), err)
+	}
+	if *open {
+		page := filepath.Join(filepath.Dir(pos[0]), fleet.Folder, "fleet.html")
+		if err := openFile(page); err != nil {
+			fmt.Fprintln(stderr, prefix(), "opening the fleet report:", err, "\n  open it yourself:", page)
+		}
+	}
+	return code
+}
+
+const wpUpdateUsage = `Usage:
+  rhythm soundcheck wp-update <url> --wp "<wp-cli command>" [flags] [-- <soundcheck flags>]
+
+Updates a staging site's WordPress plugins with WP-CLI and compares the
+site after each update (or, with --bisect, after all of them), so a plugin
+that breaks the site is found and named. It never runs on a site listed
+under production: in the config.
+
+      --wp <command>         how to run WP-CLI, e.g. "wp --path=/srv/www" or
+                             "ssh deploy@staging -- wp --path=/srv/www"
+      --plugins <list>       plugins to update (default all with an update)
+      --one-by-one           update and compare one plugin at a time (default)
+      --bisect               update all, then halve the suspects on a break
+      --stop-on <class>      broke (default), new or changed
+      --rollback             put a bad update back to its old version and go on
+      --from-tuner <file>    update the plugins a rhythm-tuner JSON report
+                             lists as vulnerable first
+      --config <file>        settings file (default .soundcheck/config.yaml)
+
+Flags after -- go to every snapshot and compare, e.g. -- --limit 50.
+Logs go to .soundcheck/wp-update/. Exit codes: 0 the site works, 1 an
+update broke it, 2 usage error, 3 an update or check failed.
+`
+
+// cmdWPUpdate runs the WordPress update loop.
+func cmdWPUpdate(args []string, stdout, stderr io.Writer) int {
+	var extra []string
+	if i := slices.Index(args, "--"); i >= 0 {
+		args, extra = args[:i], args[i+1:]
+	}
+	fs := flag.NewFlagSet("wp-update", flag.ContinueOnError)
+	wp := fs.String("wp", "", "")
+	var plugins cli.ListFlag
+	fs.Var(&plugins, "plugins", "")
+	oneByOne := fs.Bool("one-by-one", false, "")
+	bisect := fs.Bool("bisect", false, "")
+	stopOn := fs.String("stop-on", "", "")
+	rollback := fs.Bool("rollback", false, "")
+	fromTuner := fs.String("from-tuner", "", "")
+	configPath := fs.String("config", "", "")
+	pos, code, ok := subFlags(fs, args, wpUpdateUsage, stdout, stderr)
+	if !ok {
+		return code
+	}
+	if len(pos) != 1 {
+		fmt.Fprint(stderr, named(wpUpdateUsage))
+		return exitUsage
+	}
+	if err := target(pos[0]); err != nil {
+		return failed(stderr, err)
+	}
+	argv, err := wpupdate.SplitCommand(*wp)
+	if *wp != "" && err != nil {
+		return failed(stderr, cli.Usagef("--wp: %v", err))
+	}
+	path := cmpOr(*configPath, filepath.Join(config.Dir, "config.yaml"))
+	cfg, err := config.Load(path)
+	if err != nil {
+		return failed(stderr, cli.UsageError{Msg: err.Error()})
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		return failed(stderr, err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
+	defer stop()
+	log, err := wpupdate.Run(ctx, wpupdate.Options{
+		Target: pos[0], WP: argv, Plugins: plugins, OneByOne: *oneByOne, Bisect: *bisect, StopOn: *stopOn,
+		Rollback: *rollback, FromTuner: *fromTuner, Bin: bin, Config: cfg, ConfigPath: *configPath, Args: extra, Out: stderr,
+	})
+	if log != nil {
+		for _, line := range log.Summary() {
+			fmt.Fprintln(stdout, line)
+		}
+		for _, f := range log.Files {
+			fmt.Fprintln(stderr, "Log written to", rel(f))
+		}
+	}
+	switch {
+	case ctx.Err() != nil:
+		return exitCanceled
+	case err != nil && log == nil: // refused before anything ran
+		return failed(stderr, cli.UsageError{Msg: err.Error()})
+	case err != nil:
+		return failed(stderr, err)
+	case !log.Works:
+		return exitFindings
+	}
+	return exitOK
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+const rulesUsage = `Usage:
+  rhythm soundcheck rules list           the error rules health uses
+  rhythm soundcheck rules test [dir]     run the rules' samples
+
+Your own rules are YAML files in .soundcheck/rules, next to their samples
+(<name>_test.yaml). rules test runs the samples of a folder (default
+.soundcheck/rules, or the built-in rules when there is none) and exits 1
+when one doesn't behave.
+`
+
+// cmdRules lists the error rules or tests a folder of them.
+func cmdRules(args []string, stdout, stderr io.Writer) int {
+	dir := filepath.Join(config.Dir, "rules")
+	switch {
+	case len(args) == 1 && (args[0] == "-h" || args[0] == "--help"):
+		fmt.Fprint(stdout, named(rulesUsage))
+		return exitOK
+	case len(args) == 1 && args[0] == "list":
+		set, err := health.LoadRules(dir)
+		if err != nil {
+			return failed(stderr, cli.Usagef("%s: %v", dir, err))
+		}
+		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tLEVEL\tTITLE\tFROM")
+		for _, r := range set.Rules() {
+			from := "built in"
+			if !r.Builtin {
+				from = filepath.Join(dir, r.File)
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.ID, r.Level, report.Term(r.Title), report.Term(from))
+		}
+		_ = tw.Flush()
+		return exitOK
+	case len(args) >= 1 && len(args) <= 2 && args[0] == "test":
+		var rep rules.Report
+		var err error
+		switch {
+		case len(args) == 2:
+			dir = args[1]
+			rep, err = rules.Test(dir, health.Checks...)
+		case fileExists(dir):
+			rep, err = rules.Test(dir, health.Checks...)
+		default:
+			dir = "the built-in rules"
+			rep, err = rules.TestBuiltin()
+		}
+		if err != nil {
+			return failed(stderr, cli.Usagef("%s: %v", dir, err))
+		}
+		for _, f := range rep.Failures {
+			fmt.Fprintln(stdout, "FAIL", report.Term(f))
+		}
+		fmt.Fprintf(stdout, "%s: %s, %s, %s\n", dir, plural(rep.Rules, "rule"), plural(rep.Samples, "sample"),
+			plural(len(rep.Failures), "failure"))
+		if len(rep.Failures) > 0 {
+			return exitFindings
+		}
+		return exitOK
+	}
+	fmt.Fprint(stderr, named(rulesUsage))
+	return exitUsage
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// serve opens a stored comparison for review in the browser, for
+// report --serve.
+func (s *session) serve(res report.Result) int {
+	if !res.Compared() {
+		return s.fail(cli.Usagef("nothing to review: this result isn't a comparison"))
+	}
+	sc, err := comparisonIn(s.st, res.Dir, "report --serve")
+	if err != nil {
+		return s.fail(err)
+	}
+	if err := review.Serve(s.ctx, res, s.stderr, decider(sc, s.configPath)); err != nil && s.ctx.Err() == nil {
+		return s.fail(err)
+	}
+	return exitOK
+}
+
+// clientReport writes the client-ready report, for report --client: to
+// each -o file, or to stdout.
+func (s *session) clientReport(res report.Result) int {
+	if s.o.brand == "" {
+		return s.fail(cli.Usagef("--client needs --brand <agency.yaml>: the agency's name, logo and color"))
+	}
+	brand, err := clientreport.LoadBrand(s.o.brand)
+	if err != nil {
+		return s.fail(cli.Usagef("--brand: %v", err))
+	}
+	if len(s.outputs) == 0 {
+		if err := clientreport.Write(s.stdout, res, brand); err != nil {
+			return s.fail(err)
+		}
+		return exitOK
+	}
+	code := exitOK
+	for _, out := range s.outputs {
+		if out.format != "html" {
+			return s.fail(cli.Usagef("--client writes HTML; name the file .html, not %s", out.path))
+		}
+	}
+	for _, out := range s.outputs {
+		if err := writeFile(out.path, func(w io.Writer) error { return clientreport.Write(w, res, brand) }); err != nil {
+			fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), out.path, err)
+			code = exitError
+			continue
+		}
+		if !s.o.quiet {
+			fmt.Fprintf(s.stderr, "Client report written to %s\n", out.path)
+		}
+	}
+	return code
+}
+
+// helpTopics are the commands with their own --help.
+var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
+	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage}
+
+// topic returns a command's own usage, for `help <command>`.
+func topic(name string) (string, bool) {
+	u, ok := helpTopics[strings.TrimSpace(name)]
+	return u, ok
+}

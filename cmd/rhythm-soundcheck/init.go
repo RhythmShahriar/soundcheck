@@ -34,7 +34,7 @@ pages:
   extra: []             # always check these, even if no link points to them, e.g. ["/checkout/"]
 
 viewports: [desktop, mobile]
-modules: [health, visual, interact, cache, speed]  # echo is added when Echo is on
+modules: [health, visual, interact, cache, speed]  # also a11y, seo; echo is added when Echo is on
 
 visual:
   threshold: 0.5        # % of a page's pixels that must change to report it
@@ -83,6 +83,15 @@ headers: {}
 # or slower for compare; error, warning or notice for run and snapshot;
 # none never fails.
 fail_on: ""
+
+# Changes that are known and shouldn't count: listed as ignored, never
+# failing a build. Every field given must match (check and title are globs
+# with *); until is the last day the rule applies. review adds rules here.
+ignore: []              # e.g. [{check: "visual/page", pages: ["/team/*"], until: "2026-12-31", reason: "weekly photos"}]
+
+# Programs that check every page: each gets the page as JSON on stdin and
+# answers {"issues": [...]}. They run only with --allow-exec.
+exec: []                # e.g. [{name: laravel-log, run: ["./bin/check-log"], timeout: 10s}]
 `
 
 // cmdInit writes .soundcheck/config.yaml.
