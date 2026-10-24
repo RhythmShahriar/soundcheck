@@ -152,6 +152,16 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
   const out = {wp: false, forms: [], unnamed: [], unlabeled: [], dupIds: [], noHandler: [], cands: []};
   out.wp = !!document.querySelector('link[rel="https://api.w.org/"],meta[name=generator][content^=WordPress],script[src*="/wp-includes/"],script[src*="/wp-content/"],link[href*="/wp-content/"]');
 
+  // The CAPTCHA a form carries, by its widget's markup: a test browser
+  // can't solve one, so the form can't be submitted.
+  const captchas = [
+    ['reCAPTCHA', '.g-recaptcha,[name="g-recaptcha-response"],iframe[src*="/recaptcha/"]'],
+    ['hCaptcha', '.h-captcha,[name="h-captcha-response"],iframe[src*="hcaptcha.com"]'],
+    ['Turnstile', '.cf-turnstile,[name="cf-turnstile-response"],iframe[src*="challenges.cloudflare.com"]'],
+    ['Friendly Captcha', '.frc-captcha,[name="frc-captcha-solution"]'],
+  ];
+  const captchaOf = f => { for (const [name, sel] of captchas) if (f.querySelector(sel)) return name; return ''; };
+
   // Forms.
   for (const f of document.forms) {
     const profile = profileOf(f);
@@ -175,6 +185,7 @@ const collectJS = `(allow, forms) => {` + helpersJS + `
       search: f.getAttribute('role') === 'search' || fields.some(e => e.type === 'search' || e.name === 's') && fields.length <= 2,
       comment: f.id === 'commentform' || names.includes('comment_post_ID'),
       cartForm: f.classList.contains('woocommerce-cart-form'),
+      captcha: captchaOf(f),
       required: fields.some(e => e.required || e.getAttribute('aria-required') === 'true' || /required/i.test(e.className)),
       fields: fields.length,
       visible: visible(f),
@@ -294,6 +305,7 @@ type formInfo struct {
 	Search   bool   `json:"search"`
 	Comment  bool   `json:"comment"`
 	CartForm bool   `json:"cartForm"`
+	Captcha  string `json:"captcha"` // the CAPTCHA it carries: reCAPTCHA, hCaptcha, Turnstile…
 	Required bool   `json:"required"`
 	Fields   int    `json:"fields"`
 	Visible  bool   `json:"visible"`

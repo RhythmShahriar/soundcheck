@@ -63,6 +63,8 @@ func TestEligible(t *testing.T) {
 		{"posts elsewhere", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://list.mail.test/subscribe/post"}, false, false},
 		{"posts to another port", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://x.test:8443/join"}, false, false},
 		{"allowlisted elsewhere", formInfo{Method: "post", Visible: true, Fields: 1, Action: "https://list.mail.test/", Allowed: true}, false, true},
+		{"captcha", formInfo{Method: "post", Profile: "cf7", Visible: true, Fields: 3, Captcha: "reCAPTCHA"}, false, false},
+		{"allowlisted captcha", formInfo{Method: "post", Visible: true, Fields: 3, Captcha: "Turnstile", Allowed: true}, false, true},
 	}
 	base, _ := url.Parse("https://x.test/contact/")
 	for _, c := range cases {
@@ -70,8 +72,11 @@ func TestEligible(t *testing.T) {
 			t.Errorf("%s: got %v (%s)", c.name, got, why)
 		}
 	}
-	if _, why := eligible(cases[len(cases)-3].f, base, false); why != "posts to list.mail.test" {
+	if _, why := eligible(cases[len(cases)-5].f, base, false); why != "posts to list.mail.test" {
 		t.Errorf("reason: %q", why)
+	}
+	if _, why := eligible(cases[len(cases)-2].f, base, false); why != "has a CAPTCHA (reCAPTCHA)" {
+		t.Errorf("captcha reason: %q", why)
 	}
 }
 

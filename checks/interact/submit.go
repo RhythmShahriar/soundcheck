@@ -99,6 +99,8 @@ func eligible(fm formInfo, base *url.URL, production bool) (bool, string) {
 		return false, "comment form; allowlist it in interactions.forms to test it"
 	case fm.CartForm:
 		return false, "cart form"
+	case fm.Captcha != "":
+		return false, "has a CAPTCHA (" + fm.Captcha + ")"
 	case strings.Contains(fm.Action, "/wp-admin") || strings.Contains(fm.Action, "wp-login.php"):
 		return false, "posts to WordPress admin"
 	case fm.Fields == 0 && fm.Profile != "woo-cart":
@@ -135,6 +137,10 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 		if !ok {
 			if prod {
 				m.warnOnce(cc, "production", "Form submits skipped on production URLs: allowlist forms in interactions.forms to test them there")
+			}
+			if fm.Captcha != "" && fm.Visible && !fm.Allowed {
+				m.warnOnce(cc, "captcha "+p.Path+" "+fm.Sel, fmt.Sprintf("interact %s: %s has a CAPTCHA (%s), which a test browser can't solve, so it wasn't submitted. "+
+					"Use the CAPTCHA's test keys on staging, or allowlist the form in interactions.forms once it accepts test submissions", p.Path, fm.Name, fm.Captcha))
 			}
 			if fm.Visible && !fm.Search && fm.Method == "post" || prod {
 				record(fm, "skipped", why)

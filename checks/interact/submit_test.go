@@ -210,3 +210,48 @@ func TestWooCheckoutGateway(t *testing.T) {
 		}
 	}
 }
+
+// A form with a CAPTCHA isn't submitted: a test browser can't solve it,
+// so a refusal would read as a broken form. The run says why instead.
+func TestSubmitSkipsCaptchaForms(t *testing.T) {
+	needBrowser(t)
+	var mu sync.Mutex
+	var posts []string
+	fx := newFixture(t)
+	fx.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			mu.Lock()
+			posts = append(posts, r.URL.Path)
+			mu.Unlock()
+			fmt.Fprint(w, `<!doctype html><title>Refused</title><p>Please prove you're not a robot.</p>`)
+			return
+		}
+		fmt.Fprint(w, `<!doctype html><html><head><title>Contact</title></head><body>
+<form id="ask" method="post" action="/ask/"><h2>Ask us</h2><input name="name" required><input type="email" name="email" required>
+<div class="g-recaptcha" data-sitekey="test"></div><textarea name="g-recaptcha-response" style="display:none"></textarea><button>Send</button></form>
+<form id="club" method="post" action="/join/"><h2>Club</h2><input name="name" required><button>Join</button></form>
+</body></html>`)
+	})
+	cfg := config.Default()
+	cfg.Interactions.Levels = []string{"submit"}
+	run := fx.run(t, cfg, "/")
+	got := map[string]string{}
+	for _, i := range run.Page("/").Interact {
+		if i.Kind == "submit" {
+			got[i.Label] = i.Outcome + ": " + i.Detail
+		}
+	}
+	if got["form #ask"] != "skipped: has a CAPTCHA (reCAPTCHA)" {
+		t.Errorf("captcha form: %q (all %v)", got["form #ask"], got)
+	}
+	if !slices.ContainsFunc(run.Warnings, func(w string) bool {
+		return strings.Contains(w, "interact /: form #ask has a CAPTCHA (reCAPTCHA)")
+	}) {
+		t.Errorf("warnings: %q", run.Warnings)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if slices.Contains(posts, "/ask/") || !slices.Contains(posts, "/join/") {
+		t.Errorf("posts: %v", posts)
+	}
+}
