@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+positive:
+  - name: WordPress 5.2 to 6.x screen
+    status: 500
+    text: There has been a critical error on this website. Learn more about troubleshooting WordPress.
+  - name: the screen admins see
+    status: 500
+    text: There has been a critical error on your website. Please check your site admin email inbox for instructions.
+negative:
+  - name: a post about the screen
+    text: We fixed a critical error on this site last week; here is how.
+  - name: an ordinary page
+    text: Fresh coffee, roasted every Monday.

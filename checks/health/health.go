@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Package health checks that every page loads and renders without errors:
-// HTTP status, firewall challenges and password prompts, redirects, PHP errors printed into the page, the WordPress
-// "critical error" screen, white screens, framework error pages, JS
-// errors, failed requests, broken links, mixed content and indexing.
+// HTTP status, firewall challenges and password prompts, redirects, PHP
+// errors printed into the page, the WordPress "critical error" screen,
+// white screens, framework error pages, JS errors, failed requests,
+// broken links, mixed content and indexing. Error signatures that are a
+// single pattern (the error screens among them) are YAML rules; see
+// package rules.
 package health
 
 import (
@@ -23,26 +26,56 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/rules"
 )
 
 // Module is the health check module.
-type Module struct{}
+type Module struct {
+	// Rules are the error signatures CheckPage looks for in each page
+	// (see package rules); nil means the built-in ones. LoadRules adds a
+	// project's own.
+	Rules *rules.Set
+}
 
 func (Module) Name() string { return "health" }
+
+// Checks lists the checks this module reports from Go. Rule files can't
+// use these ids (nor a built-in rule's), so a project's rule can't
+// replace or downgrade one.
+var Checks = []string{
+	"health/unreachable", "health/blocked", "health/auth-required", "health/status", "health/redirect-chain",
+	"health/php-error", "health/white-screen", "health/js-error", "health/failed-request", "health/broken-asset",
+	"health/mixed-content", "health/no-title", "health/noindex", "health/not-responsive", "health/broken-link",
+	"health/favicon", "health/title", "health/content-lost", "health/redirect",
+}
+
+// LoadRules returns the built-in rules and the project's own from dir
+// (.soundcheck/rules), for Module.Rules.
+func LoadRules(dir string) (*rules.Set, error) { return rules.Load(dir, Checks...) }
+
+// errorScreen is the rule group of the pages a broken site shows instead
+// of its own (WordPress "critical error", database and framework error
+// pages): a page gets one of them, and none is a white screen.
+const errorScreen = "error-screen"
 
 var (
 	// PHP errors printed into the page: "Warning: Undefined array key "id"
 	// in /var/www/html/wp-content/themes/x/functions.php on line 212".
-	phpError     = regexp.MustCompile(`(?i)\b(Fatal error|Parse error|Recoverable fatal error|Warning|Notice|Deprecated|Strict Standards)\s*:\s+(.{3,300}?)\s+in\s+(/?[^\s<>"']+\.(?:php|inc|phtml))(?:\(\d+\))?\s+on\s+line\s+(\d+)`)
-	wpCritical   = regexp.MustCompile(`(?i)There has been a critical error on (this|your) website`)
-	frameworkErr = regexp.MustCompile(`(?i)Whoops, looks like something went wrong|Symfony\\Component\\ErrorHandler|Ignition|Stack trace:\s*#0|Uncaught (Error|Exception|TypeError|ArgumentCountError)`)
-	dbError      = regexp.MustCompile(`(?i)Error establishing a database connection|SQLSTATE\[[0-9A-Z]+\]`)
-	scriptLoc    = regexp.MustCompile(`\((https?://[^)\s]+?):(\d+)\)$`)
-	digits       = regexp.MustCompile(`\b\d{2,}\b`)
+	// The level and title depend on the kind, so this stays in Go.
+	phpError  = regexp.MustCompile(`(?i)\b(Fatal error|Parse error|Recoverable fatal error|Warning|Notice|Deprecated|Strict Standards)\s*:\s+(.{3,300}?)\s+in\s+(/?[^\s<>"']+\.(?:php|inc|phtml))(?:\(\d+\))?\s+on\s+line\s+(\d+)`)
+	scriptLoc = regexp.MustCompile(`\((https?://[^)\s]+?):(\d+)\)$`)
+	digits    = regexp.MustCompile(`\b\d{2,}\b`)
 )
 
+func (m Module) rules() *rules.Set {
+	if m.Rules != nil {
+		return m.Rules
+	}
+	return rules.Builtin()
+}
+
 // CheckPage runs the per-page checks.
-func (Module) CheckPage(cc *check.Context, p *model.Page) {
+func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 	if p.Error != "" {
 		check.Page(p, model.Issue{Check: "health/unreachable", Level: model.Error, Title: "Page didn't load: " + p.Error,
 			Fix: "Check the server and the URL; the page must answer before anything else can be checked."})
@@ -82,16 +115,19 @@ func (Module) CheckPage(cc *check.Context, p *model.Page) {
 			Source: shortPath(m[3]) + ":" + m[4],
 			Fix:    "Fix the code at the source line, and turn display_errors off in production so visitors never see these."})
 	}
+	set := m.rules()
+	screen := false
+	for _, h := range set.Check(p) {
+		check.Page(p, h.Issue)
+		screen = screen || h.Rule.Group == errorScreen
+	}
 	switch {
-	case wpCritical.MatchString(text):
-		check.Page(p, model.Issue{Check: "health/wp-critical", Level: model.Error, Title: "WordPress \"critical error\" screen",
-			Fix: "A plugin or theme threw a fatal error. Check the admin email WordPress sent, or wp-content/debug.log with WP_DEBUG_LOG on."})
-	case dbError.MatchString(text):
-		check.Page(p, model.Issue{Check: "health/database", Level: model.Error, Title: "Database error on the page",
-			Fix: "Check the database server and the credentials in wp-config.php or .env."})
-	case frameworkErr.MatchString(text) || strings.Contains(strings.ToLower(p.Title), "whoops"):
-		check.Page(p, model.Issue{Check: "health/error-page", Level: model.Error, Title: "Application error page",
-			Fix: "Read the exception shown; turn APP_DEBUG/display_errors off in production."})
+	case screen:
+	case strings.Contains(strings.ToLower(p.Title), "whoops"):
+		// Laravel's error page title; rules only see the text.
+		if r := set.Rule("health/error-page"); r != nil {
+			check.Page(p, model.Issue{Check: r.ID, Level: r.Level, Title: r.Title, Fix: r.Fix})
+		}
 	case p.Status == 200 && p.TextLength == 0 && !loadsContent(p):
 		check.Page(p, model.Issue{Check: "health/white-screen", Level: model.Error, Title: "Blank page (white screen)",
 			Fix: "A PHP fatal error with display_errors off usually causes this; check the error log."})

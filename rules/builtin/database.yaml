@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WordPress's "can't reach the database" page and PDO errors printed by
+# PHP apps (SQLSTATE[HY000] and the like).
+id: health/database
+match: text
+pattern: '(?i)Error establishing a database connection|SQLSTATE\[[0-9A-Z]+\]'
+level: error
+title: Database error on the page
+fix: Check the database server and the credentials in wp-config.php or .env.
+group: error-screen
+priority: 20

@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+positive:
+  - name: WordPress without its database
+    text: Error establishing a database connection
+  - name: a PDO exception
+    status: 500
+    text: "SQLSTATE[HY000] [2002] Connection refused (SQL: select * from users)"
+  - name: Laravel's page also shows the stack trace
+    status: 500
+    text: "Illuminate\\Database\\QueryException SQLSTATE[42S02]: Base table or view not found. Stack trace: #0 vendor/laravel"
+negative:
+  - name: a help article
+    text: If you see a database error, contact your host.
+  - name: lowercase sqlstate in prose
+    text: The sqlstate column of the report lists codes like 08001.
