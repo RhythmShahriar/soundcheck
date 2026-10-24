@@ -6,8 +6,10 @@ package browser
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeArchive builds a Chrome for Testing style zip for platform with a
@@ -156,6 +159,69 @@ func TestFindDownloadsAndVerifies(t *testing.T) {
 	}
 }
 
+// stallingServer sends the headers and a few bytes, then nothing until
+// the test ends.
+func stallingServer(t *testing.T) {
+	t.Helper()
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		_, _ = w.Write([]byte("PK"))
+		w.(http.Flusher).Flush()
+		select {
+		case <-done:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() { close(done); srv.Close() })
+	old := cftBase
+	cftBase = srv.URL
+	t.Cleanup(func() { cftBase = old })
+}
+
+func TestInstallGivesUpOnAStalledDownload(t *testing.T) {
+	stallingServer(t)
+	old := stallTimeout
+	stallTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { stallTimeout = old })
+	rel := Release{Version: "153.0.1.2", Archives: map[string]Archive{"linux64": {SHA256: sum([]byte("x")), Size: 1000}}}
+	dir := t.TempDir()
+	_, err := install(t.Context(), rel, "linux64", dir, nil)
+	if err == nil || !strings.Contains(err.Error(), "no data from") || !strings.Contains(err.Error(), "for 100ms; giving up") {
+		t.Fatalf("err = %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("left %d entries behind, e.g. %s", len(entries), entries[0].Name())
+	}
+}
+
+func TestFindContextStopsTheDownloadWhenCancelled(t *testing.T) {
+	platform := Platform()
+	if platform == "" {
+		t.Skip("no Chrome for Testing build for this platform")
+	}
+	stallingServer(t)
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("LocalAppData", cache)
+	oldPin, oldLook := pinned, lookPath
+	pinned = Release{Version: "153.0.1.2", Archives: map[string]Archive{platform: {SHA256: sum([]byte("x")), Size: 1000}}}
+	lookPath = func() (string, bool) { return "", false }
+	t.Cleanup(func() { pinned, lookPath = oldPin, oldLook })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, _, err := FindContext(ctx, Options{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 10*time.Second {
+		t.Errorf("took %s to stop", d)
+	}
+}
+
 func TestInstallWithoutPins(t *testing.T) {
 	_, err := install(t.Context(), Release{}, "linux64", t.TempDir(), nil)
 	if err == nil || !strings.Contains(err.Error(), "no pinned Chrome for Testing") {
@@ -285,6 +351,19 @@ func TestSandbox(t *testing.T) {
 				t.Errorf("logs = %q", logs)
 			}
 		})
+	}
+}
+
+func TestSandboxHint(t *testing.T) {
+	chrome := errors.New("[launcher] Failed to get the debug url: [1:1:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! Update your kernel")
+	if got := sandboxHint(chrome, false); !strings.Contains(got, NoSandboxEnv+"=1 if this container can't give Chrome its sandbox") {
+		t.Errorf("hint = %q", got)
+	}
+	if got := sandboxHint(chrome, true); got != "" {
+		t.Errorf("hinted with the sandbox already off: %q", got)
+	}
+	if got := sandboxHint(errors.New("error while loading shared libraries: libnss3.so"), false); got != "" {
+		t.Errorf("hinted for an unrelated failure: %q", got)
 	}
 }
 

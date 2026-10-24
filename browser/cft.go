@@ -11,11 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 //go:generate go run ./internal/pingen -o cft_pins.go
@@ -150,15 +153,55 @@ func platformName(p string) string {
 	return p
 }
 
+// downloadClient fetches Chrome for Testing. Unlike http.DefaultClient
+// it gives up on a server that won't connect or answer; download adds a
+// stall timeout for the body, since a whole-request timeout would cut
+// off a slow but steady download of a 150 MB archive.
+var downloadClient = &http.Client{Transport: &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	TLSHandshakeTimeout:   30 * time.Second,
+	ResponseHeaderTimeout: time.Minute,
+	ForceAttemptHTTP2:     true,
+}}
+
+// stallTimeout is how long a download may go without receiving a byte
+// before it is abandoned. Tests shorten it.
+var stallTimeout = time.Minute
+
+// stallReader cancels a download when no data arrives for d.
+type stallReader struct {
+	r       io.Reader
+	timer   *time.Timer
+	d       time.Duration
+	stalled *atomic.Bool
+}
+
+func (s stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(s.d)
+	}
+	return n, err
+}
+
 // download fetches url into a temporary file in dir while hashing it,
 // and removes the file unless its size and SHA-256 match pin.
 func download(ctx context.Context, url, dir string, pin Archive) (path string, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stalled := new(atomic.Bool)
+	timer := time.AfterFunc(stallTimeout, func() { stalled.Store(true); cancel() })
+	defer timer.Stop()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL is cftBase plus a pinned version and platform
+	resp, err := downloadClient.Do(req) //nolint:gosec // URL is cftBase plus a pinned version and platform
 	if err != nil {
+		if stalled.Load() {
+			return "", fmt.Errorf("downloading Chrome for Testing: no answer from %s for %s; giving up", url, stallTimeout)
+		}
 		return "", fmt.Errorf("downloading Chrome for Testing: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -176,8 +219,12 @@ func download(ctx context.Context, url, dir string, pin Archive) (path string, e
 		}
 	}()
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArchive+1))
+	body := stallReader{r: resp.Body, timer: timer, d: stallTimeout, stalled: stalled}
+	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(body, maxArchive+1))
 	if err != nil {
+		if stalled.Load() {
+			return "", fmt.Errorf("downloading Chrome for Testing: no data from %s for %s; giving up", url, stallTimeout)
+		}
 		return "", fmt.Errorf("downloading Chrome for Testing: %w", err)
 	}
 	if n > maxArchive {
