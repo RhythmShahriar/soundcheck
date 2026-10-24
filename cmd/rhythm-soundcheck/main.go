@@ -120,6 +120,12 @@ What to check:
       --viewport <list>      desktop, mobile (default both)
       --no-login             skip the login (leak test, login flows) even if
                              SOUNDCHECK_USER is set
+      --allow-env <name>     let flows read this variable too (repeatable);
+                             otherwise ${env:...} reads only SOUNDCHECK_* ones
+      --allow-host <host>    let flows open this host too, e.g. a payment
+                             page (repeatable); otherwise only the site
+      --insecure-login       type the test password over plain http to a
+                             site that isn't this machine
       --lighthouse           also run Unlighthouse (needs Node.js and npx)
       --echo[=<url>]         record the emails, SMS and webhooks each form
                              submit and flow sends, and compare them, through
@@ -148,13 +154,16 @@ Logging in: set SOUNDCHECK_USER and SOUNDCHECK_PASSWORD to a test account to
 test that caches don't leak logged-in pages to visitors, and to run flows that
 set login: true. Pages themselves are checked as a visitor. Credentials are
 read only from the environment and never written to reports. Uses
-/wp-login.php, or the login flow in .soundcheck/config.yaml.
+/wp-login.php, or the login flow in .soundcheck/config.yaml. The password is
+typed only on the site being checked, over https unless it's this machine.
 
 Messages: with Echo running (rhythm echo up) and its connector on the site,
 --echo ties each form submit and flow to what it sent, so a form that says
 "sent" but emails nobody is caught, and a lost or changed email, SMS or
 webhook shows up in the comparison. Flows can check them with
-expect: {message: ...}. A token comes from RHYTHM_ECHO_TOKEN (echo.token_env).
+expect: {message: ...}. A token comes from RHYTHM_ECHO_TOKEN (echo.token_env,
+which must start with RHYTHM_ECHO_). It goes to an Echo on another machine
+only when --echo or SOUNDCHECK_ECHO names it, not echo.url alone.
 
 Files: snapshots and reports are kept in ./.soundcheck (excluded from git).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check · 130 interrupted

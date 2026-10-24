@@ -369,7 +369,7 @@ func TestLoginOnlyFromEnv(t *testing.T) {
 	t.Setenv("SOUNDCHECK_USER", "admin")
 	t.Setenv("SOUNDCHECK_PASSWORD", "s3cret")
 	f, who := loginFunc(config.Default(), false)
-	if f == nil || who != "ad***" {
+	if f == nil || who != "a•••••" {
 		t.Errorf("who = %q", who)
 	}
 	if f, _ := loginFunc(config.Default(), true); f != nil {

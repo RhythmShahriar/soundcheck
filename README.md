@@ -151,7 +151,7 @@ A live terminal view; a standalone HTML report with before/after sliders and fil
 - **The whole site, not five pages.** Pages are grouped by URL pattern: once a folder has more than 10 pages, the rest of `/product/{slug}/` is sampled 3 at a time, so a shop with 3,000 products is checked through 13 pages, not 3,000. A 100-page site takes about a minute and a half to snapshot and one to compare (8 tabs on a 16-core machine).
 - **Knows WordPress.** PHP errors traced to the plugin file and line, plugin-aware speed costs, form plugin profiles, nonce and cache rules no generic tool checks.
 - **Local and free.** One binary, your machine or your CI. No account, no cloud, no page limits. Snapshots stay in your project.
-- **Safe on real sites.** Polite rate limits, a destructive-click blocklist, form submits off by default and refused on production, credentials only from environment variables and never written to reports.
+- **Safe on real sites.** Polite rate limits, a destructive-click blocklist, form submits off by default and refused on production, credentials only from environment variables, typed only on the site being checked and never written to reports.
 
 How it compares with other tools is measured, not claimed: see the [benchmark](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Benchmark) of 20 deliberately broken sites.
 

@@ -37,6 +37,8 @@ type options struct {
 	modules, skip          cli.ListFlag
 	levels, viewports      cli.ListFlag
 	noLogin, lighthouse    bool
+	allowEnv, allowHosts   cli.RepeatFlag
+	insecureLogin          bool
 	rate                   float64
 	tabs                   int
 	timeout                time.Duration
@@ -137,6 +139,9 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.Var(&o.viewports, "viewport", "")
 	fs.BoolVar(&o.noLogin, "no-login", false, "")
 	fs.BoolVar(&o.lighthouse, "lighthouse", false, "")
+	fs.Var(&o.allowEnv, "allow-env", "")
+	fs.Var(&o.allowHosts, "allow-host", "")
+	fs.BoolVar(&o.insecureLogin, "insecure-login", false, "")
 
 	fs.Float64Var(&o.rate, "rate", 0, "")
 	fs.IntVar(&o.tabs, "tabs", 0, "")
@@ -166,6 +171,12 @@ type plan struct {
 	proxy    *url.URL
 	ua       string
 	storeDir string
+
+	configPath string // the config file read, for messages
+	// echoFrom is what turned Echo on: "flag", "env", "config" or "".
+	// A token goes to an Echo on another machine only when the person
+	// running Soundcheck named it, never the project's config alone.
+	echoFrom string
 }
 
 func parse(args []string) (*plan, error) {
@@ -196,6 +207,7 @@ func parse(args []string) (*plan, error) {
 	if p.cfg, err = config.Load(path); err != nil {
 		return nil, cli.UsageError{Msg: err.Error()}
 	}
+	p.configPath = path
 	cfg := &p.cfg
 	if set["limit"] {
 		cfg.Pages.Limit = o.limit
@@ -217,11 +229,14 @@ func parse(args []string) (*plan, error) {
 	}
 	// Echo: --echo, then SOUNDCHECK_ECHO, then echo.url. It's on whenever
 	// it's configured, unless --skip echo.
+	if cfg.Echo.URL != "" {
+		p.echoFrom = "config"
+	}
 	if env := echoFromEnv(os.Getenv("SOUNDCHECK_ECHO")); env != "" {
-		cfg.Echo.URL = env
+		cfg.Echo.URL, p.echoFrom = env, "env"
 	}
 	if o.echo.set {
-		cfg.Echo.URL = o.echo.url
+		cfg.Echo.URL, p.echoFrom = o.echo.url, "flag"
 	}
 	switch {
 	case slices.Contains(o.skip, "echo"):
@@ -243,6 +258,12 @@ func parse(args []string) (*plan, error) {
 	}
 	if set["timeout"] {
 		cfg.Timeout = int(o.timeout.Round(time.Second) / time.Second)
+	}
+	if cfg.Echo.URL == "" {
+		p.echoFrom = ""
+	}
+	if err := p.trust(); err != nil {
+		return nil, err
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, cli.UsageError{Msg: flagName(err.Error())}
@@ -301,6 +322,27 @@ func parse(args []string) (*plan, error) {
 	}
 	p.storeDir = config.Dir
 	return p, nil
+}
+
+// trust reads --allow-env, --allow-host and --insecure-login into the
+// config: flags only, since the project folder is untrusted.
+func (p *plan) trust() error {
+	t := &p.cfg.Trust
+	for _, name := range p.o.allowEnv {
+		if name == "" || strings.ContainsAny(name, " =${}") {
+			return cli.Usagef("--allow-env %q isn't an environment variable name", name)
+		}
+		t.AllowEnv = append(t.AllowEnv, name)
+	}
+	for _, h := range p.o.allowHosts {
+		key, err := config.ParseHost(h)
+		if err != nil {
+			return cli.Usagef("--allow-host %v", err)
+		}
+		t.AllowHosts = append(t.AllowHosts, key)
+	}
+	t.InsecureLogin = p.o.insecureLogin
+	return nil
 }
 
 // failOn validates --fail-on now that the command knows whether it

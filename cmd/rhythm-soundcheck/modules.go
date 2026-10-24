@@ -14,6 +14,8 @@ import (
 
 	"github.com/go-rod/rod"
 
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
+
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/cache"
 	echomod "github.com/RhythmShahriar/soundcheck/checks/echo"
@@ -61,16 +63,7 @@ func loginFunc(cfg config.Config, off bool) (func(*url.URL) func(context.Context
 	}
 	return func(base *url.URL) func(context.Context, *rod.Browser) error {
 		return login.New(login.Options{Base: base, Config: cfg})
-	}, mask(user)
-}
-
-// mask shows enough of a name to recognize it: "ad***".
-func mask(s string) string {
-	r := []rune(s)
-	if len(r) <= 2 {
-		return "***"
-	}
-	return string(r[:2]) + "***"
+	}, secrets.Mask(user, 2)
 }
 
 // lighthouse hands the site to Unlighthouse for full Lighthouse audits,

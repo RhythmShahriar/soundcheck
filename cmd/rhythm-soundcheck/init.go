@@ -50,7 +50,7 @@ interactions:
 production: []          # e.g. ["example.com", "*.example.com"]
 
 login:
-  url: ""               # login page; default /wp-login.php on WordPress
+  url: ""               # login page on the site; default /wp-login.php on WordPress
   flow: ""              # or a flow file that logs in, for other sites
 # Credentials come only from SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
 
@@ -64,7 +64,7 @@ speed:
 # is empty; --echo or SOUNDCHECK_ECHO turn it on too.
 echo:
   url: ""               # e.g. http://127.0.0.1:8025
-  token_env: RHYTHM_ECHO_TOKEN  # environment variable with Echo's token, if it has one
+  token_env: RHYTHM_ECHO_TOKEN  # variable with Echo's token, if it has one (RHYTHM_ECHO_*)
   quiet: 1500ms         # after a submit, wait until nothing new arrives for this long
   timeout: 10s          # but no longer than this
 

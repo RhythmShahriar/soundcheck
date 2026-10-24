@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -30,6 +31,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/runner"
@@ -66,6 +68,7 @@ type session struct {
 	st             store.Store
 	notice         <-chan string
 	echo           *echolink.Link // connected on the first check, when Echo is on
+	flowsChecked   bool           // checkFlows ran
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -132,11 +135,7 @@ func (s *session) connectEcho() error {
 	if !s.cfg.Has("echo") || s.echo != nil {
 		return nil
 	}
-	token := ""
-	if s.cfg.Echo.TokenEnv != "" {
-		token = os.Getenv(s.cfg.Echo.TokenEnv)
-	}
-	link, err := echolink.Connect(s.ctx, s.cfg.Echo, token)
+	link, err := echolink.Connect(s.ctx, s.cfg.Echo, s.echoToken())
 	if err != nil {
 		if s.ctx.Err() != nil {
 			return s.ctx.Err()
@@ -152,12 +151,66 @@ func (s *session) connectEcho() error {
 	return nil
 }
 
+// checkFlows names the environment variables each flow will read (once,
+// before any runs) and refuses a flow that reads one it may not.
+// Unreadable flow files are left to the interact module, which reports
+// them as issues.
+func (s *session) checkFlows(loggingIn bool) error {
+	if s.flowsChecked {
+		return nil
+	}
+	s.flowsChecked = true
+	var flows []flow.Flow
+	if s.cfg.Has("interact") && s.cfg.Level("flows") && s.cfg.Flows != "" {
+		flows, _ = flow.Load(s.cfg.Flows)
+	}
+	if loggingIn && s.cfg.Login.Flow != "" {
+		if f, err := flow.ReadFile(s.cfg.Login.Flow); err == nil {
+			flows = append(flows, f)
+		}
+	}
+	for _, f := range flows {
+		names := f.EnvNames()
+		if len(names) == 0 {
+			continue
+		}
+		s.view.Step("Flows", fmt.Sprintf("%q reads %s", f.Name, strings.Join(names, ", ")))
+		if err := f.CheckEnv(s.cfg.Trust.AllowEnv); err != nil {
+			return cli.UsageError{Msg: fmt.Sprintf("%s: %v", f.File, err)}
+		}
+	}
+	return nil
+}
+
+// echoToken returns the token to send Echo. When the project's config
+// alone turned Echo on, it says so on stderr and keeps the token on this
+// machine: a committed echo.url must not be able to collect it.
+func (s *session) echoToken() string {
+	token := ""
+	if s.cfg.Echo.TokenEnv != "" {
+		token = os.Getenv(s.cfg.Echo.TokenEnv)
+	}
+	if s.echoFrom != "config" {
+		return token
+	}
+	fmt.Fprintf(s.stderr, "Echo turned on by %s (echo.url)\n", s.configPath)
+	if u, err := url.Parse(s.cfg.Echo.URL); token != "" && (err != nil || !config.IsLoopback(u.Hostname())) {
+		fmt.Fprintf(s.stderr, "rhythm soundcheck: not sending %s to %s: the address came from the config; pass --echo=%s to send it\n",
+			s.cfg.Echo.TokenEnv, s.cfg.Echo.URL, s.cfg.Echo.URL)
+		return ""
+	}
+	return token
+}
+
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
+	login, who := loginFunc(s.cfg, s.o.noLogin)
+	if err := s.checkFlows(login != nil); err != nil {
+		return nil, err
+	}
 	if err := s.connectEcho(); err != nil {
 		return nil, err
 	}
-	login, who := loginFunc(s.cfg, s.o.noLogin)
 	if who != "" {
 		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
 	}
