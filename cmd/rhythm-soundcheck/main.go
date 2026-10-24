@@ -11,8 +11,12 @@ import (
 	"os"
 
 	"github.com/charmbracelet/x/term"
+	"github.com/go-rod/rod/lib/defaults"
 
 	"github.com/RhythmShahriar/rhythm/kit"
+	// Turns off rod's -rod flag before rod's init reads os.Args; the
+	// package doc says why its init runs first.
+	_ "github.com/RhythmShahriar/soundcheck/internal/norodflag"
 )
 
 var version = "dev"
@@ -29,6 +33,11 @@ const (
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	// A second guard against rod's -rod flag: should a change in init
+	// order ever let rod read os.Args first, this puts its defaults back.
+	// norodflag's init has run by now, so ResetWith doesn't read os.Args
+	// again.
+	defaults.ResetWith("")
 	if len(args) == 0 {
 		if term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()) {
 			return pick(stdout, stderr)
