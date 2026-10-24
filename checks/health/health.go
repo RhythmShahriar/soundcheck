@@ -273,9 +273,11 @@ func (Module) Compare(_ context.Context, cmp *check.CompareContext) []model.Chan
 		if a.Error != "" || a.Status >= 400 || b.Status >= 400 {
 			continue // status problems are reported as issues
 		}
-		if b.Title != "" && a.Title != b.Title {
+		// A title that went away is the NEW "Page has no <title>" issue;
+		// saying it changed to nothing too would be two lines for one cause.
+		if b.Title != "" && a.Title != "" && a.Title != b.Title {
 			out = append(out, model.Change{Class: model.Changed, Check: "health/title", Title: "Page title changed",
-				Pages: []string{a.Path}, Before: b.Title, After: orDefault(a.Title, "(none)")})
+				Pages: []string{a.Path}, Before: b.Title, After: a.Title})
 		}
 		if b.TextLength > 400 && a.TextLength < b.TextLength/2 {
 			out = append(out, model.Change{Class: model.Changed, Check: "health/content-lost", Title: "Page lost most of its text",

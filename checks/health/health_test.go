@@ -293,3 +293,22 @@ func TestFilterChangesFaviconMoved(t *testing.T) {
 		t.Errorf("a new missing favicon must stay: %+v", got)
 	}
 }
+
+func TestLostTitleIsOneLine(t *testing.T) {
+	page := func(title string) model.Page {
+		return model.Page{Path: "/about/", URL: "https://shop.example/about/", FinalURL: "https://shop.example/about/", Status: 200, Title: title, TextLength: 500}
+	}
+	before, after := siteRun(page("About us")), siteRun(page(""))
+	cc := &check.CompareContext{Before: before, After: after}
+	all := append(compare.Issues(before, after), Module{}.Compare(context.Background(), cc)...)
+	if len(all) != 1 || all[0].Class != model.New || all[0].Title != "Page has no <title>" {
+		t.Errorf("a lost title must be one NEW line: %+v", all)
+	}
+	// A title that really changed is still CHANGED, with nothing NEW.
+	after = siteRun(page("About the shop"))
+	cc.After = after
+	all = append(compare.Issues(before, after), Module{}.Compare(context.Background(), cc)...)
+	if len(all) != 1 || all[0].Check != "health/title" || all[0].Before != "About us" || all[0].After != "About the shop" {
+		t.Errorf("a changed title = %+v", all)
+	}
+}
