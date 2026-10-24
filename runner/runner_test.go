@@ -247,6 +247,55 @@ func TestSiblingPortIsAnotherSite(t *testing.T) {
 	}
 }
 
+// A robots.txt that fails leaves only the start page and the pages
+// listed, and the run says so rather than passing for the whole site.
+func TestRobotsUnavailableWarns(t *testing.T) {
+	needBrowser(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<!doctype html><title>Page</title><p>Hi.</p><a href="/about/">About</a> <a href="/team/">Team</a>`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Modules, cfg.Viewports, cfg.Rate = []string{"health"}, []string{"desktop"}, 0
+	cfg.Pages.Extra = []string{"/team/"}
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	for _, p := range run.Pages {
+		visited = append(visited, p.Path)
+	}
+	slices.Sort(visited)
+	if want := []string{"/", "/team/"}; !slices.Equal(visited, want) {
+		t.Errorf("visited %v, want %v", visited, want)
+	}
+	want := "robots.txt couldn't be read (HTTP 503), so only the start page and the pages you listed were checked; on your own site, pass --ignore-robots"
+	if !slices.Contains(run.Warnings, want) {
+		t.Errorf("warnings %q, want %q", run.Warnings, want)
+	}
+	if run.Skipped["robots-unavailable"] < 1 {
+		t.Errorf("skipped %v", run.Skipped)
+	}
+
+	// With --ignore-robots the site is crawled and nothing is said.
+	cfg.Pages.IgnoreRobots = true
+	run, err = Run(context.Background(), Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+		Browser: browser.Options{NoDownload: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(run.Pages) != 3 || slices.ContainsFunc(run.Warnings, func(w string) bool { return strings.Contains(w, "robots.txt") }) {
+		t.Errorf("--ignore-robots: %d pages, warnings %q", len(run.Pages), run.Warnings)
+	}
+}
+
 // The start page keeps the target's query and follows a redirect's path.
 func TestStartPage(t *testing.T) {
 	needBrowser(t)

@@ -213,6 +213,11 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	for _, note := range capture.HeaderNotes(opts.Headers) {
 		cc.Warn(note)
 	}
+	// The kit's crawler then admits only the start page and listed pages,
+	// as RFC 9309 asks; a snapshot of one page must not pass for the site.
+	if why := frontier.RobotsUnavailable(); why != "" {
+		cc.Warn(fmt.Sprintf("robots.txt couldn't be read (%s), so only the start page and the pages you listed were checked; on your own site, pass --ignore-robots", why))
+	}
 	var b *browser.Browser
 	if engine == capture.Chrome {
 		b, err = browser.Launch(ctx, withLog(opts.Browser, log))
