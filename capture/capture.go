@@ -465,6 +465,7 @@ func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*mode
 	}
 	if err := page.Navigate(rawURL); err != nil {
 		p.Error = navError(err)
+		r.answer(p)
 		return p, nil
 	}
 	// The waits only make the reading more complete: a page that never
@@ -502,6 +503,26 @@ func (r *Recorder) read(ctx, rctx context.Context, tab Tab, p *model.Page, opts 
 		return shoot(rctx, tab, p, "desktop", f.Height, opts)
 	}
 	return nil
+}
+
+// answer records on p, a page whose navigation failed, the response its
+// document got all the same: Chrome fails a 401 that asks for a password
+// (net::ERR_INVALID_AUTH_CREDENTIALS) after the response came in; the
+// status and WWW-Authenticate header say what the page needs.
+func (r *Recorder) answer(p *model.Page) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	q := r.reqs[r.doc]
+	if q == nil || q.status == 0 {
+		return
+	}
+	p.Status = q.status
+	if q.headers != nil {
+		p.Headers = map[string]string{}
+		for k, v := range q.headers {
+			p.Headers[k] = storedHeader(k, v)
+		}
+	}
 }
 
 func newPage(rawURL string) *model.Page {

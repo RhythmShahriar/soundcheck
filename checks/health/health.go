@@ -77,6 +77,12 @@ func (m Module) rules() *rules.Set {
 
 // CheckPage runs the per-page checks.
 func (m Module) CheckPage(cc *check.Context, p *model.Page) {
+	// Chrome fails the navigation of a 401 that asks for a password, so
+	// such a page has an error and the response it got: the password
+	// prompt is what to report, not that the page didn't load.
+	if p.Error != "" && p.Status == http.StatusUnauthorized && gatekeeper(p) {
+		return
+	}
 	if p.Error != "" {
 		check.Page(p, model.Issue{Check: "health/unreachable", Level: model.Error, Title: "Page didn't load: " + p.Error,
 			Fix: "Check the server and the URL; the page must answer before anything else can be checked."})

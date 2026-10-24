@@ -166,6 +166,7 @@ func (r *Recorder) load(ctx context.Context, rawURL string, opts Options, viewpo
 func visitTab(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts Options) error {
 	if err := r.load(ctx, rawURL, opts, "desktop"); err != nil {
 		p.Error = navError(err)
+		r.answer(p)
 		return nil
 	}
 	rctx, cancel := context.WithTimeout(ctx, readBudget(opts.Timeout))

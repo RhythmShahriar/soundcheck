@@ -149,6 +149,26 @@ func TestVisitUnreachable(t *testing.T) {
 	}
 }
 
+// A password-protected page fails to navigate in Chrome; the page still
+// records the 401 and its WWW-Authenticate header.
+func TestVisitPasswordPrompt(t *testing.T) {
+	b := launch(t)
+	sess, _ := b.Session()
+	tab, _ := sess.Page(protoBlank())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Staging"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, "<title>401</title>Password required")
+	}))
+	defer srv.Close()
+	rec, _ := Start(context.Background(), tab, Options{})
+	defer rec.Stop()
+	p, err := Visit(context.Background(), rec, srv.URL+"/x", Options{Timeout: 10 * time.Second})
+	if err != nil || p.Error == "" || p.Status != http.StatusUnauthorized || p.Headers["www-authenticate"] != `Basic realm="Staging"` {
+		t.Errorf("error %q status %d headers %v, %v", p.Error, p.Status, p.Headers, err)
+	}
+}
+
 // slowFixture answers /slow?wait=N after N seconds. Its /busy is a page
 // whose script blocks the main thread for 12 seconds right after load.
 // The block starts from a MessageChannel task queued by the load handler:

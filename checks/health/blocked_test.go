@@ -142,6 +142,27 @@ func TestAuthRequired(t *testing.T) {
 	}
 }
 
+// Chrome fails the navigation of a 401 that asks for a password
+// (ERR_INVALID_AUTH_CREDENTIALS); the response it got still makes it a
+// password prompt rather than a page that didn't load.
+func TestAuthRequiredFailedNavigation(t *testing.T) {
+	p := model.Page{Status: 401, Error: "net::ERR_INVALID_AUTH_CREDENTIALS", Headers: map[string]string{"www-authenticate": `Basic realm="Staging"`}}
+	Module{}.CheckPage(ctx(), &p)
+	if len(p.Issues) != 1 || p.Issues[0].Check != "health/auth-required" {
+		t.Errorf("issues = %+v", p.Issues)
+	}
+	// A 401 without WWW-Authenticate, or no response at all, didn't load.
+	for _, p := range []model.Page{
+		{Status: 401, Error: "net::ERR_INVALID_AUTH_CREDENTIALS"},
+		{Error: "net::ERR_CONNECTION_REFUSED"},
+	} {
+		Module{}.CheckPage(ctx(), &p)
+		if len(p.Issues) != 1 || p.Issues[0].Check != "health/unreachable" {
+			t.Errorf("%+v: issues = %+v", p, p.Issues)
+		}
+	}
+}
+
 // A site whose firewall starts challenging the runner is one BROKE line,
 // not a changed title, lost text and every old issue FIXED on each page.
 func TestCompareBlockedSite(t *testing.T) {
