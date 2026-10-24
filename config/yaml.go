@@ -81,6 +81,14 @@ func checkKeys(n *yaml.Node, t reflect.Type, prefix string, keys map[string]int,
 		if err := checkKeys(v, ft, key+".", keys, values); err != nil {
 			return err
 		}
+		// A list of groups (ignore:, exec:) has its keys checked per item.
+		if v.Kind == yaml.SequenceNode && ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Struct {
+			for _, item := range v.Content {
+				if err := checkKeys(item, ft.Elem(), key+".", keys, values); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -137,7 +145,8 @@ func typeError(err error, values map[int]string) error {
 	line, _ := strconv.Atoi(m[1])
 	want := "a " + m[4]
 	switch m[4] {
-	case "config.Pages", "config.Visual", "config.Interactions", "config.Login", "config.Echo", "config.Speed":
+	case "config.Pages", "config.Visual", "config.Interactions", "config.Login", "config.Echo", "config.Speed",
+		"config.IgnoreRule", "config.ExecCommand":
 		want = "a group of settings, each on its own indented line"
 	case "int", "float64":
 		want = "a number"
@@ -145,7 +154,7 @@ func typeError(err error, values map[int]string) error {
 		want = "true or false"
 	case "string":
 		want = "a single value"
-	case "[]string":
+	case "[]string", "[]config.IgnoreRule", "[]config.ExecCommand":
 		want = "a list like [a, b]"
 	case "time.Duration":
 		want = "a duration like 1500ms or 10s"

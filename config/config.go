@@ -25,10 +25,15 @@ import (
 // Dir is the project folder Soundcheck keeps snapshots and reports in.
 const Dir = ".soundcheck"
 
-// Modules Soundcheck can run, in order. echo runs only when Echo is
-// configured (Echo.URL), so it isn't in the default list: the CLI adds it
-// when --echo, SOUNDCHECK_ECHO or echo.url is set.
-var Modules = []string{"health", "visual", "interact", "cache", "speed", "echo"}
+// Modules Soundcheck can run, in order. DefaultModules run unless a flag
+// or the file says otherwise. a11y and seo are off until asked for
+// (+a11y, +seo). echo runs only when Echo is configured (Echo.URL) and
+// exec only when the file lists commands under exec: the CLI adds them.
+// A test in the CLI keeps this list in step with the registered modules.
+var Modules = []string{"health", "visual", "interact", "cache", "speed", "a11y", "seo", "echo", "exec"}
+
+// DefaultModules are the modules a run uses when nothing chooses.
+var DefaultModules = []string{"health", "visual", "interact", "cache", "speed"}
 
 // EchoURL is where `rhythm echo up` listens by default.
 const EchoURL = "http://127.0.0.1:8025"
@@ -67,6 +72,12 @@ type Config struct {
 	// variable (header name -> variable name), so the file holds no
 	// secret and the CLI decides which variables it may read.
 	Headers map[string]string `yaml:"headers"`
+	// Ignore lists changes that are known and shouldn't count, applied
+	// after every comparison (compare.ApplyIgnore).
+	Ignore []IgnoreRule `yaml:"ignore"`
+	// Exec lists programs the exec module runs on every page. They run
+	// only with --allow-exec: a committed file can't run programs alone.
+	Exec []ExecCommand `yaml:"exec"`
 
 	// Trust is set by command-line flags only, never by the file.
 	Trust Trust `yaml:"-"`
@@ -114,6 +125,25 @@ type Trust struct {
 	InsecureLogin bool     // --insecure-login: type the password over plain http to a public host
 }
 
+// IgnoreRule names changes that shouldn't count. It has the fields of
+// compare.IgnoreRule, which the CLI converts it to: Check and Title are
+// globs, Pages page globs, Until the last day it applies (YYYY-MM-DD).
+type IgnoreRule struct {
+	Check  string   `yaml:"check" json:"check,omitempty"`
+	Pages  []string `yaml:"pages" json:"pages,omitempty"`
+	Title  string   `yaml:"title" json:"title,omitempty"`
+	Until  string   `yaml:"until" json:"until,omitempty"`
+	Reason string   `yaml:"reason" json:"reason,omitempty"`
+}
+
+// ExecCommand is one program the exec module runs on every page. It has
+// the fields of the exec module's Command.
+type ExecCommand struct {
+	Name    string        `yaml:"name" json:"name"`
+	Run     []string      `yaml:"run" json:"run"`         // the program and its arguments, without a shell
+	Timeout time.Duration `yaml:"timeout" json:"timeout"` // per page; 0 is 10s
+}
+
 // Login says how to log in with SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
 type Login struct {
 	URL  string `yaml:"url"`  // login page; default /wp-login.php for WordPress
@@ -139,7 +169,7 @@ func Default() Config {
 	return Config{
 		Pages:        Pages{Limit: 300, PerGroup: 3},
 		Viewports:    slices.Clone(Viewports),
-		Modules:      slices.Clone(Modules[:len(Modules)-1]), // not echo: it needs Echo.URL
+		Modules:      slices.Clone(DefaultModules),
 		Visual:       Visual{Threshold: 0.5},
 		Interactions: Interactions{Levels: []string{"inspect", "click"}, MaxClicks: 15},
 		Flows:        filepath.Join(Dir, "flows"),
@@ -268,6 +298,19 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Login.validate(); err != nil {
 		return err
+	}
+	for n, r := range c.Ignore {
+		if r.Check == "" && r.Title == "" && len(r.Pages) == 0 {
+			return settingErr("ignore", "rule %d has nothing to match: give it a check, a title or pages", n+1)
+		}
+		if r.Until != "" {
+			if _, err := time.Parse("2006-01-02", r.Until); err != nil {
+				return settingErr("ignore", "rule %d: until %q isn't a date like 2026-12-31", n+1, r.Until)
+			}
+		}
+	}
+	if c.Has("exec") && len(c.Exec) == 0 {
+		return settingErr("modules", "exec runs the commands listed under exec: in the config, and there are none")
 	}
 	return c.Echo.validate(c.Has("echo"))
 }

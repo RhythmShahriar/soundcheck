@@ -23,7 +23,7 @@ func TestFriendlyErrors(t *testing.T) {
 		"headers: [a]\n":                     `config.yaml line 1: headers: takes name: value pairs, not a list`,
 		"rate: 5\n  tabs: 2\n":               `config.yaml line 2: this isn't valid YAML: mapping values are not allowed in this context`,
 		"- a\n- b\n":                         `config.yaml line 1: the file must be a list of settings like "pages:" and "rate: 5"`,
-		"rate: 5\nmodules: [helth]\n":        `config.yaml line 2: modules: "helth" isn't one of health, visual, interact, cache, speed, echo (did you mean "health"?)`,
+		"rate: 5\nmodules: [helth]\n":        `config.yaml line 2: modules: "helth" isn't one of health, visual, interact, cache, speed, a11y, seo, echo, exec (did you mean "health"?)`,
 		"viewports: [desktop, moble]\n":      `config.yaml line 1: viewports: "moble" isn't one of desktop, mobile (did you mean "mobile"?)`,
 		"viewports: [tablet]\n":              `config.yaml line 1: viewports: "tablet" isn't one of desktop, mobile`,
 		"interactions:\n  levels: [clik]\n":  `config.yaml line 2: interactions.levels: "clik" isn't one of inspect, click, submit, flows (did you mean "click"?)`,
