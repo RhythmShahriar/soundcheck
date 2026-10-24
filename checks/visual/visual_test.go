@@ -44,6 +44,18 @@ func shotPage(t *testing.T, dir, path string, img image.Image) model.Page {
 	return p
 }
 
+// pixelHeavy marks a test that diffs many or large screenshots: under
+// -race each takes 5 to 20 seconds. It skips with -short and otherwise
+// runs alongside the other heavy tests, so the package's -race run fits
+// Go's 10 minute default timeout even with -count=3.
+func pixelHeavy(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("pixel-heavy test")
+	}
+	t.Parallel()
+}
+
 func byTitle(cs []model.Change) map[string]model.Change {
 	m := map[string]model.Change{}
 	for _, c := range cs {
@@ -53,6 +65,7 @@ func byTitle(cs []model.Change) map[string]model.Change {
 }
 
 func TestCompareGroupsSharedChanges(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir, cmpDir := t.TempDir(), t.TempDir(), t.TempDir()
 	paths := []string{"/", "/about/", "/blog/", "/contact/", "/shop/"}
 	before, after := &model.Run{}, &model.Run{}
@@ -133,6 +146,7 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 // differ above and below it, and on one page something else changed
 // too: one change for the banner, one for that page.
 func TestCompareGroupsInsertedBanner(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir, cmpDir := t.TempDir(), t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
@@ -177,6 +191,7 @@ func TestCompareGroupsInsertedBanner(t *testing.T) {
 // every page: one change per block per viewport, nothing per page. The
 // notice wraps onto more lines on mobile, and on some pages.
 func TestCompareGroupsTwoBlocks(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/", "/a/", "/b/", "/c/"} {
@@ -238,6 +253,7 @@ func TestCompareGroupsRemovedBlock(t *testing.T) {
 
 // More than five pages that each changed differently are one change.
 func TestCompareCollapsesManyPages(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i := range 7 {
@@ -425,6 +441,7 @@ func shortPage(content int, footerExtra func(*image.NRGBA, int)) *image.NRGBA {
 // the top of the footer push content into the filler. Each block is one
 // change, however long each page is, and the filler isn't a change.
 func TestCompareShortPages(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	gray := color.NRGBA{236, 236, 236, 255}
@@ -466,6 +483,7 @@ func windowTall(img *image.NRGBA, content int) *image.NRGBA {
 // A second, different footer change on other pages shares its line, and
 // the height the footers gained is told with it, not on its own.
 func TestCompareFooterAtDifferentHeights(t *testing.T) {
+	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
 	before, after := &model.Run{}, &model.Run{}
 	for i, path := range []string{"/1/", "/2/", "/3/", "/4/", "/5/"} {
@@ -518,6 +536,7 @@ func twoViewportRuns(t *testing.T) (*check.CompareContext, string) {
 }
 
 func TestCompareWarnsAboutUnreadableShots(t *testing.T) {
+	pixelHeavy(t)
 	const four = "visual: 4 screenshots from the snapshot are missing or unreadable; visual changes on these pages weren't checked"
 
 	t.Run("intact", func(t *testing.T) {

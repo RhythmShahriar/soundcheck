@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package visual_test
+package browsertest
 
 import (
 	"context"
@@ -27,6 +27,9 @@ import (
 
 func needBrowser(t *testing.T) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("browser test")
+	}
 	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
 		t.Skip("no Chrome or Chromium installed: ", err)
 	}
