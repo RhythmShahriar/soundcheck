@@ -90,3 +90,16 @@ func TestOnlyModulesInBothRunsCompare(t *testing.T) {
 		t.Errorf("warnings = %v", cmp.Warnings)
 	}
 }
+
+func TestMismatchEchoMode(t *testing.T) {
+	before, after := &model.Run{}, &model.Run{}
+	before.Options.Echo, before.Options.EchoMode = true, "seal"
+	after.Options.Echo, after.Options.EchoMode = true, "observe"
+	if w := strings.Join(mismatch(before, after), "\n"); !strings.Contains(w, "Echo's mode differs (snapshot seal, now observe)") {
+		t.Errorf("want an Echo mode warning, got %q", w)
+	}
+	after.Options.EchoMode = "seal"
+	if w := mismatch(before, after); len(w) != 0 {
+		t.Errorf("same mode warned: %q", w)
+	}
+}

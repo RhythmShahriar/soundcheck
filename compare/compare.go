@@ -149,6 +149,9 @@ func mismatch(before, after *model.Run) []string {
 	if !slices.Equal(before.Options.Levels, after.Options.Levels) {
 		w = append(w, fmt.Sprintf("interaction levels differ (snapshot %v, now %v)", before.Options.Levels, after.Options.Levels))
 	}
+	if before.Options.Echo && after.Options.Echo && before.Options.EchoMode != after.Options.EchoMode {
+		w = append(w, fmt.Sprintf("Echo's mode differs (snapshot %s, now %s); messages may differ only because of it", before.Options.EchoMode, after.Options.EchoMode))
+	}
 	if before.Options.LoggedIn != after.Options.LoggedIn {
 		w = append(w, "one run was logged in and the other wasn't")
 	}

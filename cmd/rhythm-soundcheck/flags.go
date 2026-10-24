@@ -328,7 +328,7 @@ func looksLikeTarget(s string) bool {
 
 // flagName points config errors at the flag that sets the same value.
 func flagName(msg string) string {
-	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "echo.url", "--echo (echo.url)", "viewports:", "--viewport (viewports):",
+	r := strings.NewReplacer("interactions.levels", "--level (interactions.levels)", "echo.url:", "--echo (echo.url):", "viewports:", "--viewport (viewports):",
 		"pages.limit", "--limit (pages.limit)", "tabs must", "--tabs must", "timeout must", "--timeout must")
 	return r.Replace(msg)
 }
