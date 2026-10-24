@@ -32,9 +32,12 @@ func Markdown(w io.Writer, r Result) error {
 	var b strings.Builder
 	run := r.Run
 	b.WriteString("## ♪ Soundcheck\n\n")
+	if Partial(r) {
+		fmt.Fprintf(&b, "> [!WARNING]\n> **Interrupted.** %s.\n\n", capitalize(partialNote))
+	}
 	if r.Compared() {
 		c := r.Comparison
-		fmt.Fprintf(&b, "**%s.** %d pages of %s compared with %s.\n\n", verdict(c), c.Pages, run.Target, snapshotAt(c.Before))
+		fmt.Fprintf(&b, "**%s.** %s of %s compared with %s.\n\n", verdict(c), plural(c.Pages, "page", "pages"), run.Target, snapshotAt(c.Before))
 		b.WriteString("| Broke | New | Changed | Slower | Fixed |\n|---:|---:|---:|---:|---:|\n|")
 		for _, class := range model.Classes {
 			fmt.Fprintf(&b, " %d |", c.Count(class))
@@ -65,7 +68,7 @@ func Markdown(w io.Writer, r Result) error {
 	} else {
 		issues := Issues(run)
 		counts := Counts(issues)
-		fmt.Fprintf(&b, "**%s.** %d pages of %s checked.\n\n", capitalize(runVerdict(run, counts)), len(run.Pages), run.Target)
+		fmt.Fprintf(&b, "**%s.** %s of %s checked.\n\n", capitalize(runVerdict(run, counts)), plural(len(run.Pages), "page", "pages"), run.Target)
 		b.WriteString("| Errors | Warnings | Notices |\n|---:|---:|---:|\n")
 		fmt.Fprintf(&b, "| %d | %d | %d |\n\n", counts[model.Error], counts[model.Warning], counts[model.Notice])
 		if len(issues) > 0 {
@@ -133,6 +136,7 @@ type junitSuites struct {
 	Name     string       `xml:"name,attr"`
 	Tests    int          `xml:"tests,attr"`
 	Failures int          `xml:"failures,attr"`
+	Errors   int          `xml:"errors,attr"`
 	Time     float64      `xml:"time,attr"`
 	Suites   []junitSuite `xml:"testsuite"`
 }
@@ -141,15 +145,28 @@ type junitSuite struct {
 	Name      string      `xml:"name,attr"`
 	Tests     int         `xml:"tests,attr"`
 	Failures  int         `xml:"failures,attr"`
+	Errors    int         `xml:"errors,attr"`
 	Skipped   int         `xml:"skipped,attr"`
 	Timestamp string      `xml:"timestamp,attr"`
-	Cases     []junitCase `xml:"testcase"`
+	// Properties carry facts about the whole run, e.g. interrupted=true.
+	Properties *junitProperties `xml:"properties,omitempty"`
+	Cases      []junitCase      `xml:"testcase"`
+}
+
+type junitProperties struct {
+	List []junitProperty `xml:"property"`
+}
+
+type junitProperty struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"value,attr"`
 }
 
 type junitCase struct {
 	Name      string        `xml:"name,attr"`
 	Classname string        `xml:"classname,attr"`
 	Failure   *junitFailure `xml:"failure,omitempty"`
+	Error     *junitFailure `xml:"error,omitempty"`
 	Skipped   *struct{}     `xml:"skipped,omitempty"`
 	Out       string        `xml:"system-out,omitempty"`
 }
@@ -211,11 +228,20 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	// dashboards record that the check ran.
 	pages := junitSuite{Name: "soundcheck.pages", Timestamp: stamp,
 		Cases: []junitCase{{Name: fmt.Sprintf("%d pages checked", len(r.Run.Pages)), Classname: "soundcheck"}}}
-	pages.Tests = 1
+	// A partial result is an error, not a pass or a failure: CI shows
+	// the check didn't finish, and --fail-on findings don't count.
+	if Partial(r) {
+		pages.Properties = &junitProperties{List: []junitProperty{{Name: "interrupted", Value: "true"}}}
+		pages.Cases = append(pages.Cases, junitCase{Name: "Run was interrupted", Classname: "soundcheck",
+			Error: &junitFailure{Message: capitalize(partialNote), Type: "interrupted"}})
+		pages.Errors = 1
+	}
+	pages.Tests = len(pages.Cases)
 	out.Suites = append(out.Suites, pages)
 	for _, s := range out.Suites {
 		out.Tests += s.Tests
 		out.Failures += s.Failures
+		out.Errors += s.Errors
 	}
 	if _, err := io.WriteString(w, xml.Header); err != nil {
 		return err

@@ -64,3 +64,14 @@ func TestRunPageConcurrentReaders(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestPageCanceled(t *testing.T) {
+	for err, want := range map[string]bool{
+		"": false, CanceledError: true, "navigate: " + CanceledError: true,
+		"net::ERR_CONNECTION_REFUSED": false, "context canceled by the site": false,
+	} {
+		if got := (&Page{Error: err}).Canceled(); got != want {
+			t.Errorf("Canceled(%q) = %v, want %v", err, got, want)
+		}
+	}
+}

@@ -110,6 +110,8 @@ td.wrap { white-space: normal; overflow-wrap: anywhere; }
 tr.none td[colspan] { color: var(--muted); font-style: italic; }
 .echo-open { color: var(--muted); font-size: 13px; margin: 12px 0 0; overflow-wrap: anywhere; }
 footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.partial { margin: 18px 0 0; padding: 12px 16px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 10px; background: color-mix(in srgb, var(--warning) 8%, var(--card)); }
+.partial b { color: var(--warning); }
 .hidden { display: none !important; }
 @media (max-width: 640px) {
   header.top { flex-wrap: wrap; } .meta { text-align: left; }
@@ -125,6 +127,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     <div class="meta"><b>{{.Target}}</b><br>{{.Created}}{{if .Against}} · against {{.Against}}{{end}}
       <button class="theme" type="button" id="theme" aria-label="Switch light or dark theme">◐ theme</button></div>
   </header>
+
+  {{if .Partial}}<div class="partial" role="alert"><b>Interrupted.</b> {{.Partial}}</div>{{end}}
 
   <div class="hero tone-{{.Tone}}">
     <div class="eyebrow">{{if .Compared}}Did the change break anything?{{else}}Site check{{end}}</div>
@@ -181,7 +185,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
   {{end}}
   <div class="empty hidden" id="nomatch"><b>Nothing matches</b>Clear the filter to see every result.</div>
   {{else}}
-  <div class="empty"><b>{{if .Compared}}No differences{{else}}No problems found{{end}}</b>{{if .Compared}}Every page looks, works and loads the way it did in the snapshot.{{else}}Every page loaded without errors.{{end}}</div>
+  <div class="empty"><b>{{if .Compared}}No differences{{else}}No problems found{{end}}</b>{{if .Partial}}Every page that was checked {{if .Compared}}looks, works and loads the way it did in the snapshot{{else}}loaded without errors{{end}}.{{else if .Compared}}Every page looks, works and loads the way it did in the snapshot.{{else}}Every page loaded without errors.{{end}}</div>
   {{end}}
 
   {{if .Notes}}

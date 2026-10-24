@@ -61,8 +61,13 @@ func Saver(dir string) func(name string, data []byte) error {
 	}
 }
 
-// SaveRun writes run.json into dir.
+// SaveRun writes run.json into dir. A run with pages whose visit was
+// canceled is marked as interrupted, so it's never read back as a full
+// result.
 func SaveRun(dir string, r *model.Run) error {
+	if slices.ContainsFunc(r.Pages, func(p model.Page) bool { return p.Canceled() }) {
+		r.Interrupted = true
+	}
 	return cache.WriteJSON(filepath.Join(dir, "run.json"), r)
 }
 

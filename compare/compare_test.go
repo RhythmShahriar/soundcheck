@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +181,86 @@ func TestSortTieBreaks(t *testing.T) {
 	want := "z/t,ay/as,ay/at,ay/bt,az/t,b/t"
 	if strings.Join(got, ",") != want {
 		t.Errorf("order = %v, want %s", got, want)
+	}
+}
+
+// titles is a Comparer that reports a changed title on every pair of
+// pages, like the content module.
+type titles struct{}
+
+func (titles) Name() string { return "content" }
+func (titles) Compare(_ context.Context, cc *check.CompareContext) []model.Change {
+	var out []model.Change
+	for _, pair := range cc.Pairs() {
+		if pair[0].Title != pair[1].Title {
+			out = append(out, model.Change{Class: model.Changed, Check: "content/title", Title: "Page title changed",
+				Pages: []string{pair[1].Path}, Before: pair[0].Title, After: pair[1].Title})
+		}
+	}
+	return out
+}
+
+// interruptedRuns is a snapshot of three pages and a run stopped while
+// two of them were loading: their visits ended with "context canceled"
+// and empty facts.
+func interruptedRuns() (before, after *model.Run) {
+	before = &model.Run{Pages: []model.Page{
+		{Path: "/", Title: "Home"}, {Path: "/slow", Title: "Slow"}, {Path: "/shop/", Title: "Shop"},
+	}}
+	canceled := func(path string) model.Page {
+		return model.Page{Path: path, Error: model.CanceledError, Issues: []model.Issue{
+			issue("health/unreachable", model.Error, "Page didn't load: context canceled"),
+			issue("health/white-screen", model.Error, "Blank page (white screen)"),
+		}}
+	}
+	after = &model.Run{Pages: []model.Page{{Path: "/", Title: "Home"}, canceled("/slow"), canceled("/shop/")}}
+	return before, after
+}
+
+func TestInterruptedRunDropsCanceledPages(t *testing.T) {
+	before, after := interruptedRuns()
+	c := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, []check.Module{titles{}}, "test")
+	if len(c.Changes) != 0 {
+		t.Errorf("canceled pages were compared: %+v", c.Changes)
+	}
+	if !c.Interrupted {
+		t.Error("the comparison must be marked interrupted")
+	}
+	if c.Pages != 1 {
+		t.Errorf("pages = %d, want the 1 that was checked", c.Pages)
+	}
+	if len(c.Warnings) == 0 || c.Warnings[0] != "interrupted: 2 pages were not checked" {
+		t.Errorf("warnings = %q", c.Warnings)
+	}
+	if len(after.Pages) != 3 || after.Interrupted {
+		t.Error("Compare must not change the run it was given")
+	}
+
+	// A canceled page in the snapshot isn't compared either, but the
+	// current run is complete.
+	before, after = interruptedRuns()
+	before.Pages, after.Pages = after.Pages, before.Pages
+	c = Compare(context.Background(), &check.CompareContext{Before: before, After: after}, []check.Module{titles{}}, "test")
+	if len(c.Changes) != 0 || c.Interrupted {
+		t.Errorf("changes = %+v, interrupted = %v", c.Changes, c.Interrupted)
+	}
+	if len(c.Warnings) == 0 || !strings.Contains(c.Warnings[0], "the snapshot was interrupted: 2 pages") {
+		t.Errorf("warnings = %q", c.Warnings)
+	}
+}
+
+func TestCompleteRunIsNotInterrupted(t *testing.T) {
+	before, _ := interruptedRuns()
+	after := &model.Run{Pages: slices.Clone(before.Pages)}
+	after.Pages[1].Error = "net::ERR_CONNECTION_REFUSED" // a real failure is compared
+	after.Pages[1].Issues = []model.Issue{issue("health/unreachable", model.Error, "Page didn't load: net::ERR_CONNECTION_REFUSED")}
+	c := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+	if c.Interrupted || len(c.Changes) != 1 || c.Changes[0].Class != model.Broke {
+		t.Errorf("interrupted = %v, changes = %+v", c.Interrupted, c.Changes)
+	}
+	after.Interrupted = true // stopped between pages: nothing to drop, still partial
+	c = Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+	if !c.Interrupted || !strings.HasPrefix(c.Warnings[0], "interrupted: the run was stopped") {
+		t.Errorf("interrupted = %v, warnings = %q", c.Interrupted, c.Warnings)
 	}
 }

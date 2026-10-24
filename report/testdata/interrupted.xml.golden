@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="soundcheck" tests="2" failures="0" errors="1" time="6">
+  <testsuite name="soundcheck.broke" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.new" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.changed" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.slower" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.fixed" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-23T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.pages" tests="2" failures="0" errors="1" skipped="0" timestamp="2026-10-23T09:00:00Z">
+    <properties>
+      <property name="interrupted" value="true"></property>
+    </properties>
+    <testcase name="3 pages checked" classname="soundcheck"></testcase>
+    <testcase name="Run was interrupted" classname="soundcheck">
+      <error message="Stopped before it finished; these results are partial" type="interrupted"></error>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,23 @@
+{
+  "schema": "rhythm-soundcheck/v1",
+  "tool": "rhythm-soundcheck",
+  "version": "1.0.0",
+  "before": {
+    "target": "http://brew.test/",
+    "name": "good",
+    "dir": "",
+    "started": "0001-01-01T00:00:00Z"
+  },
+  "after": {
+    "target": "http://brew.test/",
+    "dir": "",
+    "started": "2026-10-23T09:00:00Z"
+  },
+  "changes": [],
+  "pages": 1,
+  "warnings": [
+    "interrupted: 2 pages were not checked"
+  ],
+  "created": "2026-10-23T09:00:06Z",
+  "interrupted": true
+}

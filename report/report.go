@@ -60,12 +60,27 @@ var levelGlyphs = map[model.Level]string{model.Error: "✗", model.Warning: "▲
 // Levels in report order.
 var Levels = []model.Level{model.Error, model.Warning, model.Notice}
 
+// Partial reports whether the result is incomplete because the run was
+// stopped before it finished. A partial result never fails a build on
+// its findings (see FailOn); the command exits with its own code instead.
+func Partial(r Result) bool {
+	if r.Comparison != nil && r.Comparison.Interrupted {
+		return true
+	}
+	return r.Run != nil && r.Run.Interrupted
+}
+
+// partialNote explains a partial result in every format. It fits the
+// terminal's width after the INTERRUPTED mark.
+const partialNote = "stopped before it finished; these results are partial"
+
 // FailOn reports whether a result should fail a CI build at threshold.
 // For a comparison the threshold is a change class: "new" fails on BROKE
 // or NEW, "changed" also on CHANGED, and so on (FIXED never fails). For a
 // single run it's an issue level: "warning" fails on errors or warnings.
+// A partial result never fails: what it lacks isn't a finding.
 func FailOn(r Result, threshold string) bool {
-	if threshold == "" {
+	if threshold == "" || Partial(r) {
 		return false
 	}
 	if r.Compared() {
@@ -102,10 +117,21 @@ func ValidFailOn(threshold string, compared bool) error {
 
 // Issues returns a run's issues with the same problem on several pages
 // merged into one, most serious first, then by how many pages have it.
+// Pages whose visit was canceled are left out: they weren't checked.
 func Issues(run *model.Run) []model.Issue {
 	var out []model.Issue
 	at := map[string]int{}
-	for _, i := range run.AllIssues() {
+	var all []model.Issue
+	for _, p := range run.Pages {
+		if p.Canceled() {
+			continue
+		}
+		for _, i := range p.Issues {
+			i.Pages = []string{p.Path}
+			all = append(all, i)
+		}
+	}
+	for _, i := range append(all, run.Issues...) {
 		k := i.Key
 		if k == "" {
 			i.Identify()

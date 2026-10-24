@@ -21,14 +21,40 @@ import (
 )
 
 // Compare diffs cc.Before and cc.After.
+//
+// Pages whose visit was canceled (the run was stopped) are left out:
+// they recorded nothing real, and comparing them would report the site
+// as broken. The comparison is then marked as interrupted.
 func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Module, version string) *model.Comparison {
+	// Settings and pages missing from the run are judged on the runs as
+	// given: a canceled page was reached, so it isn't counted as missing.
+	warnings := mismatch(cc.Before, cc.After)
+	before, droppedBefore := withoutCanceled(cc.Before)
+	after, dropped := withoutCanceled(cc.After)
+	if droppedBefore+dropped > 0 {
+		c := *cc
+		c.Before, c.After = before, after
+		cc = &c
+	}
 	out := &model.Comparison{
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: version, Created: time.Now().UTC(),
 		Before: ref(cc.Before, cc.BeforeDir), After: ref(cc.After, cc.AfterDir), Pages: len(cc.After.Pages),
 	}
 	// The run's own notes (a skipped leak test, unreadable flows) belong in
 	// the comparison too, so JSON readers see them.
-	out.Warnings = append(mismatch(cc.Before, cc.After), cc.After.Warnings...)
+	out.Warnings = append(warnings, cc.After.Warnings...)
+	var notes []string
+	if out.Interrupted = cc.After.Interrupted || dropped > 0; out.Interrupted {
+		note := "interrupted: the run was stopped before it finished; pages it didn't reach weren't checked"
+		if dropped > 0 {
+			note = "interrupted: " + pagesNotChecked(dropped)
+		}
+		notes = append(notes, note)
+	}
+	if droppedBefore > 0 {
+		notes = append(notes, fmt.Sprintf("the snapshot was interrupted: %s in it weren't finished and aren't compared", plural(droppedBefore)))
+	}
+	out.Warnings = append(notes, out.Warnings...)
 	out.Changes = Issues(cc.Before, cc.After)
 	// A module that ran only once has nothing to compare against: all its
 	// issues would look new (or fixed).
@@ -57,6 +83,38 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	}
 	Sort(out.Changes)
 	return out
+}
+
+// withoutCanceled returns r without the pages whose visit was canceled,
+// and how many it left out. r itself is returned when there are none.
+func withoutCanceled(r *model.Run) (*model.Run, int) {
+	n := 0
+	for i := range r.Pages {
+		if r.Pages[i].Canceled() {
+			n++
+		}
+	}
+	if n == 0 {
+		return r, 0
+	}
+	cp := *r
+	cp.Pages = slices.DeleteFunc(slices.Clone(r.Pages), func(p model.Page) bool { return p.Canceled() })
+	cp.Interrupted = true
+	return &cp, n
+}
+
+func pagesNotChecked(n int) string {
+	if n == 1 {
+		return "1 page was not checked"
+	}
+	return fmt.Sprintf("%d pages were not checked", n)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return "1 page"
+	}
+	return fmt.Sprintf("%d pages", n)
 }
 
 func ref(r *model.Run, dir string) model.RunRef {

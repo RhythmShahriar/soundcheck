@@ -140,3 +140,21 @@ func TestExcludeFromGitSkipsIgnoredFolders(t *testing.T) {
 		t.Errorf("an ignored folder mustn't add exclude lines:\n%s", data)
 	}
 }
+
+func TestSaveRunMarksInterrupted(t *testing.T) {
+	dir := t.TempDir()
+	r := &model.Run{Schema: model.Schema, Pages: []model.Page{{Path: "/"}, {Path: "/b", Error: "net::ERR_FAILED"}}}
+	if err := SaveRun(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := LoadRun(dir); got.Interrupted {
+		t.Error("a failed page isn't an interrupted run")
+	}
+	r.Pages = append(r.Pages, model.Page{Path: "/c", Error: model.CanceledError})
+	if err := SaveRun(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := LoadRun(dir); !got.Interrupted {
+		t.Error("a run with a canceled page must be saved as interrupted")
+	}
+}

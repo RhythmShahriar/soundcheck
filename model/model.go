@@ -10,6 +10,7 @@ package model
 import (
 	"crypto/sha1" //nolint:gosec // short stable IDs for file names, not security
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -153,6 +154,18 @@ type Page struct {
 	Text string `json:"-"`
 }
 
+// CanceledError is a page's Error when the run was stopped (Ctrl+C, a
+// signal) before its visit finished. The engine records exactly this
+// text, the message of context.Canceled.
+const CanceledError = "context canceled"
+
+// Canceled reports whether the page's visit was cut short because the run
+// was stopped. Such a page wasn't checked: what it recorded says nothing
+// about the site.
+func (p *Page) Canceled() bool {
+	return p.Error == CanceledError || strings.HasSuffix(p.Error, ": "+CanceledError)
+}
+
 // EchoAction is one thing Soundcheck did (a form submit, a flow) and the
 // messages Echo saw the site send because of it.
 type EchoAction struct {
@@ -183,6 +196,9 @@ type Run struct {
 	// Echo lists the messages each flow made the site send (form submits
 	// are on their pages).
 	Echo []EchoAction `json:"echo,omitempty"`
+	// Interrupted says the run was stopped before it finished, so it
+	// holds partial results; see Page.Canceled.
+	Interrupted bool `json:"interrupted,omitempty"`
 
 	index *pageIndex // see Page
 }
@@ -328,6 +344,10 @@ type Comparison struct {
 	Pages    int       `json:"pages"`
 	Warnings []string  `json:"warnings,omitempty"`
 	Created  time.Time `json:"created"`
+	// Interrupted says the current run was stopped before it finished:
+	// pages it didn't finish weren't compared, so the comparison is
+	// partial and must not pass or fail a build.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 // RunRef points at a stored run.

@@ -199,11 +199,26 @@ func (p *Pretty) Log(msg string) {
 // Summary prints the result.
 func (p *Pretty) Summary(r Result, hint string) {
 	p.clear()
+	p.banner(r)
 	if r.Compared() {
 		p.comparison(r, hint)
 	} else {
 		p.run(r, hint)
 	}
+}
+
+// banner warns that a result is partial, first and even when quiet, so
+// nobody reads it as a full check.
+func (p *Pretty) banner(r Result) {
+	if !Partial(r) {
+		return
+	}
+	if p.o.Plain {
+		fmt.Fprintf(p.w, "\nINTERRUPTED - %s\n", partialNote)
+		return
+	}
+	mark := lipgloss.NewStyle().Foreground(lipgloss.Color(ui.High)).Bold(true).Render("! INTERRUPTED")
+	fmt.Fprintf(p.w, "\n  %s  %s\n", mark, muted.Render(partialNote))
 }
 
 func (p *Pretty) comparison(r Result, hint string) {
@@ -375,14 +390,20 @@ func (p *Pretty) notes(lists ...[]string) {
 // stats is "124 pages · 2m10s".
 func (r Result) stats() string {
 	parts := []string{plural(len(r.Run.Pages), "page", "pages")}
-	failed := 0
-	for _, p := range r.Run.Pages {
-		if p.Error != "" {
+	failed, canceled := 0, 0
+	for i := range r.Run.Pages {
+		switch p := &r.Run.Pages[i]; {
+		case p.Canceled():
+			canceled++
+		case p.Error != "":
 			failed++
 		}
 	}
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d couldn't be loaded", failed))
+	}
+	if canceled > 0 {
+		parts = append(parts, fmt.Sprintf("%d not checked (interrupted)", canceled))
 	}
 	if r.Run.Options.Echo {
 		parts = append(parts, echoSummary(r.Run))

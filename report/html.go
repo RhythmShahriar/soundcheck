@@ -42,6 +42,7 @@ const (
 type htmlData struct {
 	Title, Version, Target, Created, Stats string
 	Compared                               bool
+	Partial                                string // why the result is incomplete, when it is
 	Verdict, Tone                          string
 	Against                                string
 	Chips                                  []htmlChip
@@ -99,6 +100,9 @@ func HTML(w io.Writer, r Result) error {
 	d := htmlData{
 		Version: run.Version, Target: run.Target, Created: run.Started.Local().Format("2 Jan 2006, 15:04"),
 		Compared: r.Compared(), Stats: r.stats(),
+	}
+	if Partial(r) {
+		d.Partial = capitalize(partialNote) + "."
 	}
 	if r.Compared() {
 		c := r.Comparison
@@ -180,6 +184,11 @@ func HTML(w io.Writer, r Result) error {
 		d.Notes = run.Warnings
 	}
 	for _, p := range run.Pages {
+		if p.Canceled() {
+			d.Pages = append(d.Pages, htmlPage{Path: p.Path, URL: p.URL, Status: "not checked", Issues: "–",
+				Time: "–", LCP: "–", CLS: "–", Weight: "–"})
+			continue
+		}
 		hp := htmlPage{Path: p.Path, URL: p.URL, Status: fmt.Sprint(p.Status), Issues: fmt.Sprint(len(p.Issues)),
 			Time: ms(p.Metrics.Load), LCP: ms(p.Metrics.LCP), CLS: fmt.Sprintf("%.2f", p.Metrics.CLS), Weight: bytesLabel(p.Metrics.Bytes)}
 		if p.Error != "" {
