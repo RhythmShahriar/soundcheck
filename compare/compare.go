@@ -249,6 +249,9 @@ func Sort(cs []model.Change) {
 // differences may then come from the settings, not the site.
 func mismatch(before, after *model.Run) []string {
 	var w []string
+	if note := versionNote(before.Version, after.Version); note != "" {
+		w = append(w, note)
+	}
 	if !slices.Equal(before.Options.Viewports, after.Options.Viewports) {
 		w = append(w, fmt.Sprintf("viewports differ (snapshot %v, now %v)", before.Options.Viewports, after.Options.Viewports))
 	}
