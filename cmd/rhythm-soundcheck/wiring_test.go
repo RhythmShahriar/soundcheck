@@ -539,6 +539,10 @@ func TestHelpTopics(t *testing.T) {
 			t.Errorf("help %s: exit %d\n%s", cmd, code, out)
 		}
 	}
+	if _, out, _ := runCLI(t, "help", "report"); !strings.Contains(out, "agency.yaml takes four keys") || !strings.Contains(out, "accent: ") ||
+		!strings.Contains(out, "contact: ") {
+		t.Errorf("help report doesn't list the agency.yaml keys:\n%s", out)
+	}
 	_, out, _ := runCLI(t, "help")
 	for _, row := range []string{"      --serve ", "      --client ", "      --brand <file> ", "      --site <url> ", "      --force ", "      --pages-only "} {
 		if !strings.Contains(out, row) {

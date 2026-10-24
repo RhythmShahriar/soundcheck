@@ -193,7 +193,9 @@ func TestLoadBrandRefuses(t *testing.T) {
 		"style element":  {"name: A\nlogo: logo.svg\n", "logo.svg", svg(`<style>@import url(https://evil.test/a.css);</style>`), "<style>"},
 		"no name":        {"logo: logo.png\n", "", "", "name"},
 		"bad accent":     {"name: A\naccent: 'red; background: url(x)'\n", "", "", "accent"},
-		"unknown key":    {"name: A\ncolor: '#fff'\n", "", "", "color"},
+		"unknown key":    {"name: A\nlogoo: x.png\n", "", "", `line 2: unknown key "logoo" (did you mean "logo"?); agency.yaml takes name, logo, accent and contact`},
+		"color twice":    {"name: A\naccent: '#fff'\ncolor: '#000'\n", "", "", "line 3: accent is already set on line 2"},
+		"not keys":       {"- name\n", "", "", "want keys like"},
 	} {
 		dir := t.TempDir()
 		if tc.file != "" {
@@ -209,6 +211,18 @@ func TestLoadBrandRefuses(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want it to mention %q", name, err, tc.want)
 		}
+	}
+}
+
+// help calls accent the agency's color, so color: is taken for it.
+func TestLoadBrandTakesColorForAccent(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "agency.yaml")
+	if err := os.WriteFile(p, []byte("name: Acme\ncolor: '#0F766E'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := LoadBrand(p)
+	if err != nil || b.Accent != "#0F766E" {
+		t.Errorf("LoadBrand = %+v, %v", b, err)
 	}
 }
 

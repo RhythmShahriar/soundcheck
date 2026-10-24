@@ -498,6 +498,12 @@ output format: --md, --json, --junit, --html or -o <file>. --serve opens the
 comparison in the browser, where each change can be accepted or ignored.
 --client writes a client-ready HTML report with the agency's name, logo and
 color from --brand, to -o or stdout.
+
+agency.yaml takes four keys:
+  name: Acme Web              the agency's name (required)
+  logo: logo.svg              PNG, JPEG or SVG, inside the folder of agency.yaml
+  accent: "#0F766E"           hex color for headings and badges (color: works too)
+  contact: hello@acme.test    how the client reaches you, shown as text
 `
 
 const importTopic = `Usage:

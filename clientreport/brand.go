@@ -27,6 +27,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/RhythmShahriar/soundcheck/config"
 )
 
 // DefaultAccent is the Rhythm dot, used when agency.yaml sets no color.
@@ -59,9 +61,7 @@ func LoadBrand(path string) (Brand, error) {
 	if err != nil {
 		return b, err
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&b); err != nil && !errors.Is(err, io.EOF) {
+	if err := decodeBrand(data, &b); err != nil {
 		return b, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := b.Validate(); err != nil {
@@ -71,6 +71,46 @@ func LoadBrand(path string) (Brand, error) {
 		return b, fmt.Errorf("%s: %w", path, err)
 	}
 	return b, nil
+}
+
+// brandKeys are the keys agency.yaml takes.
+var brandKeys = []string{"name", "logo", "accent", "contact"}
+
+// decodeBrand reads agency.yaml into b. "color" (and "colour") is taken
+// for accent, as help calls it the agency's color. An unknown key names
+// its line and the keys there are, not yaml's Go type names.
+func decodeBrand(data []byte, b *Brand) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	if len(doc.Content) == 0 { // empty, or only comments
+		return nil
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: want keys like \"name: Acme Web\": %s", root.Line, keyList())
+	}
+	seen := map[string]int{}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		k := root.Content[i]
+		if k.Value == "color" || k.Value == "colour" {
+			k.Value = "accent"
+		}
+		if !slices.Contains(brandKeys, k.Value) {
+			return fmt.Errorf("line %d: unknown key %q%s; agency.yaml takes %s", k.Line, root.Content[i].Value,
+				config.DidYouMean(k.Value, brandKeys), keyList())
+		}
+		if line, ok := seen[k.Value]; ok {
+			return fmt.Errorf("line %d: %s is already set on line %d (color is another name for accent)", k.Line, k.Value, line)
+		}
+		seen[k.Value] = k.Line
+	}
+	return root.Decode(b)
+}
+
+func keyList() string {
+	return strings.Join(brandKeys[:len(brandKeys)-1], ", ") + " and " + brandKeys[len(brandKeys)-1]
 }
 
 // Validate checks the name and the accent color.

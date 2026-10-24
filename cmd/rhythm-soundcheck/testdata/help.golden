@@ -61,7 +61,8 @@ Output:
       --client               report: a client-ready HTML report, to -o or
                              stdout; needs --brand
       --brand <file>         report --client: the agency's name, logo and
-                             color (agency.yaml)
+                             color (agency.yaml with name, logo, accent and
+                             contact; see help report)
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
       --no-color             no color
