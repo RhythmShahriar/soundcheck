@@ -353,6 +353,11 @@ type Change struct {
 	// whether it's real. It isn't stored: Confirm runs on a fresh
 	// comparison.
 	FromPageIssue bool `json:"-"`
+	// Key is the issue key of a change compare.Issues grouped from
+	// issues (see Issue.Identify), so its ID stays the same when the
+	// issue shows up on more pages. Other changes leave it empty. It
+	// isn't stored: IDs are given before a comparison is written.
+	Key string `json:"-"`
 }
 
 // Comparison is the result of `compare`: what changed between two runs.

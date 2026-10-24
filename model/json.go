@@ -128,12 +128,19 @@ func (r *Run) Complete() {
 }
 
 // ChangeID is the first 8 hex digits of the SHA-256 of the change's
-// check, title, source and pages. The same change in two comparisons
-// gets the same ID; a change that spread to another page gets a new one.
-// The class is left out, so a change keeps its ID when it's only
-// reclassified (a NEW change found UNSTABLE).
+// check, title, source and group key. The same change in two
+// comparisons gets the same ID. For a change grouped from issues the
+// group key is the issue key, so an issue that spread to another page
+// keeps its ID; for any other change it's the pages, which tell apart
+// the same visual or speed change on two pages. The class is left out,
+// so a change keeps its ID when it's only reclassified (a NEW change
+// found UNSTABLE).
 func ChangeID(c Change) string {
-	return shortHash(c.Check, c.Title, c.Source, strings.Join(c.Pages, ","))
+	key := c.Key
+	if key == "" {
+		key = strings.Join(c.Pages, ",")
+	}
+	return shortHash(c.Check, c.Title, c.Source, key)
 }
 
 func shortHash(parts ...string) string {
@@ -144,8 +151,9 @@ func shortHash(parts ...string) string {
 // identify gives every change without an ID one that is unique across
 // all the lists (a comparison's changes and its ignored ones). Two
 // changes that ChangeID can't tell apart (the same title on the same
-// page with other values) are told apart by class, before and after,
-// then by their order, which Sort makes deterministic.
+// page with other values, or one issue in two classes) are told apart
+// by class, before and after, then by pages and their order, which Sort
+// makes deterministic.
 func identify(lists ...[]Change) {
 	seen := map[string]bool{}
 	for _, cs := range lists {
@@ -164,6 +172,9 @@ func identify(lists ...[]Change) {
 			id := ChangeID(*c)
 			if seen[id] {
 				id = shortHash(id, c.Class, c.Before, c.After)
+			}
+			if seen[id] {
+				id = shortHash(id, strings.Join(c.Pages, ","))
 			}
 			for n := 2; seen[id]; n++ {
 				id = shortHash(ChangeID(*c), fmt.Sprint(n))

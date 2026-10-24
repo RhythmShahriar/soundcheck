@@ -33,6 +33,19 @@ func TestChangeID(t *testing.T) {
 			t.Errorf("another %s kept the id", name)
 		}
 	}
+	// An issue grouped by its key keeps its id on more pages.
+	grouped := a
+	grouped.Key = a.Check + "|" + a.Title + "|" + a.Source
+	spread := grouped
+	spread.Pages = []string{"/", "/a", "/b"}
+	if ChangeID(spread) != ChangeID(grouped) {
+		t.Error("an issue on one more page got another id")
+	}
+	other := grouped
+	other.Key, other.Title = "health/js-error|JS error: y|app.js:1", "JS error: y"
+	if ChangeID(other) == ChangeID(grouped) {
+		t.Error("another issue kept the id")
+	}
 }
 
 func TestIdentifyKeepsIDsUnique(t *testing.T) {

@@ -264,3 +264,23 @@ func TestCompleteRunIsNotInterrupted(t *testing.T) {
 		t.Errorf("interrupted = %v, warnings = %q", c.Interrupted, c.Warnings)
 	}
 }
+
+func TestIssueKeepsItsIDOnMorePages(t *testing.T) {
+	warn := issue("health/php-error", model.Warning, `PHP Warning: Undefined array key "id"`)
+	idOn := func(paths ...string) string {
+		after := &model.Run{}
+		for _, p := range paths {
+			after.Pages = append(after.Pages, model.Page{Path: p, Issues: []model.Issue{warn}})
+		}
+		before := &model.Run{Pages: []model.Page{{Path: "/"}, {Path: "/a/"}}}
+		c := &model.Comparison{Changes: Issues(before, after)}
+		c.Complete()
+		if len(c.Changes) != 1 {
+			t.Fatalf("changes = %+v", c.Changes)
+		}
+		return c.Changes[0].ID
+	}
+	if one, two := idOn("/"), idOn("/", "/a/"); one != two {
+		t.Errorf("the warning on one more page got another id: %s, %s", one, two)
+	}
+}
