@@ -202,7 +202,15 @@ func HTML(w io.Writer, r Result) error {
 		d.Pages = append(d.Pages, hp)
 	}
 	d.Echo = echoTable(run)
-	return htmlTemplate.Execute(w, d)
+	// html/template escapes site text but keeps bidi overrides, which
+	// make a name like "gnp.exe" read backwards. None of the report's own
+	// text has one, so they are removed from the whole page.
+	var buf bytes.Buffer
+	if err := htmlTemplate.Execute(&buf, d); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, noBidi(buf.String()))
+	return err
 }
 
 // echoTable is one row per message, and one for each action that sent

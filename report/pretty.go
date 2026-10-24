@@ -94,6 +94,7 @@ func (p *Pretty) Header(version, target string) {
 	if p.o.Quiet {
 		return
 	}
+	version, target = Term(version), Term(target)
 	if p.o.Plain {
 		fmt.Fprintf(p.w, "rhythm soundcheck %s - %s\n\n", version, target)
 		return
@@ -110,6 +111,7 @@ func (p *Pretty) Step(label, value string) {
 		return
 	}
 	p.clear()
+	label, value = Term(label), Term(value)
 	if p.o.Plain {
 		fmt.Fprintf(p.w, "%s: %s\n", label, value)
 		return
@@ -147,7 +149,7 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		p.clear()
 		status := fmt.Sprint(pg.Status)
 		if pg.Error != "" {
-			status = "failed: " + pg.Error
+			status = "failed: " + Term(pg.Error)
 		}
 		mark := "ok"
 		if bad {
@@ -155,7 +157,7 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 		} else if len(pg.Issues) > 0 {
 			mark = plural(len(pg.Issues), "issue", "issues")
 		}
-		line := fmt.Sprintf("%s %s %s (%s)", pg.Path, status, time.Duration(pg.Duration*float64(time.Millisecond)).Round(10*time.Millisecond), mark)
+		line := fmt.Sprintf("%s %s %s (%s)", Term(pg.Path), status, time.Duration(pg.Duration*float64(time.Millisecond)).Round(10*time.Millisecond), mark)
 		if p.o.Plain {
 			fmt.Fprintf(p.w, "[%d/%d] %s\n", done, total, line)
 		} else {
@@ -188,7 +190,7 @@ func (p *Pretty) Log(msg string) {
 		return
 	}
 	p.clear()
-	msg = strings.TrimPrefix(msg, "!")
+	msg = Term(strings.TrimPrefix(msg, "!"))
 	if p.o.Plain {
 		fmt.Fprintln(p.errw, strings.TrimSpace(msg))
 		return
@@ -223,7 +225,11 @@ func (p *Pretty) banner(r Result) {
 
 func (p *Pretty) comparison(r Result, hint string) {
 	c := r.Comparison
-	groups := byClass(c.Changes)
+	safe := make([]model.Change, len(c.Changes))
+	for i, ch := range c.Changes {
+		safe[i] = termChange(ch)
+	}
+	groups := byClass(safe)
 	if p.o.Plain {
 		if len(c.Changes) > 0 {
 			fmt.Fprintln(p.w)
@@ -297,6 +303,9 @@ func (p *Pretty) comparison(r Result, hint string) {
 
 func (p *Pretty) run(r Result, hint string) {
 	issues := Issues(r.Run)
+	for i := range issues {
+		issues[i] = termIssue(issues[i])
+	}
 	if p.o.Plain {
 		if len(issues) > 0 {
 			fmt.Fprintln(p.w)
@@ -373,6 +382,7 @@ func (p *Pretty) notes(lists ...[]string) {
 	}
 	const show = 5
 	for i, n := range all {
+		n = Term(n)
 		if i == show {
 			n = fmt.Sprintf("…and %d more warnings in the report", len(all)-show)
 		}
@@ -556,7 +566,7 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 }
 
 // snapshotName is `snapshot "good" (3h ago)` for the terminal.
-func snapshotName(r model.RunRef) string { return refName(r, true) }
+func snapshotName(r model.RunRef) string { return Term(refName(r, true)) }
 
 // snapshotAt is `snapshot "good" (23 Oct 2026 18:04 UTC)`, for saved
 // reports where "3h ago" would go stale.
@@ -625,7 +635,7 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 	}
 	title := "SOUNDCHECK"
 	if r.Name != "" {
-		title = "SNAPSHOT " + strings.ToUpper(r.Name)
+		title = "SNAPSHOT " + strings.ToUpper(Term(r.Name))
 	}
 	head := bold.Render(title) + "   " + lipgloss.NewStyle().Foreground(color).Bold(true).Render(capitalize(runVerdict(r, counts)))
 	if r.Name != "" {

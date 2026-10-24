@@ -37,7 +37,7 @@ func Markdown(w io.Writer, r Result) error {
 	}
 	if r.Compared() {
 		c := r.Comparison
-		fmt.Fprintf(&b, "**%s.** %s of %s compared with %s.\n\n", verdict(c), plural(c.Pages, "page", "pages"), run.Target, snapshotAt(c.Before))
+		fmt.Fprintf(&b, "**%s.** %s of %s compared with %s.\n\n", verdict(c), plural(c.Pages, "page", "pages"), MarkdownText(run.Target), MarkdownText(snapshotAt(c.Before)))
 		b.WriteString("| Broke | New | Changed | Slower | Fixed |\n|---:|---:|---:|---:|---:|\n|")
 		for _, class := range model.Classes {
 			fmt.Fprintf(&b, " %d |", c.Count(class))
@@ -68,7 +68,7 @@ func Markdown(w io.Writer, r Result) error {
 	} else {
 		issues := Issues(run)
 		counts := Counts(issues)
-		fmt.Fprintf(&b, "**%s.** %s of %s checked.\n\n", capitalize(runVerdict(run, counts)), plural(len(run.Pages), "page", "pages"), run.Target)
+		fmt.Fprintf(&b, "**%s.** %s of %s checked.\n\n", MarkdownText(capitalize(runVerdict(run, counts))), plural(len(run.Pages), "page", "pages"), MarkdownText(run.Target))
 		b.WriteString("| Errors | Warnings | Notices |\n|---:|---:|---:|\n")
 		fmt.Fprintf(&b, "| %d | %d | %d |\n\n", counts[model.Error], counts[model.Warning], counts[model.Notice])
 		if len(issues) > 0 {
@@ -84,7 +84,7 @@ func Markdown(w io.Writer, r Result) error {
 		}
 		writeNotes(&b, run.Warnings)
 	}
-	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", run.Version, r.stats(), run.Started.Format("2006-01-02 15:04 MST"))
+	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", MarkdownText(run.Version), r.stats(), run.Started.Format("2006-01-02 15:04 MST"))
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -100,13 +100,17 @@ func writeNotes(b *strings.Builder, notes []string) {
 	b.WriteString("\n</details>\n\n")
 }
 
+// mdPages shows up to three paths as code, where Markdown is inert. A
+// code span can't escape a backtick, so backticks are dropped, and GitHub
+// splits table cells on a pipe even inside one, so pipes are escaped.
 func mdPages(pages []string) string {
 	if len(pages) == 0 {
 		return "site-wide"
 	}
 	var codes []string
 	for _, p := range pages[:min(len(pages), 3)] {
-		codes = append(codes, "`"+strings.ReplaceAll(p, "`", "")+"`")
+		p = strings.NewReplacer("`", "", "|", `\|`).Replace(Term(p))
+		codes = append(codes, "`"+p+"`")
 	}
 	s := strings.Join(codes, " ")
 	if len(pages) > 3 {
@@ -115,11 +119,8 @@ func mdPages(pages []string) string {
 	return s
 }
 
-// mdCell makes text safe inside a Markdown table cell.
-func mdCell(s string) string {
-	r := strings.NewReplacer("|", `\|`, "\n", " ", "\r", "", "<", "&lt;", ">", "&gt;")
-	return r.Replace(s)
-}
+// mdCell makes text safe inside a Markdown table cell; see MarkdownText.
+func mdCell(s string) string { return MarkdownText(s) }
 
 func capitalize(s string) string {
 	if s == "" {
@@ -189,9 +190,10 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 		for i, class := range model.Classes {
 			s := junitSuite{Name: "soundcheck." + class, Timestamp: stamp}
 			for _, ch := range groups[class] {
-				tc := junitCase{Name: ch.Title, Classname: strings.ReplaceAll(ch.Check, "/", "."), Out: caseText(ch.Pages, beforeAfter(ch), ch.Source, ch.Detail, ch.Fix)}
+				tc := junitCase{Name: xmlText(ch.Title), Classname: xmlText(strings.ReplaceAll(ch.Check, "/", ".")),
+					Out: caseText(ch.Pages, beforeAfter(ch), ch.Source, ch.Detail, ch.Fix)}
 				if i <= limit && class != model.Fixed {
-					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + ch.Title, Type: class, Text: tc.Out}
+					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -212,9 +214,10 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 				if i.Level != level {
 					continue
 				}
-				tc := junitCase{Name: i.Title, Classname: strings.ReplaceAll(i.Check, "/", "."), Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
+				tc := junitCase{Name: xmlText(i.Title), Classname: xmlText(strings.ReplaceAll(i.Check, "/", ".")),
+					Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
 				if level.Rank() <= limit {
-					tc.Failure = &junitFailure{Message: i.Title, Type: string(level), Text: tc.Out}
+					tc.Failure = &junitFailure{Message: tc.Name, Type: string(level), Text: tc.Out}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -255,12 +258,14 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 	return err
 }
 
+// caseText is a test case's text, made safe for XML: control characters
+// shown as text, characters XML forbids dropped.
 func caseText(pages []string, ba, source, detail, fix string) string {
 	var lines []string
-	lines = append(lines, "where: "+pagesLabel(pages, 10))
+	lines = append(lines, "where: "+xmlText(pagesLabel(pages, 10)))
 	for _, kv := range [][2]string{{"before → after", ba}, {"source", source}, {"detail", detail}, {"fix", fix}} {
 		if kv[1] != "" {
-			lines = append(lines, kv[0]+": "+kv[1])
+			lines = append(lines, kv[0]+": "+xmlText(kv[1]))
 		}
 	}
 	return strings.Join(lines, "\n")
