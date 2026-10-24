@@ -10,7 +10,7 @@ import (
 
 func writeNilMap() {
 	var m map[string]int
-	m["boom"] = 1
+	m["boom"] = 1 //nolint:staticcheck // the panic under test
 }
 
 func TestSafe(t *testing.T) {

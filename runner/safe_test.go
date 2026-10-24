@@ -27,7 +27,7 @@ func (panicky) Name() string { return "panicky" }
 func (m panicky) boom(hook string) {
 	if m.in == hook {
 		var seen map[string]bool
-		seen[hook] = true // assignment to entry in nil map
+		seen[hook] = true //nolint:staticcheck // the panic under test
 	}
 }
 
@@ -36,7 +36,7 @@ func (m panicky) Prepare(context.Context, *check.Context, *rod.Page) error {
 	return nil
 }
 func (m panicky) Live(context.Context, *check.Context, *rod.Page, *model.Page) { m.boom("Live") }
-func (m panicky) CheckPage(*check.Context, *model.Page)                       { m.boom("CheckPage") }
+func (m panicky) CheckPage(*check.Context, *model.Page)                        { m.boom("CheckPage") }
 func (m panicky) CheckSite(context.Context, *check.Context)                    { m.boom("CheckSite") }
 
 // A module that panics in any hook costs a warning, not the run: every
