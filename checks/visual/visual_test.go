@@ -620,16 +620,36 @@ func TestCompareWarnsAboutUnreadableShots(t *testing.T) {
 	})
 }
 
-func TestShotPath(t *testing.T) {
+func TestOpenShot(t *testing.T) {
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.png"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shots", "a-desktop.png"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A received snapshot can hold a symlink that points out of its folder.
+	if err := os.Symlink(filepath.Join(outside, "secret.png"), filepath.Join(dir, "shots", "link.png")); err != nil {
+		t.Skip("symlinks unsupported:", err)
+	}
 	for file, ok := range map[string]bool{
 		"shots/a-desktop.png": true,
 		"/etc/passwd":         false,
 		"../shots/a.png":      false,
 		"shots/../../a.png":   false,
+		"shots/link.png":      false,
 		"":                    false,
 	} {
-		if _, err := shotPath("/run", file); (err == nil) != ok {
-			t.Errorf("shotPath(%q) error = %v", file, err)
+		f, err := openShot(dir, file)
+		if err == nil {
+			_ = f.Close()
+		}
+		if (err == nil) != ok {
+			t.Errorf("openShot(%q) error = %v", file, err)
 		}
 	}
 }

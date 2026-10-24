@@ -17,6 +17,7 @@ import (
 	"hash/fnv"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -265,25 +266,27 @@ func diffShot(cmp *check.CompareContext, b, a *model.Page, vp string, threshold 
 	return r, nil
 }
 
-// shotPath is where a screenshot recorded in run.json lives. A run's
-// files are always inside its folder; a path that is absolute or climbs
-// out of it (a run.json someone else edited) is refused rather than read.
-func shotPath(dir, file string) (string, error) {
+// openShot opens a screenshot recorded in run.json. A run's files are
+// always inside its folder; a path that is absolute or climbs out of it,
+// or a symlink that points outside (a snapshot someone else made), is
+// refused rather than read, since the bytes end up in the report.
+func openShot(dir, file string) (*os.File, error) {
 	rel := filepath.FromSlash(file)
 	if !filepath.IsLocal(rel) {
-		return "", fmt.Errorf("screenshot path %q is outside the run folder", file)
+		return nil, fmt.Errorf("screenshot path %q is outside the run folder", file)
 	}
-	return filepath.Join(dir, rel), nil
+	return os.OpenInRoot(dir, rel)
 }
 
 // readShot reads and decodes a screenshot, keeping the file's bytes for
 // the report.
 func readShot(dir, file string) ([]byte, image.Image, error) {
-	path, err := shotPath(dir, file)
+	f, err := openShot(dir, file)
 	if err != nil {
 		return nil, nil, err
 	}
-	raw, err := os.ReadFile(filepath.Clean(path))
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -932,11 +935,7 @@ func concat(rs ...[]model.Rect) []model.Rect {
 }
 
 func load(dir, file string) (image.Image, error) {
-	path, err := shotPath(dir, file)
-	if err != nil {
-		return nil, err
-	}
-	f, err := os.Open(filepath.Clean(path))
+	f, err := openShot(dir, file)
 	if err != nil {
 		return nil, err
 	}
