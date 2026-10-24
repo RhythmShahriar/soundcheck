@@ -107,7 +107,7 @@ func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, 
 	base, _ := url.Parse(p.URL)
 	for _, fm := range f.Forms {
 		target, err := url.Parse(fm.Action)
-		sameSite := fm.Action != "" && err == nil && base != nil && strings.EqualFold(target.Host, base.Host)
+		sameSite := fm.Action != "" && err == nil && check.SameSite(base, target)
 		if sameSite && strip(fm.Action) != strip(p.URL) && strip(fm.Action) != strip(p.FinalURL) {
 			code := m.probe(ctx, cc, strip(fm.Action))
 			if code == http.StatusNotFound || code == http.StatusGone || (code == http.StatusMethodNotAllowed && fm.Method == "get") {

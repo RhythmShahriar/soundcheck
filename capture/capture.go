@@ -25,6 +25,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -398,7 +399,7 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 	p.Console = append([]string(nil), r.console...)
 	base, _ := url.Parse(p.URL)
 	for _, l := range f.Links {
-		if u, err := url.Parse(l); err == nil && base != nil && sameSite(base, u) {
+		if u, err := url.Parse(l); err == nil && base != nil && check.SameSite(base, u) {
 			p.Links = append(p.Links, l)
 		}
 	}
@@ -498,10 +499,6 @@ func settle(ctx context.Context, d time.Duration) {
 	case <-t.C:
 	case <-ctx.Done():
 	}
-}
-
-func sameSite(a, b *url.URL) bool {
-	return strings.TrimPrefix(strings.ToLower(a.Hostname()), "www.") == strings.TrimPrefix(strings.ToLower(b.Hostname()), "www.")
 }
 
 func firstLine(s string) string {
