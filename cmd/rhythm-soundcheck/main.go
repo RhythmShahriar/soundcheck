@@ -71,6 +71,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdUpdate(args[1:], stdout, stderr)
 	case "demo":
 		return cmdDemo(args[1:], stdout, stderr)
+	case "import":
+		return cmdImport(args[1:], stdout, stderr)
 	}
 	// `rhythm soundcheck staging.example.com --against example.com`
 	if len(args) > 1 || looksLikeTarget(args[0]) {
@@ -102,6 +104,8 @@ Usage:
   rhythm soundcheck report [run] [flags]     show the last result again
   rhythm soundcheck snapshots [--json]       list (delete <name> removes one)
   rhythm soundcheck init                     write a config file to edit
+  rhythm soundcheck import <file>            settings from backstop.json or
+                                             lostpixel.config.ts --pages-only
   rhythm soundcheck flows init               write an example flow to edit
   rhythm soundcheck update [--clear]         install or refresh its browser
   rhythm soundcheck demo [--keep]            try it on a built-in site

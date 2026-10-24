@@ -1,0 +1,20 @@
+{
+  "id": "shop",
+  "viewports": [
+    {"label": "phone", "width": 375, "height": 667},
+    {"label": "desktop", "width": 1440, "height": 900},
+    {"label": "broken"}
+  ],
+  "scenarioDefaults": {
+    "hideSelectors": [".cookie-banner"],
+    "delay": 500
+  },
+  "scenarios": [
+    {"label": "Home", "url": "https://staging.shop.test/", "removeSelectors": ["#live-chat"]},
+    {"label": "Cart", "url": "https://www.staging.shop.test/cart/?step=1#top", "hideSelectors": [".ad", ".cookie-banner"]},
+    {"label": "Again", "url": "https://staging.shop.test/"},
+    {"label": "Docs", "url": "https://docs.shop.test/help/", "onReadyScript": "puppet/clickMenu.js",
+     "viewports": [{"label": "small", "width": 600, "height": 800}]},
+    {"label": "Local file", "url": "file:///tmp/page.html"}
+  ]
+}

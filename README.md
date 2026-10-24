@@ -98,6 +98,8 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 | A report for the pull request | `rhythm-soundcheck compare --md -o soundcheck.md` |
 | Every report format from one run | `rhythm-soundcheck compare -o r.json -o r.md -o r.xml -o r.html` |
 | Fail CI when something broke | `rhythm-soundcheck compare --fail-on broke` |
+| Move over from BackstopJS | `rhythm-soundcheck import backstop.json` |
+| Move over from Lost Pixel (page paths only) | `rhythm-soundcheck import lostpixel.config.ts --pages-only` |
 
 Every flag is in the [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference).
 
