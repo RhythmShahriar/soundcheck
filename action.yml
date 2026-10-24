@@ -105,10 +105,10 @@ inputs:
     default: "."
   echo:
     description: >
-      Record the emails, SMS and webhooks each form submit and flow sends, with Echo, and compare
-      them with the snapshot's, so a form that says "sent" but no longer sends its email is caught.
+      Record with Echo the emails, SMS and webhooks each form submit and flow sends and compare
+      them with the snapshot's, so a form that says "sent" while no longer sending its email is caught.
       "true" for Echo at http://127.0.0.1:8025, or Echo's URL. Start Echo in an earlier step, e.g.
-      with RhythmShahriar/echo@v1 and mode up, and point the site's mail at it. Default off.
+      with RhythmShahriar/echo@v1 and mode up. Point the site's mail at it. Default off.
     required: false
     default: ""
   version:

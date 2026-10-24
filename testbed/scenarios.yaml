@@ -445,7 +445,7 @@ scenarios:
     tools: []
 
   - id: s33
-    name: Form says sent, but no email goes out
+    name: Form says sent while no email goes out
     site: wp
     path: /s33-mail/
     include: ["/s33-mail*"]

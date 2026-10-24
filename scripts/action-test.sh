@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 # Tests the Action's helper scripts offline: action-run.sh with a fake
-# rhythm-soundcheck that records its arguments, and action-install.sh
-# with a fake curl. CI runs it; so can you: scripts/action-test.sh
+# rhythm-soundcheck that records its arguments, action-install.sh with a
+# fake curl. CI runs it; so can you: scripts/action-test.sh
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)

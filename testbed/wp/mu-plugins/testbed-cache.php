@@ -40,8 +40,8 @@ defined( 'ABSPATH' ) || exit;
 	$file = $dir . '/' . md5( ( $_SERVER['HTTP_HOST'] ?? '' ) . $path . '|' . testbed_state_hash() ) . '.json';
 	$ttl  = 600;
 	// s30 broken: this page's copy is kept for two days and was made a day
-	// and a half ago, before the roasting day changed, and nothing purges
-	// it. The Age header counts the extra 36 hours.
+	// and a half ago, before the roasting day changed. Nothing purges it.
+	// The Age header counts the extra 36 hours.
 	$stale = testbed_broken( 's30' ) && '/s30-stale' === rtrim( $path, '/' );
 	$older = 0;
 	if ( $stale ) {

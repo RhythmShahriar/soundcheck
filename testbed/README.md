@@ -59,7 +59,7 @@ testbed/toggle.sh all good
 testbed/toggle.sh status
 ```
 
-A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`, see above). Both containers mount `state/` read-only and check it on every request. The mu-plugin `wp/mu-plugins/00-testbed-state.php` provides `testbed_broken('s05')`, and the theme, plugins and mu-plugins switch on it. The testbed's page cache keys on the set of broken scenarios, so it never serves a page that was rendered in the other state.
+A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`, see above). Both containers mount `state/` read-only and check it on every request. The mu-plugin `wp/mu-plugins/00-testbed-state.php` provides `testbed_broken('s05')`; the theme, plugins and mu-plugins switch on it. The testbed's page cache keys on the set of broken scenarios, so it never serves a page that was rendered in the other state.
 
 ## Scenarios
 
@@ -99,7 +99,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s30 | `/s30-stale/` | the page cache serves a 36-hour-old copy with old content and an expired nonce | NEW cache (stale, expired nonce) |
 | s31 | `/checkout/` | Place order hits a fatal error in the payment step | BROKE interact (submit level) |
 | s32 | `/s32-captcha/` | the form gains a reCAPTCHA that automated submits can't pass | a "can't submit" warning, not BROKE (pending) |
-| s33 | `/s33-mail/` | the form still says sent, but no email goes out | BROKE echo (needs Echo) |
+| s33 | `/s33-mail/` | the form still says sent while no email goes out | BROKE echo (needs Echo) |
 | s34 | `:18810/ttfb.php` | the server waits 1.5 s before answering; nothing else changes | SLOWER speed (TTFB) |
 | s35 | `:18810/late.php` | the section a script loads 1.5 s after load shows a missing photo | NEW health (broken image) |
 | s36 | `:18810/about.php` | the whole site answers with a Cloudflare-style bot challenge (403) | BROKE health/blocked (pending) |
@@ -116,11 +116,11 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
-**Pending** scenarios expect a detector or fix that another part of the roadmap is building (the seo module, `health/blocked`, the interrupted marker, unique run folders, the UNSTABLE class, YAML rules). They run like the others, and the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
+**Pending** scenarios expect a detector or fix that another part of the roadmap is building (the seo module, `health/blocked`, the interrupted marker, unique run folders, the UNSTABLE class, YAML rules). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
 
 ### Mail through Echo (s33)
 
-s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers, start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up`, and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run".
+s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers. Start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up` and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run".
 
 ### Page cache
 
@@ -153,7 +153,7 @@ For each scenario, the harness in [`bench/`](bench/) does the following:
 4. runs `rhythm-soundcheck compare --against-snapshot good --json -o compare.json`, the way the scenario's `harness` says: Ctrl+C after `interrupt_after` (`interrupt`), two compares at once (`parallel`), after deleting the snapshot's screenshots (`delete-shots`) or with every CPU busy (`stress`)
 5. passes when the result matches one of the scenario's `expect` entries (a change, a warning, the interrupted marker, nothing at or above NEW, or an exit code) and has none of its `forbid` changes
 
-Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm, and the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given.
+Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm; the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given.
 
 Scenarios with `login: true` get `SOUNDCHECK_USER=soundcheck` and `SOUNDCHECK_PASSWORD=soundcheck-testbed` unless you set them yourself.
 
@@ -189,7 +189,7 @@ go test -tags testbed -v ./testbed/bench/
 - `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
 - `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestExpectString`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
-- `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder, and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
+- `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario
 

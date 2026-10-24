@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 # Posts Soundcheck's result as one pull request comment for the GitHub
-# Action (comment: true), and updates that comment on later runs instead
-# of adding another.
+# Action (comment: true). Later runs update that comment instead of
+# adding another.
 #
 #   comment.sh body MARKDOWN [REPORT_URL]   prints the comment body
 #   comment.sh post MARKDOWN [REPORT_URL]   creates or updates the comment
@@ -14,7 +14,7 @@
 # the marker below. A body over GitHub's 65,536 character limit is cut at
 # a line, with a note that points to the full report.
 #
-# post uses gh with GH_TOKEN, and needs GITHUB_REPOSITORY and
+# post uses gh with GH_TOKEN. It needs GITHUB_REPOSITORY and
 # GITHUB_EVENT_PATH. The pull request is the event's own, or for a
 # deployment_status event (Vercel, Netlify previews) the one whose head is
 # the deployed commit. Posting needs "permissions: pull-requests: write";

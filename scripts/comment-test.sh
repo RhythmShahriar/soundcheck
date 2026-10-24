@@ -132,7 +132,7 @@ if [ "$code" = 0 ] && contains "$work/out" "no pull request for this run (event 
   ok "no pull request, no comment"
 else bad "no pull request, no comment"; fi
 
-# A read-only token: a warning, and the step still succeeds.
+# A read-only token: a warning. The step still succeeds.
 post GITHUB_EVENT_PATH="$work/pr.json" FAKE_GH_FAIL=1
 if [ "$code" = 0 ] && contains "$work/out" '::warning::Soundcheck: couldn'"'"'t comment on the pull request' && contains "$work/out" 'pull-requests: write'; then
   ok "a read-only token warns and goes on"

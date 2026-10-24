@@ -333,8 +333,8 @@ func TestStateFromEnv(t *testing.T) {
 
 // TestManifest checks scenarios.yaml without the testbed: every scenario
 // has a unique id toggle.sh accepts, a known site, a toggle and at least
-// one well-formed expectation (LoadManifest), and every scenario whose
-// broken state changes the site is implemented behind testbed_broken().
+// one well-formed expectation (LoadManifest). Every scenario whose broken
+// state changes the site must be implemented behind testbed_broken().
 func TestManifest(t *testing.T) {
 	dir, err := Testbed()
 	if err != nil {

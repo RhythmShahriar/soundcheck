@@ -13,7 +13,7 @@
 # looked up there.
 #
 # run writes the job summary, JUnit and the standalone HTML report into
-# $RUNNER_TEMP/soundcheck-report, and the summary's Markdown to
+# $RUNNER_TEMP/soundcheck-report. The summary's Markdown also goes to
 # $RUNNER_TEMP/soundcheck-summary.md for the pull request comment. When
 # Soundcheck can't check at all (exit 2 or 3) the summary still says why,
 # with its last lines of output, so a staging site that is down doesn't

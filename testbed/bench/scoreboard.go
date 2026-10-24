@@ -27,8 +27,8 @@ func scoreboard(m *Manifest, outcomes []Outcome, rounds []ControlRound, version 
 	w("# Soundcheck benchmark\n\n")
 	w("The testbed (`testbed/`) is a WordPress site and a plain-PHP site with %d scenarios. Each scenario has a good state and a broken state, ", len(m.Scenarios))
 	w("switched by `testbed/toggle.sh`. For every scenario the benchmark sets the good state, runs `rhythm-soundcheck snapshot`, breaks the scenario, ")
-	w("runs `rhythm-soundcheck compare`, and checks the comparison for the change listed in `testbed/scenarios.yaml`. ")
-	w("A control pass then breaks nothing: it takes a snapshot and compares twice, and every change at or above NEW counts as a false alarm.\n\n")
+	w("runs `rhythm-soundcheck compare` and checks the comparison for the change listed in `testbed/scenarios.yaml`. ")
+	w("A control pass then breaks nothing: it takes a snapshot and compares twice. Every change at or above NEW counts as a false alarm.\n\n")
 	switch {
 	case binErr != nil:
 		w("**Soundcheck wasn't run:** %s.\n\n", binErr)
