@@ -235,8 +235,10 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 // visit checks one page in its own tab.
 func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimit.Hosts, pg crawl.Page) *model.Page {
 	cfg := opts.Config
+	start := time.Now()
 	fail := func(err error) *model.Page {
-		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: err.Error()}
+		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: err.Error(),
+			Duration: float64(time.Since(start).Milliseconds())}
 	}
 	tab, err := browser.NewTab(cc.Browser)
 	if err != nil {

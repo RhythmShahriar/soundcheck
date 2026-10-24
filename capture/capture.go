@@ -13,6 +13,7 @@ import (
 	"crypto/sha1" //nolint:gosec // content fingerprint, not security
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/png"
 	"net/url"
@@ -72,7 +73,8 @@ type req struct {
 // window.__soundcheck. Long tasks are kept as [start, end] so factsJS can
 // compute Total Blocking Time once FCP is known. Chrome only paints, and
 // so only reports FCP, LCP and long tasks, for a visible page: tabs must
-// be opened in their own window (see runner).
+// be opened with browser.NewTab, which makes each one render as if it
+// were in front.
 const metricsJS = `(() => {
   const s = window.__soundcheck = {lcp: 0, cls: 0, fcp: 0, tasks: []};
   const watch = (type, fn) => { try { new PerformanceObserver(l => l.getEntries().forEach(fn)).observe({type, buffered: true}); } catch (e) {} };
@@ -278,12 +280,19 @@ const factsJS = `() => {
 
 // Visit navigates to rawURL at the desktop viewport, waits for the page to
 // settle, and records it. Screenshots are taken when opts.Save is set.
+//
+// opts.Timeout covers the navigation, up to the main response, and the
+// waits for load and network idle. Reading the page afterwards gets its
+// own budget (see readBudget), so a page that answers just inside the
+// timeout is still read instead of being recorded empty.
 func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*model.Page, error) {
 	p := &model.Page{ID: model.PageID(rawURL), URL: rawURL, Shots: map[string]model.Shot{}}
 	if u, err := url.Parse(rawURL); err == nil {
 		p.Path = u.RequestURI()
 	}
 	start := time.Now()
+	// Every outcome, a timeout included, records how long it really took.
+	defer func() { p.Duration = float64(time.Since(start).Milliseconds()) }()
 	page := r.page.Context(ctx).Timeout(opts.Timeout)
 	if err := page.SetViewport(ptr(Viewports["desktop"])); err != nil {
 		return p, err
@@ -292,14 +301,26 @@ func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*mode
 		p.Error = navError(err)
 		return p, nil
 	}
+	// The waits only make the reading more complete: a page that never
+	// finishes loading (a hung font or tracker) is still worth checking
+	// as it is, so their errors are dropped and the page is read anyway.
 	_ = page.WaitLoad()
 	page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	settle(ctx, 300*time.Millisecond)
 
+	// A fresh deadline: the one above may be all but spent by a slow
+	// first response.
+	page = r.page.Context(ctx).Timeout(readBudget(opts.Timeout))
 	var f pageFacts
-	if obj, err := page.Eval(factsJS); err == nil {
-		_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &f)
+	obj, err := page.Eval(factsJS)
+	if err != nil {
+		// Empty facts would read as a blank page that lost its title.
+		r.fill(p, pageFacts{})
+		p.TextHash = ""
+		p.Error = readError(ctx, err)
+		return p, errors.New(p.Error)
 	}
+	_ = json.Unmarshal([]byte(obj.Value.JSON("", "")), &f)
 	r.fill(p, f)
 	p.Text = strings.Join(strings.Fields(f.Text), " ")
 	if info, err := page.Info(); err == nil {
@@ -310,8 +331,21 @@ func Visit(ctx context.Context, r *Recorder, rawURL string, opts Options) (*mode
 			return p, err
 		}
 	}
-	p.Duration = float64(time.Since(start).Milliseconds())
 	return p, nil
+}
+
+// readBudget is how long reading a loaded page and screenshotting it may
+// take: a quarter of the page timeout, and at least 5 seconds.
+func readBudget(timeout time.Duration) time.Duration {
+	return max(5*time.Second, timeout/4)
+}
+
+// readError words a failure to read the page after it loaded.
+func readError(ctx context.Context, err error) string {
+	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return "timed out reading the page after load"
+	}
+	return "couldn't read the page after load: " + firstLine(err.Error())
 }
 
 // Mobile reloads rawURL at the mobile viewport and screenshots it. Errors
@@ -329,9 +363,11 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 	if err := page.Navigate(rawURL); err != nil {
 		return nil // the desktop visit already recorded what it could
 	}
+	// Best effort, as in Visit.
 	_ = page.WaitLoad()
 	page.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	settle(ctx, 300*time.Millisecond)
+	page = r.page.Context(ctx).Timeout(readBudget(opts.Timeout))
 	r.mu.Lock()
 	for _, c := range r.console {
 		if !slices.Contains(p.Console, c) {

@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-rod/rod"
 
@@ -164,5 +166,37 @@ func TestFailedLoginIsOneWarning(t *testing.T) {
 	}
 	if !slices.ContainsFunc(run.Warnings, func(w string) bool { return strings.Contains(w, "login failed") }) {
 		t.Errorf("warnings = %v", run.Warnings)
+	}
+}
+
+// A page that answers just inside the timeout is read in full, and one
+// that answers after it is an error with its real duration.
+func TestSlowPages(t *testing.T) {
+	needBrowser(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		wait, _ := strconv.Atoi(r.URL.Query().Get("wait"))
+		select {
+		case <-time.After(time.Duration(wait) * time.Second):
+		case <-r.Context().Done():
+			return
+		}
+		fmt.Fprint(w, `<!doctype html><html><head><title>Slow</title></head><body><p>Worth the wait.</p></body></html>`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs, cfg.Timeout = []string{"health"}, []string{"desktop"}, 0, 2, 5
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{"/slow?wait=4", "/slow?wait=7"},
+		Dir: t.TempDir(), Version: "test", Browser: browser.Options{NoDownload: true}, Modules: []check.Module{health.Module{}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fast := run.Page("/slow?wait=4"); fast == nil || fast.Title != "Slow" || fast.Error != "" ||
+		slices.ContainsFunc(fast.Issues, func(i model.Issue) bool { return i.Check == "health/white-screen" }) {
+		t.Errorf("4 s page: %+v", fast)
+	}
+	if slow := run.Page("/slow?wait=7"); slow == nil || slow.Error != "timed out" || slow.Duration < 4500 {
+		t.Errorf("7 s page: %+v", slow)
 	}
 }

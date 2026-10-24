@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -146,4 +147,79 @@ func TestVisitUnreachable(t *testing.T) {
 	if err != nil || !strings.Contains(p.Error, "ERR_CONNECTION_REFUSED") {
 		t.Errorf("error = %q, %v", p.Error, err)
 	}
+}
+
+// slowFixture answers /slow?wait=N after N seconds, and /busy with a page
+// whose script blocks the main thread for 8 seconds right after load.
+func slowFixture(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		wait, _ := strconv.Atoi(r.URL.Query().Get("wait"))
+		select {
+		case <-time.After(time.Duration(wait) * time.Second):
+		case <-r.Context().Done():
+			return
+		}
+		fmt.Fprint(w, `<!doctype html><html><head><title>Slow</title></head><body><p>Worth the wait.</p></body></html>`)
+	})
+	mux.HandleFunc("/busy", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<!doctype html><html><head><title>Busy</title></head><body><p>Busy.</p>
+<script>addEventListener('load', () => setTimeout(() => { const t = Date.now(); while (Date.now() - t < 8000) {} }, 50));</script></body></html>`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestVisitSlow(t *testing.T) {
+	b := launch(t)
+	srv := slowFixture(t)
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Timeout: 5 * time.Second}
+	visit := func(path string) (*model.Page, error) {
+		t.Helper()
+		tab, err := sess.Page(protoBlank())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tab.Close() }()
+		rec, err := Start(context.Background(), tab, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rec.Stop()
+		return Visit(context.Background(), rec, srv.URL+path, opts)
+	}
+
+	t.Run("answers just inside the timeout", func(t *testing.T) {
+		p, err := visit("/slow?wait=4")
+		if err != nil || p.Error != "" || p.Title != "Slow" || p.TextLength == 0 {
+			t.Errorf("error %q (%v), title %q, text %d", p.Error, err, p.Title, p.TextLength)
+		}
+		if p.Duration < 4000 {
+			t.Errorf("duration = %v ms", p.Duration)
+		}
+	})
+	t.Run("answers after the timeout", func(t *testing.T) {
+		p, err := visit("/slow?wait=7")
+		if err != nil || p.Error != "timed out" {
+			t.Errorf("error %q (%v)", p.Error, err)
+		}
+		if p.Duration < 4500 || p.Duration > 6500 {
+			t.Errorf("duration = %v ms, want about 5 s", p.Duration)
+		}
+	})
+	t.Run("can't be read after load", func(t *testing.T) {
+		p, err := visit("/busy")
+		if err == nil || p.Error != "timed out reading the page after load" {
+			t.Errorf("error %q (%v)", p.Error, err)
+		}
+		if p.Status != 200 || p.Duration < 5000 {
+			t.Errorf("status %d duration %v ms", p.Status, p.Duration)
+		}
+	})
 }
