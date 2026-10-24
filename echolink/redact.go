@@ -23,10 +23,17 @@ var (
 	// after "#", "&" (an HTML entity), "." or "," are colors, entities
 	// and decimals, not codes.
 	code = regexp.MustCompile(`(^|[^\w#&.,-])(\d{6,8})\b`)
+	// tokenPath matches the path after a reset, verify, confirm, magic,
+	// login or activate segment ("/password/reset/<token>",
+	// "/email/verify/7/<hash>"), where frameworks put the token instead
+	// of in the query; tokenSegment is a segment in it long and opaque
+	// enough to be one.
+	tokenPath    = regexp.MustCompile(`(?i)/(?:[\w-]*[-_])?(?:reset|verify|verification|confirm|confirmation|magic|login|activate|activation)(?:[-_][\w-]*)?((?:/[^/?#\s"'<>]*)+)`)
+	tokenSegment = regexp.MustCompile(`/[A-Za-z0-9_-]{24,}`)
 )
 
-// Redact returns msgs with the credentials, reset links and one-time
-// codes in their subject, text, HTML and raw body masked, for storing in
+// Redact returns msgs with the credentials, reset links (their query
+// values and the tokens in their paths) and one-time codes in their subject, text, HTML and raw body masked, for storing in
 // a run. Runs end up in CI artifacts and shared reports, while a
 // password reset email holds a working link. Both runs of a comparison
 // are masked the same way, so a code that changes on every send no
@@ -45,6 +52,11 @@ func redactText(s string) string {
 		return s
 	}
 	s = secrets.Redact(s)
+	s = tokenPath.ReplaceAllStringFunc(s, func(m string) string {
+		// The keyword's own segment stays, however long.
+		at := tokenPath.FindStringSubmatchIndex(m)[2]
+		return m[:at] + tokenSegment.ReplaceAllString(m[at:], "/"+masked)
+	})
 	s = longQuery.ReplaceAllString(s, "${1}"+masked)
 	return code.ReplaceAllString(s, "${1}"+masked)
 }

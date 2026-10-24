@@ -21,6 +21,14 @@ func TestRedact(t *testing.T) {
 		"Call 0123456789 any time":                 "Call 0123456789 any time",
 		"key sk_live_4eC39HqLyjWDarjtT1zdp7dc":     "key sk_live_•••••",
 		"https://shop.test/?p=12&lang=en":          "https://shop.test/?p=12&lang=en",
+		// Tokens in the path after a reset or verify segment.
+		"https://app.test/password/reset/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08?email=sam%40app.test": "https://app.test/password/reset/•••••?email=sam%40app.test",
+		`<a href="https://app.test/email/verify/7/b2c1f0e4a9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4?expires=1">`:                         `<a href="https://app.test/email/verify/7/•••••?expires=1">`,
+		"https://app.test/magic-login/Ab3_xY9-kLm2Pq7rSt4uVw8z":                                                                 "https://app.test/magic-login/•••••",
+		// Long segments elsewhere stay, as do short ones after the keyword.
+		"https://shop.test/product/a-very-long-product-name-with-words": "https://shop.test/product/a-very-long-product-name-with-words",
+		"https://shop.test/login/help":                                  "https://shop.test/login/help",
+		"https://shop.test/reset-your-password-in-three-steps/guide":    "https://shop.test/reset-your-password-in-three-steps/guide",
 	} {
 		if got := redactText(in); got != want {
 			t.Errorf("%q\n got %q\nwant %q", in, got, want)
