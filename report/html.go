@@ -145,7 +145,7 @@ func HTML(w io.Writer, r Result) error {
 					if it.Shots == nil {
 						for _, k := range []string{"before", "after", "diff"} {
 							if f := ch.Files[k]; f != "" {
-								it.Files = append(it.Files, r.Path(f))
+								it.Files = append(it.Files, r.fileLabel(f))
 							}
 						}
 					}
@@ -244,7 +244,11 @@ func (r Result) shots(files map[string]string) *htmlShots {
 		if f == "" {
 			return ""
 		}
-		u, err := embedImage(r.Path(f))
+		path, err := r.Path(f)
+		if err != nil {
+			return ""
+		}
+		u, err := embedImage(path)
 		if err != nil {
 			return ""
 		}
@@ -256,6 +260,16 @@ func (r Result) shots(files map[string]string) *htmlShots {
 		return nil
 	}
 	return s
+}
+
+// fileLabel is where a screenshot is, for a report that doesn't embed
+// it, or "image not available" when its path leaves the result's folder.
+func (r Result) fileLabel(rel string) string {
+	path, err := r.Path(rel)
+	if err != nil {
+		return "image not available"
+	}
+	return path
 }
 
 // embedImage returns a PNG file as a scaled-down JPEG data URL.

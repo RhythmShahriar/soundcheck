@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -62,11 +61,11 @@ func verifyShots(dir string) error {
 // checkShot says what's wrong with the screenshot at the run-relative
 // path name, or returns "" when it's fine.
 func checkShot(dir, name string) string {
-	rel := filepath.FromSlash(name)
-	if !filepath.IsLocal(rel) {
+	path, err := Contained(dir, name)
+	if err != nil {
 		return "is outside the snapshot"
 	}
-	f, err := os.Open(filepath.Join(dir, rel)) //nolint:gosec // a local path inside our own folder, checked above
+	f, err := os.Open(path) //nolint:gosec // a local path inside our own folder, checked above
 	if errors.Is(err, fs.ErrNotExist) {
 		return "is missing"
 	}

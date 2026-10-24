@@ -107,12 +107,25 @@ func Release(dir string) error {
 // Saver returns a function that writes files into dir.
 func Saver(dir string) func(name string, data []byte) error {
 	return func(name string, data []byte) error {
-		clean := filepath.Clean(filepath.FromSlash(name))
-		if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+		path, err := Contained(dir, name)
+		if err != nil {
 			return fmt.Errorf("refusing to write %q outside the run folder", name)
 		}
-		return cache.WriteFile(filepath.Join(dir, clean), data)
+		return cache.WriteFile(path, data)
 	}
+}
+
+// Contained joins dir and rel, a slash-separated path from a run or
+// comparison file, when rel stays inside dir. Absolute paths, paths that
+// climb out with "..", empty ones and (on Windows) device names are
+// refused: run.json and comparison.json may come from someone else, and
+// following such a path would read or write any file on the machine.
+func Contained(dir, rel string) (string, error) {
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	if clean == "." || !filepath.IsLocal(clean) {
+		return "", fmt.Errorf("%q is outside %s", rel, dir)
+	}
+	return filepath.Join(dir, clean), nil
 }
 
 // SaveRun writes run.json into dir. A run with pages whose visit was

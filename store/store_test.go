@@ -69,6 +69,24 @@ func TestSaverStaysInside(t *testing.T) {
 	}
 }
 
+func TestContained(t *testing.T) {
+	dir := t.TempDir()
+	for _, bad := range []string{"", ".", "..", "../x.png", "/etc/passwd", "a/../../x", "shots/../../x"} {
+		if p, err := Contained(dir, bad); err == nil {
+			t.Errorf("Contained(%q) = %q, want an error", bad, p)
+		}
+	}
+	for rel, want := range map[string]string{"shots/a.png": "shots/a.png", "a/../b.png": "b.png", "..x.png": "..x.png", "./c.png": "c.png"} {
+		p, err := Contained(dir, rel)
+		if err != nil || p != filepath.Join(dir, filepath.FromSlash(want)) {
+			t.Errorf("Contained(%q) = %q, %v; want %s", rel, p, err, want)
+		}
+	}
+	if err := Saver(dir)("..x.png", []byte("ok")); err != nil {
+		t.Errorf("Saver refused a local name: %v", err)
+	}
+}
+
 func TestLoadRunRejectsOtherSchemas(t *testing.T) {
 	dir := t.TempDir()
 	_ = SaveRun(dir, &model.Run{Schema: "rhythm-soundcheck/v0"})
