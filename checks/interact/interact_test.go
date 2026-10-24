@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -418,6 +420,50 @@ steps:
 	defer fx.mu.Unlock()
 	if len(fx.posts) != 1 || !strings.Contains(fx.posts[0], "soundcheck-test") {
 		t.Errorf("flow posts: %q", fx.posts)
+	}
+}
+
+// A flow reading a variable that --allow-env allowed runs: the module
+// passes the command line's trust settings to the flow.
+func TestFlowsGetAllowedEnv(t *testing.T) {
+	needBrowser(t)
+	fx := newFixture(t)
+	dir := t.TempDir()
+	t.Setenv("CONTACT_NAME_FOR_TEST", "Ana")
+	if err := os.WriteFile(filepath.Join(dir, "contact.yaml"), []byte(`name: Contact with env
+start: /contact/
+steps:
+  - fill: {selector: "[name=your-name]", value: "${env:CONTACT_NAME_FOR_TEST}"}
+  - fill: {selector: "[name=your-email]", value: "${fake:email}"}
+  - click: {text: Send}
+  - expect: {text: Thank you for your message}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Interactions.Levels = []string{"flows"}
+	cfg.Flows = dir
+	cfg.Timeout = 5
+	cfg.Trust.AllowEnv = []string{"CONTACT_NAME_FOR_TEST"}
+	run := fx.run(t, cfg, "/")
+	for _, i := range run.Issues {
+		if strings.HasPrefix(i.Check, "interact/flow") {
+			t.Errorf("flow failed: %s: %s", i.Title, i.Detail)
+		}
+	}
+	fx.mu.Lock()
+	defer fx.mu.Unlock()
+	if len(fx.posts) != 1 || !strings.Contains(fx.posts[0], "Ana") {
+		t.Errorf("flow posts: %q", fx.posts)
+	}
+}
+
+func TestFlowOptionsCarryTrust(t *testing.T) {
+	cc := &check.Context{Run: &model.Run{}}
+	cc.Config.Trust = config.Trust{AllowEnv: []string{"A"}, AllowHosts: []string{"pay.test"}, InsecureLogin: true}
+	o := flowOptions(cc, time.Second)
+	if !slices.Equal(o.AllowEnv, []string{"A"}) || !slices.Equal(o.AllowHosts, []string{"pay.test"}) || !o.PlainHTTP {
+		t.Errorf("options = %+v", o)
 	}
 }
 

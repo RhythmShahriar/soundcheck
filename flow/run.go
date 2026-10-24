@@ -46,8 +46,8 @@ type Options struct {
 	AllowHosts []string
 	// PlainHTTP lets a flow on an https site send what it read from the
 	// environment to a plain http page (--insecure-login). Otherwise fill
-	// and select steps with ${env:…}, and clicks and submits after them,
-	// refuse an http page unless it's this machine.
+	// and select steps with ${env:…} refuse an http page unless it's this
+	// machine. So do clicks and submits after them.
 	PlainHTTP bool
 }
 

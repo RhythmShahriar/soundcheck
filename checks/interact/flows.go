@@ -85,8 +85,7 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 	}
 	defer func() { _ = page.Close() }()
 	timeout := time.Duration(cc.Config.Timeout) * time.Second
-	opts := flow.Options{Base: cc.Base, Timeout: timeout, Save: cc.Save,
-		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction}
+	opts := flowOptions(cc, timeout)
 	start := orDefault(f.Start, "/")
 	act := model.EchoAction{Action: echolink.FlowAction(f.Name), Label: f.Name, Kind: "flow", Page: pathOnly(start)}
 	if cc.Echo != nil {
@@ -167,4 +166,13 @@ func collectFileErrors(err error, out *[]*flow.FileError) {
 	if errors.As(err, &fe) {
 		*out = append(*out, fe)
 	}
+}
+
+// flowOptions are the options a flow of this run gets, with what the
+// command line allowed: --allow-env, --allow-host and --insecure-login.
+func flowOptions(cc *check.Context, timeout time.Duration) flow.Options {
+	t := cc.Config.Trust
+	return flow.Options{Base: cc.Base, Timeout: timeout, Save: cc.Save,
+		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction,
+		AllowEnv: t.AllowEnv, AllowHosts: t.AllowHosts, PlainHTTP: t.InsecureLogin}
 }
