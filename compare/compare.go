@@ -71,14 +71,17 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 			})
 		}
 	}
+	warn := func(msg string) { out.Warnings = append(out.Warnings, msg) }
 	for _, m := range modules {
 		if c, ok := m.(check.Comparer); ok {
-			out.Changes = append(out.Changes, c.Compare(ctx, cc)...)
+			safe(m.Name(), "Compare", warn, func() { out.Changes = append(out.Changes, c.Compare(ctx, cc)...) })
 		}
 	}
 	for _, m := range modules {
 		if f, ok := m.(check.ChangeFilter); ok {
-			out.Changes = f.FilterChanges(out.Changes)
+			// The filter gets a copy: one that panics halfway through
+			// filtering in place would otherwise leave a mangled list.
+			safe(m.Name(), "FilterChanges", warn, func() { out.Changes = f.FilterChanges(slices.Clone(out.Changes)) })
 		}
 	}
 	Sort(out.Changes)
