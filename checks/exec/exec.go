@@ -33,6 +33,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -264,7 +267,7 @@ func run(parent context.Context, c Command, in []byte) ([]model.Issue, error) {
 		var exitErr *osexec.ExitError
 		if errors.As(err, &exitErr) {
 			msg := fmt.Sprintf("exited with code %d", exitErr.ExitCode())
-			if line := lastLine(stderr.buf.String()); line != "" {
+			if line := clean(lastLine(stderr.buf.String())); line != "" {
 				msg += ": " + line
 			}
 			return nil, errors.New(msg)
@@ -301,10 +304,27 @@ func parse(name string, data []byte) ([]model.Issue, error) {
 		case strings.TrimSpace(i.Title) == "":
 			return nil, fmt.Errorf("issue %d: the title is missing", n+1)
 		}
-		out = append(out, model.Issue{Check: i.Check, Level: model.Level(i.Level), Title: i.Title,
-			Detail: i.Detail, Source: i.Source, Fix: i.Fix})
+		out = append(out, model.Issue{Check: i.Check, Level: model.Level(i.Level), Title: clean(i.Title),
+			Detail: clean(i.Detail), Source: clean(i.Source), Fix: clean(i.Fix)})
 	}
 	return out, nil
+}
+
+// clean masks secrets in text a command printed, as every module does
+// with what it reports: the command gets the page's text and headers
+// and may echo a token from them. Control characters show as spaces,
+// keeping line breaks and tabs, so a command can't send terminal escape
+// sequences through the report.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t':
+			return r
+		case unicode.IsControl(r), r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069:
+			return ' '
+		}
+		return r
+	}, secrets.Redact(s))
 }
 
 // hiddenEnv are the variable families a command never sees: the test

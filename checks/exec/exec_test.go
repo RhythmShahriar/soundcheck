@@ -38,6 +38,9 @@ func helper(mode string, args []string) int {
 		fmt.Printf(`{"issues":[
 			{"check":"exec/laravel-log/error","level":"error","title":"Laravel logged an error","detail":%q,"source":"app/Http/Kernel.php:12"},
 			{"check":"exec/laravel-log/slow-query","level":"notice","title":"Slow query","fix":"Add an index"}]}`, "on "+doc.Path)
+	case "secret":
+		fmt.Printf(`{"issues":[{"check":"exec/laravel-log/leak","level":"warning","title":"Token in page\u001b[31m","detail":%q,"source":%q,"fix":%q}]}`,
+			"token=ghp_abcdefghijklmnopqrstuvwxyz0123456789", "env ghp_abcdefghijklmnopqrstuvwxyz0123456789", "rotate ghp_abcdefghijklmnopqrstuvwxyz0123456789")
 	case "none":
 		fmt.Print(`{"issues": []}`)
 	case "garbage":
@@ -164,6 +167,26 @@ func TestIssues(t *testing.T) {
 	}
 	if !json.Valid(IssuesSchemaJSON) {
 		t.Error("issues.v1.json isn't JSON")
+	}
+}
+
+// A command's issues are masked like every module's: it gets the page
+// text and headers and may echo a token from them.
+func TestIssuesAreMasked(t *testing.T) {
+	m := module(t, helperCmd("secret"))
+	cc, p := ctx(), page()
+	m.CheckPage(cc, p)
+	if len(p.Issues) != 1 {
+		t.Fatalf("warnings %v issues %+v", cc.Run.Warnings, p.Issues)
+	}
+	i := p.Issues[0]
+	for _, s := range []string{i.Title, i.Detail, i.Source, i.Fix} {
+		if strings.Contains(s, "ghp_abcdefghijklmnopqrstuvwxyz0123456789") || strings.ContainsRune(s, 0x1b) {
+			t.Errorf("not masked or cleaned: %q", s)
+		}
+	}
+	if !strings.HasPrefix(i.Detail, "token=") {
+		t.Errorf("detail = %q", i.Detail)
 	}
 }
 
