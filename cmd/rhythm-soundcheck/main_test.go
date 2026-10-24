@@ -428,3 +428,35 @@ func TestRateFlag(t *testing.T) {
 		t.Errorf("rate: .nan: exit %d, %q", code, errOut)
 	}
 }
+
+func TestReportExitCodes(t *testing.T) {
+	t.Chdir(t.TempDir())
+	// Nothing stored yet or names that aren't there: usage errors.
+	for _, args := range [][]string{{"report"}, {"report", "nosuch"}, {"report", "../x"}} {
+		if code, _, errOut := runCLI(t, args...); code != exitUsage {
+			t.Errorf("%v: exit %d, want 2 (%s)", args, code, errOut)
+		}
+	}
+	_ = os.MkdirAll(".soundcheck/snapshots/good", 0o755)
+	_ = os.WriteFile(".soundcheck/snapshots/good/run.json", []byte("{not json"), 0o600)
+	_ = os.WriteFile(".soundcheck/snapshots/LATEST", []byte("good\n"), 0o600)
+	if code, _, errOut := runCLI(t, "report", "nosuch"); code != exitUsage || !strings.Contains(errOut, `no snapshot named "nosuch"`) {
+		t.Errorf("unknown snapshot: exit %d, %q", code, errOut)
+	}
+	_ = os.MkdirAll("empty-folder", 0o755)
+	if code, _, errOut := runCLI(t, "report", "empty-folder"); code != exitUsage || !strings.Contains(errOut, "no run in empty-folder") {
+		t.Errorf("folder without a run: exit %d, %q", code, errOut)
+	}
+	// A corrupt run.json is a file that can't be read: 3.
+	if code, _, errOut := runCLI(t, "report", "good"); code != exitError {
+		t.Errorf("corrupt snapshot: exit %d, want 3 (%s)", code, errOut)
+	}
+	_ = os.MkdirAll(".soundcheck/runs/20261024-120000", 0o755)
+	_ = os.WriteFile(".soundcheck/runs/20261024-120000/run.json", []byte("{not json"), 0o600)
+	if code, _, errOut := runCLI(t, "report"); code != exitError {
+		t.Errorf("corrupt latest run: exit %d, want 3 (%s)", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "report", ".soundcheck/runs/20261024-120000"); code != exitError {
+		t.Errorf("corrupt run folder: exit %d, want 3 (%s)", code, errOut)
+	}
+}

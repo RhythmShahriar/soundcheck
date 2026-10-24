@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
@@ -470,10 +471,16 @@ func cmdReport(s *session) int {
 			err = cli.UsageError{Msg: err.Error()}
 		}
 	default:
+		// Naming something that isn't there is a usage error (2), like no
+		// argument with nothing stored: CI reads 3 as "the site is down".
+		// A run.json that can't be read stays 3.
 		if fi, statErr := os.Stat(s.args[0]); statErr == nil && fi.IsDir() { //nolint:gosec // the user names a run folder to show
 			dir = s.args[0]
-		} else {
-			dir, err = s.st.Snapshot(s.args[0])
+			if _, statErr := os.Stat(filepath.Join(dir, "run.json")); errors.Is(statErr, fs.ErrNotExist) { //nolint:gosec // as above
+				err = cli.Usagef("no run in %s; name a run folder or a snapshot (see rhythm soundcheck snapshots)", dir)
+			}
+		} else if dir, err = s.st.Snapshot(s.args[0]); err != nil {
+			err = cli.UsageError{Msg: err.Error()} // not found, or not a valid name
 		}
 	}
 	if err != nil {
