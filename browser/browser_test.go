@@ -5,7 +5,10 @@ package browser
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,5 +38,26 @@ func TestLaunchLogsTheVersion(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(logs, "\n"), "WARNING") {
 		t.Errorf("warned with the sandbox on: %q", logs)
+	}
+}
+
+// TestLaunchHintsAtTheSandboxSetting starts a "Chrome" that fails the
+// way Chrome does in a container that blocks its sandbox.
+func TestLaunchHintsAtTheSandboxSetting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake browser is a shell script")
+	}
+	old := geteuid
+	geteuid = func() int { return 1000 }
+	t.Cleanup(func() { geteuid = old })
+	t.Setenv(NoSandboxEnv, "")
+	bin := filepath.Join(t.TempDir(), "chrome")
+	script := "#!/bin/sh\necho '[1:1:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox!' >&2\nexit 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	_, err := Launch(t.Context(), Options{Bin: bin})
+	if err == nil || !strings.Contains(err.Error(), "No usable sandbox") || !strings.Contains(err.Error(), "set "+NoSandboxEnv+"=1 if this container can't give Chrome its sandbox") {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -76,8 +76,14 @@ func DownloadDir() (string, error) {
 
 // Find returns the browser binary to use: opts.Bin, an installed Chrome,
 // or the pinned Chrome for Testing (downloading it unless NoDownload is
-// set).
+// set). It is FindContext with a context that is never cancelled.
 func Find(opts Options) (bin string, downloaded bool, err error) {
+	return FindContext(context.Background(), opts)
+}
+
+// FindContext is Find with a context: cancelling ctx stops a Chrome for
+// Testing download.
+func FindContext(ctx context.Context, opts Options) (bin string, downloaded bool, err error) {
 	if opts.Bin != "" {
 		if _, err := os.Stat(opts.Bin); err != nil {
 			return "", false, fmt.Errorf("browser %s: %w", opts.Bin, err)
@@ -100,7 +106,7 @@ func Find(opts Options) (bin string, downloaded bool, err error) {
 	if opts.NoDownload {
 		return "", false, errors.New("no Chrome or Chromium found; install Chrome, pass --browser /path/to/chrome, or allow the one-time Chrome for Testing download")
 	}
-	p, err := install(context.Background(), pinned, platform, dir, opts.Log)
+	p, err := install(ctx, pinned, platform, dir, opts.Log)
 	if err != nil {
 		return "", false, err
 	}
@@ -122,7 +128,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	bin, downloaded, err := Find(opts)
+	bin, downloaded, err := FindContext(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +152,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	}
 	u, proc, err := start(ctx, l, bin)
 	if err != nil {
-		return nil, fmt.Errorf("starting %s: %w", bin, err)
+		return nil, fmt.Errorf("starting %s: %w%s", bin, err, sandboxHint(err, noSandbox))
 	}
 	b := rod.New().ControlURL(u).Context(ctx)
 	if err := b.Connect(); err != nil {
@@ -191,6 +197,18 @@ func sandbox(opts Options) (off bool, err error) {
 		logf(opts, "WARNING: Chrome is running without its sandbox. A page that exploits a browser bug could take over this machine; only check sites you trust.")
 	}
 	return off, nil
+}
+
+// sandboxHint points at NoSandboxEnv when Chrome failed to start
+// because it couldn't set up its sandbox. Inside containers that is
+// common for normal users too (Docker's default seccomp profile,
+// Ubuntu's AppArmor limits on user namespaces), and Chrome's own error
+// ("No usable sandbox!") doesn't say how to get past it.
+func sandboxHint(err error, noSandbox bool) string {
+	if noSandbox || !strings.Contains(strings.ToLower(err.Error()), "sandbox") {
+		return ""
+	}
+	return "\n(set " + NoSandboxEnv + "=1 if this container can't give Chrome its sandbox; only for sites you trust)"
 }
 
 // logf sends a line to opts.Log, or to stderr when nothing listens, so
