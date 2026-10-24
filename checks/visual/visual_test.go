@@ -614,3 +614,103 @@ func TestShotPath(t *testing.T) {
 		}
 	}
 }
+
+// notice inserts a 40 px notice above the footer of a page h px tall,
+// and with split also a 16 px piece 2 px below it, the way row alignment
+// can cut one block around a couple of rows that happen to match.
+func notice(b *image.NRGBA, h int, split bool) *image.NRGBA {
+	a := b
+	if split {
+		a = insertRows(a, h-78, 16, color.NRGBA{240, 240, 190, 255})
+	}
+	return insertRows(a, h-80, 40, color.NRGBA{250, 250, 200, 255})
+}
+
+// The compare from users.md N5: a notice near the bottom of three pages,
+// and on /shop/ also a block the alignment cut in two pieces 2 px apart.
+func TestCompareOneLinePerCause(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/contact/", "/shop/"} {
+		h := 1200 + i*100
+		b := page(390, h)
+		fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+		a := notice(b, h, path == "/shop/")
+		if path == "/shop/" {
+			a = insertRows(insertRows(a, 649, 16, red), 647, 16, blue)
+		}
+		addShot(t, before, beforeDir, path, "mobile", b)
+		addShot(t, after, afterDir, path, "mobile", a)
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	if c, ok := got["New block near the bottom of 3 pages (mobile)"]; !ok || strings.Join(c.Pages, ",") != "/,/contact/,/shop/" {
+		t.Fatalf("grouped notice = %+v (all %v)", c, keys(got))
+	}
+	p, ok := got["Page looks different (mobile)"]
+	if !ok || strings.Join(p.Pages, ",") != "/shop/" {
+		t.Fatalf("shop's own change = %+v (all %v)", p, keys(got))
+	}
+	// The two pieces are one block, and the notice's piece is told with
+	// the grouped notice, not again here.
+	if n := strings.Count(p.Detail, "block was inserted"); n != 1 || !strings.Contains(p.Detail, "A 32 px tall block was inserted 647 px down") {
+		t.Errorf("detail = %q", p.Detail)
+	}
+	if len(got) != 2 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// A page whose only leftover is a piece of a grouped block has no change
+// of its own.
+func TestComparePieceOfGroupedBlock(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	for i, path := range []string{"/", "/contact/", "/shop/"} {
+		h := 1200 + i*100
+		b := page(390, h)
+		fill(b, image.Rect(20, 300+i*40, 300, 330+i*40), blue)
+		addShot(t, before, beforeDir, path, "mobile", b)
+		addShot(t, after, afterDir, path, "mobile", notice(b, h, path == "/shop/"))
+	}
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	if _, ok := got["New block near the bottom of 3 pages (mobile)"]; !ok || len(got) != 1 {
+		t.Errorf("changes: %v", keys(got))
+	}
+}
+
+// Two blocks far apart on one page are two causes and stay two.
+func TestCompareDistinctBlocksStaySeparate(t *testing.T) {
+	beforeDir, afterDir := t.TempDir(), t.TempDir()
+	before, after := &model.Run{}, &model.Run{}
+	b := page(800, 1500)
+	a := insertRows(insertRows(b, 900, 30, red), 300, 40, blue)
+	addShot(t, before, beforeDir, "/", "desktop", b)
+	addShot(t, after, afterDir, "/", "desktop", a)
+	cc := &check.CompareContext{Config: config.Default(), Before: before, After: after, BeforeDir: beforeDir, AfterDir: afterDir}
+	got := byTitle(Module{}.Compare(context.Background(), cc))
+	p := got["Page looks different (desktop)"]
+	if !strings.Contains(p.Detail, "A 40 px tall block was inserted 300 px down") || !strings.Contains(p.Detail, "A 30 px tall block was inserted 900 px down") {
+		t.Errorf("detail = %q (all %v)", p.Detail, keys(got))
+	}
+}
+
+func TestLooseBlocks(t *testing.T) {
+	blocks := []Band{
+		{Y: 147, H: 16, At: 147}, {Y: 149, H: 16, At: 165}, // pieces of one block
+		{Y: 600, H: -20, At: 632}, {Y: 625, H: -10, At: 632}, // two removed blocks 5 px apart
+		{Y: 900, H: 30, At: 902}, // grouped elsewhere
+		{Y: 900, H: 8, At: 934},  // its piece
+		{Y: 1400, H: 12, At: 1442},
+	}
+	got := looseBlocks(blocks, map[int]bool{4: true})
+	want := []Band{{Y: 147, H: 32, At: 147}, {Y: 600, H: -30, At: 632}, {Y: 1400, H: 12, At: 1442}}
+	if !slices.Equal(got, want) {
+		t.Errorf("looseBlocks = %+v, want %+v", got, want)
+	}
+	// An inserted and a removed block side by side aren't one block.
+	if got := looseBlocks([]Band{{Y: 100, H: 20, At: 100}, {Y: 100, H: -20, At: 120}}, nil); len(got) != 2 {
+		t.Errorf("mixed = %+v", got)
+	}
+}

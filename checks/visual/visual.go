@@ -568,12 +568,7 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 			}
 		}
 	}
-	var blocks []Band
-	for i, b := range r.blocks() {
-		if !grouped[i] {
-			blocks = append(blocks, b)
-		}
-	}
+	blocks := looseBlocks(r.blocks(), grouped)
 	score := 0.0
 	if d.Compared > 0 {
 		score = float64(pixels) * 100 / float64(d.Compared)
@@ -613,6 +608,63 @@ func pageChange(r *shotDiff, explained, grouped map[int]bool, threshold float64,
 		Title: fmt.Sprintf("Page looks different (%s)", r.viewport), Detail: detail + ".",
 		Pages: []string{r.page.Path}, Score: round2(score), Files: r.files,
 		Fix: "Open the report to compare the screenshots. If the change is expected, take a new snapshot."}, true
+}
+
+// nearBlock is how far apart (in px) two blocks may be and still be one
+// block: row alignment can split a notice around a couple of rows that
+// happen to match, and the pieces have one cause.
+const nearBlock = 8
+
+// bandRows is where a block's rows are: in the after image for an
+// inserted block, in the before image for a removed one.
+func bandRows(b Band) (start, end int) {
+	if b.H > 0 {
+		return b.At, b.At + b.H
+	}
+	return b.Y, b.Y - b.H
+}
+
+// looseBlocks returns the blocks a grouped change doesn't tell, with
+// pieces within nearBlock of each other merged into one. A piece next to
+// a grouped block is part of it and is left out with it.
+func looseBlocks(blocks []Band, grouped map[int]bool) []Band {
+	order := make([]int, len(blocks))
+	for i := range order {
+		order[i] = i
+	}
+	removed := func(i int) int { // inserted blocks first, then removed ones
+		if blocks[i].H < 0 {
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(order, func(x, y int) int {
+		sx, _ := bandRows(blocks[x])
+		sy, _ := bandRows(blocks[y])
+		return cmp.Or(cmp.Compare(removed(x), removed(y)), cmp.Compare(sx, sy))
+	})
+	var out []Band
+	for i := 0; i < len(order); {
+		merged, told := blocks[order[i]], grouped[order[i]]
+		_, end := bandRows(merged)
+		j := i + 1
+		for ; j < len(order); j++ {
+			b := blocks[order[j]]
+			start, e := bandRows(b)
+			if (b.H < 0) != (merged.H < 0) || start-end > nearBlock {
+				break
+			}
+			merged.H += b.H
+			end = max(end, e)
+			told = told || grouped[order[j]]
+		}
+		if !told {
+			out = append(out, merged)
+		}
+		i = j
+	}
+	slices.SortStableFunc(out, func(x, y Band) int { return cmp.Compare(x.Y, y.Y) })
+	return out
 }
 
 // maxPages is how many pages may each get their own "looks different"
