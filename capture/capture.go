@@ -25,6 +25,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -44,8 +45,12 @@ type Options struct {
 	Ignore    []string // CSS selectors hidden before screenshots
 	Twice     bool     // take a second shot of each viewport to learn dynamic regions
 	UserAgent string
-	Headers   map[string]string
-	Save      func(name string, data []byte) error // stores a screenshot; nil skips screenshots
+	// Headers are the run's extra headers (-H plus --cookie as a Cookie
+	// header). They go only to Site, never to third parties the page
+	// loads. A Cookie header becomes real cookies for Site's host.
+	Headers map[string]string
+	Site    *url.URL                             // the site being checked; without it Headers go nowhere
+	Save    func(name string, data []byte) error // stores a screenshot; nil skips screenshots
 }
 
 // Recorder collects browser events for one page.
@@ -59,6 +64,7 @@ type Recorder struct {
 	chain   []string
 	console []string
 	stop    func()
+	release func() // removes the header handler
 }
 
 type req struct {
@@ -110,15 +116,11 @@ func Start(ctx context.Context, page *rod.Page, opts Options) (*Recorder, error)
 			return nil, err
 		}
 	}
-	if len(opts.Headers) > 0 {
-		h := proto.NetworkHeaders{}
-		for k, v := range opts.Headers {
-			h[k] = gsonString(v)
-		}
-		if err := (proto.NetworkSetExtraHTTPHeaders{Headers: h}).Call(page); err != nil {
-			return nil, err
-		}
+	release, err := siteHeaders(page, opts.Site, opts.Headers)
+	if err != nil {
+		return nil, err
 	}
+	r.release = release
 	ectx, cancel := context.WithCancel(ctx)
 	r.stop = cancel
 	wait := page.Context(ectx).EachEvent(
@@ -134,8 +136,63 @@ func Start(ctx context.Context, page *rod.Page, opts Options) (*Recorder, error)
 	return r, nil
 }
 
-// Stop ends event recording.
-func (r *Recorder) Stop() { r.stop() }
+// Stop ends event recording and stops adding the run's headers.
+func (r *Recorder) Stop() {
+	r.stop()
+	r.release()
+}
+
+// siteHeaders makes tab send headers to site only. Network.setExtraHTTPHeaders
+// would be simpler. Chrome sends those to every origin though, so a
+// tracker or CDN script the page loads would get the staging cookie and
+// the Authorization header. Instead each request is paused (see package
+// intercept) and the headers are added when it goes to site. A Cookie
+// header is set as cookies for site's host: overriding the Cookie header
+// would drop the cookies the site sets during the visit.
+func siteHeaders(tab *rod.Page, site *url.URL, headers map[string]string) (release func(), err error) {
+	release = func() {}
+	if site == nil || len(headers) == 0 {
+		return release, nil
+	}
+	extra := map[string]string{}
+	for k, v := range headers {
+		if !strings.EqualFold(k, "Cookie") {
+			extra[k] = v
+			continue
+		}
+		for _, c := range cookies(v) {
+			// HttpOnly keeps them from the page's own scripts, third-party
+			// ones included.
+			_, err := proto.NetworkSetCookie{Name: c[0], Value: c[1], URL: site.Scheme + "://" + site.Host + "/", Path: "/", HTTPOnly: true}.Call(tab)
+			if err != nil {
+				return release, fmt.Errorf("can't set the cookie %s: %w", c[0], err)
+			}
+		}
+	}
+	if len(extra) == 0 {
+		return release, nil
+	}
+	return intercept.Add(tab, func(q *intercept.Request) {
+		if q.URL != nil && check.SameSite(site, q.URL) {
+			for k, v := range extra {
+				q.SetHeader(k, v)
+			}
+		}
+	})
+}
+
+// cookies splits a Cookie header ("a=1; b=2") into name and value pairs.
+// Like a browser, it skips parts without a name.
+func cookies(header string) [][2]string {
+	var out [][2]string
+	for part := range strings.SplitSeq(header, ";") {
+		name, value, _ := strings.Cut(strings.TrimSpace(part), "=")
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, [2]string{name, strings.TrimSpace(value)})
+		}
+	}
+	return out
+}
 
 func (r *Recorder) onRequest(e *proto.NetworkRequestWillBeSent) {
 	r.mu.Lock()

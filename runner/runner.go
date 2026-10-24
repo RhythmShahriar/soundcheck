@@ -74,7 +74,11 @@ type Hooks struct {
 func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	start := time.Now()
 	cfg := opts.Config
-	client := httpClient(opts)
+	target, _, err := ratelimit.ParseTarget(opts.Target)
+	if err != nil {
+		return nil, err
+	}
+	client := httpClient(opts, target)
 	var mu sync.Mutex // serializes hooks
 	emit := func(fn func()) {
 		mu.Lock()
@@ -90,6 +94,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
+	// With FollowHost the start page may be on another site, which is
+	// now the one the headers belong to.
+	client = httpClient(opts, startURL)
 	// Modules get the start page without its query: production URLs
 	// (config) and flows match and resolve against scheme, host and path.
 	base := &url.URL{Scheme: startURL.Scheme, Host: startURL.Host, Path: startURL.Path, RawPath: startURL.RawPath}
@@ -285,7 +292,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	defer func() { _ = tab.Close() }()
 	copts := capture.Options{
 		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: opts.Snapshot && cfg.Has("visual"),
-		UserAgent: opts.UserAgent, Headers: opts.Headers,
+		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base,
 	}
 	if cfg.Has("visual") {
 		copts.Save = cc.Save
@@ -417,13 +424,20 @@ func refused(err error) bool {
 	return strings.Contains(s, "connection refused") || strings.Contains(s, "actively refused")
 }
 
-// headerTransport adds the run's extra headers to every request.
+// headerTransport adds the run's extra headers to requests to the site
+// being checked. Others (a CDN, a third-party script, a link to another
+// site, a redirect away) get none: the headers often carry a staging
+// cookie or an Authorization token.
 type headerTransport struct {
 	base    http.RoundTripper
 	headers map[string]string
+	site    *url.URL
 }
 
 func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if len(t.headers) == 0 || !check.SameSite(t.site, r.URL) {
+		return t.base.RoundTrip(r)
+	}
 	r = r.Clone(r.Context())
 	for k, v := range t.headers {
 		if strings.EqualFold(k, "Host") {
@@ -435,7 +449,9 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(r)
 }
 
-func httpClient(opts Options) *http.Client {
+// httpClient is the client for requests outside the browser; it adds
+// the run's headers to requests to site only.
+func httpClient(opts Options, site *url.URL) *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if opts.Proxy != nil {
 		tr.Proxy = http.ProxyURL(opts.Proxy)
@@ -443,7 +459,7 @@ func httpClient(opts Options) *http.Client {
 	if opts.Insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for --insecure
 	}
-	return &http.Client{Transport: headerTransport{tr, opts.Headers}, Timeout: time.Duration(opts.Config.Timeout) * time.Second}
+	return &http.Client{Transport: headerTransport{tr, opts.Headers, site}, Timeout: time.Duration(opts.Config.Timeout) * time.Second}
 }
 
 func withLog(o browser.Options, log func(string)) browser.Options {

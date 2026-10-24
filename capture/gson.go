@@ -3,11 +3,6 @@
 
 package capture
 
-import (
-	"github.com/go-rod/rod/lib/proto"
-	"github.com/ysmood/gson"
-)
-
-func gsonString(s string) gson.JSON { return gson.New(s) }
+import "github.com/go-rod/rod/lib/proto"
 
 func protoBlank() proto.TargetCreateTarget { return proto.TargetCreateTarget{URL: "about:blank"} }
