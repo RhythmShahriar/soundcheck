@@ -268,7 +268,9 @@ func (t *tab) ScopeHeaders(ctx context.Context, site *url.URL, headers map[strin
 
 func (t *tab) setCookie(ctx context.Context, site *url.URL, name, value string) error {
 	// The user context's partition: a context partition would key the
-	// cookie to the blank page's origin, so the site never got it.
+	// cookie to the blank page's origin, so the site never got it. A
+	// domain without a leading dot makes a host-only cookie, as Chrome's
+	// URL cookie is: subdomains don't get it (TestFirefoxCookieIsHostOnly).
 	partition := map[string]any{"type": "storageKey"}
 	if t.userContext != "" {
 		partition["userContext"] = t.userContext
