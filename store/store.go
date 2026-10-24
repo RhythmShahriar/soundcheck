@@ -99,7 +99,7 @@ func (s Store) NewDir(kind, name string) (string, error) {
 // once it's old enough. Folders of processes that have exited count as
 // finished anyway.
 func Release(dir string) error {
-	claimed.Delete(folderKey(dir))
+	unbeat(filepath.Join(dir, owner))
 	err := os.Remove(filepath.Join(dir, owner))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

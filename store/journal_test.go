@@ -217,8 +217,8 @@ func TestResumableClaimsAStoppedSnapshot(t *testing.T) {
 	if dir != newest || len(pages) != 3 {
 		t.Errorf("Resumable = %s with %d pages; want %s with 3", dir, len(pages), newest)
 	}
-	if pid, alive := holder(filepath.Join(dir, owner), staleOwner); pid != os.Getpid() || !alive {
-		t.Errorf("owner after claiming = %d", pid)
+	if h := holder(filepath.Join(dir, owner), staleOwner); h.pid != os.Getpid() || !h.alive || !h.mine {
+		t.Errorf("owner after claiming = %+v", h)
 	}
 	if _, _, err := s.Resumable("../x"); err == nil {
 		t.Error("an invalid name was accepted")

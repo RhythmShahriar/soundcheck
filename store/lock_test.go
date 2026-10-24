@@ -230,3 +230,108 @@ func TestPruneSkipsRunsInUse(t *testing.T) {
 		t.Errorf("releasing twice: %v", err)
 	}
 }
+
+// hostFile writes a lock or owner file as another process writes it:
+// pid, time, its token and its hostname, last touched at touched.
+func hostFile(t *testing.T, path string, pid int, tok, host string, touched time.Time) {
+	t.Helper()
+	data := fmt.Sprintf("%d\n%s\n%s\n%s\n", pid, time.Now().UTC().Format(time.RFC3339), tok, host)
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, touched, touched); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Two containers sharing a store both run as PID 1. A file of another
+// hostname is held while its process keeps touching it, whatever its PID;
+// one of this hostname with this PID and another token was left by a
+// crashed process.
+func TestHolderAcrossContainers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), owner)
+	for name, c := range map[string]struct {
+		pid       int
+		tok, host string
+		touched   time.Time
+		alive     bool
+	}{
+		"other host, this pid, fresh":  {os.Getpid(), "feedface", "other-container", time.Now(), true},
+		"other host, this pid, silent": {os.Getpid(), "feedface", "other-container", time.Now().Add(-2 * beatStale), false},
+		"other host, dead pid, fresh":  {deadPID(t), "feedface", "other-container", time.Now(), true},
+		"this host, this pid":          {os.Getpid(), "feedface", hostname, time.Now(), false},
+		"this host, this token":        {os.Getpid(), token, hostname, time.Now(), true},
+		"this host, live pid":          {os.Getppid(), "feedface", hostname, time.Now(), true},
+	} {
+		hostFile(t, path, c.pid, c.tok, c.host, c.touched)
+		if h := holder(path, staleOwner); h.alive != c.alive {
+			t.Errorf("%s: %+v, want alive %v", name, h, c.alive)
+		}
+	}
+	// The store acts on it: another container's live run keeps its
+	// folder and its lock.
+	s := Store{Root: t.TempDir()}
+	dir := filepath.Join(s.Root, Incoming, "other")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	hostFile(t, filepath.Join(dir, owner), os.Getpid(), "feedface", "other-container", time.Now())
+	s.cleanIncoming()
+	if _, err := os.Stat(dir); err != nil {
+		t.Error("another container's running snapshot was removed")
+	}
+	wait := lockWait
+	lockWait = 100 * time.Millisecond
+	t.Cleanup(func() { lockWait = wait })
+	hostFile(t, filepath.Join(s.Root, lockFile), os.Getpid(), "feedface", "other-container", time.Now())
+	if err := s.SetLatest("good"); err == nil || !strings.Contains(err.Error(), "another Soundcheck (pid") {
+		t.Errorf("took another container's lock: %v", err)
+	}
+	hostFile(t, filepath.Join(s.Root, lockFile), os.Getpid(), "feedface", "other-container", time.Now().Add(-2*beatStale))
+	if err := s.SetLatest("good"); err != nil {
+		t.Errorf("a silent container's lock wasn't broken: %v", err)
+	}
+}
+
+// This process keeps its owner files fresh while it runs, so another
+// container sees them held, and stops once they're released.
+func TestHeartbeatTouchesOwnerFiles(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	dir, err := s.NewDir("runs", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, owner)
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	touchBeats()
+	if info, err := os.Stat(path); err != nil || time.Since(info.ModTime()) > time.Minute {
+		t.Fatal("the owner file wasn't touched")
+	}
+	if err := Release(dir); err != nil {
+		t.Fatal(err)
+	}
+	beats.Lock()
+	_, kept := beats.paths[folderKey(path)]
+	beats.Unlock()
+	if kept {
+		t.Error("a released owner file is still touched")
+	}
+	// A folder that moved away (a promoted snapshot) is forgotten.
+	gone, err := s.NewDir(Incoming, "moved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(gone, gone+"-elsewhere"); err != nil {
+		t.Fatal(err)
+	}
+	touchBeats()
+	beats.Lock()
+	_, kept = beats.paths[folderKey(filepath.Join(gone, owner))]
+	beats.Unlock()
+	if kept {
+		t.Error("a moved owner file is still touched")
+	}
+}

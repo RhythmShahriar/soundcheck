@@ -219,6 +219,8 @@ How it compares with other tools is measured, not claimed: see the [benchmark](h
 
 The Markdown report goes in the job summary. The HTML report and a JUnit file are attached as the `soundcheck-report` artifact. More in the [CI guide](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI).
 
+Containers may share one `.soundcheck` folder (a mounted volume) as long as each has a hostname of its own, which is Docker's default: Soundcheck tells their runs apart by hostname, since every container's run is often PID 1.
+
 ## Docs
 
 | | |
