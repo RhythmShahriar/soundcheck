@@ -44,9 +44,13 @@ func ParseAction(s string) (Action, error) {
 type Decide func(model.Change, Action) error
 
 // ID is a short id for a change, the same across runs for the same
-// problem: the first 8 hex characters of a hash of its check, title and
-// source.
+// problem. It is the change's own ID when the comparison gave it one
+// (the id `accept <id>` takes), else the first 8 hex characters of a
+// hash of its check, title and source.
 func ID(c model.Change) string {
+	if c.ID != "" {
+		return c.ID
+	}
 	sum := sha256.Sum256([]byte(c.Check + "|" + c.Title + "|" + c.Source))
 	return hex.EncodeToString(sum[:4])
 }

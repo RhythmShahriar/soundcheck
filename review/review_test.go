@@ -423,3 +423,14 @@ func TestServeListensOnLoopback(t *testing.T) {
 		t.Errorf("Serve after cancel: %v", err)
 	}
 }
+
+// A change with its own ID keeps it, so the review shows the id accept
+// takes.
+func TestIDPrefersChangeID(t *testing.T) {
+	if got := ID(model.Change{ID: "3f2a9c01", Check: "x/y", Title: "T"}); got != "3f2a9c01" {
+		t.Errorf("ID = %q", got)
+	}
+	if got := ID(model.Change{Check: "x/y", Title: "T"}); len(got) != 8 {
+		t.Errorf("hash ID = %q", got)
+	}
+}
