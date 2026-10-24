@@ -170,6 +170,31 @@ func TestMatchKinds(t *testing.T) {
 	}
 }
 
+// A source copied from a credential header is masked; one from an
+// ordinary header stays as it is.
+func TestSourceMasksSecretHeaders(t *testing.T) {
+	p := &model.Page{Status: 200, Headers: map[string]string{
+		"Set-Cookie":   "wordpress_logged_in_abc=admin%7C1735689600%7Csecrettoken; path=/",
+		"x-powered-by": "PHP/7.4.3",
+	}}
+	for _, c := range []struct{ pattern, source, want string }{
+		{`^set-cookie: (wordpress_logged_in_\w+=\S+)`, "1", "wo•••••"},
+		{`^(set-cookie: wordpress_logged_in_\w+=[^;]+)`, "1", "set-cookie: wo•••••"},
+		{`^set-cookie: (?P<name>[^=]+)=`, "name", "wo•••••"},
+		{`^x-powered-by: (PHP/\S+)`, "1", "PHP/7.4.3"},
+		{`^(x-powered-by): PHP`, "1", "x-powered-by"},
+	} {
+		r := &Rule{ID: "health/x", Match: Header, Pattern: c.pattern, Level: model.Warning, Title: "X", Source: c.source}
+		if err := r.compile(); err != nil {
+			t.Fatal(err)
+		}
+		hits := r.find(p)
+		if len(hits) != 1 || hits[0].Issue.Source != c.want {
+			t.Errorf("%q: hits %+v, want source %q", c.pattern, hits, c.want)
+		}
+	}
+}
+
 // A group reports its first match only. A project's rule in a
 // built-in group comes after the built-in ones, so it can't hide them.
 func TestGroups(t *testing.T) {

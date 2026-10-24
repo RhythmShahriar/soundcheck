@@ -45,6 +45,11 @@
 // id or one of the health module's own checks, so they can't replace or
 // downgrade what Soundcheck already reports. The loader only reads an
 // fs.FS and knows nothing of health, so it can move to the shared kit.
+//
+// A source goes into run.json and reports. One taken from the value of a
+// header that carries credentials (cookie, set-cookie, authorization and
+// similar) is masked; tokens the kit recognizes in any other source are
+// redacted.
 package rules
 
 import (
@@ -65,6 +70,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/RhythmShahriar/rhythm/kit/secrets"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -338,7 +344,7 @@ func (r *Rule) find(p *model.Page) []Hit {
 		for _, m := range r.re.FindAllStringSubmatchIndex(in, maxHits) {
 			src := ""
 			if r.src > 0 && m[2*r.src] >= 0 {
-				src = strings.Join(strings.Fields(in[m[2*r.src]:m[2*r.src+1]]), " ")
+				src = r.source(in, m[2*r.src], m[2*r.src+1])
 			}
 			if seen[src] {
 				continue
@@ -351,6 +357,34 @@ func (r *Rule) find(p *model.Page) []Hit {
 		}
 	}
 	return out
+}
+
+// secretHeaders are the response headers whose values are credentials.
+// A project rule may capture one as its source; the value is masked the
+// way Soundcheck shows secrets everywhere else.
+var secretHeaders = map[string]bool{
+	"authorization":       true,
+	"cookie":              true,
+	"proxy-authorization": true,
+	"set-cookie":          true,
+	"www-authenticate":    true,
+	"x-api-key":           true,
+	"x-auth-token":        true,
+	"x-csrf-token":        true,
+}
+
+// source is in[start:end] on one line. The part that lies in the value
+// of a secret header is masked; elsewhere tokens kit/secrets knows are
+// redacted.
+func (r *Rule) source(in string, start, end int) string {
+	norm := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	if r.Match == Header {
+		if name, _, ok := strings.Cut(in, ": "); ok && secretHeaders[name] && end > len(name)+2 {
+			at := max(start, len(name)+2)
+			return norm(in[start:at] + secrets.Mask(strings.TrimSpace(in[at:end]), 2))
+		}
+	}
+	return secrets.Redact(norm(in[start:end]))
 }
 
 func (r *Rule) inputs(p *model.Page) []string {
