@@ -65,7 +65,9 @@ type Options struct {
 type Hooks struct {
 	Discovered func(pages int, skipped map[string]int)
 	Page       func(p *model.Page, done, total int)
-	Log        func(msg string)
+	// Log gets progress notes; a leading "!" marks one to show even
+	// without --verbose (see report.Pretty.Log).
+	Log func(msg string)
 }
 
 // Run checks the site.
@@ -373,7 +375,7 @@ func resolve(ctx context.Context, client *http.Client, target, ua string, follow
 	}
 	base, err := try(u)
 	if err != nil && !explicit && ctx.Err() == nil && refused(err) {
-		log("https refused; using http")
+		log("!https refused; using http")
 		u.Scheme = "http"
 		base, err = try(u)
 	}
@@ -392,7 +394,7 @@ func resolve(ctx context.Context, client *http.Client, target, ua string, follow
 		base.Path = "/"
 	}
 	if base.Scheme != u.Scheme || !strings.EqualFold(base.Host, u.Host) {
-		log("moved to " + base.String())
+		log("!moved to " + base.String())
 	}
 	return base, nil
 }

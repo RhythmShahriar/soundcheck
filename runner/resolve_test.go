@@ -94,7 +94,7 @@ func TestResolveRefusedHTTPSFallsBack(t *testing.T) {
 	if got.String() != srv.URL+"/" || rec.list() != "https,http" {
 		t.Errorf("start %s, requests %s", got, rec.list())
 	}
-	if strings.Join(logs, "|") != "https refused; using http" {
+	if strings.Join(logs, "|") != "!https refused; using http" {
 		t.Errorf("logs = %v", logs)
 	}
 }
@@ -127,7 +127,7 @@ func TestResolveOtherHost(t *testing.T) {
 	if err != nil || got.String() != other.URL+"/welcome" {
 		t.Fatalf("follow: %v, %v", got, err)
 	}
-	if hits.Load() != 1 || strings.Join(logs, "|") != "moved to "+other.URL+"/welcome" {
+	if hits.Load() != 1 || strings.Join(logs, "|") != "!moved to "+other.URL+"/welcome" {
 		t.Errorf("hits %d, logs %v", hits.Load(), logs)
 	}
 }
@@ -154,7 +154,7 @@ func TestResolveWWW(t *testing.T) {
 	if err != nil || got.String() != want {
 		t.Fatalf("got %v, %v; want %s", got, err, want)
 	}
-	if strings.Join(logs, "|") != "moved to "+want {
+	if strings.Join(logs, "|") != "!moved to "+want {
 		t.Errorf("logs = %v", logs)
 	}
 }
