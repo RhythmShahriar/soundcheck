@@ -120,3 +120,30 @@ func TestRate(t *testing.T) {
 		}
 	}
 }
+
+func TestInFile(t *testing.T) {
+	c, err := Load(write(t, "modules: [health, visual, interact, cache, speed]\ninteractions:\n  max_clicks: 5\npages:\n  limit: 300\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Set to the default value still counts: the user chose it.
+	for _, k := range []string{"modules", "interactions", "interactions.max_clicks", "pages.limit"} {
+		if !c.InFile(k) {
+			t.Errorf("InFile(%q) = false", k)
+		}
+	}
+	for _, k := range []string{"viewports", "interactions.levels", "rate"} {
+		if c.InFile(k) {
+			t.Errorf("InFile(%q) = true", k)
+		}
+	}
+	for _, body := range []string{"", "# only a comment\n"} {
+		c, err := Load(write(t, body))
+		if err != nil || c.InFile("modules") {
+			t.Errorf("%q: InFile(modules) = %t, %v", body, c.InFile("modules"), err)
+		}
+	}
+	if c, _ := Load(filepath.Join(t.TempDir(), "missing.yaml")); c.InFile("modules") {
+		t.Error("no file: InFile(modules) = true")
+	}
+}

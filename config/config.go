@@ -61,6 +61,9 @@ type Config struct {
 	// it parsed, so IsProduction can tell when Production changed since.
 	prod     []prodSite
 	prodFrom []string
+
+	// inFile holds the keys the file set, for InFile.
+	inFile map[string]bool
 }
 
 type Pages struct {
@@ -145,9 +148,40 @@ func Load(path string) (Config, error) {
 	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) { // EOF: an empty file
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
+	c.inFile = fileKeys(data)
 	// Validate first: it stores the parsed production entries on c.
 	err = c.Validate()
 	return c, err
+}
+
+// InFile reports whether the config file set key, written with dots for
+// nested keys ("modules", "interactions.levels"), even to its default
+// value. compare uses it to tell a setting the user chose from one it
+// may take from the snapshot.
+func (c Config) InFile(key string) bool { return c.inFile[key] }
+
+// fileKeys lists the keys in a YAML document two levels deep: "pages",
+// "pages.limit" and so on. The document has already decoded once, so a
+// parse error here can only mean an empty file.
+func fileKeys(data []byte) map[string]bool {
+	var doc yaml.Node
+	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 {
+		return nil
+	}
+	keys := map[string]bool{}
+	var walk func(n *yaml.Node, prefix string, depth int)
+	walk = func(n *yaml.Node, prefix string, depth int) {
+		if n.Kind != yaml.MappingNode || depth == 0 {
+			return
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := prefix + n.Content[i].Value
+			keys[key] = true
+			walk(n.Content[i+1], key+".", depth-1)
+		}
+	}
+	walk(doc.Content[0], "", 2)
+	return keys
 }
 
 // Validate checks values a user could get wrong and parses the
