@@ -2,85 +2,108 @@
 
 # Soundcheck benchmark
 
-The testbed (`testbed/`) is a WordPress site and a plain-PHP site with 20 scenarios. Each scenario has a good state and a broken state, switched by `testbed/toggle.sh`. For every scenario the benchmark sets the good state, runs `rhythm-soundcheck snapshot`, breaks the scenario, runs `rhythm-soundcheck compare` and checks the comparison for the change listed in `testbed/scenarios.yaml`.
+The testbed (`testbed/`) is a WordPress site and a plain-PHP site with 48 scenarios. Each scenario has a good state and a broken state, switched by `testbed/toggle.sh`. For every scenario the benchmark sets the good state, runs `rhythm-soundcheck snapshot`, breaks the scenario, runs `rhythm-soundcheck compare` and checks the comparison for the change listed in `testbed/scenarios.yaml`. A control pass then breaks nothing: it takes a snapshot and compares twice. Every change at or above NEW counts as a false alarm.
 
-**Soundcheck caught 20 of 20 scenarios.**
+**Soundcheck caught 47 of 47 scenarios.** **False alarms: 0** in 40 compares of an unchanged site.
 
-Run on 2026-10-23 with rhythm-soundcheck 1.0.0 (linux/amd64).
+Not run and not counted: s33 (needs Echo: start it (rhythm echo up), start the testbed with TESTBED_SMTP=host.docker.internal:1025 and pass -echo http://127.0.0.1:8025); see [Run it](#run-it).
+
+Run on 2026-10-24 with rhythm-soundcheck dev (linux/amd64).
 
 | # | Scenario | Expected | Soundcheck | BackstopJS | lychee | Unlighthouse |
 |---|---|---|---|---|---|---|
-| s01 | PHP fatal error on one inner page | BROKE health/wp-critical “critical error” (health) | **caught** | **caught** | **caught** | missed |
-| s02 | PHP warning with file and line in the footer of every page | NEW health/php-error “PHP Warning: Undefined array key” (health) | **caught** | **caught** | missed | missed |
-| s03 | Deprecated notice after a PHP upgrade (plain PHP) | NEW health/php-error “PHP Deprecated: strlen()” (health) | **caught** | **caught** | missed | **caught** |
-| s04 | White screen (empty 200) on one page | BROKE health/white-screen “white screen” (health) | **caught** | **caught** | missed | missed |
-| s05 | JS error on load from a plugin script | NEW health/js-error “Uncaught TypeError”<br>or BROKE health/js-error “Uncaught TypeError” (health) | **caught** | **caught** | missed | **caught** |
-| s06 | jQuery deregistered while inline code still uses it | NEW health/js-error “jQuery is not defined” (health) | **caught** | missed | missed | **caught** |
-| s07 | admin-ajax endpoint returns 500 | BROKE health/failed-request “admin-ajax.php returned 500” (health) | **caught** | **caught** | missed | **caught** |
-| s08 | REST endpoint used by a widget returns 404 | NEW health/failed-request “/wp-json/testbed/v1/reviews returned 404” (health) | **caught** | **caught** | missed | **caught** |
-| s09 | Deleted page that other pages still link to | BROKE health/status “Page not found (404)”<br>or NEW health/broken-link “spring-offer” (health) | **caught** | missed | **caught** | missed |
-| s10 | Broken image | NEW health/broken-asset “team-1024x683.svg” (health) | **caught** | **caught** | **caught** | **caught** |
-| s11 | Contact form stops sending | BROKE interact/ (interact) | **caught** | missed | missed | missed |
-| s12 | Menu toggle button becomes dead | BROKE interact/dead-click “does nothing”<br>or NEW interact/dead-click “does nothing” (interact) | **caught** | missed | missed | missed |
-| s13 | Button throws a JS error on click | BROKE interact/click-error “throws a JS error”<br>or NEW interact/click-error “throws a JS error” (interact) | **caught** | missed | missed | missed |
-| s14 | Layout change: hero disappears, header flips | CHANGED visual/ (visual) | **caught** | **caught** | missed | missed |
-| s15 | Fixed-width element breaks the mobile layout | CHANGED visual/<br>or NEW health/not-responsive (visual) | **caught** | **caught** | missed | missed |
-| s16 | noindex switched on by an SEO setting | NEW health/noindex “noindex” (health) | **caught** | missed | missed | **caught** |
-| s17 | Page title lost | CHANGED health/title “title changed” (health) | **caught** | missed | missed | **caught** |
-| s18 | Page cache caches the cart | BROKE cache/<br>or NEW cache/ (cache) | **caught** | missed | missed | missed |
-| s19 | Cache leak: a logged-in page served to visitors | BROKE cache/<br>or NEW cache/ (cache) | **caught** | **caught** | **caught** | missed |
-| s20 | Heavy plugin added: 2 MB image and a render-blocking script | SLOWER speed/ (speed) | **caught** | **caught** | missed | **caught** |
+| s01 | PHP fatal error on one inner page | BROKE health/wp-critical “critical error” (health) | **caught** | not run | not run | not run |
+| s02 | PHP warning with file and line in the footer of every page | NEW health/php-error “PHP Warning: Undefined array key” (health) | **caught** | not run | not run | not run |
+| s03 | Deprecated notice after a PHP upgrade (plain PHP) | NEW health/php-error “PHP Deprecated: strlen()” (health) | **caught** | not run | not run | not run |
+| s04 | White screen (empty 200) on one page | BROKE health/white-screen “white screen” (health) | **caught** | not run | not run | not run |
+| s05 | JS error on load from a plugin script | NEW health/js-error “Uncaught TypeError”<br>or BROKE health/js-error “Uncaught TypeError” (health) | **caught** | not run | not run | not run |
+| s06 | jQuery deregistered while inline code still uses it | NEW health/js-error “jQuery is not defined” (health) | **caught** | not run | not run | not run |
+| s07 | admin-ajax endpoint returns 500 | BROKE health/failed-request “admin-ajax.php returned 500” (health) | **caught** | not run | not run | not run |
+| s08 | REST endpoint used by a widget returns 404 | NEW health/failed-request “/wp-json/testbed/v1/reviews returned 404” (health) | **caught** | not run | not run | not run |
+| s09 | Deleted page that other pages still link to | BROKE health/status “Page not found (404)”<br>or NEW health/broken-link “spring-offer” (health) | **caught** | not run | not run | not run |
+| s10 | Broken image | NEW health/broken-asset “team-1024x683.svg” (health) | **caught** | not run | not run | not run |
+| s11 | Contact form stops sending | BROKE interact/ (interact) | **caught** | not run | not run | not run |
+| s12 | Menu toggle button becomes dead | BROKE interact/dead-click “does nothing”<br>or NEW interact/dead-click “does nothing” (interact) | **caught** | not run | not run | not run |
+| s13 | Button throws a JS error on click | BROKE interact/click-error “throws a JS error”<br>or NEW interact/click-error “throws a JS error” (interact) | **caught** | not run | not run | not run |
+| s14 | Layout change: hero disappears, header flips | CHANGED visual/ (visual) | **caught** | not run | not run | not run |
+| s15 | Fixed-width element breaks the mobile layout | CHANGED visual/<br>or NEW health/not-responsive (visual) | **caught** | not run | not run | not run |
+| s16 | noindex switched on by an SEO setting | NEW health/noindex “noindex” (health) | **caught** | not run | not run | not run |
+| s17 | Page title lost | NEW health/no-title “no <title>”<br>or CHANGED health/title “title changed” (health) | **caught** | not run | not run | not run |
+| s18 | Page cache caches the cart | BROKE cache/<br>or NEW cache/ (cache) | **caught** | not run | not run | not run |
+| s19 | Cache leak: a logged-in page served to visitors | BROKE cache/<br>or NEW cache/ (cache) | **caught** | not run | not run | not run |
+| s20 | Heavy plugin added: 2 MB image and a render-blocking script | SLOWER speed/ (speed) | **caught** | not run | not run | not run |
+| s21 | Maintenance mode left on after a failed update | BROKE health/status “Server error 503” (health) | **caught** | not run | not run | not run |
+| s22 | Database connection error | BROKE health/database (health) | **caught** | not run | not run | not run |
+| s23 | Fatal error on every page (memory exhausted) | BROKE health/wp-critical “critical error” (health) | **caught** | not run | not run | not run |
+| s24 | Stylesheet 404, the site renders unstyled | NEW health/broken-asset “Broken stylesheet”<br>or CHANGED visual/ (health) | **caught** | not run | not run | not run |
+| s25 | Mixed content after a move to https | NEW health/mixed-content (health) | **caught** | not run | not run | not run |
+| s26 | robots.txt switched to Disallow / | BROKE seo/robots-txt (seo) | **caught** | not run | not run | not run |
+| s27 | Canonical, hreflang, Open Graph and JSON-LD lost | any seo/canonical<br>or any seo/hreflang<br>or any seo/og<br>or any seo/jsonld (seo) | **caught** | not run | not run | not run |
+| s28 | Sitemap answers 500 | any seo/sitemap (seo) | **caught** | not run | not run | not run |
+| s29 | A page now redirects to the home page | CHANGED health/redirect “ends somewhere else”<br>or any seo/redirect (health) | **caught** | not run | not run | not run |
+| s30 | Stale cached page with an expired nonce | NEW cache/stale<br>or NEW cache/expired-nonce<br>or BROKE cache/expired-nonce (cache) | **caught** | not run | not run | not run |
+| s31 | Checkout breaks when placing an order | BROKE interact/ (interact) | **caught** | not run | not run | not run |
+| s32 | A form gains a reCAPTCHA | warning “captcha” (interact)<br>and no BROKE interact/ | **caught** | not run | not run | not run |
+| s33 | Form says sent while no email goes out | BROKE echo/<br>or NEW echo/no-message (echo) | not run | not run | not run | not run |
+| s34 | Slower server response only (TTFB) | SLOWER speed/ttfb<br>or SLOWER speed/ (speed) | **caught** | not run | not run | not run |
+| s35 | A break inside content that loads late | NEW health/broken-asset “team-photo-2.svg” (health) | **caught** | not run | not run | not run |
+| s36 | Firewall bot challenge (Cloudflare style) | BROKE health/blocked “Cloudflare” (health) | **caught** | not run | not run | not run |
+| s37 | Staging put behind basic auth (401) | BROKE health/auth-required “Password required (401)” (health) | **caught** | not run | not run | not run |
+| s38 | Ctrl+C during compare | marked interrupted (health)<br>and no BROKE, NEW | **caught** | not run | not run | not run |
+| s39 | Two compares at once in one folder | nothing at or above NEW (health) | **caught** | not run | not run | not run |
+| s40 | Snapshot with its screenshots missing | warning “screenshot from the snapshot is missing or unreadable”<br>or warning “screenshots from the snapshot are missing or unreadable”<br>or CHANGED visual/ (visual) | **caught** | not run | not run | not run |
+| s41 | A page that answers just under the timeout | SLOWER speed/ (speed)<br>and no BROKE health/white-screen, NEW health/no-title | **caught** | not run | not run | not run |
+| s42 | Flaky server, one load in five answers 500 | UNSTABLE (health) | **caught** | not run | not run | not run |
+| s43 | Start page redirects to another host | exit 3 (health) | **caught** | not run | not run | not run |
+| s44 | Busy machine (every CPU loaded) | nothing at or above NEW (health) | **caught** | not run | not run | not run |
+| s45 | A break on page 317 of a 320-page site | NEW health/php-error “PHP Warning: Undefined array key” (health) | **caught** | not run | not run | not run |
+| s46 | Elementor widget missing (YAML rule) | BROKE health/elementor-missing-widget “Elementor widget missing”<br>or NEW health/elementor-missing-widget “Elementor widget missing” (health) | **caught** | not run | not run | not run |
+| s47 | One of ten plugin updates breaks the contact page (wp-update --bisect) | culprit testbed-update-07 in at most 4 compares (wp-update) | **caught** | not run | not run | not run |
+| s48 | One of ten plugin updates breaks the contact page (wp-update --one-by-one) | culprit testbed-update-07 in at most 10 compares (wp-update) | **caught** | not run | not run | not run |
 
-**caught**: the expected change was reported · found, as X: the problem was reported in another class · missed · error: the tool failed (see Details) · not run: the tool wasn't available
+**caught**: the expected result was reported · found, as X: the problem was reported in another class · false alarm: a change the scenario rules out was reported · missed · error: the tool failed (see Details) · not run: the tool wasn't available
+
+## Control pass
+
+Every scenario good. Each round takes a snapshot of the site (at most 40 pages) and compares twice with nothing changed. A change at or above NEW in either compare is a false alarm.
+
+| Site | Rounds | Compares | Pages | False alarms | Errors |
+|---|---:|---:|---:|---:|---:|
+| wp | 10 | 20 | 17 | 0 | 0 |
+| php | 10 | 20 | 17 | 0 | 0 |
+
 
 ## Details
 
 **s01 PHP fatal error on one inner page** (`/s01-fatal/` on wp). Broken state: Pricing Tables 2.0 calls a function it no longer defines (wp/plugins/testbed-pricing).
 Soundcheck: BROKE health/wp-critical: WordPress "critical error" screen (/s01-fatal/). Also reported: BROKE health/status: Server error 500 (/s01-fatal/).
-BackstopJS: screenshots differ.
-lychee: broken link: http://localhost:18800/wp-json/wp/v2/pages/10 (500), http://localhost:18800/?p=10 (500), http://localhost:18800/s01-fatal/ (500).
 
 **s02 PHP warning with file and line in the footer of every page** (`/s02-warning/` on wp). Broken state: the theme footer reads a missing setting with display_errors on (wp/themes/testbed/footer.php).
 Soundcheck: NEW health/php-error: PHP Warning: Undefined array key "note" (/s02-warning/). Also reported: CHANGED visual/page: Page looks different (mobile) (/s02-warning/); CHANGED visual/page: Page looks different (desktop) (/s02-warning/).
-BackstopJS: screenshots differ.
 
 **s03 Deprecated notice after a PHP upgrade (plain PHP)** (`/report.php` on php). Broken state: the legacy strlen(null) line PHP 8.1+ deprecates runs (php/report.php).
 Soundcheck: NEW health/php-error: PHP Deprecated: strlen(): Passing null to parameter #1 ($string) of type string is deprecated (/report.php). Also reported: NEW health/favicon: No favicon (/report.php); CHANGED visual/page: Page looks different (mobile) (/report.php); CHANGED visual/page: Page looks different (desktop) (/report.php).
-BackstopJS: screenshots differ.
-Unlighthouse: best-practices 100→92.
 
 **s04 White screen (empty 200) on one page** (`/s04-blank/` on wp). Broken state: the page answers 200 with an empty body (wp/mu-plugins/testbed-scenarios.php).
-Soundcheck: BROKE health/white-screen: Blank page (white screen) (/s04-blank/). Also reported: NEW health/no-title: Page has no <title> (/s04-blank/); CHANGED visual/page: Page looks different (mobile) (/s04-blank/); CHANGED cache/stopped: Page cache stopped working (/s04-blank/); CHANGED visual/page: Page looks different (desktop) (/s04-blank/); CHANGED health/title: Page title changed (/s04-blank/).
-BackstopJS: screenshots differ.
+Soundcheck: BROKE health/white-screen: Blank page (white screen) (/s04-blank/). Also reported: NEW health/no-title: Page has no <title> (/s04-blank/); CHANGED visual/page: Page looks different (mobile) (/s04-blank/); CHANGED cache/stopped: Page cache stopped working (/s04-blank/); CHANGED visual/page: Page looks different (desktop) (/s04-blank/).
 
 **s05 JS error on load from a plugin script** (`/s05-js-error/` on wp). Broken state: Store Locator 2.0 throws while starting up (wp/plugins/testbed-widgets/js/locator-2.0.js).
 Soundcheck: NEW health/js-error: JS error: Uncaught TypeError: Cannot read properties of undefined (reading 'map') (/s05-js-error/).
-BackstopJS: screenshots differ.
-Unlighthouse: best-practices 100→96.
 
 **s06 jQuery deregistered while inline code still uses it** (`/s06-jquery/` on wp). Broken state: a setting deregisters jquery; the footer's inline jQuery() throws (wp/mu-plugins/testbed-scenarios.php).
 Soundcheck: NEW health/js-error: JS error: Uncaught ReferenceError: jQuery is not defined (/s06-jquery/).
-Unlighthouse: best-practices 100→96.
 
 **s07 admin-ajax endpoint returns 500** (`/s07-ajax/` on wp). Broken state: the stock checker's wp_ajax handler answers 500 (wp/plugins/testbed-widgets).
 Soundcheck: BROKE health/failed-request: GET /wp-admin/admin-ajax.php returned 500 (/s07-ajax/).
-BackstopJS: screenshots differ.
-Unlighthouse: best-practices 100→96.
 
 **s08 REST endpoint used by a widget returns 404** (`/s08-rest/` on wp). Broken state: a plugin update renames the REST route the reviews widget calls (wp/plugins/testbed-widgets).
 Soundcheck: NEW health/failed-request: GET /wp-json/testbed/v1/reviews returned 404 (/s08-rest/).
-BackstopJS: screenshots differ.
-Unlighthouse: best-practices 100→96.
 
 **s09 Deleted page that other pages still link to** (`/s09-links/` on wp). Broken state: the Spring offer page is gone and answers 404 (wp/mu-plugins/testbed-scenarios.php).
 Soundcheck: BROKE health/status: Page not found (404) (/s09-links/spring-offer/).
-lychee: broken link: http://localhost:18800/s09-links/spring-offer/ (404).
 
 **s10 Broken image** (`/s10-image/` on wp). Broken state: the content points at a resized image that doesn't exist (wp/mu-plugins/testbed-scenarios.php).
 Soundcheck: NEW health/broken-asset: Broken image: /wp-content/plugins/testbed-shop/assets/team-1024x683.svg (404) (/s10-image/). Also reported: CHANGED visual/page: Page looks different (desktop) (/s10-image/); CHANGED visual/page: Page looks different (mobile) (/s10-image/).
-BackstopJS: screenshots differ.
-lychee: broken link: http://localhost:18800/wp-content/plugins/testbed-shop/assets/team-1024x683.svg (404).
-Unlighthouse: best-practices 100→96.
 
 **s11 Contact form stops sending** (`/s11-form/` on wp). Broken state: the form handler fails to send and shows an error (wp/plugins/testbed-forms).
 Soundcheck: BROKE interact/form-submit: Form no longer submits: form 1 (/s11-form/).
@@ -93,38 +116,114 @@ Soundcheck: BROKE interact/click-error: Clicking Add to wishlist throws a JS err
 
 **s14 Layout change: hero disappears, header flips** (`/s14-layout/` on wp). Broken state: a body class from the 2.0 layout hides the hero and reverses the header (wp/mu-plugins/testbed-scenarios.php, style.css).
 Soundcheck: CHANGED visual/page: Page looks different (mobile) (/s14-layout/).
-BackstopJS: screenshots differ.
 
 **s15 Fixed-width element breaks the mobile layout** (`/s15-mobile/` on wp). Broken state: the promo strip gets a fixed 1200px width (wp/mu-plugins/testbed-scenarios.php).
 Soundcheck: CHANGED visual/page: Page looks different (mobile) (/s15-mobile/).
-BackstopJS: screenshots differ.
 
 **s16 noindex switched on by an SEO setting** (`/s16-noindex/` on wp). Broken state: blog_public is 0 ("Discourage search engines"), so WordPress adds noindex (wp/mu-plugins/testbed-scenarios.php).
 Soundcheck: NEW health/noindex: Page is set to noindex (/s16-noindex/).
-Unlighthouse: seo 92→58.
 
 **s17 Page title lost** (`/s17-title/` on wp). Broken state: the theme's title-tag support is removed, so pages have no <title> (wp/mu-plugins/testbed-scenarios.php).
-Soundcheck: CHANGED health/title: Page title changed (/s17-title/). Also reported: NEW health/no-title: Page has no <title> (/s17-title/).
-Unlighthouse: accessibility 95→90, seo 92→83.
+Soundcheck: NEW health/no-title: Page has no <title> (/s17-title/).
 
 **s18 Page cache caches the cart** (`/cart/` on wp). Broken state: the page cache stops bypassing /cart/ (wp/mu-plugins/testbed-cache.php).
 Soundcheck: BROKE cache/private-cached: Private page is served from cache (/cart/).
 
 **s19 Cache leak: a logged-in page served to visitors** (`/s19-account/` on wp). Broken state: the page cache stores pages rendered for logged-in users, admin bar and name included (wp/mu-plugins/testbed-cache.php).
 Soundcheck: BROKE cache/leak: Cache leaks logged-in content to visitors (/s19-account/). Also reported: NEW interact/dead-click: Button does nothing: About WordPress Brew & Co 0 0 Comments in moderation New Edi (/s19-account/); NEW interact/dead-click: Button does nothing: Search (/s19-account/); CHANGED visual/page: Page looks different (mobile) (/s19-account/); CHANGED visual/page: Page looks different (desktop) (/s19-account/).
-BackstopJS: screenshots differ.
-lychee: broken link: http://localhost:18800/wp-login.php?action=logout&_wpnonce=a6b7e42ddb (403).
 
 **s20 Heavy plugin added: 2 MB image and a render-blocking script** (`/s20-heavy/` on wp). Broken state: Heavy Slider adds a 2 MB image and a slow script in <head> (wp/plugins/testbed-heavy).
-Soundcheck: SLOWER speed/weight: Page weight 36× higher (/s20-heavy/). Also reported: CHANGED visual/page: Page looks different (desktop) (/s20-heavy/); CHANGED visual/page: Page looks different (mobile) (/s20-heavy/).
-BackstopJS: screenshots differ.
-Unlighthouse: performance 100→80.
+Soundcheck: SLOWER speed/weight: Page weight 35× higher (/s20-heavy/). Also reported: CHANGED visual/page: Page looks different (desktop) (/s20-heavy/); CHANGED visual/page: Page looks different (mobile) (/s20-heavy/).
+
+**s21 Maintenance mode left on after a failed update** (`/s21-maintenance/` on wp). Broken state: every request gets WordPress's 503 "Briefly unavailable for scheduled maintenance" screen (wp/mu-plugins/01-testbed-early.php).
+Soundcheck: BROKE health/status: Server error 503 (/s21-maintenance/). Also reported: NEW health/favicon: No favicon (/s21-maintenance/).
+
+**s22 Database connection error** (`/s22-database/` on wp). Broken state: every request gets "Error establishing a database connection" with a 500 (wp/mu-plugins/01-testbed-early.php).
+Soundcheck: BROKE health/database: Database error on the page (/s22-database/). Also reported: BROKE health/status: Server error 500 (/s22-database/); NEW health/favicon: No favicon (/s22-database/).
+
+**s23 Fatal error on every page (memory exhausted)** (`/s23-fatal/` on wp). Broken state: every front-end page runs out of memory, so WordPress shows its critical error screen everywhere (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: BROKE health/wp-critical: WordPress "critical error" screen (/about/, /s23-fatal/). Also reported: BROKE health/status: Server error 500 (/about/, /s23-fatal/); NEW health/favicon: No favicon (/about/, /s23-fatal/).
+
+**s24 Stylesheet 404, the site renders unstyled** (`/s24-styles/` on wp). Broken state: theme 2.0 enqueues style-2.0.css, which wasn't deployed (wp/themes/testbed/functions.php).
+Soundcheck: NEW health/broken-asset: Broken stylesheet: /wp-content/themes/testbed/style-2.0.css (404) (/s24-styles/).
+
+**s25 Mixed content after a move to https** (`/mixed.php` on php-https). Broken state: the https page still loads its logo from the old http:// URL (php/mixed.php).
+Soundcheck: NEW health/mixed-content: Insecure (http://) resource on an https page (/mixed.php).
+
+**s26 robots.txt switched to Disallow /** (`/s26-robots/` on wp). Broken state: a staging robots.txt reaches the site: "Disallow: /" (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: BROKE seo/robots-txt: robots.txt now blocks the whole site.
+
+**s27 Canonical, hreflang, Open Graph and JSON-LD lost** (`/s27-seo/` on wp). Broken state: an SEO plugin update drops the canonical, hreflang, og: tags and the JSON-LD (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: NEW seo/canonical: Canonical link removed (/s27-seo/).
+
+**s28 Sitemap answers 500** (`/s28-sitemap/` on wp). Broken state: /wp-sitemap.xml and its sub-sitemaps answer 500 (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: BROKE seo/sitemap: Sitemap returns 500.
+
+**s29 A page now redirects to the home page** (`/s29-redirect/` on wp). Broken state: a redirect plugin's new rule sends the page to / with a 301 (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: CHANGED health/redirect: Page now ends somewhere else (/s29-redirect/). Also reported: CHANGED visual/page: Page looks different (mobile) (/s29-redirect/); CHANGED visual/page: Page looks different (desktop) (/s29-redirect/); CHANGED health/title: Page title changed (/s29-redirect/).
+
+**s30 Stale cached page with an expired nonce** (`/s30-stale/` on wp). Broken state: the page cache serves a 36-hour-old copy with the old roasting day and an expired form nonce (wp/mu-plugins/testbed-cache.php).
+Soundcheck: BROKE cache/expired-nonce: Cached page carries an expired security token (/s30-stale/).
+
+**s31 Checkout breaks when placing an order** (`/checkout/` on wp). Broken state: the payment step calls a renamed gateway class, so Place order is a fatal error (wp/plugins/testbed-shop).
+Soundcheck: BROKE interact/form-error: Form submission fails (HTTP 500): form 1 (/checkout/).
+
+**s32 A form gains a reCAPTCHA** (`/s32-captcha/` on wp). Broken state: a security plugin adds reCAPTCHA markup; without a solved challenge the form refuses (wp/plugins/testbed-forms).
+Soundcheck: warning: interact /s32-captcha/: form 1 has a CAPTCHA (reCAPTCHA), which a test browser can't solve, so it wasn't submitted. Use the CAPTCHA's test keys on staging, or allowlist the form in interactions.forms once it accepts test submissions. Also reported: CHANGED visual/page: Page looks different (desktop) (/s32-captcha/).
+
+**s33 Form says sent while no email goes out** (`/s33-mail/` on wp). Broken state: an SMTP plugin update fails silently: the form still says sent, no email is sent (wp/plugins/testbed-forms).
+Soundcheck: needs Echo: start it (rhythm echo up), start the testbed with TESTBED_SMTP=host.docker.internal:1025 and pass -echo http://127.0.0.1:8025.
+
+**s34 Slower server response only (TTFB)** (`/ttfb.php` on php). Broken state: a slow database query: the page waits 1.5 s before it answers; size and requests don't change (php/ttfb.php).
+Soundcheck: SLOWER speed/ttfb: Server response (TTFB) 430× slower (/ttfb.php).
+
+**s35 A break inside content that loads late** (`/late.php` on php). Broken state: the section a script loads 1.5 s after the page shows a photo that doesn't exist (php/late.php).
+Soundcheck: NEW health/broken-asset: Broken image: /team-photo-2.svg (404) (/late.php). Also reported: CHANGED visual/page: Page looks different (mobile) (/late.php); CHANGED visual/page: Page looks different (desktop) (/late.php); FIXED speed/lcp: LCP 92% faster (/late.php).
+
+**s36 Firewall bot challenge (Cloudflare style)** (`/about.php` on php). Broken state: the whole site answers 403 with cf-mitigated: challenge and "Just a moment..." (php/layout.php).
+Soundcheck: BROKE health/blocked: Blocked by a bot challenge (Cloudflare) (/about.php). Also reported: FIXED cache/none: No page cache detected.
+
+**s37 Staging put behind basic auth (401)** (`/about.php` on php). Broken state: the whole site answers 401 with WWW-Authenticate: Basic (php/layout.php).
+Soundcheck: BROKE health/auth-required: Password required (401) (/about.php). Also reported: FIXED cache/none: No page cache detected.
+
+**s38 Ctrl+C during compare** (`/archive.php` on php). Broken state: each archive page takes 3 s, so the interrupt lands mid-run (php/archive.php).
+Soundcheck: the comparison is marked interrupted. Also reported: FIXED cache/none: No page cache detected.
+
+**s39 Two compares at once in one folder** (`/` on php). Broken state: none: the site doesn't change; the benchmark starts two compares in one folder at the same time.
+Soundcheck: both compares clean, in 2 separate run folders.
+
+**s40 Snapshot with its screenshots missing** (`/banner.php` on php). Broken state: a large red banner appears; the benchmark deletes the snapshot's shots/ first (php/banner.php).
+Soundcheck: warning: visual: 2 screenshots from the snapshot are missing or unreadable; visual changes on these pages weren't checked.
+
+**s41 A page that answers just under the timeout** (`/slow.php` on php). Broken state: the page waits 5 s before it answers; the run's timeout is 6 s (php/slow.php).
+Soundcheck: SLOWER speed/ttfb: Server response (TTFB) 2274× slower (/slow.php).
+
+**s42 Flaky server, one load in five answers 500** (`/flaky.php` on php). Broken state: every fifth request to the payment pages answers 500 (php/flaky.php).
+Soundcheck: UNSTABLE health/status: Server error 500 (/flaky.php).
+
+**s43 Start page redirects to another host** (`/moved.php` on php). Broken state: the page answers 302 to the same path on another host name, localhost and 127.0.0.1 swapped (php/moved.php).
+Soundcheck: exit 3.
+
+**s44 Busy machine (every CPU loaded)** (`/` on php). Broken state: none: the site doesn't change; the benchmark keeps every CPU busy while compare runs.
+Soundcheck: nothing at or above NEW.
+
+**s45 A break on page 317 of a 320-page site** (`/catalog.php` on php). Broken state: item 317 prints a PHP warning (php/catalog.php).
+Soundcheck: NEW health/php-error: PHP Warning: Undefined array key "price" (/catalog.php/item-317). Also reported: NEW health/php-error: PHP Deprecated: htmlspecialchars(): Passing null to parameter #1 ($string) of type string is deprecated (/catalog.php/item-317); CHANGED visual/page: Page looks different (mobile) (/catalog.php/item-317); CHANGED visual/page: Page looks different (desktop) (/catalog.php/item-317); FIXED speed/lcp: LCP 97% faster (/catalog.php/item-72).
+
+**s46 Elementor widget missing (YAML rule)** (`/s46-widgets/` on wp). Broken state: an Elementor add-on is deactivated, so its widget shows "Widget ... not found" (wp/mu-plugins/testbed-scenarios.php).
+Soundcheck: BROKE health/elementor-missing-widget: Elementor widget missing (/s46-widgets/).
+
+**s47 One of ten plugin updates breaks the contact page (wp-update --bisect)** (`/contact/` on wp). Broken state: testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates.
+Soundcheck: testbed-update-07 1.0 → 1.1 (Server error 500 on /contact/), found in 4 compares.
+
+**s48 One of ten plugin updates breaks the contact page (wp-update --one-by-one)** (`/contact/` on wp). Broken state: testbed-update-07 1.1 calls a renderer it doesn't ship on the contact page (wp/updates/testbed-update-07.php); wp/mu-plugins/testbed-updates.php offers all ten 1.1 updates.
+Soundcheck: testbed-update-07 1.0 → 1.1 (Server error 500 on /contact/), found in 4 compares.
 
 ## Tools
 
-- **BackstopJS**: visual regression: reference screenshots in the good state, test in the broken one (desktop 1366 and phone 390, 0.1% mismatch threshold). Ran.
-- **lychee**: link checker: every link and image on the scenario's page, in both states. Ran.
-- **Unlighthouse**: Lighthouse on the scenario's page in both states (desktop); caught when a category score drops by 0.03 or more (performance: 0.10). Ran.
+- **BackstopJS**: visual regression: reference screenshots in the good state, test in the broken one (desktop 1366 and phone 390, 0.1% mismatch threshold). Not run; to include it, `npm i -g backstopjs@6.3.25` (or `-tools backstop` to run it through npx).
+- **lychee**: link checker: every link and image on the scenario's page, in both states. Not run; to include it, install `lychee`, or have Docker (the benchmark runs `lycheeverse/lychee:0.23.0`).
+- **Unlighthouse**: Lighthouse on the scenario's page in both states (desktop); caught when a category score drops by 0.03 or more (performance: 0.10). Not run; to include it, `npm i -g @unlighthouse/cli@0.19.1` (or `-tools unlighthouse` to run it through npx).
 
 A tool is only expected to catch what it's built for (a link checker won't see a JS error); the table shows where each one helps.
 
@@ -135,9 +234,11 @@ make build                 # bin/rhythm-soundcheck
 make -C testbed up         # WordPress on :18800, plain PHP on :18810 (about 30 s)
 go run -tags testbed ./testbed/bench                      # Soundcheck + installed tools
 go run -tags testbed ./testbed/bench -tools all           # also fetch BackstopJS, lychee and Unlighthouse
-go run -tags testbed ./testbed/bench -only s05,s09        # some scenarios
+go run -tags testbed ./testbed/bench -only s05,s09        # some scenarios (no control pass unless -control is given)
+go run -tags testbed ./testbed/bench -control 0           # skip the control pass
 make -C testbed down
 ```
 
 Scenarios that need a login (s19) use the testbed's own account unless `SOUNDCHECK_USER` and `SOUNDCHECK_PASSWORD` are set.
-Runs are kept in `testbed/bench/work/<id>/` (snapshot, compare.json, tool output); `work/results.json` has every result.
+Scenarios that need Echo (s33) run only with `-echo http://127.0.0.1:8025` and Echo running.
+Runs are kept in `testbed/bench/work/<id>/` (snapshot, compare.json, tool output) and the control pass in `work/control/`; `work/results.json` has every result.
