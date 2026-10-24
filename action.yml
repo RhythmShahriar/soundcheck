@@ -37,6 +37,12 @@ inputs:
     description: Extra flags, e.g. "--limit 100 --skip speed -k".
     required: false
     default: ""
+  echo:
+    description: >
+      Record what forms and flows send with Echo: "true" for Echo at http://127.0.0.1:8025, or its
+      URL. Start Echo first, e.g. with RhythmShahriar/echo@v1 and mode up. Default off.
+    required: false
+    default: ""
   version:
     description: Soundcheck version to install, e.g. 1.0.0. Default the latest release.
     required: false
@@ -90,6 +96,7 @@ runs:
         NAME: ${{ inputs.name }}
         FAIL_ON: ${{ inputs.fail-on }}
         ARGS: ${{ inputs.args }}
+        ECHO: ${{ inputs.echo }}
       run: |
         set -uo pipefail
         mode=$MODE
@@ -102,6 +109,11 @@ runs:
         [ "$level" = none ] || fail=(--fail-on "$level")
         # shellcheck disable=SC2206 # ARGS is a flag string to split
         extra=($ARGS)
+        case "$ECHO" in
+          ""|false) ;;
+          true) extra+=(--echo) ;;
+          *) extra+=("--echo=$ECHO") ;;
+        esac
         case "$mode" in
           against)  [ -n "$AGAINST" ] || { echo "::error::mode against needs the against input"; exit 2; }
                     cmd=(rhythm-soundcheck "$URL" --against "$AGAINST") ;;
