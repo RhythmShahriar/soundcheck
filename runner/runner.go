@@ -269,7 +269,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if ctx.Err() == nil {
 		for _, m := range opts.Modules {
 			if s, ok := m.(check.SiteChecker); ok {
-				s.CheckSite(ctx, cc)
+				check.Safe(m.Name(), "CheckSite", cc.Warn, func() { s.CheckSite(ctx, cc) })
 			}
 		}
 	}
@@ -304,9 +304,11 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	defer rec.Stop()
 	for _, m := range opts.Modules {
 		if pr, ok := m.(check.Preparer); ok {
-			if err := pr.Prepare(ctx, cc, tab); err != nil {
-				cc.Warn(fmt.Sprintf("%s: %v", m.Name(), err))
-			}
+			check.Safe(m.Name(), "Prepare", cc.Warn, func() {
+				if err := pr.Prepare(ctx, cc, tab); err != nil {
+					cc.Warn(fmt.Sprintf("%s: %v", m.Name(), err))
+				}
+			})
 		}
 	}
 	host := hostOf(pg.URL)
@@ -321,7 +323,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	if p.Error == "" {
 		for _, m := range opts.Modules {
 			if l, ok := m.(check.Live); ok {
-				l.Live(ctx, cc, tab, p)
+				check.Safe(m.Name(), "Live", cc.Warn, func() { l.Live(ctx, cc, tab, p) })
 			}
 		}
 		if slices.Contains(cfg.Viewports, "mobile") {
@@ -334,7 +336,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	}
 	for _, m := range opts.Modules {
 		if c, ok := m.(check.PageChecker); ok {
-			c.CheckPage(cc, p)
+			check.Safe(m.Name(), "CheckPage", cc.Warn, func() { c.CheckPage(cc, p) })
 		}
 	}
 	return p

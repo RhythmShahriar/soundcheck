@@ -3,7 +3,9 @@
 
 // Package check defines how Soundcheck's modules plug into a run. A
 // module implements any of the hook interfaces below; the runner calls
-// each hook at its point in a page visit or at the end of the run.
+// each hook at its point in a page visit or at the end of the run. A hook
+// that panics doesn't end the run: the runner calls each one through
+// Safe, which turns the panic into a warning.
 package check
 
 import (
