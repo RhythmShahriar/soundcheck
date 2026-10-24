@@ -4,9 +4,14 @@
 package check
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/go-rod/rod"
+
+	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 type named string
@@ -100,5 +105,38 @@ func TestSortByPhase(t *testing.T) {
 	}
 	if PhaseOf(named("health")) != PhaseInspect || PhaseOf(phased{"interact", PhaseMutate}) != PhaseMutate {
 		t.Error("PhaseOf is wrong")
+	}
+}
+
+type liveModule struct{ named }
+
+func (liveModule) Live(context.Context, *Context, *rod.Page, *model.Page) {}
+
+type prepModule struct{ named }
+
+func (prepModule) Prepare(context.Context, *Context, *rod.Page) error { return nil }
+
+type tabModule struct {
+	named
+	chrome bool
+}
+
+func (tabModule) LiveTab(context.Context, *Context, Tab, *model.Page) {}
+func (m tabModule) NeedsChrome() bool                                 { return m.chrome }
+
+func TestChromeOnly(t *testing.T) {
+	for _, tc := range []struct {
+		m    Module
+		want bool
+	}{
+		{named("health"), false},
+		{liveModule{"interact"}, true},
+		{prepModule{"speed"}, true},
+		{tabModule{"tab", false}, false},
+		{tabModule{"rod", true}, true},
+	} {
+		if got := ChromeOnly(tc.m); got != tc.want {
+			t.Errorf("ChromeOnly(%s) = %v, want %v", tc.m.Name(), got, tc.want)
+		}
 	}
 }

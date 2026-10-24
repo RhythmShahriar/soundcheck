@@ -26,6 +26,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/ratelimit"
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/capture"
+	"github.com/RhythmShahriar/soundcheck/capture/webdriver"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
@@ -57,6 +58,12 @@ type Options struct {
 	// Insecure accepts invalid TLS certificates (--insecure).
 	Insecure bool
 	Browser  browser.Options
+	// Engine is the browser engine pages are captured in; empty is
+	// Chrome. Browser.Bin is then that engine's binary (Firefox, or
+	// WebKit's driver) and the rest of Browser applies as it does to
+	// Chrome. Modules that need Chrome (check.ChromeOnly) and the login
+	// are skipped with a warning in another engine.
+	Engine capture.Engine
 	// Modules run in ascending phase (check.Phaser), keeping this order
 	// within a phase.
 	Modules []check.Module
@@ -83,7 +90,8 @@ type Options struct {
 	// later run can resume after it. Calls are serialized with Hooks.
 	OnPage func(p *model.Page)
 
-	revisit bool // set by Revisit: no site-wide checks
+	revisit bool           // set by Revisit: no site-wide checks
+	driver  capture.Driver // set by Run for an engine other than Chrome
 }
 
 // Hooks report progress. Calls are serialized.
@@ -214,19 +222,41 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		emit(func() { opts.Hooks.Discovered(len(pages)+len(opts.Done), skipped()) })
 	}
 
-	b, err := browser.Launch(ctx, withLog(opts.Browser, log))
-	if err != nil {
-		return nil, err
-	}
-	defer b.Close()
-	sess, err := b.Session()
-	if err != nil {
-		return nil, err
-	}
+	engine := cmpEngine(opts.Engine)
 	hosts := ratelimit.NewHosts(cfg.Rate)
 	cc := &check.Context{
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
-		UserAgent: opts.UserAgent, Hosts: hosts, Browser: sess, NewSession: b.Session, Save: store.Saver(opts.Dir),
+		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
+	}
+	var b *browser.Browser
+	if engine == capture.Chrome {
+		b, err = browser.Launch(ctx, withLog(opts.Browser, log))
+		if err != nil {
+			return nil, err
+		}
+		defer b.Close()
+		sess, err := b.Session()
+		if err != nil {
+			return nil, err
+		}
+		cc.Browser, cc.NewSession = sess, b.Session
+	} else {
+		d, err := launchDriver(ctx, engine, withLog(opts.Browser, log))
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = d.Close() }()
+		opts.driver = d
+		var skippedModules []string
+		opts.Modules, skippedModules = chromeFree(opts.Modules, engine, cc.Warn)
+		// As with echo below: a comparison mustn't think they ran.
+		run.Options.Modules = slices.DeleteFunc(slices.Clone(run.Options.Modules), func(name string) bool {
+			return slices.Contains(skippedModules, name)
+		})
+		if opts.Login != nil {
+			cc.Warn(fmt.Sprintf("the login was skipped in %s: logging in needs Chrome", engine))
+			opts.Login = nil
+		}
 	}
 	if opts.Hooks.Progress != nil {
 		cc.OnProgress = func(label string, done, total int) {
@@ -488,25 +518,43 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 		return &model.Page{ID: model.PageID(pg.URL), URL: pg.URL, Path: pathOf(pg.URL), Group: pg.Group, Error: msg,
 			Duration: float64(time.Since(start).Milliseconds())}
 	}
-	tab, err := browser.NewTab(cc.Browser)
-	if err != nil {
-		return fail(err)
-	}
-	defer func() { _ = tab.Close() }()
 	shots, twice := captureNeeds(cfg, opts.Modules, opts.Snapshot)
 	copts := capture.Options{
 		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: twice,
-		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base,
+		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base, Engine: cmpEngine(opts.Engine),
 	}
 	if shots {
 		copts.Save = cc.Save
 	}
-	rec, err := capture.Start(ctx, tab, copts)
-	if err != nil {
-		return fail(err)
+	// tab is Chrome's own tab, for the Preparer and Live hooks; nil in
+	// another engine, which runs no such module (see chromeFree).
+	var (
+		tab  *rod.Page
+		ctab check.Tab
+		rec  *capture.Recorder
+	)
+	if opts.driver != nil {
+		t, err := opts.driver.NewTab(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		defer func() { _ = t.Close() }()
+		if rec, err = capture.StartTab(ctx, t, copts); err != nil {
+			return fail(err)
+		}
+		ctab = t
+	} else {
+		var err error
+		if tab, err = browser.NewTab(cc.Browser); err != nil {
+			return fail(err)
+		}
+		defer func() { _ = tab.Close() }()
+		if rec, err = capture.Start(ctx, tab, copts); err != nil {
+			return fail(err)
+		}
+		ctab = check.RodTab(tab)
 	}
 	defer rec.Stop()
-	ctab := check.RodTab(tab)
 	prepared := func(m check.Module, err error) {
 		if err != nil {
 			cc.Warn(fmt.Sprintf("%s: %v", m.Name(), err))
@@ -737,6 +785,41 @@ func hostOf(raw string) string {
 		return u.Host
 	}
 	return ""
+}
+
+// cmpEngine is e, or Chrome when e is empty.
+func cmpEngine(e capture.Engine) capture.Engine {
+	if e == "" {
+		return capture.Chrome
+	}
+	return e
+}
+
+// launchDriver starts the browser of an engine other than Chrome.
+func launchDriver(ctx context.Context, engine capture.Engine, o browser.Options) (capture.Driver, error) {
+	wo := webdriver.Options{Bin: o.Bin, Proxy: o.Proxy, Insecure: o.Insecure, Visible: o.Visible, Log: o.Log}
+	switch engine {
+	case capture.Firefox:
+		return webdriver.LaunchFirefox(ctx, wo)
+	case capture.WebKit:
+		return webdriver.LaunchWebKit(ctx, wo)
+	}
+	return nil, fmt.Errorf("unknown browser engine %q", engine)
+}
+
+// chromeFree drops the modules that run only in Chrome
+// (check.ChromeOnly) from a run in another engine, with a warning
+// naming each. It returns the rest and the names it dropped.
+func chromeFree(modules []check.Module, engine capture.Engine, warn func(string)) (kept []check.Module, skipped []string) {
+	for _, m := range modules {
+		if check.ChromeOnly(m) {
+			warn(fmt.Sprintf("%s was skipped in %s: it needs Chrome", m.Name(), engine))
+			skipped = append(skipped, m.Name())
+			continue
+		}
+		kept = append(kept, m)
+	}
+	return kept, skipped
 }
 
 // tryLogin logs in within a throwaway private session.

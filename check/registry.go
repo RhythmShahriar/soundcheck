@@ -113,3 +113,23 @@ type CaptureNeeds interface {
 type Configurable interface {
 	Configure(node yaml.Node) error
 }
+
+// NeedsChrome is a module whose TabPreparer or TabLive hooks need Chrome
+// all the same, through Tab.Rod. In a run with another browser engine
+// (Firefox, WebKit) the runner skips it with a note instead of calling
+// hooks that would find no Chrome.
+type NeedsChrome interface {
+	NeedsChrome() bool
+}
+
+// ChromeOnly reports whether m runs only in Chrome: it says so with
+// NeedsChrome, or it has a Preparer or Live hook, which get Chrome's tab
+// itself. A module with neither runs in every engine.
+func ChromeOnly(m Module) bool {
+	if n, ok := m.(NeedsChrome); ok && n.NeedsChrome() {
+		return true
+	}
+	_, prepares := m.(Preparer)
+	_, live := m.(Live)
+	return prepares || live
+}
