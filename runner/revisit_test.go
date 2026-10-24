@@ -44,8 +44,15 @@ func (h *hits) get(path string) int {
 // siteChecked notes whether CheckSite ran.
 type siteChecked struct{ ran *atomic.Bool }
 
-func (siteChecked) Name() string                                { return "sitechecked" }
-func (s siteChecked) CheckSite(context.Context, *check.Context) { s.ran.Store(true) }
+func (siteChecked) Name() string { return "sitechecked" }
+func (s siteChecked) CheckSite(_ context.Context, cc *check.Context) {
+	s.ran.Store(true)
+	cc.Lock()
+	defer cc.Unlock()
+	for i := range cc.Run.Pages {
+		check.Page(&cc.Run.Pages[i], model.Issue{Check: "sitechecked/found", Level: model.Error, Title: "Found by CheckSite"})
+	}
+}
 
 func quietConfig() config.Config {
 	cfg := config.Default()
@@ -76,6 +83,9 @@ func TestRevisit(t *testing.T) {
 	}
 	if p := first.Page("/flaky/"); p == nil || p.Status != http.StatusInternalServerError {
 		t.Fatalf("first visit = %+v", first.Pages)
+	}
+	if p := first.Page("/flaky/"); len(p.Issues) != 1 || !p.Issues[0].FromSite {
+		t.Errorf("the issue CheckSite added isn't marked FromSite: %+v", p.Issues)
 	}
 	ran.Store(false)
 

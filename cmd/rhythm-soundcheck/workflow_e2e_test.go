@@ -119,6 +119,7 @@ func TestAcceptAndIgnore(t *testing.T) {
 
 // A page that fails once and then works is UNSTABLE after the confirm
 // pass, so --fail-on broke doesn't fail; --confirm=off reports it BROKE.
+// One that fails on the first confirm visit too gets a second.
 func TestConfirmPass(t *testing.T) {
 	needBrowser(t)
 	t.Chdir(t.TempDir())
@@ -146,6 +147,19 @@ func TestConfirmPass(t *testing.T) {
 	code, out, errOut := runCLI(t, append([]string{"compare"}, common...)...)
 	if code != exitOK || !strings.Contains(out, "Confirming: visiting 2 pages again") || !strings.Contains(out, "UNSTABLE") {
 		t.Errorf("with confirm: exit %d\n%s\n%s", code, out, errOut)
+	}
+	// Failing on the first visit again too, it gets one more: a server
+	// that fails one load in five isn't broken.
+	fails.Store(2)
+	code, out, errOut = runCLI(t, append([]string{"compare"}, common...)...)
+	if code != exitOK || !strings.Contains(out, "Confirming: visiting 1 page once more") || !strings.Contains(out, "UNSTABLE") {
+		t.Errorf("failing twice: exit %d\n%s\n%s", code, out, errOut)
+	}
+	// A page that fails every time is BROKE after both visits.
+	fails.Store(100)
+	code, out, errOut = runCLI(t, append([]string{"compare"}, common...)...)
+	if code != exitFindings || !strings.Contains(out, "once more") || !strings.Contains(out, "[BROKE]") {
+		t.Errorf("failing every time: exit %d\n%s\n%s", code, out, errOut)
 	}
 	fails.Store(1)
 	code, out, _ = runCLI(t, append([]string{"compare", "--confirm=off"}, common...)...)

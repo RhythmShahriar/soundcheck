@@ -886,7 +886,9 @@ func (s *session) compareStored(before *model.Run, pages compare.PageSource, bef
 
 // confirm visits the pages of c's BROKE and NEW changes again and moves
 // the ones that don't come back to UNSTABLE: a flaky 500 or a timeout
-// under load then doesn't fail a build.
+// under load then doesn't fail a build. A page issue that does come back
+// is checked on one more visit, so a server that fails one load in five
+// is rarely taken for a broken one.
 func (s *session) confirm(c *model.Comparison, before *model.Run, site, dir string) {
 	if s.o.confirm.off || s.ctx.Err() != nil || c.Interrupted {
 		return
@@ -902,25 +904,38 @@ func (s *session) confirm(c *model.Comparison, before *model.Run, site, dir stri
 			}
 		}
 	}
-	if len(paths) == 0 {
-		return
-	}
-	s.view.Step("Confirming", fmt.Sprintf("visiting %s again, to tell a real break from a flaky one", plural(len(paths), "page")))
 	again := filepath.Join(dir, "confirm")
 	defer func() { _ = os.RemoveAll(again) }() //nolint:gosec // a folder of this run
-	opts, err := s.options(site, paths, false, "", again)
-	if err == nil {
-		opts.Hooks = runner.Hooks{Log: s.view.Log}
-		var run *model.Run
-		if run, err = runner.Revisit(s.ctx, opts, paths); err == nil {
-			compare.Confirm(c, before, run)
+	for round := range confirmVisits {
+		if len(paths) == 0 || s.ctx.Err() != nil {
 			return
 		}
-	}
-	if s.ctx.Err() == nil {
-		c.Warnings = append(c.Warnings, "confirm: couldn't visit the pages again ("+err.Error()+"); BROKE and NEW changes aren't confirmed")
+		if round == 0 {
+			s.view.Step("Confirming", fmt.Sprintf("visiting %s again, to tell a real break from a flaky one", plural(len(paths), "page")))
+		} else {
+			s.view.Step("Confirming", fmt.Sprintf("visiting %s once more, where the change came back", plural(len(paths), "page")))
+		}
+		opts, err := s.options(site, paths, false, "", filepath.Join(again, fmt.Sprint(round+1)))
+		var run *model.Run
+		if err == nil {
+			opts.Hooks = runner.Hooks{Log: s.view.Log}
+			run, err = runner.Revisit(s.ctx, opts, paths)
+		}
+		if err != nil {
+			// After the first visit, the changes it confirmed stand.
+			if round == 0 && s.ctx.Err() == nil {
+				c.Warnings = append(c.Warnings, "confirm: couldn't visit the pages again ("+err.Error()+"); BROKE and NEW changes aren't confirmed")
+			}
+			return
+		}
+		compare.Confirm(c, before, run)
+		paths = compare.Confirmable(c)
 	}
 }
+
+// confirmVisits is how many times confirm visits a page whose change
+// keeps coming back.
+const confirmVisits = 2
 
 // confirmSetting describes the confirm pass for the run header.
 func (s *session) confirmSetting() string {

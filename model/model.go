@@ -52,6 +52,12 @@ type Issue struct {
 	Fix    string   `json:"fix,omitempty"`
 	Key    string   `json:"key"`             // stable identity used to compare runs; see Identify
 	Pages  []string `json:"pages,omitempty"` // set on site-level issues
+	// FromSite says a site-wide check (check.SiteChecker) put the issue
+	// on its page, such as the page cache tests, which fetch the page
+	// again outside the browser. The runner sets it. A re-visit of the
+	// page doesn't run those checks, so compare.Confirm can't judge the
+	// issue by it. It isn't stored: Confirm runs on a fresh comparison.
+	FromSite bool `json:"-"`
 }
 
 // Identify sets the issue's comparison key from its check, title and

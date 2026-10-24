@@ -233,12 +233,12 @@ func (d *issueDiff) add(class string, x issueAt) {
 	}
 	if g == nil {
 		g = &issueGroup{change: model.Change{Class: class, Check: x.issue.Check, Title: x.issue.Title, Detail: x.issue.Detail,
-			Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site, Key: x.issue.Key}, pages: map[string]bool{}, detailFrom: first, detailSite: x.site}
+			Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site && !x.issue.FromSite, Key: x.issue.Key}, pages: map[string]bool{}, detailFrom: first, detailSite: x.site}
 		d.groups[k] = g
 	} else if first < g.detailFrom || (first == g.detailFrom && g.detailSite && !x.site) {
 		g.change.Detail, g.detailFrom, g.detailSite = x.issue.Detail, first, x.site
 	}
-	g.change.FromPageIssue = g.change.FromPageIssue && !x.site
+	g.change.FromPageIssue = g.change.FromPageIssue && !x.site && !x.issue.FromSite
 	for _, p := range x.pages {
 		g.pages[p] = true
 	}

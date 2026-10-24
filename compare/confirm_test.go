@@ -107,3 +107,46 @@ func TestConfirmSiteIssuesStay(t *testing.T) {
 		t.Errorf("a site issue can't be confirmed by re-visiting pages: %+v", c.Changes)
 	}
 }
+
+// A page issue a site-wide check added (the page cache tests, which fetch
+// the page outside the browser) can't be confirmed by re-visiting the
+// page, which doesn't run those checks: a cache leak stays BROKE.
+func TestConfirmSiteCheckPageIssuesStay(t *testing.T) {
+	leak := issue("cache/leak", model.Error, "Cache leaks logged-in content to visitors")
+	leak.FromSite = true
+	fatal := issue("health/status", model.Error, "Server error 500")
+	before := &model.Run{Pages: []model.Page{{Path: "/account/", Status: 200}}}
+	after := &model.Run{Pages: []model.Page{{Path: "/account/", Status: 200, Issues: []model.Issue{leak, fatal}}}}
+	c := Compare(context.Background(), &check.CompareContext{Before: before, After: after}, nil, "test")
+	Confirm(c, before, &model.Run{Pages: []model.Page{{Path: "/account/", Status: 200}}})
+	got := byClassTitle(c)
+	if p := got["broke Cache leaks logged-in content to visitors"]; !slices.Equal(p, []string{"/account/"}) {
+		t.Errorf("the cache leak should stay BROKE: %v", got)
+	}
+	if p := got["unstable Server error 500"]; !slices.Equal(p, []string{"/account/"}) {
+		t.Errorf("a page issue the re-visit didn't see again is still UNSTABLE: %v", got)
+	}
+}
+
+// Confirmable lists the pages a second visit can still judge: those of
+// BROKE and NEW page issues, not UNSTABLE ones, site issues or module
+// changes.
+func TestConfirmable(t *testing.T) {
+	c, before, again := flaky(t)
+	link := model.Change{Class: model.New, Check: "health/broken-link", Pages: []string{"/links/"}}
+	email := model.Change{Class: model.Broke, Check: "echo/email", Pages: []string{"/contact/"}}
+	c.Changes = append(c.Changes, link, email)
+	if got := Confirmable(c); !slices.Equal(sorted(got), []string{"/down/", "/flaky/", "/js/"}) {
+		t.Errorf("before confirming: %v", got)
+	}
+	Confirm(c, before, again)
+	if got := Confirmable(c); !slices.Equal(sorted(got), []string{"/down/", "/js/"}) {
+		t.Errorf("after confirming: %v", got)
+	}
+}
+
+func sorted(s []string) []string {
+	s = slices.Clone(s)
+	slices.Sort(s)
+	return s
+}

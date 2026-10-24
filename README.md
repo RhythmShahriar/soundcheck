@@ -130,7 +130,7 @@ ignore:
     reason: photos change weekly
 ```
 
-Before reporting BROKE or NEW, `compare` visits those pages once more. A change that doesn't come back is UNSTABLE: it is shown, yet it doesn't fail `--fail-on`. `--confirm=off` skips the second visit.
+Before reporting BROKE or NEW, `compare` visits those pages again; a page whose change came back gets one more visit. A change that doesn't come back on each visit is UNSTABLE: it is shown, yet it doesn't fail `--fail-on`. What the site-wide tests find (page cache, links) keeps its class, since a visit doesn't repeat them. `--confirm=off` skips these visits.
 
 ### More checks
 

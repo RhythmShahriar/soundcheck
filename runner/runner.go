@@ -386,11 +386,16 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		if slices.ContainsFunc(opts.Modules, func(m check.Module) bool { _, ok := m.(check.SiteChecker); return ok }) {
 			log("~Checking site-wide issues (links, sitemap)...")
 		}
+		had := make([]int, len(run.Pages))
+		for i := range run.Pages {
+			had[i] = len(run.Pages[i].Issues)
+		}
 		for _, m := range opts.Modules {
 			if s, ok := m.(check.SiteChecker); ok {
 				check.Safe(m.Name(), "CheckSite", cc.Warn, func() { s.CheckSite(ctx, cc) })
 			}
 		}
+		markSiteIssues(run, had)
 	}
 	run.Duration = float64(time.Since(start).Milliseconds())
 	// A cancel after the last page cut the site-wide checks short (or
@@ -400,6 +405,20 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		run.Interrupted = true
 	}
 	return run, ctx.Err()
+}
+
+// markSiteIssues marks the page issues the site-wide checks added, those
+// past had[i] on page i, as FromSite: a re-visit doesn't run those checks,
+// so it can't confirm them.
+func markSiteIssues(run *model.Run, had []int) {
+	for i := range run.Pages {
+		if i >= len(had) {
+			break
+		}
+		for j := had[i]; j < len(run.Pages[i].Issues); j++ {
+			run.Pages[i].Issues[j].FromSite = true
+		}
+	}
 }
 
 // Revisit visits exactly paths again with opts and returns them as a

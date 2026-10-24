@@ -63,6 +63,23 @@ func Confirm(c *model.Comparison, before, again *model.Run) {
 	c.Complete()
 }
 
+// Confirmable returns the pages of c's BROKE and NEW changes that Confirm
+// can judge by visiting them again: those of page issues.
+func Confirmable(c *model.Comparison) []string {
+	var out []string
+	for _, ch := range c.Changes {
+		if (ch.Class != model.Broke && ch.Class != model.New) || !ch.FromPageIssue {
+			continue
+		}
+		for _, p := range ch.Pages {
+			if !slices.Contains(out, p) {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
 // reproduced reports whether the issue with key showed again on page,
 // or whether the re-visit can't tell.
 func reproduced(key, page string, before, again *model.Run) bool {
