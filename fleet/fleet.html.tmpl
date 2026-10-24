@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+:root {
+  --dot: #E8603A; --bg: #FAFAF9; --card: #FFFFFF; --text: #100F0D; --muted: #6B7280; --line: #E7E5E4; --soft: #F5F5F4;
+  --failed: #DC2626; --broke: #DC2626; --interrupted: #6B7280; --errors: #EA580C; --changed: #CA8A04; --warnings: #CA8A04; --clean: #059669;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dot: #FF7C52; --bg: #100F0D; --card: #1A1917; --text: #F5F5F4; --muted: #A8A29E; --line: #2E2C29; --soft: #23211E;
+    --failed: #EF4444; --broke: #EF4444; --interrupted: #A8A29E; --errors: #F97316; --changed: #EAB308; --warnings: #EAB308; --clean: #10B981;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); }
+a { color: inherit; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px 64px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 22px 0 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { font-weight: 700; } .brand .dot { color: var(--dot); }
+.meta { color: var(--muted); font-size: 13px; }
+h1 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -.02em; margin: 30px 0 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+.chip b { color: var(--c); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.num, th.num { text-align: right; }
+.site { font-weight: 650; }
+.url { color: var(--muted); font: 12px var(--mono); overflow-wrap: anywhere; }
+.badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--c); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.err { color: var(--muted); font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; }
+.k-failed { --c: var(--failed); } .k-broke { --c: var(--broke); } .k-interrupted { --c: var(--interrupted); } .k-errors { --c: var(--errors); }
+.k-changed { --c: var(--changed); } .k-warnings { --c: var(--warnings); } .k-clean { --c: var(--clean); }
+.trend { color: var(--muted); }
+.trend svg { display: block; }
+footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div class="brand"><span class="dot">♪</span> rhythm soundcheck fleet</div><div class="meta">{{.Mode}} · {{.Created}}</div></header>
+  <h1>{{.Title}}</h1>
+  <div class="chips">{{range .Chips}}<span class="chip k-{{.Key}}"><b>{{.N}}</b> {{.Label}}</span>{{end}}</div>
+  <div class="tablewrap"><table>
+    <thead><tr><th class="num">#</th><th>Site</th><th>Result</th><th>Found</th><th>LCP trend</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
+    <tbody>{{range .Rows}}<tr>
+      <td class="num">{{.Rank}}</td>
+      <td><div class="site">{{if .Report}}<a href="{{.Report}}">{{.Site}}</a>{{else}}{{.Site}}{{end}}</div><div class="url">{{.URL}}</div></td>
+      <td><span class="badge k-{{.Verdict}}">{{.Label}}</span>{{if .Error}}<div class="err">{{.Error}}</div>{{end}}</td>
+      <td>{{.Counts}}</td>
+      <td class="trend">{{if .Trend}}<span title="{{.TrendLabel}}">{{.Trend}}</span>{{else}}–{{end}}</td>
+      <td class="num">{{.Pages}}</td>
+      <td class="num">{{.Time}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  <footer>Each site's files are in its own folder next to this page. Made with ♪ rhythm soundcheck.</footer>
+</div>
+</body>
+</html>

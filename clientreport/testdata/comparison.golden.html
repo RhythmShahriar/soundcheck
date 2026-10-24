@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>brew.test · website check · 24 October 2026</title>
+<style>
+:root {
+  --accent: #0F766E;
+  --bg: #FFFFFF; --text: #1C1917; --muted: #6B7280; --line: #E7E5E4; --soft: #F7F7F5;
+  --bad: #DC2626; --warn: #EA580C; --note: #A16207; --good: #059669;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 20px 64px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 28px 0 20px; border-bottom: 3px solid var(--accent); flex-wrap: wrap; }
+.agency { display: flex; align-items: center; gap: 14px; font-weight: 700; font-size: 18px; }
+.agency img { max-height: 48px; max-width: 200px; }
+.meta { color: var(--muted); font-size: 14px; text-align: right; }
+.hero { padding: 36px 0 8px; }
+.eyebrow { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; letter-spacing: -.02em; margin: 8px 0 10px; }
+.lead { color: var(--muted); margin: 0; font-size: 17px; }
+.counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 28px 0 8px; }
+.count { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.count b { display: block; font-size: 28px; line-height: 1.1; color: var(--c); }
+.count span { color: var(--muted); font-size: 14px; }
+.count.zero b { color: var(--muted); }
+h2 { font-size: 20px; margin: 40px 0 12px; }
+ul.checked { margin: 0; padding-left: 20px; }
+ul.checked li { margin: 4px 0; }
+.item { border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; break-inside: avoid; }
+.item .label { display: inline-block; font-size: 12px; font-weight: 700; color: #fff; background: var(--c); border-radius: 6px; padding: 1px 8px; }
+.item h3 { margin: 6px 0 2px; font-size: 17px; overflow-wrap: anywhere; }
+.item p { margin: 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.pics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.pics figure { margin: 0; }
+.pics img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; display: block; }
+.pics figcaption { color: var(--muted); font-size: 12px; margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; }
+.more { color: var(--muted); font-size: 14px; }
+.t-bad { --c: var(--bad); } .t-warn { --c: var(--warn); } .t-note { --c: var(--note); } .t-good { --c: var(--good); }
+footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 560px) { .pics { grid-template-columns: 1fr; } .meta { text-align: left; } }
+@media print { .wrap { max-width: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="agency"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAJ0lEQVR4nAAaAOX/BA92bgAAAAAAAAAAAAIAAAAAAAAAAAAAAAADABcFAPo4o6CVAAAAAElFTkSuQmCC" alt="Acme Web &amp; Co"><span>Acme Web &amp; Co</span></div>
+    <div class="meta">Website check for <b>brew.test</b><br>24 October 2026</div>
+  </header>
+
+  <section class="hero t-bad">
+    <div class="eyebrow">Summary</div>
+    <h1>Something stopped working</h1>
+    <p class="lead">We checked 3 pages on 24 October 2026 and compared them with how they worked on 1 October 2026.</p>
+    <div class="counts"><div class="count t-bad"><b>1</b><span>Stopped working</span></div><div class="count t-warn"><b>1</b><span>New problem</span></div><div class="count t-note"><b>1</b><span>Looks different</span></div><div class="count t-note"><b>1</b><span>Slower</span></div><div class="count t-good"><b>1</b><span>Fixed</span></div></div>
+  </section>
+
+  <h2>What we checked</h2>
+  <ul class="checked"><li>3 pages of the site, on desktop and phone screens</li><li>Pages as a signed-in user, as well as a visitor</li><li>Every page loads, without errors or missing parts</li><li>How every page looks, compared picture by picture</li><li>Forms are in place and complete</li><li>Buttons and menus respond when clicked</li></ul>
+
+  
+  <h2>What we found</h2>
+  
+  <div class="item t-bad">
+    <span class="label">Stopped working</span>
+    <h3>Shop page shows an error (HTTP 500)</h3>
+    <p>On /shop/ · 200 → 500</p>
+    
+  </div>
+  
+  <div class="item t-warn">
+    <span class="label">New problem</span>
+    <h3>&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;</h3>
+    <p>On 2 pages</p>
+    
+  </div>
+  
+  <div class="item t-note">
+    <span class="label">Looks different</span>
+    <h3>Home page looks different</h3>
+    <p>On /</p>
+    <div class="pics"><figure><img src="data:image/jpeg;base64,/9j/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAB4AKAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5&#43;gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4&#43;Tl5ufo6ery8/T19vf4&#43;fr/2gAMAwEAAhEDEQA/APQKKKKACiiigAooooAKKKKACiiigAooooA//9k=" alt="Before"><figcaption>Before</figcaption></figure><figure><img src="data:image/jpeg;base64,/9j/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAB4AKAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5&#43;gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4&#43;Tl5ufo6ery8/T19vf4&#43;fr/2gAMAwEAAhEDEQA/AIKKKK8Q&#43;6CiiigAooooAKKKKACiiigAooooA//Z" alt="After"><figcaption>After</figcaption></figure></div>
+  </div>
+  
+  <div class="item t-note">
+    <span class="label">Slower</span>
+    <h3>Main content shows later</h3>
+    <p>On /contact/ · 1.2 s → 2.6 s</p>
+    
+  </div>
+  
+  
+  
+
+  
+  <h2>Fixed since last time</h2>
+  <ul class="checked"><li>Contact form script error</li></ul>
+  
+  
+
+  <footer><span>Prepared by Acme Web &amp; Co · hello@acme.test</span><span>Checked with rhythm soundcheck</span></footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RhythmShahriar/soundcheck/blob/main/checks/exec/issues.v1.json",
+  "title": "rhythm-soundcheck exec answer v1",
+  "description": "What an exec module command prints on stdout for one page: at most 1 MB and 200 issues.",
+  "type": "object",
+  "required": ["issues"],
+  "properties": {
+    "issues": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": ["check", "level", "title"],
+        "properties": {
+          "check": {"type": "string", "pattern": "^exec/[a-z0-9][a-z0-9-]*/.+", "description": "exec/<command name>/<rule>"},
+          "level": {"enum": ["error", "warning", "notice"]},
+          "title": {"type": "string", "minLength": 1, "description": "Short, the same on every page it applies to: issues are grouped and compared by it"},
+          "detail": {"type": "string", "description": "Page-specific evidence"},
+          "source": {"type": "string", "description": "Where it comes from, e.g. app/Http/Controllers/ContactController.php:42"},
+          "fix": {"type": "string"}
+        }
+      }
+    }
+  }
+}
