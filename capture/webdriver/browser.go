@@ -89,14 +89,19 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 		Context string `json:"context"`
 	}
 	// A Firefox that has just started can still be swapping out its first
-	// window. Opening a tab then fails with "no such frame" (the context
-	// was discarded), so it is tried again a few times.
+	// window. Opening a window then fails with "no such frame" (the
+	// context was discarded), so it is tried again for a few seconds. On
+	// a slow machine (Windows runners) it can keep failing: the last try
+	// opens a tab in a window that is already there, in front.
 	err := b.conn.Call(ctx, "browsingContext.create", params, &res)
-	for try := 1; err != nil && discarded(err) && try < 4; try++ {
+	for try := 1; err != nil && discarded(err) && try < newTabTries; try++ {
 		select {
 		case <-ctx.Done():
 			return nil, err
-		case <-time.After(time.Duration(try) * 200 * time.Millisecond):
+		case <-time.After(time.Duration(try) * newTabPause):
+		}
+		if try == newTabTries-1 {
+			params["type"] = "tab"
 		}
 		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
 	}
@@ -110,6 +115,13 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 	}
 	return t, nil
 }
+
+// newTabTries and newTabPause bound NewTab's tries of a discarded
+// context: the pause grows by newTabPause after each one, about 5s in all.
+var (
+	newTabTries = 7
+	newTabPause = 250 * time.Millisecond
+)
 
 // discarded reports whether err says the browsing context it used is gone.
 func discarded(err error) bool {
