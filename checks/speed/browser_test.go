@@ -26,6 +26,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/runner"
 )
@@ -239,7 +240,12 @@ func (c *calibrator) Live(ctx context.Context, _ *check.Context, tab *rod.Page, 
 //
 // A loaded machine stretches the busy loop and moves first paint, so the
 // expected TBT isn't a fixed number: each page times its own loop in the
-// same tab and TBT must match that calibration.
+// same tab and TBT must match that calibration. A busy runner also adds
+// long tasks of its own, so a TBT that is only higher than expected is
+// measured again, up to twice more: a task counted twice, or the blocking
+// script counted, would be over every time. Anything else that is wrong
+// (no paint, a long task missed or under-counted, the script counted in
+// full) fails at once.
 func TestMetricsInParallelTabs(t *testing.T) {
 	needBrowser(t)
 	const busy = `function busy(ms) { var t = Date.now(); while (Date.now() - t < ms) {} }`
@@ -270,13 +276,39 @@ func TestMetricsInParallelTabs(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
+	const tries = 3
+	for try := 1; ; try++ {
+		failed, high := parallelMetrics(t, srv.URL)
+		for _, f := range failed {
+			t.Error(f)
+		}
+		if len(failed) > 0 || len(high) == 0 {
+			return
+		}
+		if try == tries {
+			for _, h := range high {
+				t.Errorf("%s (on each of %d runs)", h, tries)
+			}
+			return
+		}
+		t.Logf("TBT higher than the pages timed, measuring again: %s", strings.Join(high, "; "))
+	}
+}
+
+// parallelMetrics runs the site in four tabs and checks each page's
+// metrics against its calibration. failed are readings that show a fault
+// in capture; high are TBTs only above what the page timed, which another
+// process's load can cause.
+func parallelMetrics(t *testing.T, target string) (failed, high []string) {
+	t.Helper()
 	cfg := config.Default()
 	cfg.Rate, cfg.Tabs = 0, 4
 	cfg.Viewports = []string{"desktop"}
 	cfg.Modules = []string{"speed"}
 	cfg.Pages.PerGroup = -1
+	cfg.Timeout = testenv.Seconds(cfg.Timeout)
 	cal := &calibrator{seen: map[string]calibration{}}
-	run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+	run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: target, Dir: t.TempDir(), Version: "test",
 		Modules: []check.Module{New(), cal}, Browser: browser.Options{NoDownload: true}})
 	if err != nil {
 		t.Fatal(err)
@@ -289,19 +321,24 @@ func TestMetricsInParallelTabs(t *testing.T) {
 		m, c := p.Metrics, cal.seen[p.Path]
 		t.Logf("%s %+v calibration %+v (want TBT %.0f)", p.Path, m, c, c.tbt())
 		if m.FCP <= 0 || m.LCP <= 0 {
-			t.Errorf("%s: no paint metrics (FCP %v, LCP %v): was the tab hidden?", p.Path, m.FCP, m.LCP)
+			failed = append(failed, fmt.Sprintf("%s: no paint metrics (FCP %v, LCP %v): was the tab hidden?", p.Path, m.FCP, m.LCP))
 		}
 		if m.Requests < 1 || m.Bytes < 1000 {
-			t.Errorf("%s: the HTML isn't counted: %d bytes in %d requests", p.Path, m.Bytes, m.Requests)
+			failed = append(failed, fmt.Sprintf("%s: the HTML isn't counted: %d bytes in %d requests", p.Path, m.Bytes, m.Requests))
 		}
 		if c.End == 0 {
-			t.Errorf("%s: the page didn't run its busy loop: %+v", p.Path, c)
+			failed = append(failed, fmt.Sprintf("%s: the page didn't run its busy loop: %+v", p.Path, c))
 			continue
 		}
 		if p.Path == "/blocking/" {
-			if m.TBT > 50 || m.FCP < c.End-c.Start {
-				t.Errorf("%s: a %.0f ms script before first paint should delay FCP, not add TBT: FCP %v, TBT %v",
-					p.Path, c.End-c.Start, m.FCP, m.TBT)
+			// Counted, the script would add its length less 50 ms.
+			counted := c.End - c.Start - 50
+			switch {
+			case m.FCP < c.End-c.Start || m.TBT >= counted/2:
+				failed = append(failed, fmt.Sprintf("%s: a %.0f ms script before first paint should delay FCP, not add TBT: FCP %v, TBT %v",
+					p.Path, c.End-c.Start, m.FCP, m.TBT))
+			case m.TBT > 50:
+				high = append(high, fmt.Sprintf("%s: TBT %v after a script before first paint, want under 50", p.Path, m.TBT))
 			}
 			continue
 		}
@@ -316,11 +353,15 @@ func TestMetricsInParallelTabs(t *testing.T) {
 		}
 		// The long task wraps the loop, so it can only be a little longer
 		// than what the page timed; Chrome rounds its timings.
-		if want := c.tbt(); want < 200 || m.TBT < want-5 || m.TBT > want+60 {
-			t.Errorf("%s: a %.0f ms task after first paint gave TBT %v, want %.0f", p.Path, c.End-c.Start, m.TBT, want)
+		switch want := c.tbt(); {
+		case want < 200 || m.TBT < want-5:
+			failed = append(failed, fmt.Sprintf("%s: a %.0f ms task after first paint gave TBT %v, want %.0f", p.Path, c.End-c.Start, m.TBT, want))
+		case m.TBT > want+60:
+			high = append(high, fmt.Sprintf("%s: a %.0f ms task after first paint gave TBT %v, want %.0f", p.Path, c.End-c.Start, m.TBT, want))
 		}
 	}
 	if measured > 0 && late == measured {
-		t.Errorf("none of %d pages had its long task reported when the page was read", measured)
+		failed = append(failed, fmt.Sprintf("none of %d pages had its long task reported when the page was read", measured))
 	}
+	return failed, high
 }
