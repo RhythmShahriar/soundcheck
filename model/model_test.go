@@ -75,3 +75,18 @@ func TestPageCanceled(t *testing.T) {
 		}
 	}
 }
+
+// An issue's key is its check, title and source, except an a11y one's,
+// whose title is axe's wording of the rule: check and source alone.
+func TestIssueKey(t *testing.T) {
+	for _, tc := range []struct{ check, title, source, want string }{
+		{"health/php-error", "PHP Warning: x", "lib.php:6", "health/php-error|PHP Warning: x|lib.php:6"},
+		{"a11y/label", "Form elements must have labels", "#email", "a11y/label|#email"},
+		{"exec/a11y/label", "Label", "#email", "exec/a11y/label|Label|#email"},
+	} {
+		i := Issue{Check: tc.check, Title: tc.title, Source: tc.source}
+		if i.Identify(); i.Key != tc.want || IssueKey(tc.check, tc.title, tc.source) != tc.want {
+			t.Errorf("%s: key %q, want %q", tc.check, i.Key, tc.want)
+		}
+	}
+}

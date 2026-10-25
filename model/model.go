@@ -64,7 +64,21 @@ type Issue struct {
 // source, so the same problem on the same page matches across runs even
 // when details (timestamps, line noise) differ.
 func (i *Issue) Identify() {
-	i.Key = i.Check + "|" + i.Title + "|" + i.Source
+	i.Key = IssueKey(i.Check, i.Title, i.Source)
+}
+
+// IssueKey is the comparison key of an issue with check, title and
+// source (see Identify). A change knows only those three, so compare's
+// confirm pass and accept find the issues a change comes from by it.
+//
+// An accessibility issue (a11y/<rule>) is keyed by its check and source
+// alone: its title is axe-core's help text for the rule, which a new
+// axe release can reword without the violation being new.
+func IssueKey(check, title, source string) string {
+	if strings.HasPrefix(check, "a11y/") {
+		return check + "|" + source
+	}
+	return check + "|" + title + "|" + source
 }
 
 // Request is one network request the page made that went wrong, or that

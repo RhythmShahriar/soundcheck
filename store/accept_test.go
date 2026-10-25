@@ -198,6 +198,44 @@ func TestAcceptNewIssueByID(t *testing.T) {
 	}
 }
 
+// An a11y issue is keyed by its rule and element alone (see
+// model.IssueKey). Accepting the change it makes puts it in the snapshot,
+// so the next compare doesn't report it again.
+func TestAcceptA11yIssue(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
+	f := newFixture(t)
+	label := model.Issue{Check: "a11y/label", Level: model.Warning, Title: "Form elements must have labels",
+		Source: "#email", Key: "a11y/label|#email"}
+	for _, dir := range []string{f.snap, f.run} {
+		r, err := store.LoadRun(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Options.Modules = append(r.Options.Modules, "a11y")
+		if dir == f.run {
+			r.Page("/b/").Issues = append(r.Page("/b/").Issues, label)
+		}
+		if err := store.SaveRun(dir, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := f.compareAgain(t)
+	news := onPage(c, "a11y/*", "/b/")
+	if len(news) != 1 || news[0].Class != model.New {
+		t.Fatalf("want one NEW a11y issue on /b/: %+v", c.Changes)
+	}
+	if _, err := store.Accept(f.snap, f.run, c, store.Selector{IDs: []string{news[0].ID}}, "dana"); err != nil {
+		t.Fatal(err)
+	}
+	if got := onPage(f.compareAgain(t), "a11y/*", "/b/"); len(got) != 0 {
+		t.Errorf("the accepted a11y issue is still reported: %+v", got)
+	}
+	snap, _ := store.LoadRun(f.snap)
+	if is := snap.Page("/b/").Issues; len(is) != 1 || is[0].Key != label.Key {
+		t.Errorf("/b/ in the snapshot: %+v", is)
+	}
+}
+
 func TestAcceptSpeedAndTitle(t *testing.T) {
 	t.Parallel() // each compares screenshots, which the race detector makes slow
 	f := newFixture(t)

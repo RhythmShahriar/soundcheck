@@ -147,6 +147,26 @@ func TestIssues(t *testing.T) {
 	}
 }
 
+// A change knows only its check, title and source: the confirm pass and
+// accept find the issues it comes from by the key those give. An a11y
+// issue's own key must be that one, or a violation the second visit saw
+// again would look gone and a real one would be UNSTABLE.
+func TestIssueKeyIsTheChangeKey(t *testing.T) {
+	found := []result{{ID: "label", Impact: "critical", Help: "Form elements must have labels",
+		Nodes: []node{{Path: [][]Elem{tree("html", "body", "form", "input#email")}}}}}
+	for _, i := range issues(found) {
+		if want := model.IssueKey(i.Check, i.Title, i.Source); i.Key != want {
+			t.Errorf("key %q, a change of it looks for %q", i.Key, want)
+		}
+		// axe rewording the rule's help doesn't make it a new violation.
+		reworded := i
+		reworded.Title = "Form fields need labels"
+		if reworded.Identify(); reworded.Key != i.Key {
+			t.Errorf("a reworded title changed the key: %q, was %q", reworded.Key, i.Key)
+		}
+	}
+}
+
 // A field prefilled after login must not put the visitor's details into
 // run.json; empty values and other attributes stay as they are.
 func TestSnippetMasksFilledValues(t *testing.T) {

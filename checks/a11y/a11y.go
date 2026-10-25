@@ -176,9 +176,9 @@ func eval(page *rod.Page, id proto.RuntimeExecutionContextID, js string, await b
 }
 
 // issues turns axe's violations into page issues, one per rule and
-// element. The key is the check and the stable selector alone: axe's
-// help text can be reworded in a new release without making every
-// violation look new.
+// element. The key is the check and the stable selector alone (see
+// model.IssueKey): axe's help text can be reworded in a new release
+// without making every violation look new.
 func issues(found []result) []model.Issue {
 	var out []model.Issue
 	for _, v := range found {
@@ -201,7 +201,7 @@ func issues(found []result) []model.Issue {
 			}
 			i := model.Issue{Check: "a11y/" + v.ID, Level: level(firstOf(el.Impact, v.Impact)), Title: v.Help,
 				Detail: detail, Source: sel, Fix: fix(v.HelpURL)}
-			i.Key = i.Check + "|" + i.Source
+			i.Identify()
 			out = append(out, i)
 		}
 	}

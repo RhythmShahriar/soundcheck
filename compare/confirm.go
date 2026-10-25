@@ -96,9 +96,15 @@ func reproduced(key, page string, before, again *model.Run) bool {
 	return ap.Error != ""
 }
 
-// issueKey is the key of the issues a change comes from; see
-// model.Issue.Identify.
-func issueKey(ch model.Change) string { return ch.Check + "|" + ch.Title + "|" + ch.Source }
+// issueKey is the key of the issues a change comes from: the one they
+// were grouped by or, when the change has none, the one its check, title
+// and source give (see model.IssueKey).
+func issueKey(ch model.Change) string {
+	if ch.Key != "" {
+		return ch.Key
+	}
+	return model.IssueKey(ch.Check, ch.Title, ch.Source)
+}
 
 func issueKeyOf(i model.Issue) string {
 	if i.Key == "" {
