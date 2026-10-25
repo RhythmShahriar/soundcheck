@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,6 +37,8 @@ type Browser struct {
 	closeSession func()
 	logf         func(string)
 
+	// createMu keeps NewTab's windows apart: see createContext.
+	createMu  sync.Mutex
 	closeOnce sync.Once
 }
 
@@ -82,34 +85,11 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 	if b.classic != nil {
 		return b.classic.newTab(ctx)
 	}
-	params := map[string]any{"type": "window", "background": false}
-	if b.userContext != "" {
-		params["userContext"] = b.userContext
-	}
-	var res struct {
-		Context string `json:"context"`
-	}
-	// A Firefox that has just started can still be swapping out its first
-	// window. Opening a window then fails with "no such frame" (the
-	// context was discarded), so it is tried again for a few seconds. On
-	// a slow machine (Windows runners) it can keep failing: the last try
-	// opens a tab in a window that is already there, in front.
-	err := b.conn.Call(ctx, "browsingContext.create", params, &res)
-	for try := 1; err != nil && discarded(err) && try < newTabTries; try++ {
-		select {
-		case <-ctx.Done():
-			return nil, err
-		case <-time.After(time.Duration(try) * newTabPause):
-		}
-		if try == newTabTries-1 {
-			params["type"] = "tab"
-		}
-		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
-	}
+	id, err := b.createContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	t := newTab(b.conn, res.Context, b.userContext)
+	t := newTab(b.conn, id, b.userContext)
 	if err := t.subscribe(ctx); err != nil {
 		_ = t.Close()
 		return nil, err
@@ -117,12 +97,112 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 	return t, nil
 }
 
+// createContext opens the window behind a new tab and returns its
+// context.
+//
+// A Firefox that has just started can still be swapping out its first
+// window. A new window can also move to another process before the
+// command returns. Either way browsingContext.create fails with "no
+// such frame" (the context was discarded), often with the window open
+// all the same. So after each such failure createContext looks for a
+// window of its user context that wasn't there before and takes it,
+// closing any other a failed try left behind. Without one it tries
+// again for a few seconds. On a slow machine (Windows runners) it can
+// keep failing: the last try opens a tab in a window that is already
+// there, in front.
+func (b *Browser) createContext(ctx context.Context) (string, error) {
+	// One at a time, so a window another NewTab opened is never taken.
+	b.createMu.Lock()
+	defer b.createMu.Unlock()
+	params := map[string]any{"type": "window", "background": false}
+	if b.userContext != "" {
+		params["userContext"] = b.userContext
+	}
+	before, treeErr := b.topContexts(ctx)
+	var res struct {
+		Context string `json:"context"`
+	}
+	err := b.conn.Call(ctx, "browsingContext.create", params, &res)
+	for try := 1; err != nil && discarded(err) && try <= newTabTries; try++ {
+		select {
+		case <-ctx.Done():
+			return "", err
+		case <-time.After(time.Duration(try) * newTabPause):
+		}
+		if treeErr == nil {
+			if id := b.adoptNew(ctx, before); id != "" {
+				return id, nil
+			}
+		}
+		if try == newTabTries {
+			break
+		}
+		if try == newTabTries-1 {
+			params["type"] = "tab"
+		}
+		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
+	}
+	if err != nil {
+		return "", err
+	}
+	return res.Context, nil
+}
+
 // newTabTries and newTabPause bound NewTab's tries of a discarded
-// context: the pause grows by newTabPause after each one, about 5s in all.
+// context: the pause grows by newTabPause after each one, about 7s in all.
 var (
 	newTabTries = 7
 	newTabPause = 250 * time.Millisecond
 )
+
+// topContexts returns the top-level contexts (windows and tabs) of the
+// browser's user context.
+func (b *Browser) topContexts(ctx context.Context) (map[string]bool, error) {
+	var res struct {
+		Contexts []struct {
+			Context     string `json:"context"`
+			UserContext string `json:"userContext"`
+		} `json:"contexts"`
+	}
+	if err := b.conn.Call(ctx, "browsingContext.getTree", map[string]any{"maxDepth": 0}, &res); err != nil {
+		return nil, err
+	}
+	want := b.userContext
+	if want == "" {
+		want = "default"
+	}
+	ids := map[string]bool{}
+	for _, c := range res.Contexts {
+		if c.UserContext == want || c.UserContext == "" {
+			ids[c.Context] = true
+		}
+	}
+	return ids, nil
+}
+
+// adoptNew returns a top-level context of the browser's user context
+// that isn't in before, or "" when there is none. Any others that
+// appeared since are closed: failed tries opened them.
+func (b *Browser) adoptNew(ctx context.Context, before map[string]bool) string {
+	now, err := b.topContexts(ctx)
+	if err != nil {
+		return ""
+	}
+	var ids []string
+	for id := range now {
+		if !before[id] {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	sort.Strings(ids)
+	for _, id := range ids[1:] {
+		_ = b.conn.Call(ctx, "browsingContext.close", map[string]any{"context": id}, nil)
+	}
+	return ids[0]
+}
 
 // discarded reports whether err says the browsing context it used is gone.
 func discarded(err error) bool {
