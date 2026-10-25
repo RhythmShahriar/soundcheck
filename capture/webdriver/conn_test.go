@@ -287,3 +287,83 @@ func TestNewTabTakesTheWindowAFailedCreateOpened(t *testing.T) {
 		})
 	}
 }
+
+// NewTab opens its window without the focus, so Firefox doesn't wait
+// 100 ms at most for the page to show, then waits itself: through "no
+// such frame" and a hidden page, until the page is visible.
+func TestNewTabWaitsForThePageToShow(t *testing.T) {
+	pause := shownPause
+	shownPause = time.Millisecond
+	t.Cleanup(func() { shownPause = pause })
+	var mu sync.Mutex
+	var background any
+	evals := 0
+	url := fakeBiDi(t, func(method string, params json.RawMessage) (any, *Error) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch method {
+		case "browsingContext.create":
+			var p map[string]any
+			_ = json.Unmarshal(params, &p)
+			background = p["background"]
+			return map[string]string{"context": "ctx-1"}, nil
+		case "script.evaluate":
+			evals++
+			if evals <= 2 {
+				return nil, &Error{Code: "no such frame", Message: "DiscardedBrowsingContextError: BrowsingContext does no longer exist"}
+			}
+			state := "hidden"
+			if evals > 3 {
+				state = "visible"
+			}
+			return map[string]any{"type": "success", "result": map[string]any{"type": "string", "value": state}}, nil
+		}
+		return map[string]string{"subscription": "s"}, nil
+	})
+	c, err := Dial(context.Background(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	b := &Browser{conn: c}
+	if _, err := b.NewTab(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if background != true || evals != 4 {
+		t.Errorf("background = %v, %d evaluations; want true and 4", background, evals)
+	}
+}
+
+// A page that never shows is used after shownWait; one whose context
+// stays gone is an error.
+func TestWaitShownGivesUp(t *testing.T) {
+	wait, pause := shownWait, shownPause
+	shownWait, shownPause = 20*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { shownWait, shownPause = wait, pause })
+	for _, tc := range []struct {
+		name string
+		gone bool
+	}{{"hidden", false}, {"gone", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			url := fakeBiDi(t, func(string, json.RawMessage) (any, *Error) {
+				if tc.gone {
+					return nil, &Error{Code: "no such frame", Message: "gone"}
+				}
+				return map[string]any{"type": "success", "result": map[string]any{"type": "string", "value": "hidden"}}, nil
+			})
+			c, err := Dial(context.Background(), url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			var notes []string
+			b := &Browser{conn: c, logf: func(s string) { notes = append(notes, s) }}
+			err = b.waitShown(context.Background(), "ctx-1")
+			if tc.gone != (err != nil) || tc.gone == (len(notes) == 1) {
+				t.Errorf("waitShown = %v, notes %q", err, notes)
+			}
+		})
+	}
+}
