@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -274,7 +275,58 @@ func Prune(all bool) ([]string, error) {
 // Frame never fires, so animations stand still, and input stalls. Its own
 // window plus focus emulation lifts that, so pages checked in parallel
 // behave like the one a visitor sees.
+//
+// Chrome on a macOS runner has been seen to never answer the first
+// command sent to a new window, which hung the run. A try that takes
+// longer than newTabWait is given up and a second window is opened; the
+// stuck one is closed if it ever answers.
 func NewTab(sess *rod.Browser) (*rod.Page, error) {
+	var err error
+	for range 2 {
+		var tab *rod.Page
+		tab, err = newTabOnce(sess, newTabWait)
+		if !errors.Is(err, errTabStuck) {
+			return tab, err
+		}
+	}
+	return nil, err
+}
+
+// newTabWait is how long one try at opening a tab may take.
+var newTabWait = 30 * time.Second
+
+var errTabStuck = errors.New("no new tab from Chrome")
+
+// newTabOnce runs openTab, giving up after wait.
+func newTabOnce(sess *rod.Browser, wait time.Duration) (*rod.Page, error) {
+	type result struct {
+		tab *rod.Page
+		err error
+	}
+	done := make(chan result, 1)
+	open := openTab
+	go func() {
+		tab, err := open(sess)
+		done <- result{tab, err}
+	}()
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		return r.tab, r.err
+	case <-timer.C:
+		go func() {
+			if r := <-done; r.tab != nil {
+				_ = r.tab.Close()
+			}
+		}()
+		return nil, fmt.Errorf("%w in %s", errTabStuck, wait)
+	}
+}
+
+// openTab opens the window and turns on focus emulation. A variable so
+// the tests can stand in for a Chrome that doesn't answer.
+var openTab = func(sess *rod.Browser) (*rod.Page, error) {
 	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank", NewWindow: true})
 	if err != nil {
 		return nil, err
