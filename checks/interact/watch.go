@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
@@ -60,6 +62,21 @@ func isTracker(raw string) bool {
 	return false
 }
 
+// lateWrites, set by tests, delays the watcher's events from the start
+// of each request other than GET and HEAD, as a busy machine can.
+var lateWrites atomic.Int64
+
+// signals reports whether a request of type typ to raw shows that an
+// action did something. Images, fonts, styles, favicons and analytics
+// beacons load or fire on their own.
+func signals(typ proto.NetworkResourceType, raw string) bool {
+	switch typ {
+	case proto.NetworkResourceTypeImage, proto.NetworkResourceTypeFont, proto.NetworkResourceTypeMedia, proto.NetworkResourceTypeStylesheet:
+		return false
+	}
+	return !isTracker(raw) && !strings.HasSuffix(raw, "/favicon.ico")
+}
+
 func watch(ctx context.Context, tab *rod.Page) *watcher {
 	w := &watcher{tab: tab, reqs: map[proto.NetworkRequestID]*wreq{}}
 	_ = proto.NetworkEnable{}.Call(tab)
@@ -69,6 +86,9 @@ func watch(ctx context.Context, tab *rod.Page) *watcher {
 	w.stop = cancel
 	wait := tab.Context(wctx).EachEvent(
 		func(e *proto.NetworkRequestWillBeSent) {
+			if d := time.Duration(lateWrites.Load()); d > 0 && isWrite(e.Request.Method) {
+				time.Sleep(d) // a test's busy machine; this and every later event wait
+			}
 			if strings.HasPrefix(e.Request.URL, "data:") || strings.HasPrefix(e.Request.URL, "blob:") {
 				return
 			}
@@ -144,7 +164,6 @@ type effects struct {
 	failed   []model.Request
 	errors   []string
 	nav      *wreq
-	held     []model.Request // what the click guard kept from being sent (see holdWrites)
 }
 
 func (w *watcher) report() effects {
@@ -158,11 +177,7 @@ func (w *watcher) report() effects {
 	}
 	for _, id := range w.order {
 		q := w.reqs[id]
-		switch q.typ {
-		case proto.NetworkResourceTypeImage, proto.NetworkResourceTypeFont, proto.NetworkResourceTypeMedia, proto.NetworkResourceTypeStylesheet:
-			continue
-		}
-		if isTracker(q.url) || strings.HasSuffix(q.url, "/favicon.ico") {
+		if !signals(q.typ, q.url) {
 			continue
 		}
 		e.requests++ // a held request still shows the click did something
@@ -170,8 +185,7 @@ func (w *watcher) report() effects {
 			e.pending++
 		}
 		if intercept.IsBlocked(q.failed) {
-			e.held = append(e.held, model.Request{URL: q.url, Method: q.method, Type: string(q.typ)})
-			continue
+			continue // the click guard's doing, which it reports itself
 		}
 		if q.failed != "" || q.status >= 400 {
 			e.failed = append(e.failed, model.Request{URL: q.url, Method: q.method, Type: string(q.typ), Status: q.status, Error: q.failed})
