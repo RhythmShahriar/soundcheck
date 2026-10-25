@@ -15,10 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/go-rod/rod/lib/proto"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 func TestParse(t *testing.T) {
@@ -202,7 +202,7 @@ func TestRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	page, err := b.Page(proto.TargetCreateTarget{})
+	page, err := browser.NewTab(b.Browser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,10 @@ steps:
 		t.Fatal(err)
 	}
 	saved := map[string]int{}
-	fails := Run(context.Background(), page, f, Options{Base: base, Timeout: 2e9, Fake: Fake{Seed: "s"},
+	// Each failing step below waits out the step timeout: 2 s on a quiet
+	// machine, more on a slow runner, where the first page alone can take
+	// longer than 2 s.
+	fails := Run(context.Background(), page, f, Options{Base: base, Timeout: testenv.Timeout(2 * time.Second), Fake: Fake{Seed: "s"},
 		AllowEnv: []string{"SC_PASS"},
 		Env:      func(k string) string { return map[string]string{"SC_PASS": "s3cret-pw"}[k] },
 		Save:     func(name string, data []byte) error { saved[name] = len(data); return nil }})

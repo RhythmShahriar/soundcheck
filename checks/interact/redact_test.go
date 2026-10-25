@@ -22,6 +22,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/runner"
 )
@@ -65,11 +66,11 @@ func TestEchoMessagesStoredRedacted(t *testing.T) {
 	defer srv.Close()
 
 	cfg := config.Default()
-	cfg.Rate, cfg.Tabs, cfg.Timeout = 0, 1, 10
+	cfg.Rate, cfg.Tabs, cfg.Timeout = 0, 1, testenv.Seconds(config.Seconds(10))
 	cfg.Viewports = []string{"desktop"}
 	cfg.Modules = []string{"interact", "echo"}
 	cfg.Interactions.Levels = []string{"submit"}
-	cfg.Echo.URL, cfg.Echo.Quiet, cfg.Echo.Timeout = echo.URL, 300*time.Millisecond, 3*time.Second
+	cfg.Echo.URL, cfg.Echo.Quiet, cfg.Echo.Timeout = echo.URL, testenv.Timeout(300*time.Millisecond), testenv.Timeout(3*time.Second)
 	modules := []check.Module{New(), echomod.Module{}}
 	run := func(snapshot bool) *model.Run {
 		t.Helper()

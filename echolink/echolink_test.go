@@ -22,6 +22,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -153,7 +154,7 @@ func TestTagSharesTheInterceptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tab = tab.Timeout(20 * time.Second)
+	tab = tab.Timeout(testenv.Timeout(20 * time.Second))
 	removeHeaders, err := intercept.Add(tab, func(r *intercept.Request) {
 		if r.URL != nil && r.URL.Host == strings.TrimPrefix(srv.URL, "http://") {
 			r.SetHeader("X-Staging", "yes")

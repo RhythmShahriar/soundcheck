@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 // TestReviewPageInChrome clicks the injected buttons in a real browser:
@@ -31,7 +32,7 @@ func TestReviewPageInChrome(t *testing.T) {
 
 	rec := &recorder{}
 	s, _ := startServer(t, sampleResult(sampleChanges()), rec)
-	page := b.Timeout(20 * time.Second).MustPage(s.URL())
+	page := b.Timeout(testenv.Timeout(20 * time.Second)).MustPage(s.URL())
 	page.MustWaitLoad()
 	bars := page.MustElements(".rv-bar")
 	if len(bars) != 3 {
@@ -70,7 +71,7 @@ func TestReviewPageRefusesMismatch(t *testing.T) {
 
 	s, _ := startServer(t, sampleResult(sampleChanges()), &recorder{})
 	s.page = []byte(strings.Replace(string(s.page), "Page returns HTTP 500</h3>", "Something else</h3>", 1))
-	page := b.Timeout(20 * time.Second).MustPage(s.URL())
+	page := b.Timeout(testenv.Timeout(20 * time.Second)).MustPage(s.URL())
 	page.MustWaitLoad()
 	if n := len(page.MustElements(".rv-bar")); n != 0 {
 		t.Errorf("%d review bars on a mismatched page, want 0", n)
@@ -106,7 +107,7 @@ func TestReviewPagePairsByID(t *testing.T) {
 		t.Fatal("the report's articles have no data-id")
 	}
 	s.page = regexp.MustCompile(`(?s)<article[^>]*data-kind="fixed".*?</article>`).ReplaceAll(s.page, nil)
-	page := b.Timeout(20 * time.Second).MustPage(s.URL())
+	page := b.Timeout(testenv.Timeout(20 * time.Second)).MustPage(s.URL())
 	page.MustWaitLoad()
 	if txt := page.MustElement("#rv-banner").MustText(); strings.Contains(txt, "off") {
 		t.Fatalf("banner: %s", txt)
