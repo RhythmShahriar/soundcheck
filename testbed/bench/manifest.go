@@ -297,7 +297,7 @@ func (m *Manifest) Pick(only []string) ([]Scenario, error) {
 // Outcomes of a scenario for one tool.
 const (
 	Caught     = "caught"
-	OtherClass = "other class" // found the problem, but classed differently
+	OtherClass = "other class" // found the problem yet classed it differently
 	FalseAlarm = "false alarm" // reported a change the scenario forbids
 	Missed     = "missed"
 	Failed     = "error" // the tool didn't produce a result

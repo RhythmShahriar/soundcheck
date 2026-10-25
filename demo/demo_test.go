@@ -126,7 +126,7 @@ func TestStart(t *testing.T) {
 
 func TestDescribe(t *testing.T) {
 	got := Describe()
-	if !strings.HasPrefix(got, Breaks[0]+", ") || !strings.HasSuffix(got, " and "+Breaks[len(Breaks)-1]) || strings.Contains(got, ", and") {
+	if !strings.HasPrefix(got, Breaks[0]+", ") || !strings.HasSuffix(got, " and "+Breaks[len(Breaks)-1]) || strings.Contains(got, ", and") { // style:ignore: checks there is no comma before "and"
 		t.Errorf("Describe() = %q", got)
 	}
 }

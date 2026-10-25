@@ -25,7 +25,7 @@ add_action(
 	0
 );
 
-// s06: an "optimization" setting deregisters jQuery, but the theme still
+// s06: an "optimization" setting deregisters jQuery while the theme still
 // runs inline jQuery code in its footer.
 add_action(
 	'wp_enqueue_scripts',
@@ -37,7 +37,7 @@ add_action(
 	100
 );
 
-// s09: the "Spring offer" page was deleted, but other pages still link to it.
+// s09: the "Spring offer" page was deleted while other pages still link to it.
 add_action(
 	'template_redirect',
 	function () {

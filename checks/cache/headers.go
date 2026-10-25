@@ -18,7 +18,7 @@ type Status string
 // The statuses a cache can report.
 const (
 	Hit     Status = "hit"     // served from a cache
-	Miss    Status = "miss"    // cacheable, but fetched from the origin this time
+	Miss    Status = "miss"    // cacheable yet fetched from the origin this time
 	Bypass  Status = "bypass"  // the cache was told to skip this request (cookie, rule, no-cache)
 	Expired Status = "expired" // the cached copy was too old and was refreshed
 	Stale   Status = "stale"   // an old copy was served while the cache refreshes it
@@ -59,7 +59,7 @@ type Reading struct {
 	// -1 when unknown.
 	Age int
 	// Stamp is when a cache plugin says it generated the HTML (zero when
-	// there's no stamp), and Local is true when the stamp is in the site's
+	// there's no stamp). Local is true when the stamp is in the site's
 	// local time zone rather than UTC.
 	Stamp time.Time
 	Local bool

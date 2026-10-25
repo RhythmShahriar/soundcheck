@@ -134,13 +134,14 @@ func (r *Run) Complete() {
 // keeps its ID; for any other change it's the pages, which tell apart
 // the same visual or speed change on two pages. The class is left out,
 // so a change keeps its ID when it's only reclassified (a NEW change
-// found UNSTABLE).
+// found UNSTABLE). A reworded title hashes its released wording (see
+// KeyTitle), so a change accepted before the rewording keeps its ID.
 func ChangeID(c Change) string {
 	key := c.Key
 	if key == "" {
 		key = strings.Join(c.Pages, ",")
 	}
-	return shortHash(c.Check, c.Title, c.Source, key)
+	return shortHash(c.Check, KeyTitle(c.Title), c.Source, key)
 }
 
 func shortHash(parts ...string) string {

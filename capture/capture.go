@@ -484,7 +484,7 @@ const (
 )
 
 // Visit navigates to rawURL at the desktop viewport, waits for the page to
-// settle, and records it. Screenshots are taken when opts.Save is set.
+// settle and records it. Screenshots are taken when opts.Save is set.
 //
 // opts.Timeout covers the navigation (up to the main response) and the
 // waits for load and network idle. Reading the page afterwards gets its
@@ -616,7 +616,7 @@ func Mobile(ctx context.Context, r *Recorder, p *model.Page, rawURL string, opts
 		return err
 	}
 	// Only errors from the mobile load count: modules' clicks at desktop
-	// size (Live) report their own errors, and mustn't show up twice.
+	// size (Live) report their own errors and mustn't show up twice.
 	r.mu.Lock()
 	r.console = nil
 	r.mu.Unlock()

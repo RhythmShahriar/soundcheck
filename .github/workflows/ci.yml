@@ -15,5 +15,6 @@ jobs:
     uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@fb09694450362b6d4b68c631182d78a69b653c83 # master
     with:
       os: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+      style: true
   commitlint:
     uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@fb09694450362b6d4b68c631182d78a69b653c83 # master

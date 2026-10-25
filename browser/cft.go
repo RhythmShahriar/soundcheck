@@ -43,6 +43,11 @@ type Release struct {
 
 // pinned is the release this build downloads. It's a variable so tests
 // can swap in their own; cft_pins.go sets it from the generated pins.
+// A fixed version, not "latest", keeps a snapshot and its comparison on
+// the same renderer: a new Chrome shifts fonts, anti-aliasing and timings
+// enough to show up as visual or speed changes the site never made. The
+// pinned SHA-256 also means a download is checked against what the
+// release was built and tested with.
 var pinned = Release{Version: cftVersion, Archives: cftArchives}
 
 // PinnedVersion is the Chrome for Testing version this build downloads

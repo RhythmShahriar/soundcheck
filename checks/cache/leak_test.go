@@ -43,7 +43,7 @@ const (
 )
 
 // leakyWP is a fake WordPress with a test user, a REST API and a page
-// cache that stores whatever it rendered last, logged in or not, and
+// cache that stores whatever it rendered last, logged in or not. It
 // serves it to everyone: the bug the leak test exists to catch. /safe/
 // sits behind a cache that bypasses logged-in requests, as it should.
 func leakyWP(t *testing.T, noREST bool) *httptest.Server {

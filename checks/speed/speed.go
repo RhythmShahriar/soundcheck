@@ -6,7 +6,7 @@
 // TTFB, weight and request count; a comparison reports pages that got
 // measurably slower; and at the end of a run, site-wide suggestions are
 // grouped by cause (oversized images, render-blocking files, unused
-// CSS/JS, missing compression or caching, heavy third parties, and the
+// CSS/JS, missing compression or caching, heavy third parties and the
 // cost of each WordPress plugin and theme).
 //
 // Numbers come from one unthrottled desktop load in headless Chrome, so

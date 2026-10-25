@@ -35,7 +35,7 @@ var metrics = []metric{
 		measured: func(m model.Metrics) bool { return m.LCP > 0 },
 		fix:      "Find what grew the largest element's load: a bigger hero image, new render-blocking CSS/JS, or a slower server response."},
 	// TBT's floor is high because it's CPU time: with four tabs loading
-	// at once, and the machine doing other work, the same 250 ms of
+	// at once and the machine doing other work, the same 250 ms of
 	// script measured 190–390 ms. A real regression from a new plugin
 	// script is usually bigger than that.
 	{key: "tbt", name: "Total Blocking Time", worse: "higher", better: "lower", floor: 250,
@@ -140,7 +140,7 @@ func (s *pairSink) Changes() []model.Change {
 func comparable(p *model.Page) bool { return p.Error == "" && p.Status > 0 && p.Status < 400 }
 
 // moved reports whether to grew past from by both the floor and pct
-// percent, and by how many percent. Improvements use the same test with
+// percent and by how many percent. Improvements use the same test with
 // the values swapped, so a page must be as clearly faster as a slower one
 // must be slower.
 func moved(from, to, floor, pct float64) (float64, bool) {
@@ -155,7 +155,7 @@ func moved(from, to, floor, pct float64) (float64, bool) {
 }
 
 // grouped turns per-page hits into changes: one site-wide change when
-// most pages moved (at least 3), otherwise one per page template, and one
+// most pages moved (at least 3), otherwise one per page template and one
 // per page for pages without a template.
 func grouped(m metric, hits []hit, compared int, bar float64, worse bool) []model.Change {
 	if len(hits) == 0 {
@@ -243,7 +243,7 @@ func median(v []float64) float64 {
 }
 
 // pluginChanges reports plugins and themes whose assets got much heavier
-// per page (or appeared), and ones that got much lighter, using the same
+// per page (or appeared) and ones that got much lighter, using the same
 // bar and a 100 KB floor. This points straight at the plugin an update
 // made heavier. bc and ac are what each run's plugins and themes cost
 // on the pages compared.

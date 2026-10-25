@@ -120,7 +120,7 @@ func watch(ctx context.Context, tab *rod.Page) *watcher {
 			w.mu.Unlock()
 		},
 		func(e *proto.PageJavascriptDialogOpening) {
-			// guardJS replaces alert/confirm/prompt, but a beforeunload
+			// guardJS replaces alert/confirm/prompt. A beforeunload
 			// dialog can still open: always dismiss, never confirm.
 			go func() { _ = proto.PageHandleJavaScriptDialog{Accept: false}.Call(tab) }()
 		},

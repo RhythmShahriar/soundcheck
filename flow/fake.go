@@ -16,7 +16,7 @@ import (
 const Marker = "soundcheck-test"
 
 // Fake makes believable form data. Values depend only on Seed, so one run
-// always types the same thing, and two runs can be told apart by the tag
+// always types the same thing. Two runs can be told apart by the tag
 // in the email address.
 type Fake struct {
 	Seed string

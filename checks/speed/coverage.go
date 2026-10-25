@@ -46,7 +46,7 @@ func jsUsage(scripts []*proto.ProfilerScriptCoverage) map[string]usage {
 
 // usedChars counts characters covered by a range with a non-zero count.
 // V8 reports nested ranges: the script's top-level function spans the
-// whole file, and inner ranges override their parents (a function never
+// whole file. Inner ranges override their parents (a function never
 // called is a count-0 range inside a count-1 one). A sweep over range
 // boundaries with a stack of open ranges resolves the innermost count at
 // every offset, the way DevTools and Puppeteer do.
