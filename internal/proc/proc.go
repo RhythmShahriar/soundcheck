@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package proc holds the process helpers that differ between Unix and
-// Windows: how a child is asked to stop when its context is canceled.
+// Windows: how a child is asked to stop when its context is canceled
+// and how a browser and its children are stopped.
 package proc
 
 import "os/exec"

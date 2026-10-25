@@ -58,3 +58,33 @@ func TestInterruptStopsTheChild(t *testing.T) {
 		t.Errorf("exit %d, want 3 (the child saw the interrupt)", cmd.ProcessState.ExitCode())
 	}
 }
+
+// KillTree stops a child that would otherwise run for 30 s.
+func TestKillTree(t *testing.T) {
+	t.Setenv("GORACE", "atexit_sleep_ms=0")
+	KillOnExit()
+	KillOnExit() // a second call is harmless
+	cmd := exec.Command(os.Args[0], "proc-child")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 6)
+	if _, err := out.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := KillTree(cmd.Process); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	if d := time.Since(start); d > 10*time.Second {
+		t.Errorf("took %s to stop", d)
+	}
+	if cmd.ProcessState.ExitCode() == 0 || cmd.ProcessState.ExitCode() == 3 {
+		t.Errorf("exit %d: the child wasn't killed", cmd.ProcessState.ExitCode())
+	}
+}
