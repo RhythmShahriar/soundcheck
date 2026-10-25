@@ -45,6 +45,7 @@ func TestQuick(t *testing.T) {
 			continue
 		}
 		m, v := strings.Join(p.cfg.Modules, ","), strings.Join(p.cfg.Viewports, ",")
+		p.chosen.modules, p.chosen.viewports = slashes(p.chosen.modules), slashes(p.chosen.viewports)
 		if m != tc.modules || v != tc.viewport || p.chosen != tc.chosen || p.quick != tc.header {
 			t.Errorf("%q %v: modules %s viewports %s chosen %+v header %q\nwant %s %s %+v %q",
 				tc.config, tc.args, m, v, p.chosen, p.quick, tc.modules, tc.viewport, tc.chosen, tc.header)

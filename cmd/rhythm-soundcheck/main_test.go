@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,7 +35,17 @@ func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
 	code = run(args, &out, &errb)
-	return code, out.String(), errb.String()
+	return code, slashes(out.String()), slashes(errb.String())
+}
+
+// slashes turns Windows path separators in the CLI's output into /, so
+// the tests can spell paths such as .soundcheck/config.yaml one way. The
+// CLI itself prints paths the way the OS writes them.
+func slashes(s string) string {
+	if runtime.GOOS != "windows" {
+		return s
+	}
+	return strings.ReplaceAll(s, `\`, "/")
 }
 
 func TestVersionAndHelp(t *testing.T) {
@@ -92,8 +103,10 @@ func TestConfigTemplateLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	def := config.Default()
+	// The template writes flows: .soundcheck/flows; the default is the
+	// same folder with the OS separator.
 	if got.Pages.Limit != def.Pages.Limit || got.Rate != def.Rate || got.Visual.Threshold != def.Visual.Threshold ||
-		len(got.Modules) != len(def.Modules) || got.Flows != def.Flows || got.Echo != def.Echo {
+		len(got.Modules) != len(def.Modules) || filepath.Clean(got.Flows) != def.Flows || got.Echo != def.Echo {
 		t.Errorf("the template's values must match the defaults:\n%+v\n%+v", got, def)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -171,6 +172,12 @@ func TestConfirmPass(t *testing.T) {
 // A snapshot stopped halfway keeps the pages it finished; --resume
 // carries on without visiting them again.
 func TestSnapshotResume(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// os.Process.Signal can't send os.Interrupt on Windows, and the
+		// test stops the snapshot that way. TestResume* cover the
+		// resume itself everywhere.
+		t.Skip("Windows can't send os.Interrupt to a child process")
+	}
 	needBrowser(t)
 	var slow atomic.Bool
 	slow.Store(true)

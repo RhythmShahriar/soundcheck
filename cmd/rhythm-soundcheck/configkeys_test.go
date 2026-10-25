@@ -98,7 +98,7 @@ func TestHeadersKey(t *testing.T) {
 		t.Errorf("headers %v, %v", p.headers, err)
 	}
 	writeConfig(t, "headers:\n  Authorization: CI_TOKEN\n")
-	if _, err := parse([]string{"a.test"}); err == nil || err.Error() !=
+	if _, err := parse([]string{"a.test"}); err == nil || slashes(err.Error()) !=
 		".soundcheck/config.yaml: headers: Authorization reads CI_TOKEN; headers read only SOUNDCHECK_* variables unless you pass --allow-env CI_TOKEN" {
 		t.Errorf("not allowed: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestFailOnKey(t *testing.T) {
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	writeConfig(t, "fail_on: broke\n")
 	p, err := parse([]string{"a.test"})
-	if err != nil || p.o.failOn != "broke" || p.failOnFrom != ".soundcheck/config.yaml" {
+	if err != nil || p.o.failOn != "broke" || slashes(p.failOnFrom) != ".soundcheck/config.yaml" {
 		t.Fatalf("%+v %v", p, err)
 	}
 	if p, _ := parse([]string{"a.test", "--fail-on", "new"}); p.o.failOn != "new" || p.failOnFrom != "" {
