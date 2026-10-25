@@ -6,5 +6,11 @@
   "license": "MIT",
   "dependencies": {
     "unlighthouse-ci": "0.19.1"
+  },
+  "overrides": {
+    "lighthouse": "13.5.0",
+    "zod": "^4.6.7",
+    "basic-ftp": "^6.2.3",
+    "esbuild": "^0.28.2"
   }
 }

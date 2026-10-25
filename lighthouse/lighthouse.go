@@ -16,9 +16,14 @@
 // against unlighthouse-ci 0.19.1, whose CLI writes <dir>/ci-result.json
 // for json reporters).
 //
+// npm/package.json also holds "overrides" that force patched versions
+// of transitive packages Unlighthouse's own ranges would leave vulnerable
+// (lighthouse 13 for @lhci/utils drops a second, older puppeteer tree).
+//
 // To update the tree, change the version in npm/package.json, then in
 // that folder run `npm install --package-lock-only --ignore-scripts` and
-// `npm audit --omit=dev`. Then update Package.
+// `npm audit --omit=dev`. Check whether each override is still needed.
+// Then update Package.
 package lighthouse
 
 import (
