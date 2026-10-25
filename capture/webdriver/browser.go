@@ -5,6 +5,7 @@ package webdriver
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"sync"
@@ -87,7 +88,19 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 	var res struct {
 		Context string `json:"context"`
 	}
-	if err := b.conn.Call(ctx, "browsingContext.create", params, &res); err != nil {
+	// A Firefox that has just started can still be swapping out its first
+	// window. Opening a tab then fails with "no such frame" (the context
+	// was discarded), so it is tried again a few times.
+	err := b.conn.Call(ctx, "browsingContext.create", params, &res)
+	for try := 1; err != nil && discarded(err) && try < 4; try++ {
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(time.Duration(try) * 200 * time.Millisecond):
+		}
+		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
+	}
+	if err != nil {
 		return nil, err
 	}
 	t := newTab(b.conn, res.Context, b.userContext)
@@ -96,6 +109,12 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 		return nil, err
 	}
 	return t, nil
+}
+
+// discarded reports whether err says the browsing context it used is gone.
+func discarded(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == "no such frame"
 }
 
 // Close ends the session and stops the browser, then removes its

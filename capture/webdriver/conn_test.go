@@ -159,3 +159,45 @@ func TestConnCallFromEvent(t *testing.T) {
 		t.Fatal("the command sent from an event never got its reply")
 	}
 }
+
+// A Firefox that has just started may answer browsingContext.create with
+// "no such frame" while it swaps out its first window: NewTab tries again.
+func TestNewTabRetriesADiscardedContext(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		fails int
+		ok    bool
+	}{{"recovers", 2, true}, {"gives up", 10, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			creates := 0
+			url := fakeBiDi(t, func(method string, _ json.RawMessage) (any, *Error) {
+				if method != "browsingContext.create" {
+					return map[string]string{"subscription": "s"}, nil
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				creates++
+				if creates <= tc.fails {
+					return nil, &Error{Code: "no such frame", Message: "DiscardedBrowsingContextError: BrowsingContext does no longer exist"}
+				}
+				return map[string]string{"context": "ctx-1"}, nil
+			})
+			c, err := Dial(context.Background(), url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			b := &Browser{conn: c}
+			_, err = b.NewTab(context.Background())
+			mu.Lock()
+			defer mu.Unlock()
+			if tc.ok && (err != nil || creates != 3) {
+				t.Errorf("NewTab: %v after %d tries", err, creates)
+			}
+			if !tc.ok && (err == nil || !strings.Contains(err.Error(), "no such frame") || creates != 4) {
+				t.Errorf("NewTab: %v after %d tries, want the error after 4", err, creates)
+			}
+		})
+	}
+}
