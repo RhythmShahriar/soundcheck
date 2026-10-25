@@ -234,8 +234,8 @@ type acceptor struct {
 }
 
 // issueKey is the key of the issues a change comes from (see
-// model.Issue.Identify); it matches nothing for module changes.
-func issueKey(ch model.Change) string { return ch.Check + "|" + ch.Title + "|" + ch.Source }
+// model.IssueKey); it matches nothing for module changes.
+func issueKey(ch model.Change) string { return model.IssueKey(ch.Check, ch.Title, ch.Source) }
 
 func keyOf(i model.Issue) string {
 	if i.Key == "" {

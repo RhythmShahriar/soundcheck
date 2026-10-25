@@ -169,6 +169,46 @@ func TestConfirmPass(t *testing.T) {
 	}
 }
 
+// A form that loses its label is a NEW a11y issue the confirm visit sees
+// again, so --fail-on new fails; one that lost it for a single load is
+// UNSTABLE. The second visit runs axe too; its issue has to match.
+func TestConfirmA11y(t *testing.T) {
+	needBrowser(t)
+	t.Chdir(t.TempDir())
+	var unlabeled atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		label := `<label for="email">Email</label>`
+		// Only the browser's loads count: it asks for HTML, the
+		// reachability check before a run doesn't.
+		if strings.Contains(r.Header.Get("Accept"), "text/html") && unlabeled.Add(-1) >= 0 {
+			label = ""
+		}
+		fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"><title>Brew</title>
+<link rel="icon" href="data:,"></head><body><main><h1>Brew</h1><form>%s<input id="email" name="email"></form></main></body></html>`, label)
+	}))
+	defer srv.Close()
+	common := []string{"--no-download", "--viewport", "desktop", "--modules", "health,a11y", "--rate", "50", "--plain"}
+	if code, out, errOut := runCLI(t, append([]string{"snapshot", srv.URL, "--name", "good"}, common...)...); code != exitOK {
+		t.Fatalf("snapshot: exit %d\n%s\n%s", code, out, errOut)
+	}
+	common = append(common, "--fail-on", "new")
+	unlabeled.Store(100)
+	code, out, errOut := runCLI(t, append([]string{"compare"}, common...)...)
+	if code != exitFindings || !strings.Contains(out, "Confirming: visiting 1 page again") ||
+		!strings.Contains(out, "[NEW] Form elements must have labels") || strings.Contains(out, "UNSTABLE") {
+		t.Errorf("label removed: exit %d\n%s\n%s", code, out, errOut)
+	}
+	unlabeled.Store(1)
+	code, out, errOut = runCLI(t, append([]string{"compare"}, common...)...)
+	if code != exitOK || !strings.Contains(out, "[UNSTABLE] Form elements must have labels") {
+		t.Errorf("label gone for one load: exit %d\n%s\n%s", code, out, errOut)
+	}
+}
+
 // A snapshot stopped halfway keeps the pages it finished; --resume
 // carries on without visiting them again.
 func TestSnapshotResume(t *testing.T) {
