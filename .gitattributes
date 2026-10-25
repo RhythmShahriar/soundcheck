@@ -2,3 +2,20 @@
 # byte for byte, so text files are checked out with LF line endings on
 # Windows too.
 * text=auto eol=lf
+
+# Images, archives and other binary files are never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.xz binary
+*.zst binary
