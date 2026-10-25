@@ -100,6 +100,13 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 // createContext opens the window behind a new tab and returns its
 // context.
 //
+// The window opens with "background": true, which only means it doesn't
+// take the focus. A foreground create makes Firefox wait for the new
+// page to turn visible. It gives the page's first document 100 ms to
+// appear before it calls the context discarded: on a slow machine
+// (Windows runners) that fails with "no such frame" while the window is
+// fine. waitShown does that wait instead, with time to spare.
+//
 // A Firefox that has just started can still be swapping out its first
 // window. A new window can also move to another process before the
 // command returns. Either way browsingContext.create fails with "no
@@ -114,7 +121,7 @@ func (b *Browser) createContext(ctx context.Context) (string, error) {
 	// One at a time, so a window another NewTab opened is never taken.
 	b.createMu.Lock()
 	defer b.createMu.Unlock()
-	params := map[string]any{"type": "window", "background": false}
+	params := map[string]any{"type": "window", "background": true}
 	if b.userContext != "" {
 		params["userContext"] = b.userContext
 	}
@@ -131,22 +138,64 @@ func (b *Browser) createContext(ctx context.Context) (string, error) {
 		}
 		if treeErr == nil {
 			if id := b.adoptNew(ctx, before); id != "" {
-				return id, nil
+				return id, b.waitShown(ctx, id)
 			}
 		}
 		if try == newTabTries {
 			break
 		}
 		if try == newTabTries-1 {
-			params["type"] = "tab"
+			// A tab in the background would stay hidden.
+			params["type"], params["background"] = "tab", false
 		}
 		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
 	}
 	if err != nil {
 		return "", err
 	}
-	return res.Context, nil
+	return res.Context, b.waitShown(ctx, res.Context)
 }
+
+// waitShown waits until the page in context id is no longer hidden, for
+// up to shownWait. Until its first document is there, Firefox answers
+// "no such frame"; a page that stays hidden is used all the same.
+func (b *Browser) waitShown(ctx context.Context, id string) error {
+	deadline := time.Now().Add(shownWait)
+	for {
+		var res struct {
+			Result struct {
+				Value any `json:"value"`
+			} `json:"result"`
+		}
+		err := b.conn.Call(ctx, "script.evaluate", map[string]any{
+			"expression": "document.visibilityState", "awaitPromise": false,
+			"target": map[string]string{"context": id},
+		}, &res)
+		switch {
+		case err != nil && !discarded(err):
+			return err
+		case err == nil && res.Result.Value != "hidden":
+			return nil
+		case time.Now().After(deadline):
+			if err != nil {
+				return err
+			}
+			b.log("a new window is still hidden; using it all the same")
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(shownPause):
+		}
+	}
+}
+
+// shownWait bounds waitShown; it asks again every shownPause.
+var (
+	shownWait  = 10 * time.Second
+	shownPause = 50 * time.Millisecond
+)
 
 // newTabTries and newTabPause bound NewTab's tries of a discarded
 // context: the pause grows by newTabPause after each one, about 7s in all.
