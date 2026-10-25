@@ -22,6 +22,8 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/rhythm/kit/config"
+
+	"github.com/RhythmShahriar/soundcheck/internal/retry"
 )
 
 // Options choose and configure the browser. The zero value finds an
@@ -123,7 +125,10 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// Launch starts headless Chrome.
+// Launch starts headless Chrome. A start or connection that fails is
+// tried again, twice at most, in a new profile after a pause: on a busy
+// machine Chrome can be too slow to print its DevTools address or to
+// answer the first connection.
 func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	noSandbox, err := sandbox(opts)
 	if err != nil {
@@ -133,6 +138,44 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
+	var b *rod.Browser
+	var proc *process
+	err = retry.Do(ctx, retry.Policy{Tries: launchTries, Pause: launchPause, Again: launchAgain,
+		Note: func(_ int, err error) { logf(opts, "Chrome didn't start ("+err.Error()+"); starting it again") },
+	}, func() error {
+		var err error
+		b, proc, err = launchOnce(ctx, opts, bin, noSandbox)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	br := &Browser{Browser: b, proc: proc, Bin: bin, Downloaded: downloaded}
+	if v, err := (proto.BrowserGetVersion{}).Call(b); err == nil {
+		br.Version = productVersion(v.Product)
+	}
+	if opts.Log != nil {
+		opts.Log("Browser: " + br.Describe())
+	}
+	return br, nil
+}
+
+// launchTries and launchPause bound Launch's tries: the pause doubles
+// after each one.
+var (
+	launchTries = 3
+	launchPause = 500 * time.Millisecond
+)
+
+// launchAgain reports whether a failed start may work on another try.
+// A sandbox Chrome can't set up fails the same way every time.
+func launchAgain(err error) bool {
+	return !strings.Contains(strings.ToLower(err.Error()), "sandbox")
+}
+
+// launchOnce is one try of Launch: it starts Chrome in a new profile and
+// connects to it.
+func launchOnce(ctx context.Context, opts Options, bin string, noSandbox bool) (*rod.Browser, *process, error) {
 	l := launcher.New().Context(ctx).Headless(!opts.Visible).
 		Set("disable-gpu").Set("hide-scrollbars").Set("mute-audio").
 		Set("disable-features", "Translate,MediaRouter,OptimizationHints").
@@ -153,21 +196,14 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	}
 	u, proc, err := start(ctx, l, bin)
 	if err != nil {
-		return nil, fmt.Errorf("starting %s: %w%s", bin, err, sandboxHint(err, noSandbox))
+		return nil, nil, fmt.Errorf("starting %s: %w%s", bin, err, sandboxHint(err, noSandbox))
 	}
 	b := rod.New().ControlURL(u).Context(ctx)
 	if err := b.Connect(); err != nil {
 		proc.stop()
-		return nil, fmt.Errorf("connecting to the browser: %w", err)
+		return nil, nil, fmt.Errorf("connecting to the browser: %w", err)
 	}
-	br := &Browser{Browser: b, proc: proc, Bin: bin, Downloaded: downloaded}
-	if v, err := (proto.BrowserGetVersion{}).Call(b); err == nil {
-		br.Version = productVersion(v.Product)
-	}
-	if opts.Log != nil {
-		opts.Log("Browser: " + br.Describe())
-	}
-	return br, nil
+	return b, proc, nil
 }
 
 // productVersion turns "HeadlessChrome/153.0.8010.52" into the number.
@@ -224,7 +260,17 @@ func logf(opts Options, msg string) {
 
 // Session is an isolated browsing context with its own cookies, like a
 // private window: anonymous crawling and a logged-in user never share one.
-func (b *Browser) Session() (*rod.Browser, error) { return b.Incognito() }
+// A Chrome that has only just started may not create one at the first
+// ask on a busy machine, so it is asked twice more after a pause.
+func (b *Browser) Session() (*rod.Browser, error) {
+	var sess *rod.Browser
+	err := retry.Do(b.GetContext(), retry.Policy{Tries: launchTries, Pause: launchPause}, func() error {
+		var err error
+		sess, err = b.Incognito()
+		return err
+	})
+	return sess, err
+}
 
 // Close shuts the browser down, kills any of its processes still
 // running and removes its temporary profile.

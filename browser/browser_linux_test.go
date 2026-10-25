@@ -159,3 +159,34 @@ func waitGone(pids []int, d time.Duration) []int {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+// A Chrome that exits before it prints its DevTools address is started
+// again, three times in all, each in a new profile; one that can't set up
+// its sandbox fails at once, since that never goes away by itself.
+func TestLaunchTriesAgain(t *testing.T) {
+	pause := launchPause
+	launchPause = time.Millisecond
+	t.Cleanup(func() { launchPause = pause })
+	t.Setenv(NoSandboxEnv, "")
+	for _, tc := range []struct {
+		say   string
+		tries int
+	}{
+		{"crashed", launchTries},
+		{"No usable sandbox!", 1},
+	} {
+		dir := t.TempDir()
+		count := filepath.Join(dir, "count")
+		bin := filepath.Join(dir, "chrome")
+		script := fmt.Sprintf("#!/bin/sh\necho x >> %q\necho %q >&2\nexit 1\n", count, tc.say)
+		if err := os.WriteFile(bin, []byte(script), 0o700); err != nil { //nolint:gosec // a test stand-in for Chrome
+			t.Fatal(err)
+		}
+		var notes []string
+		_, err := Launch(context.Background(), Options{Bin: bin, Log: func(s string) { notes = append(notes, s) }})
+		data, _ := os.ReadFile(count)
+		if n := strings.Count(string(data), "x"); err == nil || n != tc.tries || len(notes) != tc.tries-1 {
+			t.Errorf("%s: %d starts, notes %q, %v; want %d starts", tc.say, n, notes, err, tc.tries)
+		}
+	}
+}
