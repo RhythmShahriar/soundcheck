@@ -100,7 +100,6 @@ func KeyTitle(title string) string {
 	}
 	return title
 }
-}
 
 // Request is one network request the page made that went wrong, or that
 // a check cares about.
