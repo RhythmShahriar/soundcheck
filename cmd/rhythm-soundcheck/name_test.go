@@ -135,3 +135,41 @@ func TestUsageLinesUpForAnyName(t *testing.T) {
 		}
 	}
 }
+
+// A snapshot ends with the path of its report.html, as compare does,
+// then what to run next; -q and --json leave the hint out.
+func TestSnapshotFullReportHint(t *testing.T) {
+	needBrowser(t)
+	if testing.Short() {
+		t.Skip("runs the browser")
+	}
+	var broken atomic.Bool
+	srv := shop(&broken)
+	defer srv.Close()
+	t.Chdir(t.TempDir())
+	snap := func(name string, extra ...string) (int, string, string) {
+		args := append([]string{"snapshot", srv.URL, "--name", name, "--no-download", "--viewport", "desktop",
+			"--modules", "health", "--rate", "50", "--limit", "1"}, extra...)
+		return runCLI(t, args...)
+	}
+	code, out, errOut := snap("plain", "--plain")
+	want := "full report: .soundcheck/snapshots/plain/report.html\n"
+	if code != exitOK || !strings.Contains(out, want) {
+		t.Fatalf("exit %d, want %q:\n%s\n%s", code, want, out, errOut)
+	}
+	if strings.Index(out, want) > strings.Index(out, "next: ") {
+		t.Errorf("the full report line comes before the next hint:\n%s", out)
+	}
+	if b, err := os.ReadFile(".soundcheck/snapshots/plain/report.html"); err != nil || !strings.Contains(string(b), "<html") {
+		t.Errorf("the snapshot's report.html: %v", err)
+	}
+	for _, extra := range [][]string{{"--plain", "-q"}, {"--json"}} {
+		code, out, errOut := snap("quiet", extra...)
+		if code != exitOK || strings.Contains(out+errOut, "full report:") {
+			t.Errorf("%v: exit %d, the hint shows:\n%s\n%s", extra, code, out, errOut)
+		}
+		if _, err := os.Stat(".soundcheck/snapshots/quiet/report.html"); err != nil {
+			t.Errorf("%v: no report.html: %v", extra, err)
+		}
+	}
+}

@@ -348,14 +348,39 @@ func (p *Pretty) Log(msg string) {
 	fmt.Fprintln(p.errw, muted.Render("  · "+strings.TrimSpace(msg)))
 }
 
-// Summary prints the result.
-func (p *Pretty) Summary(r Result, hint string) {
+// Summary prints the result, then the hints in order (such as "full
+// report: <path>" and what to run next). Empty hints are left out.
+func (p *Pretty) Summary(r Result, hints ...string) {
 	p.clear()
 	p.banner(r)
+	var shown []string
+	for _, h := range hints {
+		if h != "" {
+			shown = append(shown, h)
+		}
+	}
 	if r.Compared() {
-		p.comparison(r, hint)
+		p.comparison(r, shown)
 	} else {
-		p.run(r, hint)
+		p.run(r, shown)
+	}
+}
+
+// hints prints the lines after the summary: plain as they are, the
+// pretty view with an arrow each after one blank line.
+func (p *Pretty) hints(hints []string) {
+	if len(hints) == 0 {
+		return
+	}
+	if p.o.Plain {
+		for _, h := range hints {
+			fmt.Fprintln(p.w, h)
+		}
+		return
+	}
+	fmt.Fprintln(p.w)
+	for _, h := range hints {
+		fmt.Fprintf(p.w, "  %s %s\n", ui.Brand.Render("→"), muted.Render(h))
 	}
 }
 
@@ -373,7 +398,7 @@ func (p *Pretty) banner(r Result) {
 	fmt.Fprintf(p.w, "\n  %s  %s\n", mark, muted.Render(partialNote))
 }
 
-func (p *Pretty) comparison(r Result, hint string) {
+func (p *Pretty) comparison(r Result, hints []string) {
 	c := r.Comparison
 	safe := make([]model.Change, len(c.Changes))
 	for i, ch := range c.Changes {
@@ -414,9 +439,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 		fmt.Fprintf(p.w, "\n%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
 			snapshotName(c.Before), r.stats())
 		p.notes(c.Warnings)
-		if hint != "" {
-			fmt.Fprintln(p.w, hint)
-		}
+		p.hints(hints)
 		return
 	}
 
@@ -451,9 +474,7 @@ func (p *Pretty) comparison(r Result, hint string) {
 	fmt.Fprintln(p.w, comparePanel(c))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(fmt.Sprintf("compared with %s · %s", snapshotName(c.Before), r.stats())))
 	p.notes(c.Warnings)
-	if hint != "" {
-		fmt.Fprintf(p.w, "\n  %s %s\n", ui.Brand.Render("→"), muted.Render(hint))
-	}
+	p.hints(hints)
 	fmt.Fprintln(p.w)
 }
 
@@ -466,7 +487,7 @@ func (p *Pretty) acceptHint(c *model.Comparison, ch model.Change) string {
 	return p.o.Accept + " " + Term(ch.ID) + " if this is expected"
 }
 
-func (p *Pretty) run(r Result, hint string) {
+func (p *Pretty) run(r Result, hints []string) {
 	issues := Issues(r.Run)
 	for i := range issues {
 		issues[i] = termIssue(issues[i])
@@ -495,9 +516,7 @@ func (p *Pretty) run(r Result, hint string) {
 			plural(counts[model.Error], "error", "errors"), plural(counts[model.Warning], "warning", "warnings"),
 			plural(counts[model.Notice], "notice", "notices"), r.stats())
 		p.notes(r.Run.Warnings)
-		if hint != "" {
-			fmt.Fprintln(p.w, hint)
-		}
+		p.hints(hints)
 		return
 	}
 
@@ -533,9 +552,7 @@ func (p *Pretty) run(r Result, hint string) {
 	fmt.Fprintln(p.w, runPanel(r.Run, Counts(issues)))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(r.stats()))
 	p.notes(r.Run.Warnings)
-	if hint != "" {
-		fmt.Fprintf(p.w, "\n  %s %s\n", ui.Brand.Render("→"), muted.Render(hint))
-	}
+	p.hints(hints)
 	fmt.Fprintln(p.w)
 }
 

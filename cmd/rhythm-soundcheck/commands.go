@@ -390,8 +390,9 @@ func (s *session) render(w io.Writer, res report.Result, format string) error {
 }
 
 // finish saves the HTML report, writes the chosen formats, prints the
-// summary and picks the exit code.
-func (s *session) finish(res report.Result, hint string) int {
+// summary and picks the exit code. next is an optional last hint, such
+// as what to run after a snapshot; it follows the "full report:" line.
+func (s *session) finish(res report.Result, next string) int {
 	res.FailOn = s.o.failOn // JSON's summary.failed
 	res.Trend = s.trend(res.Run)
 	html := filepath.Join(res.Dir, "report.html")
@@ -421,11 +422,12 @@ func (s *session) finish(res report.Result, hint string) int {
 			break
 		}
 	}
-	if hint == "" && open != "" && !s.noReportHint {
+	var hint string
+	if open != "" && !s.noReportHint {
 		hint = "full report: " + rel(open)
 	}
 	if s.live {
-		s.view.Summary(res, hint)
+		s.view.Summary(res, hint, next)
 	}
 	if !s.o.quiet {
 		for _, path := range written {
