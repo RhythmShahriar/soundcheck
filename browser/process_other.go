@@ -27,5 +27,5 @@ func start(_ context.Context, l *launcher.Launcher, bin string) (string, *proces
 
 func (p *process) stop() {
 	p.l.Kill()
-	p.l.Cleanup()
+	cleanup(p.l)
 }
