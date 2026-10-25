@@ -71,7 +71,7 @@ type session struct {
 	tty, live      bool
 	view           *report.Pretty
 	st             store.Store
-	notice         <-chan string
+	notice         *update.Pending
 	echo           *echolink.Link // connected on the first check, when Echo is on
 	flowsChecked   bool           // checkFlows ran
 	loginShown     bool           // the Login line was printed
@@ -165,7 +165,7 @@ func (s *session) start(target string) {
 			"like a visitor at a polite pace. It only submits forms when you turn on the\n"+
 			"submit level, never on sites listed as production. This notice is shown once.\n\n")
 	}
-	s.notice = update.Notice(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
+	s.notice = update.StartCheck(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
 	s.view.Header(version, target)
 	if s.siteFrom != "" {
@@ -442,15 +442,9 @@ func (s *session) finish(res report.Result, next string) int {
 			fmt.Fprintln(s.stderr, prefix(), "opening the report:", err, "\n  open it yourself:", open)
 		}
 	}
-	if s.notice != nil && s.live && !s.o.quiet {
-		select {
-		case msg, ok := <-s.notice:
-			if ok {
-				fmt.Fprintln(s.stderr, msg)
-			}
-		case <-time.After(200 * time.Millisecond): // don't hold up the exit for it
-		}
-	}
+	// Every browser is closed by now (runner.Run and Revisit close theirs
+	// before they return), so a "y" doesn't race Chrome's shutdown.
+	update.PromptAtExit(s.ctx, s.promptOptions())
 	if s.ctx.Err() != nil {
 		fmt.Fprintln(s.stderr, prefix(), "canceled; results are partial")
 		return exitCanceled
@@ -477,6 +471,13 @@ var faint = lipgloss.NewStyle().Faint(true)
 // to fix: without --fail-on it still exits 0, which a script reads as
 // fine. It stays quiet with -q, when machine output owns stdout and when
 // --fail-on or fail_on was given, even as none.
+// promptOptions is how the end of a run asks about a new release: never
+// when stdout carries a report for a program to read, or with -q.
+func (s *session) promptOptions() update.PromptOptions {
+	return update.PromptOptions{Check: s.notice, Quiet: s.o.quiet || !s.live,
+		Stdout: s.stdout, Out: s.stderr}
+}
+
 func (s *session) failOnTip(res report.Result) string {
 	if !res.Compared() || s.failOnSet || s.o.quiet || !s.live {
 		return ""
