@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/RhythmShahriar/echo v1.0.0
-	github.com/RhythmShahriar/rhythm v0.6.0
+	github.com/RhythmShahriar/rhythm v0.8.0
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0

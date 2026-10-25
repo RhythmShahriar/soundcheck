@@ -711,3 +711,29 @@ func TestSpeedBlockReachesTheModule(t *testing.T) {
 		t.Errorf("50%% slower reported with speed.slower 60: %+v", got)
 	}
 }
+
+// The update prompt stays quiet when stdout is JSON for a program, or
+// with -q, and may ask after the live view.
+func TestUpdatePromptQuiet(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, c := range []struct {
+		args  []string
+		quiet bool
+	}{
+		{[]string{"a.test", "--json"}, true},
+		{[]string{"a.test", "-q"}, true},
+		{[]string{"a.test"}, false},
+	} {
+		p, err := parse(c.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out, errb bytes.Buffer
+		s := p.begin(&out, &errb)
+		o := s.promptOptions()
+		s.stop()
+		if o.Quiet != c.quiet || o.Stdout != &out || o.Out != &errb {
+			t.Errorf("%v: Quiet = %v, want %v (or writers not the run's)", c.args, o.Quiet, c.quiet)
+		}
+	}
+}
