@@ -285,8 +285,10 @@ func TestStateFromEnv(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("TESTBED_STATE", state) // for toggle.sh and the server
 	const addr = "127.0.0.1:20342"
-	// The CLI's php.ini may hide errors; the Docker image shows them.
-	srv := exec.Command(php, "-d", "display_errors=1", "-d", "error_reporting=E_ALL", "-S", addr, "-t", filepath.Join(dir, "php")) //nolint:gosec // our own test server
+	// The CLI's php.ini may hide errors; the Docker image shows them in
+	// PHP's own HTML format. Xdebug (on GitHub's runners) would replace
+	// that format with its own table, so it is switched off.
+	srv := exec.Command(php, "-d", "display_errors=1", "-d", "error_reporting=E_ALL", "-d", "html_errors=1", "-d", "xdebug.mode=off", "-S", addr, "-t", filepath.Join(dir, "php")) //nolint:gosec // our own test server
 	if err := srv.Start(); err != nil {
 		t.Fatal(err)
 	}
