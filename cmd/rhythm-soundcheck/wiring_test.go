@@ -296,8 +296,8 @@ func writeComparison(t *testing.T, c *model.Comparison) string {
 	return dir
 }
 
-// report of an interrupted comparison exits 130, also with --fail-on, and
-// says the result is partial.
+// report of an interrupted comparison exits 130 (also with --fail-on)
+// and says the result is partial.
 func TestReportPartialExits130(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeComparison(t, &model.Comparison{Interrupted: true, Changes: []model.Change{

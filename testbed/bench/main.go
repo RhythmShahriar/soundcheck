@@ -5,7 +5,7 @@
 
 // Command bench runs Soundcheck's public benchmark against the testbed:
 // for each scenario in testbed/scenarios.yaml it sets the good state,
-// takes a snapshot, breaks the scenario, compares, and checks the
+// takes a snapshot, breaks the scenario, compares and checks the
 // comparison against the scenario's expectation. Third-party tools
 // (BackstopJS, lychee, Unlighthouse) run on the same states when they're
 // available. A control pass then snapshots the sites with nothing broken

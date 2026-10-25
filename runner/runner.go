@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package runner checks a whole site: it finds the pages, visits each in
-// a pool of browser tabs at a polite pace, runs every module's hooks, and
-// returns the recorded run.
+// a pool of browser tabs at a polite pace, runs every module's hooks
+// and returns the recorded run.
 package runner
 
 import (
@@ -270,7 +270,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		run.Options.Modules = slices.DeleteFunc(slices.Clone(run.Options.Modules), func(m string) bool { return m == "echo" })
 	}
 	// Try the login once up front: a wrong password or a changed login
-	// form is one clear warning, and the checks that need it skip.
+	// form is one clear warning. The checks that need it skip.
 	if cc.Login != nil {
 		if err := tryLogin(ctx, b, cc.Login); err != nil {
 			cc.Warn("login failed, so the checks that need it were skipped: " + err.Error())

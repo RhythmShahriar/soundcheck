@@ -25,7 +25,7 @@ const (
 )
 
 // wordpress is a fake WordPress with a login form, a front page that
-// shows the admin bar when logged in, and the users/me REST endpoint.
+// shows the admin bar when logged in and the users/me REST endpoint.
 func wordpress(t *testing.T, restNonceOnPage bool) *httptest.Server {
 	t.Helper()
 	logged := func(r *http.Request) bool {
@@ -131,7 +131,7 @@ func TestWordPressLogin(t *testing.T) {
 		_ = sess.Close()
 	}
 
-	// A wrong password fails, and the error never shows the credentials.
+	// A wrong password fails. The error never shows the credentials.
 	srv := wordpress(t, true)
 	base, _ := url.Parse(srv.URL)
 	sess, _ := b.Session()

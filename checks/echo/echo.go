@@ -9,7 +9,7 @@
 // one NEW, a different recipient, subject, text or payload CHANGED.
 //
 // It isn't an IssueOwner: the problems Echo finds in messages are
-// ordinary page issues (echo/…), and the generic issue diff reports them
+// ordinary page issues (echo/…). The generic issue diff reports them
 // the usual way, a new error as BROKE. The one overlap, a form that now
 // sends nothing, is tidied by FilterChanges.
 package echo
@@ -31,7 +31,7 @@ type Module struct{}
 func (Module) Name() string { return "echo" }
 
 // Compare diffs the messages of each action recorded in both runs: form
-// submits on the same page, and flows.
+// submits on the same page and flows.
 func (m Module) Compare(ctx context.Context, cc *check.CompareContext) []model.Change {
 	s := m.ComparePages(ctx, cc)
 	for _, pair := range cc.Pairs() {
@@ -92,9 +92,9 @@ func count(acts []model.EchoAction, page string) int {
 	return n
 }
 
-// FilterChanges drops the NEW "Form says sent, but no message went out"
+// FilterChanges drops the NEW "Form says sent but no message went out"
 // notice where this module already reports the lost messages as BROKE:
-// it's the same news, and the BROKE lines say which messages.
+// it's the same news. The BROKE lines say which messages.
 func (Module) FilterChanges(cs []model.Change) []model.Change {
 	lost := map[string]bool{}
 	for _, c := range cs {

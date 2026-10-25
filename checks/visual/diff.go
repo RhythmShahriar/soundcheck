@@ -41,7 +41,7 @@ type DiffOptions struct {
 const (
 	same     uint8 = iota
 	changed        // differs beyond the threshold
-	aliased        // differs, but only as anti-aliasing noise
+	aliased        // differs only as anti-aliasing noise
 	masked         // inside an ignored region
 	inserted       // a row with no counterpart in the before image
 )
@@ -106,11 +106,11 @@ func toRaster(img image.Image) *raster {
 func (r *raster) row(y, w int) []uint8 { return r.pix[y*r.stride : y*r.stride+w*4] }
 
 // Compare diffs before and after in the style of pixelmatch: YIQ color
-// distance with a threshold, and anti-aliased pixels ignored. First the
+// distance with a threshold and anti-aliased pixels ignored. First the
 // rows of the two images are lined up like lines in a text diff (see
 // matchRows), so content that only moved because a block was inserted or
 // removed above it isn't a change; the inserted and removed blocks are
-// reported in Blocks, and the pixel diff runs on the aligned rows.
+// reported in Blocks. The pixel diff runs on the aligned rows.
 func Compare(before, after image.Image, opts DiffOptions) *Diff {
 	b, a := toRaster(before), toRaster(after)
 	if opts.Threshold == 0 {
@@ -325,7 +325,7 @@ func rgb2q(r, g, b float64) float64 { return r*0.21147017 - g*0.52261711 + b*0.3
 
 // antialiased reports whether the pixel at (x, y) of img looks like an
 // anti-aliased edge: it sits between a darker and a brighter neighbor,
-// has at most two neighbors of equal brightness, and the darkest or
+// has at most two neighbors of equal brightness and the darkest or
 // brightest neighbor lies inside a flat area in both images. other is
 // the second image; oy maps img rows to its rows.
 func antialiased(img *raster, x1, y1, w int, other *raster, oy int) bool {

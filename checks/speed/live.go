@@ -179,7 +179,7 @@ func applyUnused(p *model.Page, use map[string]usage) {
 	}
 }
 
-// pageFacts returns what Live saw on each page of run, and forgets it.
+// pageFacts returns what Live saw on each page of run and forgets it.
 func (m *Module) pageFacts(run *model.Run) map[string]*facts {
 	m.mu.Lock()
 	defer m.mu.Unlock()

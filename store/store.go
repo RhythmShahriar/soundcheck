@@ -252,7 +252,7 @@ func LoadComparison(dir string) (*model.Comparison, error) {
 }
 
 // Promote moves a finished snapshot from Incoming into snapshots/name,
-// replacing an older snapshot with that name, and returns its new folder.
+// replacing an older snapshot with that name and returns its new folder.
 // It holds the store's lock, so two snapshots finishing at once each
 // leave a whole snapshot, never a mix of both. A snapshot whose
 // screenshots weren't all written (see verifyShots) is refused and the

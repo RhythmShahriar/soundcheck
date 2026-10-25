@@ -34,7 +34,7 @@ func pageIssues() map[string]model.Issue {
 		"interact": identified(model.Issue{Check: "interact/form-action", Level: model.Error,
 			Title: "Form posts to a page that doesn't exist", Source: "form#signup"}),
 		"echo": identified(model.Issue{Check: "echo/no-message", Level: model.Notice,
-			Title: "Form says sent, but no message went out", Source: "form#contact"}), // style:ignore: the issue's title
+			Title: "Form says sent but no message went out", Source: "form#contact"}),
 		"exec": identified(model.Issue{Check: "exec/brand/logo", Level: model.Error, Title: "Logo missing"}),
 	}
 }

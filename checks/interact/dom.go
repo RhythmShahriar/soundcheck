@@ -19,7 +19,7 @@ var clickTypes = map[string]bool{
 
 // markListeners asks Chrome (DOMDebugger.getEventListeners, which sees
 // listeners added with addEventListener as well as onclick attributes)
-// which nodes listen for clicks, and flags each with __scL so the page
+// which nodes listen for clicks. It flags each with __scL so the page
 // scripts below can tell handled elements from inert ones, including
 // handlers delegated to a parent, the document or the window.
 func markListeners(tab *rod.Page) error {
@@ -67,7 +67,7 @@ func markListeners(tab *rod.Page) error {
 }
 
 // guardJS makes clicks safe to explore: window.open, alert, confirm and
-// prompt are replaced so nothing opens or blocks, and confirm() answers
+// prompt are replaced so nothing opens or blocks. confirm() answers
 // "Cancel", so a "Really delete?" prompt never proceeds. Each call is
 // counted as a reaction to the click.
 const guardJS = `() => {

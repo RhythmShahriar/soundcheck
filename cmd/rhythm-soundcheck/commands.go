@@ -204,7 +204,7 @@ func production(cfg config.Config) string {
 }
 
 // connectEcho checks once that Echo is running, when it's on. Echo not
-// answering is a usage error: the user asked for it, and a run without it
+// answering is a usage error: the user asked for it. A run without it
 // would silently record no messages.
 func (s *session) connectEcho() error {
 	if !s.cfg.Has("echo") || s.echo != nil {

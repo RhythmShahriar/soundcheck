@@ -6,7 +6,7 @@
 // submits a form or plays a flow, the requests it makes to the site carry
 // X-Echo-Run: <run>/<action>; the site's Echo connector copies that into
 // each capture, so afterwards Soundcheck can ask Echo exactly which
-// messages the submit caused, and compare them with the snapshot's.
+// messages the submit caused and compare them with the snapshot's.
 package echolink
 
 import (
@@ -79,7 +79,7 @@ func FlowAction(name string) string { return safe("flow:" + name) }
 
 // safe keeps an action ID to characters that survive a header, a cookie
 // and the URL decoding connectors apply (PHP turns + into a space and
-// decodes %XX), and to a length connectors accept.
+// decodes %XX) and to a length connectors accept.
 func safe(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -94,7 +94,7 @@ func safe(s string) string {
 	return out[:min(len(out), 200)]
 }
 
-// Turn waits until no other tab has a tagged submit going, and returns
+// Turn waits until no other tab has a tagged submit going and returns
 // the function that ends this one's turn. Tagged submits take turns
 // because the tag's cookie is shared by every tab in the browser session.
 func (l *Link) Turn() (done func()) {
@@ -223,7 +223,7 @@ func Issues(a model.EchoAction, siteHost string) []model.Issue {
 // (a search, a filter, a poll). Losing a message the snapshot had is what
 // the echo module's comparison reports as BROKE.
 func NoMessage(a model.EchoAction, wait time.Duration) model.Issue {
-	i := model.Issue{Check: "echo/no-message", Level: model.Notice, Title: "Form says sent, but no message went out",
+	i := model.Issue{Check: "echo/no-message", Level: model.Notice, Title: "Form says sent but no message went out",
 		Detail: fmt.Sprintf("%s showed success and Echo saw no email, SMS or webhook from it within %s", a.Label, wait),
 		Source: a.Label,
 		Fix: "If the form should notify someone, check its notification settings and the site's mailer; " +

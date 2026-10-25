@@ -35,7 +35,7 @@ const (
 )
 
 // CheckSite adds suggestions grouped by cause, each counted across pages:
-// one issue for all oversized images, one per heavy plugin, and so on.
+// one issue for all oversized images, one per heavy plugin and so on.
 // Titles are fixed per cause (or per plugin/host) so a comparison sees
 // the same suggestion in both runs; the numbers go in Detail.
 func (m *Module) CheckSite(_ context.Context, cc *check.Context) {

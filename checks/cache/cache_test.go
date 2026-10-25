@@ -169,7 +169,7 @@ func shop(t *testing.T) (*httptest.Server, []string) {
 		}
 		fmt.Fprint(w, page("Quotes", "<p>"+q+"</p>"))
 	})
-	// WordPress' login page, which the crawl never visits, and a basket
+	// WordPress' login page, which the crawl never visits. Also a basket
 	// URL announced in WooCommerce's script settings.
 	mux.HandleFunc("/wp-login.php", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("cf-cache-status", "HIT")

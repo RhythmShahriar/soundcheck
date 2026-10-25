@@ -121,7 +121,7 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 	}
 }
 
-// flowMessages records what a flow made the site send, and the problems
+// flowMessages records what a flow made the site send and the problems
 // Echo finds in it, as site issues on the flow's start page. A flow that
 // sends nothing isn't reported: an expect: {message: …} step says when it
 // should.

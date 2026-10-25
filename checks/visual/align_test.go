@@ -21,7 +21,7 @@ func TestMatchRows(t *testing.T) {
 		t.Errorf("pairs = %v, want %v", pairs, want)
 	}
 	// Repeated rows (0 = blank) don't anchor on their own: the unique rows
-	// decide, and blanks match next to them.
+	// decide. Blanks match next to them.
 	b := []uint64{0, 0, 0, 1, 0, 0, 2, 0, 0, 0}
 	a := []uint64{0, 0, 0, 1, 0, 0, 5, 5, 5, 0, 0, 2, 0, 0, 0}
 	pairs = matchRows(b, a)

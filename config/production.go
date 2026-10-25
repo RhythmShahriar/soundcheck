@@ -123,11 +123,16 @@ func (c Config) productionSites() []prodSite {
 	return out
 }
 
-// IsProduction reports whether rawURL is on one of the production sites:
-// the same host (case, a trailing dot, www., punycode and default ports
-// don't matter, nor does the scheme), or a subdomain of a *. entry. It
-// must also be under the entry's path on a segment boundary, so /shop
-// covers /shop/cart but not /shopping.
+// IsProduction reports whether rawURL is on one of the production sites.
+// It's the guard that keeps form submits off a live site (and flow
+// clicks and submits, unless the flow says production: true), where
+// they'd send real emails or create real orders. It also skips the cache
+// leak test there: a leaking cache would show the test account to real
+// visitors. A URL matches with the same host (case, a
+// trailing dot, www., punycode and default ports don't matter, nor does
+// the scheme) or on a subdomain of a *. entry. It must also be under the
+// entry's path on a segment boundary, so /shop covers /shop/cart but not
+// /shopping.
 func (c Config) IsProduction(rawURL string) bool {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || u.Hostname() == "" {

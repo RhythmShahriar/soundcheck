@@ -150,7 +150,7 @@ func (m *Module) submits(ctx context.Context, cc *check.Context, tab *rod.Page, 
 		done++
 		m.submitForm(ctx, cc, tab, p, pageURL, fm, fake, record)
 	}
-	// No reload at the end: interact's Live hook runs last, and the mobile
+	// No reload at the end: interact's Live hook runs last. The mobile
 	// pass navigates to the page afresh.
 }
 
@@ -277,9 +277,9 @@ func (m *Module) sendTagged(ctx context.Context, cc *check.Context, tab *rod.Pag
 	return m.send(ctx, tab, fm, prof, base)
 }
 
-// messages asks Echo what a successful submit sent, records it on the
-// page with the problems Echo finds in it, and sums it up for the
-// interaction's detail. ok is false when Echo couldn't be asked.
+// messages asks Echo what a successful submit sent and records it on the
+// page with the problems Echo finds in it. The returned text sums it up
+// for the interaction's detail. ok is false when Echo couldn't be asked.
 func (m *Module) messages(ctx context.Context, cc *check.Context, p *model.Page, base *url.URL, act model.EchoAction) (string, bool) {
 	msgs, err := cc.Echo.Wait(ctx, act.Action)
 	if err != nil {
@@ -460,7 +460,7 @@ const fieldsJS = `(sel) => {` + helpersJS + `
 }`
 
 // fillJS sets text values, picks the first real option of each select,
-// ticks required and consent checkboxes, and picks a radio in each group.
+// ticks required and consent checkboxes and picks a radio in each group.
 const fillJS = `(sel, values) => {
   const f = document.querySelector(sel);
   if (!f) throw new Error('form not found');

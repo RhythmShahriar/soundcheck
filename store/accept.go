@@ -91,8 +91,7 @@ type target struct {
 // Only the accepted pages' baselines change, only in what the change
 // is about: a visual change copies that page's screenshot at the
 // change's viewport from the run, keeping the dynamic regions the
-// snapshot learned,
-// an issue change replaces the page's issues with its key (the site's,
+// snapshot learned; an issue change replaces the page's issues with its key (the site's,
 // for a site-wide issue such as a broken link), a speed change copies
 // the page's metrics and resources; title, text, redirect, cache and
 // Echo changes copy that one record. Every other page and baseline stays.
