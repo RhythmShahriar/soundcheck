@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
@@ -68,18 +70,45 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 	return b, nil
 }
 
-// startSession is openSession, tried once more when the driver couldn't
-// create the session: safaridriver gives up when Safari is slow to start
-// ("The session timed out while connecting to a Safari instance"), and
-// the second try finds it running.
+// startSession is openSession, tried up to twice more when the driver
+// couldn't create the session or dropped the request. safaridriver gives
+// up when Safari is slow to start ("The session timed out while
+// connecting to a Safari instance") and closes the connection while the
+// Safari of a session that just ended is still shutting down; a later
+// try finds it ready.
 func (b *Browser) startSession(ctx context.Context, base string, always map[string]any) error {
-	err := b.openSession(ctx, base, always)
-	var e *Error
-	if errors.As(err, &e) && e.Code == "session not created" && ctx.Err() == nil {
-		b.log("the WebKit driver couldn't create a session (" + e.Message + "); trying once more")
-		err = b.openSession(ctx, base, always)
+	for try := 1; ; try++ {
+		err := b.openSession(ctx, base, always)
+		if err == nil || try == sessionTries || ctx.Err() != nil || !retrySession(err) {
+			return err
+		}
+		b.log("the WebKit driver couldn't create a session (" + err.Error() + "); trying again")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-b.exited:
+			return err
+		case <-time.After(time.Duration(try) * sessionPause):
+		}
 	}
-	return err
+}
+
+// sessionTries and sessionPause bound startSession's tries: the pause
+// grows by sessionPause after each one.
+var (
+	sessionTries = 3
+	sessionPause = time.Second
+)
+
+// retrySession reports whether a new session may work on a second try:
+// the driver said it couldn't create one, or the connection closed before
+// it answered.
+func retrySession(err error) bool {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Code == "session not created"
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // errExited is a driver that exited before its server answered.

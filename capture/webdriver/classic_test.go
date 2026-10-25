@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
 )
@@ -38,6 +39,9 @@ type fakeDriver struct {
 	// sessionFails is how many POST /session fail with "session not
 	// created" before one succeeds.
 	sessionFails int
+	// sessionDrops is how many POST /session get the connection closed
+	// without an answer, as safaridriver does while Safari shuts down.
+	sessionDrops int
 }
 
 func (d *fakeDriver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +60,13 @@ func (d *fakeDriver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET /status":
 		reply(map[string]bool{"ready": true})
 	case "POST /session":
+		if d.sessionDrops > 0 {
+			d.sessionDrops--
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
 		if d.sessionFails > 0 {
 			d.sessionFails--
 			fail(500, "session not created")
@@ -234,25 +245,43 @@ func TestWebKitBiDiFallback(t *testing.T) {
 	}
 }
 
-// A session the driver couldn't create is asked for once more; a second
-// failure is the error.
+// A session the driver couldn't create, or a request it dropped, is
+// asked for again up to sessionTries times; the last failure is the
+// error.
 func TestWebKitSessionRetry(t *testing.T) {
+	pause := sessionPause
+	sessionPause = time.Millisecond
+	t.Cleanup(func() { sessionPause = pause })
 	for _, tc := range []struct {
-		fails int
-		ok    bool
-	}{{1, true}, {2, false}} {
-		d := &fakeDriver{sessionFails: tc.fails}
+		fails, drops int
+		ok           bool
+		want         string
+	}{
+		{1, 0, true, ""}, {2, 0, true, ""}, {3, 0, false, "session not created"},
+		{0, 1, true, ""}, {1, 1, true, ""}, {0, 3, false, "EOF"},
+	} {
+		d := &fakeDriver{sessionFails: tc.fails, sessionDrops: tc.drops}
 		srv := httptest.NewServer(d)
 		var notes []string
 		b := &Browser{engine: capture.WebKit, logf: func(s string) { notes = append(notes, s) }}
 		err := b.startSession(context.Background(), srv.URL, map[string]any{})
 		srv.Close()
-		if (err == nil) != tc.ok || len(notes) != 1 || !strings.Contains(notes[0], "trying once more") {
-			t.Errorf("%d failures: %v, notes %q", tc.fails, err, notes)
+		retries := min(tc.fails+tc.drops, sessionTries-1)
+		if (err == nil) != tc.ok || len(notes) != retries {
+			t.Errorf("%d failures, %d drops: %v, notes %q", tc.fails, tc.drops, err, notes)
 		}
-		if !tc.ok && !strings.Contains(fmt.Sprint(err), "session not created") {
-			t.Errorf("%d failures: %v", tc.fails, err)
+		for _, n := range notes {
+			if !strings.Contains(n, "trying again") {
+				t.Errorf("note %q", n)
+			}
 		}
+		if !tc.ok && !strings.Contains(fmt.Sprint(err), tc.want) {
+			t.Errorf("%d failures, %d drops: %v, want %q", tc.fails, tc.drops, err, tc.want)
+		}
+	}
+	// Other errors are not tried again.
+	if retrySession(&Error{Code: "invalid argument"}) || retrySession(errors.New("no")) {
+		t.Error("retrySession tries other errors again")
 	}
 }
 
