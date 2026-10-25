@@ -340,7 +340,7 @@ func (m *Module) clickOne(ctx context.Context, tab *rod.Page, w *watcher, c cand
 		st = state(tab)
 		elapsed := time.Since(start)
 		active := st.reacted(c.Void) || e.requests > 0 || e.nav != nil || len(e.errors) > 0
-		// A page that can no longer be read is leaving, but the request
+		// A page that can no longer be read is leaving. The request
 		// taking it away (a form post the guard holds, a navigation) can
 		// reach the watcher after that on a busy machine. Until it does,
 		// or nothing comes for deadAfter, the click's effect isn't known.

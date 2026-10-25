@@ -712,8 +712,8 @@ func TestSpeedBlockReachesTheModule(t *testing.T) {
 	}
 }
 
-// The update prompt stays quiet when stdout is JSON for a program, or
-// with -q, and may ask after the live view.
+// The update prompt stays quiet when stdout is JSON for a program or
+// with -q. It may ask after the live view.
 func TestUpdatePromptQuiet(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, c := range []struct {
