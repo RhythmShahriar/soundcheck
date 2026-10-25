@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-rod/rod"
+
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
@@ -48,6 +50,24 @@ steps:
 	}
 }
 
+// isolatedTab starts a Chrome of its own for one subtest and opens a tab
+// in it. On a Windows runner a subtest whose tab was closed without
+// navigating left the next tab in the same Chrome unable to load its first
+// page, so the subtests don't share a browser.
+func isolatedTab(t *testing.T) *rod.Page {
+	t.Helper()
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(b.Close)
+	tab, err := browser.NewTab(b.Browser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tab
+}
+
 // recorder is a server that logs every request it gets: the attacker's,
 // in the negative fixtures.
 type recorder struct {
@@ -80,11 +100,6 @@ func TestRunStaysOnSite(t *testing.T) {
 	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
 		t.Skip("no Chrome or Chromium installed: ", err)
 	}
-	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer b.Close()
 	env := func(k string) string {
 		return map[string]string{"GITHUB_TOKEN": "ghp_DEMO0000SECRET", "SOUNDCHECK_NOTE": "hello-note"}[k]
 	}
@@ -115,11 +130,7 @@ func TestRunStaysOnSite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			page, err := browser.NewTab(b.Browser)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = page.Close() }()
+			page := isolatedTab(t)
 			base, _ := url.Parse(site.URL)
 			// The first page a fresh Chrome opens can take a few seconds
 			// on a slow runner.
@@ -194,11 +205,6 @@ func TestRunKeepsSecretsOnSite(t *testing.T) {
 	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
 		t.Skip("no Chrome or Chromium installed: ", err)
 	}
-	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer b.Close()
 	env := func(k string) string { return map[string]string{"SOUNDCHECK_PASSWORD": "pw-DEMO-secret"}[k] }
 	const fill = "  - fill: {selector: \"#q\", value: \"${env:SOUNDCHECK_PASSWORD}\"}\n"
 	for _, tc := range []struct {
@@ -229,11 +235,7 @@ func TestRunKeepsSecretsOnSite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			page, err := browser.NewTab(b.Browser)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = page.Close() }()
+			page := isolatedTab(t)
 			base, _ := url.Parse(site.URL)
 			// The first page a fresh Chrome opens can take a few seconds
 			// on a slow runner.
