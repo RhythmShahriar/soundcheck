@@ -139,6 +139,20 @@ if [ "$code" = 0 ] && has "$work/args" --snapshot && has "$work/args" main; then
 else bad "compare with a restored baseline compares with it"; fi
 rm -rf "$work/site/.soundcheck"
 
+# Two uses of the Action in one job upload under different names.
+rm -rf "$work/runner" && mkdir -p "$work/runner/temp"
+: > "$work/runner/output"
+for _ in 1 2 3; do
+  GITHUB_OUTPUT="$work/runner/output" GITHUB_STEP_SUMMARY=/dev/null RUNNER_TEMP="$work/runner/temp" \
+    URL=http://127.0.0.1:20340/ "$here/action-run.sh" prepare > "$work/log" 2>&1
+done
+if [ "$(grep '^artifact=' "$work/runner/output" | tr '\n' ' ')" = "artifact=soundcheck-report artifact=soundcheck-report-2 artifact=soundcheck-report-3 " ]; then
+  ok "each use of the Action in a job gets its own artifact name"
+else
+  cp "$work/runner/output" "$work/log"
+  bad "each use of the Action in a job gets its own artifact name"
+fi
+
 act action-run.sh prepare MODE=run BASELINE=main
 if [ "$code" = 2 ] && contains "$work/runner/summary" "the baseline input works with mode snapshot or compare, not run"; then
   ok "a baseline needs mode snapshot or compare"

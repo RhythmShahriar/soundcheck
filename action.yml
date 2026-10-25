@@ -220,7 +220,7 @@ runs:
       if: always() && inputs.upload == 'true' && steps.check.outputs.report != ''
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: soundcheck-report
+        name: ${{ steps.prep.outputs.artifact }}
         path: ${{ runner.temp }}/soundcheck-report/
         if-no-files-found: ignore
 
@@ -240,6 +240,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         FAIL_ON: ${{ inputs.fail-on }}
+        ARTIFACT: ${{ steps.prep.outputs.artifact }}
       run: |
-        echo "::error::Soundcheck found changes or issues at or above --fail-on ${FAIL_ON:-its default}. See the job summary and the soundcheck-report artifact."
+        echo "::error::Soundcheck found changes or issues at or above --fail-on ${FAIL_ON:-its default}. See the job summary and the $ARTIFACT artifact."
         exit 1

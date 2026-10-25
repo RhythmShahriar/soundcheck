@@ -4,7 +4,8 @@
 
 # Runs Soundcheck for the GitHub Action (action.yml).
 #
-#   action-run.sh prepare   checks the inputs, writes mode= and snapshots= outputs
+#   action-run.sh prepare   checks the inputs, writes mode=, snapshots= and
+#                           artifact= outputs
 #   action-run.sh run       runs Soundcheck and writes the reports
 #
 # Both read the Action's inputs from the environment: URL, AGAINST, MODE,
@@ -77,10 +78,24 @@ resolve() {
   [ "$level" = none ] || fail=(--fail-on "$level")
 }
 
+# artifact_name prints the report artifact's name. The first use of the
+# Action in a job uploads soundcheck-report, later ones soundcheck-report-2,
+# -3 and so on: artifact names are unique in a workflow run, so a second
+# upload under the same name would fail.
+artifact_name() {
+  local count="$RUNNER_TEMP/soundcheck-artifacts" n=0
+  [ -f "$count" ] && n=$(cat "$count")
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  n=$((n + 1))
+  echo "$n" > "$count"
+  if [ "$n" = 1 ]; then echo soundcheck-report; else echo "soundcheck-report-$n"; fi
+}
+
 prepare() {
   resolve
   {
     echo "mode=$mode"
+    echo "artifact=$(artifact_name)"
     [ -z "${BASELINE:-}" ] || echo "snapshots=.soundcheck/snapshots/$BASELINE"
   } >> "$GITHUB_OUTPUT"
 }
