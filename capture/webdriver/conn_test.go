@@ -213,3 +213,77 @@ func TestNewTabRetriesADiscardedContext(t *testing.T) {
 		})
 	}
 }
+
+// A create that fails with "no such frame" can still open its window.
+// NewTab takes the one that wasn't there before instead of opening
+// more. It closes any other a failed try left behind.
+func TestNewTabTakesTheWindowAFailedCreateOpened(t *testing.T) {
+	pause := newTabPause
+	newTabPause = time.Millisecond
+	t.Cleanup(func() { newTabPause = pause })
+	for _, tc := range []struct {
+		name    string
+		opened  []string // the windows the failed create leaves open
+		want    string
+		creates int
+		closed  string
+	}{
+		{"its window", []string{"a"}, "a", 1, ""},
+		{"two windows", []string{"b", "a"}, "a", 1, "b"},
+		{"no window", nil, "made", 2, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			type info struct {
+				Context     string `json:"context"`
+				UserContext string `json:"userContext"`
+			}
+			// The first window, another user context's and one in the
+			// run's that was open before.
+			tree := []info{{"first", "default"}, {"other", "uc-other"}, {"old", "uc-1"}}
+			creates := 0
+			var closed []string
+			url := fakeBiDi(t, func(method string, params json.RawMessage) (any, *Error) {
+				mu.Lock()
+				defer mu.Unlock()
+				switch method {
+				case "browsingContext.getTree":
+					return map[string]any{"contexts": tree}, nil
+				case "browsingContext.close":
+					var p struct {
+						Context string `json:"context"`
+					}
+					_ = json.Unmarshal(params, &p)
+					closed = append(closed, p.Context)
+					return map[string]any{}, nil
+				case "browsingContext.create":
+					creates++
+					if creates == 1 {
+						for _, id := range tc.opened {
+							tree = append(tree, info{id, "uc-1"})
+						}
+						return nil, &Error{Code: "no such frame", Message: "DiscardedBrowsingContextError: BrowsingContext does no longer exist"}
+					}
+					tree = append(tree, info{"made", "uc-1"})
+					return map[string]string{"context": "made"}, nil
+				}
+				return map[string]string{"subscription": "s"}, nil
+			})
+			c, err := Dial(context.Background(), url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			b := &Browser{conn: c, userContext: "uc-1"}
+			got, err := b.NewTab(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if id := got.(*tab).id; id != tc.want || creates != tc.creates || strings.Join(closed, ",") != tc.closed {
+				t.Errorf("NewTab = %q after %d creates, closed %v; want %q after %d, closed %q", id, creates, closed, tc.want, tc.creates, tc.closed)
+			}
+		})
+	}
+}
