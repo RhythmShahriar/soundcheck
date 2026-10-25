@@ -465,6 +465,21 @@ func (s Store) Prune(keep int) error {
 	return nil
 }
 
+// realPath resolves symlinks and short names in p. The store folder may
+// not exist yet, so it resolves the longest part that does and keeps the
+// rest as it is.
+func realPath(p string) string {
+	p = filepath.Clean(p)
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	parent := filepath.Dir(p)
+	if parent == p {
+		return p
+	}
+	return filepath.Join(realPath(parent), filepath.Base(p))
+}
+
 // ExcludeFromGit adds the store's snapshots and runs to the repository's
 // local exclude list (.git/info/exclude), so screenshots never get
 // committed by accident and the project's .gitignore stays untouched.
@@ -486,7 +501,10 @@ func (s Store) ExcludeFromGit() {
 	if err != nil {
 		return
 	}
-	rel, err := filepath.Rel(strings.TrimSpace(string(rootOut)), abs)
+	// Both sides resolved: macOS temp folders sit behind the /var symlink
+	// and Windows ones can be 8.3 short names (RUNNER~1), which git
+	// reports in full.
+	rel, err := filepath.Rel(realPath(strings.TrimSpace(string(rootOut))), realPath(abs))
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return
 	}
