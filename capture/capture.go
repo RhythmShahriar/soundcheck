@@ -549,9 +549,24 @@ func (r *Recorder) read(ctx, rctx context.Context, tab Tab, p *model.Page, opts 
 // document got all the same: Chrome fails a 401 that asks for a password
 // (net::ERR_INVALID_AUTH_CREDENTIALS) after the response came in; the
 // status and WWW-Authenticate header say what the page needs.
+//
+// The events are read on their own goroutine, so the navigation can fail
+// before the document's response or failure has been recorded. answer
+// waits up to answerWait for one of them; a slow runner otherwise loses
+// the status.
 func (r *Recorder) answer(p *model.Page) {
+	deadline := time.Now().Add(answerWait)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for {
+		q := r.reqs[r.doc]
+		if (q != nil && (q.status > 0 || q.failed != "")) || !time.Now().Before(deadline) {
+			break
+		}
+		r.mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		r.mu.Lock()
+	}
 	q := r.reqs[r.doc]
 	if q == nil || q.status == 0 {
 		return
@@ -564,6 +579,9 @@ func (r *Recorder) answer(p *model.Page) {
 		}
 	}
 }
+
+// answerWait is how long answer waits for the document's events.
+const answerWait = time.Second
 
 func newPage(rawURL string) *model.Page {
 	p := &model.Page{ID: model.PageID(rawURL), URL: rawURL, Shots: map[string]model.Shot{}}
