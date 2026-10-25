@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"net/http"
@@ -34,6 +35,9 @@ type fakeDriver struct {
 	log     []string
 	scripts []string
 	result  any
+	// sessionFails is how many POST /session fail with "session not
+	// created" before one succeeds.
+	sessionFails int
 }
 
 func (d *fakeDriver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +56,11 @@ func (d *fakeDriver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET /status":
 		reply(map[string]bool{"ready": true})
 	case "POST /session":
+		if d.sessionFails > 0 {
+			d.sessionFails--
+			fail(500, "session not created")
+			return
+		}
 		d.windows, d.current, d.urls = []string{"w0"}, "w0", map[string]string{}
 		caps := map[string]any{}
 		if d.bidi != "" {
@@ -222,6 +231,28 @@ func TestWebKitBiDiFallback(t *testing.T) {
 	}
 	if b.BiDi() || len(notes) != 1 || !strings.Contains(notes[0], "using classic WebDriver") {
 		t.Errorf("BiDi %v, notes %q", b.BiDi(), notes)
+	}
+}
+
+// A session the driver couldn't create is asked for once more; a second
+// failure is the error.
+func TestWebKitSessionRetry(t *testing.T) {
+	for _, tc := range []struct {
+		fails int
+		ok    bool
+	}{{1, true}, {2, false}} {
+		d := &fakeDriver{sessionFails: tc.fails}
+		srv := httptest.NewServer(d)
+		var notes []string
+		b := &Browser{engine: capture.WebKit, logf: func(s string) { notes = append(notes, s) }}
+		err := b.startSession(context.Background(), srv.URL, map[string]any{})
+		srv.Close()
+		if (err == nil) != tc.ok || len(notes) != 1 || !strings.Contains(notes[0], "trying once more") {
+			t.Errorf("%d failures: %v, notes %q", tc.fails, err, notes)
+		}
+		if !tc.ok && !strings.Contains(fmt.Sprint(err), "session not created") {
+			t.Errorf("%d failures: %v", tc.fails, err)
+		}
 	}
 }
 

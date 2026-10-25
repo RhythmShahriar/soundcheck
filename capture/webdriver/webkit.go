@@ -61,11 +61,25 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 	if opts.Proxy != "" {
 		always["proxy"] = map[string]any{"proxyType": "manual", "httpProxy": hostPort(opts.Proxy), "sslProxy": hostPort(opts.Proxy)}
 	}
-	if err := b.openSession(ctx, base, always); err != nil {
+	if err := b.startSession(ctx, base, always); err != nil {
 		_ = b.Close()
 		return nil, err
 	}
 	return b, nil
+}
+
+// startSession is openSession, tried once more when the driver couldn't
+// create the session: safaridriver gives up when Safari is slow to start
+// ("The session timed out while connecting to a Safari instance"), and
+// the second try finds it running.
+func (b *Browser) startSession(ctx context.Context, base string, always map[string]any) error {
+	err := b.openSession(ctx, base, always)
+	var e *Error
+	if errors.As(err, &e) && e.Code == "session not created" && ctx.Err() == nil {
+		b.log("the WebKit driver couldn't create a session (" + e.Message + "); trying once more")
+		err = b.openSession(ctx, base, always)
+	}
+	return err
 }
 
 // errExited is a driver that exited before its server answered.
