@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
+	"github.com/RhythmShahriar/soundcheck/internal/retry"
 )
 
 // webkitDrivers are WebKit's WebDriver servers looked for on PATH:
@@ -51,10 +52,6 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, base, err := startDriver(ctx, bin, opts.Log)
-	if err != nil {
-		return nil, err
-	}
 	always := map[string]any{"webSocketUrl": true, "acceptInsecureCerts": opts.Insecure}
 	if filepath.Base(bin) != "safaridriver" && !opts.Visible {
 		// Safari has no headless mode; WebKitGTK's MiniBrowser has.
@@ -63,40 +60,44 @@ func LaunchWebKit(ctx context.Context, opts Options) (*Browser, error) {
 	if opts.Proxy != "" {
 		always["proxy"] = map[string]any{"proxyType": "manual", "httpProxy": hostPort(opts.Proxy), "sslProxy": hostPort(opts.Proxy)}
 	}
-	if err := b.startSession(ctx, base, always); err != nil {
-		_ = b.Close()
-		return nil, err
-	}
-	return b, nil
+	return connectWebKit(ctx, func() (*Browser, string, error) { return startDriver(ctx, bin, opts.Log) }, always, opts.Log)
 }
 
-// startSession is openSession, tried up to twice more when the driver
-// couldn't create the session or dropped the request. safaridriver gives
-// up when Safari is slow to start ("The session timed out while
-// connecting to a Safari instance") and closes the connection while the
-// Safari of a session that just ended is still shutting down; a later
-// try finds it ready.
-func (b *Browser) startSession(ctx context.Context, base string, always map[string]any) error {
-	for try := 1; ; try++ {
-		err := b.openSession(ctx, base, always)
-		if err == nil || try == sessionTries || ctx.Err() != nil || !retrySession(err) {
+// connectWebKit starts a driver with start and opens a session through
+// it. When the driver couldn't create the session or dropped the request,
+// the driver is stopped and the whole start tried again, up to
+// sessionTries times, after a pause that doubles each time. safaridriver
+// gives up when Safari is slow to start ("The session timed out while
+// connecting to a Safari instance"). It also closes the connection (at
+// times exiting) while the Safari of a session that just ended is still
+// shutting down; a later try with a fresh driver finds Safari ready.
+func connectWebKit(ctx context.Context, start func() (*Browser, string, error), always map[string]any, logf func(string)) (*Browser, error) {
+	var b *Browser
+	err := retry.Do(ctx, retry.Policy{Tries: sessionTries, Pause: sessionPause, Again: retrySession,
+		Note: func(_ int, err error) {
+			if logf != nil {
+				logf("the WebKit driver couldn't create a session (" + err.Error() + "); trying again")
+			}
+		},
+	}, func() error {
+		nb, base, err := start()
+		if err != nil {
 			return err
 		}
-		b.log("the WebKit driver couldn't create a session (" + err.Error() + "); trying again")
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-b.exited:
+		if err := nb.openSession(ctx, base, always); err != nil {
+			_ = nb.Close()
 			return err
-		case <-time.After(time.Duration(try) * sessionPause):
 		}
-	}
+		b = nb
+		return nil
+	})
+	return b, err
 }
 
-// sessionTries and sessionPause bound startSession's tries: the pause
-// grows by sessionPause after each one.
+// sessionTries and sessionPause bound connectWebKit's tries: the pause
+// doubles after each one, 7 s in all.
 var (
-	sessionTries = 3
+	sessionTries = 4
 	sessionPause = time.Second
 )
 
