@@ -61,7 +61,7 @@ func noisyJPEG(t *testing.T, w, h int) []byte {
 // it's shown, an image below the fold without lazy-loading, a
 // render-blocking stylesheet that's mostly unused, an uncompressed script
 // and a heavy plugin script in the head. When slow is set, the page takes
-// 900 ms to generate, the way a plugin update with a slow query would.
+// 1.5 s to generate, the way a plugin update with a slow query would.
 func slowSite(t *testing.T, slow *atomic.Bool) *httptest.Server {
 	t.Helper()
 	big, below := noisyJPEG(t, 1600, 1200), noisyJPEG(t, 300, 200)
@@ -86,7 +86,7 @@ func slowSite(t *testing.T, slow *atomic.Bool) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{$}", func(w http.ResponseWriter, _ *http.Request) {
 		if slow.Load() {
-			time.Sleep(900 * time.Millisecond)
+			time.Sleep(1500 * time.Millisecond)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Slow shop</title>
@@ -129,6 +129,10 @@ func TestSpeedInBrowser(t *testing.T) {
 		return r
 	}
 
+	// The first load of a test process can be slow on its own (Windows
+	// runners have measured a 1.3 s TTFB for a page served at once), which
+	// would hide the slow-down below, so the snapshot is the second run.
+	_ = run(nil)
 	before := run(nil)
 	if len(before.Pages) != 1 || before.Pages[0].Error != "" {
 		t.Fatalf("pages = %+v", before.Pages)
