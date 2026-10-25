@@ -26,5 +26,5 @@ func start(_ context.Context, l *launcher.Launcher, bin string) (string, *proces
 // stop kills Chrome's process group and removes its profile.
 func (p *process) stop() {
 	p.l.Kill()
-	p.l.Cleanup()
+	cleanup(p.l)
 }
