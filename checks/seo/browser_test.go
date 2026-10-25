@@ -67,6 +67,13 @@ func product(broken bool) http.Handler {
 		}
 		page("Old beans")(w, r)
 	})
+	// A favicon, so "No favicon" can't come and go: headless Chrome asks
+	// for /favicon.ico after the page loaded, and on a slow runner one run
+	// may finish a page before it asks.
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/x-icon")
+		_, _ = w.Write([]byte{0, 0, 1, 0, 0, 0})
+	})
 	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, robots) })
 	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, _ *http.Request) {
 		if broken {
