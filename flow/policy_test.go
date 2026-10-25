@@ -233,7 +233,9 @@ func TestRunKeepsSecretsOnSite(t *testing.T) {
 			}
 			defer func() { _ = page.Close() }()
 			base, _ := url.Parse(site.URL)
-			o := Options{Base: base, Timeout: 2e9, Env: env}
+			// 10 s: the first page a fresh Chrome opens can take a few
+			// seconds on a Windows runner.
+			o := Options{Base: base, Timeout: 10e9, Env: env}
 			if tc.allowHosts {
 				o.AllowHosts = []string{hostOf(evil.URL)}
 			}
