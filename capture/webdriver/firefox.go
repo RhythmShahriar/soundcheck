@@ -125,8 +125,28 @@ var firefoxPrefs = map[string]any{
 }
 
 // LaunchFirefox starts Firefox in a throwaway profile with its WebDriver
-// BiDi server on a free local port and opens a session.
+// BiDi server on a free local port and opens a session. A Firefox whose
+// BiDi server didn't start in time (a first start on a busy machine can
+// take that long) is stopped and started once more in a new profile.
 func LaunchFirefox(ctx context.Context, opts Options) (*Browser, error) {
+	b, err := startFirefox(ctx, opts)
+	if errors.Is(err, errSlowStart) && ctx.Err() == nil {
+		if opts.Log != nil {
+			opts.Log("Firefox: " + err.Error() + "; starting it once more")
+		}
+		b, err = startFirefox(ctx, opts)
+	}
+	return b, err
+}
+
+// firefoxStart is how long Firefox gets to start its BiDi server.
+var firefoxStart = 30 * time.Second
+
+// errSlowStart is a Firefox whose BiDi server didn't start in time.
+var errSlowStart = errors.New("its WebDriver BiDi server didn't start in time")
+
+// startFirefox is one try of LaunchFirefox.
+func startFirefox(ctx context.Context, opts Options) (*Browser, error) {
 	bin, err := FindFirefox(opts.Bin)
 	if err != nil {
 		return nil, err
@@ -168,7 +188,7 @@ func LaunchFirefox(ctx context.Context, opts Options) (*Browser, error) {
 		return nil, fmt.Errorf("starting %s: %w", bin, err)
 	}
 	b := &Browser{engine: capture.Firefox, bin: bin, cmd: cmd, profile: profile, logf: opts.Log}
-	wsURL, err := waitListening(ctx, stderr, 30*time.Second)
+	wsURL, err := waitListening(ctx, stderr, firefoxStart)
 	if err != nil {
 		_ = b.Close()
 		return nil, fmt.Errorf("starting %s: %w", bin, err)
@@ -226,7 +246,7 @@ func waitListening(ctx context.Context, stderr io.Reader, limit time.Duration) (
 			}
 			tail = append(tail, line)
 		case <-t.C:
-			return "", errors.New("its WebDriver BiDi server didn't start in time")
+			return "", errSlowStart
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}

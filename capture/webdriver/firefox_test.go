@@ -5,8 +5,10 @@ package webdriver
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,5 +94,32 @@ func TestWindowsFirefox(t *testing.T) {
 	}
 	if got := windowsFirefox(func(string) string { return "" }); got != "" {
 		t.Errorf("no Program Files: %q", got)
+	}
+}
+
+// A Firefox whose BiDi server doesn't start in time is started once
+// more; a second slow start is the error.
+func TestLaunchFirefoxSlowStart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake Firefox is a shell script")
+	}
+	limit := firefoxStart
+	firefoxStart = 200 * time.Millisecond
+	t.Cleanup(func() { firefoxStart = limit })
+	dir := t.TempDir()
+	starts := filepath.Join(dir, "starts")
+	bin := filepath.Join(dir, "firefox")
+	script := "#!/bin/sh\necho start >> '" + starts + "'\nexec sleep 30\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil { //nolint:gosec // a test script that must run
+		t.Fatal(err)
+	}
+	var notes []string
+	_, err := LaunchFirefox(context.Background(), Options{Bin: bin, Log: func(s string) { notes = append(notes, s) }})
+	if !errors.Is(err, errSlowStart) {
+		t.Errorf("LaunchFirefox = %v, want errSlowStart", err)
+	}
+	b, _ := os.ReadFile(starts)
+	if n := strings.Count(string(b), "start"); n != 2 || len(notes) != 1 || !strings.Contains(notes[0], "once more") {
+		t.Errorf("%d starts, notes %q", n, notes)
 	}
 }
