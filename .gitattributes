@@ -1,0 +1,4 @@
+# Golden files, embedded pages and the vendored axe script are compared
+# byte for byte, so text files are checked out with LF line endings on
+# Windows too.
+* text=auto eol=lf
