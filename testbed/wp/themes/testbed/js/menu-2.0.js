@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-// Menu 2.0 renamed the button's class to .js-menu-toggle, but the header
+// Menu 2.0 renamed the button's class to .js-menu-toggle while the header
 // template still renders .menu-toggle, so nothing is bound and the button
 // is dead (scenario s12).
 (function () {

@@ -233,8 +233,8 @@ func (c *calibrator) Live(ctx context.Context, _ *check.Context, tab *rod.Page, 
 
 // TestMetricsInParallelTabs loads pages in four tabs at once, the way a
 // real run does. Every page must report paint metrics (Chrome doesn't
-// paint hidden tabs), the main document must count toward weight, and
-// TBT must follow Lighthouse: long tasks after first paint count, a script
+// paint hidden tabs), the main document must count toward weight
+// and TBT must follow Lighthouse: long tasks after first paint count, a script
 // that blocks before it delays FCP instead.
 //
 // A loaded machine stretches the busy loop and moves first paint, so the

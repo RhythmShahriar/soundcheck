@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package model holds what Soundcheck records about a site: one Run per
-// check of the site, a Page per visited URL, and the Issues the checks
+// check of the site, a Page per visited URL and the Issues the checks
 // find. Runs are stored as JSON (schema rhythm-soundcheck/v1) so a later
 // run can be compared with them.
 package model
@@ -62,9 +62,28 @@ type Issue struct {
 
 // Identify sets the issue's comparison key from its check, title and
 // source, so the same problem on the same page matches across runs even
-// when details (timestamps, line noise) differ.
+// when details (timestamps, line noise) differ. A reworded title keys on
+// the wording it was released with (see KeyTitle).
 func (i *Issue) Identify() {
-	i.Key = i.Check + "|" + i.Title + "|" + i.Source
+	i.Key = i.Check + "|" + KeyTitle(i.Title) + "|" + i.Source
+}
+
+// keyTitles maps a reworded issue title to the one it was released with.
+// Snapshots store issue keys and accepted change IDs, both built from the
+// title, so a new wording alone would turn every stored issue into a
+// FIXED one plus a NEW one and break accepted IDs. Keying on the old
+// wording keeps old snapshots comparing; only the displayed text changes.
+var keyTitles = map[string]string{
+	"Form says sent but no message went out": "Form says sent, but no message went out", // style:ignore: the v1.2.0 title, kept for keys
+}
+
+// KeyTitle is the title an issue's key and its change's ID are built
+// from: the released wording of a reworded title, else title itself.
+func KeyTitle(title string) string {
+	if old, ok := keyTitles[title]; ok {
+		return old
+	}
+	return title
 }
 
 // Request is one network request the page made that went wrong, or that

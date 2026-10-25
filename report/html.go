@@ -224,7 +224,7 @@ func HTML(w io.Writer, r Result) error {
 	return err
 }
 
-// echoTable is one row per message, and one for each action that sent
+// echoTable is one row per message and one for each action that sent
 // nothing. Bodies stay in Echo: its live view shows them in full.
 func echoTable(run *model.Run) *htmlEcho {
 	if !run.Options.Echo {

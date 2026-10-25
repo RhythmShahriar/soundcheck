@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package browser runs headless Chrome for Soundcheck. It uses the Chrome
-// or Chromium already installed when there is one, and otherwise
+// or Chromium already installed when there is one. Otherwise it
 // downloads a pinned Chrome for Testing build from Google into Rhythm's
 // cache on first use, checking its SHA-256 before unpacking it.
 package browser
@@ -137,9 +137,9 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 		Set("disable-gpu").Set("hide-scrollbars").Set("mute-audio").
 		Set("disable-features", "Translate,MediaRouter,OptimizationHints").
 		Set("disable-background-networking").Set("no-first-run").Set("no-default-browser-check").
-		// Pages are checked in parallel tabs, and all but one are in the
+		// Pages are checked in parallel tabs. All but one are in the
 		// background: without these Chrome throttles their timers and
-		// rendering, and the tabs end up taking turns.
+		// rendering so the tabs end up taking turns.
 		Set("disable-background-timer-throttling").Set("disable-backgrounding-occluded-windows").
 		Set("disable-renderer-backgrounding").Set("disable-ipc-flooding-protection")
 	// rod turns the sandbox off by itself inside containers; only the
@@ -272,7 +272,7 @@ func Prune(all bool) ([]string, error) {
 // NewTab opens a blank page in sess, in its own window, that renders as if
 // it were in front. Headless Chrome treats every tab but the front one as
 // hidden: they don't paint (no FCP, LCP or long tasks), requestAnimation-
-// Frame never fires, so animations stand still, and input stalls. Its own
+// Frame never fires, so animations stand still and input stalls. Its own
 // window plus focus emulation lifts that, so pages checked in parallel
 // behave like the one a visitor sees.
 //

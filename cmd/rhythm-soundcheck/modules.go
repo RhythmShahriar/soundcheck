@@ -102,8 +102,8 @@ func execCommands(cfg config.Config) []execmod.Command {
 	return out
 }
 
-// loginFunc returns how to log in once the site's address is known, and
-// who as (masked), when SOUNDCHECK_USER and SOUNDCHECK_PASSWORD are set.
+// loginFunc returns how to log in once the site's address is known
+// and who as (masked), when SOUNDCHECK_USER and SOUNDCHECK_PASSWORD are set.
 func loginFunc(cfg config.Config, off bool) (func(*url.URL) func(context.Context, *rod.Browser) error, string) {
 	user, _, ok := login.Credentials()
 	if off || !ok {

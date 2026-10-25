@@ -86,7 +86,7 @@ Soundcheck finds your pages from the sitemap and links, opens each one in headle
 | **SLOWER** | measurably slower, past a noise floor |
 | **FIXED** | a problem from the snapshot is gone |
 
-Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and each form submit and flow also records the emails, SMS and webhooks it sent, so "Form says sent, but no message went out" is caught too. See [Soundcheck with Echo](https://github.com/RhythmShahriar/rhythm/wiki/Echo-With-Soundcheck).
+Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and each form submit and flow also records the emails, SMS and webhooks it sent, so "Form says sent but no message went out" is caught too. See [Soundcheck with Echo](https://github.com/RhythmShahriar/rhythm/wiki/Echo-With-Soundcheck).
 
 | You want to… | Run |
 |---|---|

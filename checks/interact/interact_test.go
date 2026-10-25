@@ -33,7 +33,7 @@ func needBrowser(t *testing.T) {
 }
 
 // fixture is a small WordPress-looking site with working, dead, failing
-// and dangerous controls, and a Contact Form 7-like form.
+// and dangerous controls. Also a Contact Form 7-like form.
 type fixture struct {
 	srv       *httptest.Server
 	formBreak atomic.Int32 // 0 works, 1 HTTP 500, 2 mail_failed, 3 accepts anything

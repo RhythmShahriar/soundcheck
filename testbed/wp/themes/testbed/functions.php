@@ -32,7 +32,7 @@ add_action(
 		wp_enqueue_style( 'testbed', $css, array(), $v );
 		wp_enqueue_script( 'jquery' ); // footer.php runs inline jQuery code (s06)
 
-		// s12 broken: menu.js 2.0 looks for .js-menu-toggle, but the header
+		// s12 broken: menu.js 2.0 looks for .js-menu-toggle while the header
 		// still renders .menu-toggle, so the Browse button does nothing.
 		$menu = testbed_broken( 's12' ) ? 'menu-2.0.js' : 'menu.js';
 		wp_enqueue_script( 'testbed-menu', get_theme_file_uri( 'js/' . $menu ), array(), $v, array( 'in_footer' => true ) );

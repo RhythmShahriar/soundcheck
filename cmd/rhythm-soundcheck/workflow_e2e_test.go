@@ -173,7 +173,7 @@ func TestConfirmPass(t *testing.T) {
 // carries on without visiting them again.
 func TestSnapshotResume(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		// os.Process.Signal can't send os.Interrupt on Windows, and the
+		// os.Process.Signal can't send os.Interrupt on Windows. The
 		// test stops the snapshot that way. TestResume* cover the
 		// resume itself everywhere.
 		t.Skip("Windows can't send os.Interrupt to a child process")

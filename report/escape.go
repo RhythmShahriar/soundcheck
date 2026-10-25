@@ -23,8 +23,8 @@ import (
 // than tab (C0, DEL, C1) and bytes that aren't UTF-8 are shown as text
 // like \x1b and bidirectional overrides (U+202A to U+202E, U+2066 to
 // U+2069) are removed. It is the kit's term.Sanitize, with newlines and
-// C1 controls written as \x0a and \x9b: one line stays one line, and
-// a C1 control reads the same whether it came as a character or a byte.
+// C1 controls written as \x0a and \x9b: one line stays one line
+// and a C1 control reads the same whether it came as a character or a byte.
 func Term(s string) string { return term.Sanitize(preEscape(s, false)) }
 
 // MarkdownText makes s plain text in Markdown, in a table cell too: newlines

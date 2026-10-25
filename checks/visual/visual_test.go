@@ -143,7 +143,7 @@ func TestCompareGroupsSharedChanges(t *testing.T) {
 }
 
 // A plugin inserted the same banner at the top of every page. Pages
-// differ above and below it, and on one page something else changed
+// differ above and below it. On one page something else changed
 // too: one change for the banner, one for that page.
 func TestCompareGroupsInsertedBanner(t *testing.T) {
 	pixelHeavy(t)
@@ -189,7 +189,7 @@ func TestCompareGroupsInsertedBanner(t *testing.T) {
 
 // A plugin adds a banner at the top and a notice above the footer of
 // every page: one change per block per viewport, nothing per page. The
-// notice wraps onto more lines on mobile, and on some pages.
+// notice wraps onto more lines on mobile and on some pages.
 func TestCompareGroupsTwoBlocks(t *testing.T) {
 	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
@@ -439,7 +439,7 @@ func shortPage(content int, footerExtra func(*image.NRGBA, int)) *image.NRGBA {
 
 // Pages shorter than the window: a banner at the top and a warning at
 // the top of the footer push content into the filler. Each block is one
-// change, however long each page is, and the filler isn't a change.
+// change, however long each page is. The filler isn't a change.
 func TestCompareShortPages(t *testing.T) {
 	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()
@@ -480,8 +480,8 @@ func windowTall(img *image.NRGBA, content int) *image.NRGBA {
 }
 
 // The same footer change sits lower on longer pages; it's one change.
-// A second, different footer change on other pages shares its line, and
-// the height the footers gained is told with it, not on its own.
+// A second, different footer change on other pages shares its line.
+// The height the footers gained is told with it, not on its own.
 func TestCompareFooterAtDifferentHeights(t *testing.T) {
 	pixelHeavy(t)
 	beforeDir, afterDir := t.TempDir(), t.TempDir()

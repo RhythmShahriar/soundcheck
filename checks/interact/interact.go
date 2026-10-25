@@ -8,7 +8,7 @@
 //     pages or lack a WordPress nonce, duplicate ids, required fields
 //     without labels, links and buttons with no click handler.
 //   - click clicks menus, tabs, accordions, modals, sliders and other
-//     controls, and reports dead clicks, JS errors and failed requests
+//     controls. It reports dead clicks, JS errors and failed requests
 //     they cause. Destructive-looking controls and /wp-admin are never
 //     clicked. Requests a click would send other than GET and HEAD are
 //     held in the browser and listed ("would have sent POST /x").
