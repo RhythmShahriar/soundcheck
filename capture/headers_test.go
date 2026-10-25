@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 func TestStoredHeader(t *testing.T) {
@@ -85,12 +87,9 @@ func TestVisitMasksHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tab, err := sess.Page(protoBlank())
-	if err != nil {
-		t.Fatal(err)
-	}
+	tab := newTab(t, sess)
 	ctx := context.Background()
-	opts := Options{Timeout: 20 * time.Second}
+	opts := Options{Timeout: testenv.Timeout(20 * time.Second)}
 	rec, err := Start(ctx, tab, opts)
 	if err != nil {
 		t.Fatal(err)

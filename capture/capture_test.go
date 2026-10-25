@@ -17,7 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-rod/rod"
+
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -33,6 +36,20 @@ func launch(t *testing.T) *browser.Browser {
 	}
 	t.Cleanup(b.Close)
 	return b
+}
+
+// newTab opens a tab the way a run does, with browser.NewTab: in a window
+// of its own that renders as if it were in front. A plain sess.Page tab
+// can be hidden. A hidden tab doesn't paint, so a screenshot waits for
+// a frame that never comes.
+func newTab(t *testing.T, sess *rod.Browser) *rod.Page {
+	t.Helper()
+	tab, err := browser.NewTab(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tab.Close() })
+	return tab
 }
 
 func fixture(t *testing.T) *httptest.Server {
@@ -69,17 +86,14 @@ func TestVisit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tab, err := sess.Page(protoBlank())
-	if err != nil {
-		t.Fatal(err)
-	}
+	tab := newTab(t, sess)
 	ctx := context.Background()
 	dir := t.TempDir()
 	var mu sync.Mutex
-	// 40 s gives reading the page a 10 s budget (readBudget): two tall
-	// desktop screenshots 1.2 s apart can take more than the 5 s a 20 s
-	// timeout gives on a Windows runner, and the second is then dropped.
-	opts := Options{Timeout: 40 * time.Second, Ignore: []string{"h1"}, Twice: true,
+	// 40 s on a quiet machine gives reading the page a 10 s budget
+	// (readBudget) for two tall desktop screenshots 1.2 s apart; a slow
+	// runner gets more of both.
+	opts := Options{Timeout: testenv.Timeout(40 * time.Second), Ignore: []string{"h1"}, Twice: true,
 		Save: func(name string, data []byte) error {
 			mu.Lock()
 			defer mu.Unlock()
@@ -140,13 +154,16 @@ func TestVisit(t *testing.T) {
 
 func TestVisitUnreachable(t *testing.T) {
 	b := launch(t)
-	sess, _ := b.Session()
-	tab, _ := sess.Page(protoBlank())
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := newTab(t, sess)
 	srv := httptest.NewServer(http.NotFoundHandler())
 	srv.Close()
 	rec, _ := Start(context.Background(), tab, Options{})
 	defer rec.Stop()
-	p, err := Visit(context.Background(), rec, srv.URL+"/x", Options{Timeout: 10 * time.Second})
+	p, err := Visit(context.Background(), rec, srv.URL+"/x", Options{Timeout: testenv.Timeout(10 * time.Second)})
 	if err != nil || !strings.Contains(p.Error, "ERR_CONNECTION_REFUSED") {
 		t.Errorf("error = %q, %v", p.Error, err)
 	}
@@ -156,8 +173,11 @@ func TestVisitUnreachable(t *testing.T) {
 // records the 401 and its WWW-Authenticate header.
 func TestVisitPasswordPrompt(t *testing.T) {
 	b := launch(t)
-	sess, _ := b.Session()
-	tab, _ := sess.Page(protoBlank())
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := newTab(t, sess)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Staging"`)
 		w.WriteHeader(http.StatusUnauthorized)
@@ -166,7 +186,7 @@ func TestVisitPasswordPrompt(t *testing.T) {
 	defer srv.Close()
 	rec, _ := Start(context.Background(), tab, Options{})
 	defer rec.Stop()
-	p, err := Visit(context.Background(), rec, srv.URL+"/x", Options{Timeout: 10 * time.Second})
+	p, err := Visit(context.Background(), rec, srv.URL+"/x", Options{Timeout: testenv.Timeout(10 * time.Second)})
 	if err != nil || p.Error == "" || p.Status != http.StatusUnauthorized || p.Headers["www-authenticate"] != `Basic realm="Staging"` {
 		t.Errorf("error %q status %d headers %v, %v", p.Error, p.Status, p.Headers, err)
 	}
@@ -177,7 +197,10 @@ func TestVisitPasswordPrompt(t *testing.T) {
 // slide) and long ones don't hold the visit up.
 func TestVisitWaitsForLateContent(t *testing.T) {
 	b := launch(t)
-	sess, _ := b.Session()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/part", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `<h2>Team</h2><img src="/missing.png" width="10" height="10">`)
@@ -196,9 +219,10 @@ setTimeout(() => {}, 60000);
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	opts := Options{Timeout: 20 * time.Second}
+	opts := Options{Timeout: testenv.Timeout(20 * time.Second)}
 	visit := func(path string) *model.Page {
-		tab, _ := sess.Page(protoBlank())
+		t.Helper()
+		tab := newTab(t, sess)
 		rec, err := Start(context.Background(), tab, opts)
 		if err != nil {
 			t.Fatal(err)
@@ -249,6 +273,10 @@ func slowFixture(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// The timeout is 5 s on every machine: the durations below are what the
+// test checks. The page that answers inside it leaves room for opening
+// the tab and loading it, 1 s on a quiet machine and more on a slow
+// runner, so its server waits less there.
 func TestVisitSlow(t *testing.T) {
 	b := launch(t)
 	srv := slowFixture(t)
@@ -256,10 +284,12 @@ func TestVisitSlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := Options{Timeout: 5 * time.Second}
+	const timeout = 5 * time.Second
+	inside := max(time.Second, timeout-testenv.Timeout(time.Second)).Truncate(time.Second)
+	opts := Options{Timeout: timeout}
 	visit := func(path string) (*model.Page, error) {
 		t.Helper()
-		tab, err := sess.Page(protoBlank())
+		tab, err := browser.NewTab(sess)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -272,13 +302,13 @@ func TestVisitSlow(t *testing.T) {
 		return Visit(context.Background(), rec, srv.URL+path, opts)
 	}
 
-	t.Run("answers just inside the timeout", func(t *testing.T) {
-		p, err := visit("/slow?wait=4")
+	t.Run("answers inside the timeout", func(t *testing.T) {
+		p, err := visit(fmt.Sprintf("/slow?wait=%d", int(inside.Seconds())))
 		if err != nil || p.Error != "" || p.Title != "Slow" || p.TextLength == 0 {
 			t.Errorf("error %q (%v), title %q, text %d", p.Error, err, p.Title, p.TextLength)
 		}
-		if p.Duration < 4000 {
-			t.Errorf("duration = %v ms", p.Duration)
+		if p.Duration < float64(inside.Milliseconds()) {
+			t.Errorf("duration = %v ms, want at least the server's %s", p.Duration, inside)
 		}
 	})
 	t.Run("answers after the timeout", func(t *testing.T) {

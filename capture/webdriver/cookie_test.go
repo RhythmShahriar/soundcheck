@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 // A --cookie is set for the site's host alone, as in Chrome: a
@@ -34,7 +36,7 @@ func TestFirefoxCookieIsHostOnly(t *testing.T) {
 	})}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testenv.Timeout(30*time.Second))
 	defer cancel()
 	tab, err := b.NewTab(ctx)
 	if err != nil {
