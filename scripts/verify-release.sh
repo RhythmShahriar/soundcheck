@@ -11,13 +11,14 @@
 # proves the download is intact, not who published it, so first cosign
 # checks that checksums.txt was signed by Rhythm's release workflow
 # (keyless Sigstore, through GitHub's OIDC issuer) running for the
-# soundcheck repository. Then the archive must match its line in it.
-# The release workflow can be called from any public repository, which
-# is why the repository is checked as well as the workflow.
+# soundcheck repository, called at master as rhythm update requires.
+# Then the archive must match its line in it. The release workflow can
+# be called from any public repository, which is why the repository is
+# checked as well as the workflow.
 set -euo pipefail
 
 archive=${1:?usage: verify-release.sh ARCHIVE}
-signer='^https://github\.com/RhythmShahriar/\.github/\.github/workflows/release-go\.yml@'
+signer=https://github.com/RhythmShahriar/.github/.github/workflows/release-go.yml@refs/heads/master
 
 for f in "$archive" checksums.txt checksums.txt.sigstore.json; do
   [ -f "$f" ] || { echo "::error::verify-release: $f is missing"; exit 1; }
@@ -26,7 +27,7 @@ done
 if ! cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp "$signer" \
+  --certificate-identity "$signer" \
   --certificate-github-workflow-repository RhythmShahriar/soundcheck \
   checksums.txt; then
   echo "::error::verify-release: checksums.txt isn't signed by Soundcheck's release workflow; refusing to install"

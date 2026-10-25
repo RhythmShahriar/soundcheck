@@ -38,7 +38,7 @@ expect() { # expect pass|fail NAME ARCHIVE
 fresh
 expect pass "an untouched release" rhythm-soundcheck_linux_amd64.tar.gz
 for want in --bundle checksums.txt.sigstore.json --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/RhythmShahriar/\.github/\.github/workflows/release-go\.yml@' \
+  --certificate-identity https://github.com/RhythmShahriar/.github/.github/workflows/release-go.yml@refs/heads/master \
   --certificate-github-workflow-repository RhythmShahriar/soundcheck checksums.txt; do
   grep -qxF -- "$want" "$work/cosign-args" || { echo "FAIL cosign was not passed $want"; fail=1; }
 done

@@ -51,11 +51,11 @@ release:
   prerelease: auto
 
 # Keyless Sigstore signature over checksums.txt. The release workflow is
-# pinned by commit, so the identity is matched up to the ref. Verify with
+# called at master, the only identity rhythm update accepts. Verify with
 # scripts/verify-release.sh, which runs:
 #   cosign verify-blob --bundle checksums.txt.sigstore.json \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-#     --certificate-identity-regexp '^https://github\.com/RhythmShahriar/\.github/\.github/workflows/release-go\.yml@' \
+#     --certificate-identity https://github.com/RhythmShahriar/.github/.github/workflows/release-go.yml@refs/heads/master \
 #     --certificate-github-workflow-repository RhythmShahriar/soundcheck checksums.txt
 signs:
   - cmd: cosign
