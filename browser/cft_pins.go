@@ -6,7 +6,14 @@
 package browser
 
 // cftVersion is the Chrome for Testing version this build downloads.
-const cftVersion = ""
+const cftVersion = "156.0.8078.47"
 
 // cftArchives holds the SHA-256 and size of each platform's archive.
-var cftArchives = map[string]Archive{}
+var cftArchives = map[string]Archive{
+	"linux64":     {SHA256: "e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50", Size: 200206486},
+	"linux-arm64": {SHA256: "9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b", Size: 199726566},
+	"mac-arm64":   {SHA256: "ad7f2b49a4dc679af286b1b1b386670d93ca7868079f69012d21ba0ac8293df3", Size: 194932023},
+	"mac-x64":     {SHA256: "5a38b8e3d621514fff0775dcae678a152ce378890188c88eef79fc97aa59fccd", Size: 205405847},
+	"win32":       {SHA256: "b953cca3ad09df2cde6260c3ce57265b8a166dcecb01dea3425cd6510d756a3a", Size: 188519742},
+	"win64":       {SHA256: "a4e0d57245e167e98a9d465af1e3774d2b4ec9f04e483d19bcd97a6f63cf46dd", Size: 209154801},
+}
