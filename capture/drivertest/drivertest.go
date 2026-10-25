@@ -23,6 +23,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 // Options say what the driver under test can do.
@@ -66,8 +67,10 @@ func Run(t *testing.T, launch func(t *testing.T) capture.Driver, opts Options) {
 	}
 }
 
+// ctxFor is a subtest's budget: 30 s on a quiet machine, scaled for a
+// slow runner.
 func ctxFor(t *testing.T) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testenv.Timeout(30*time.Second))
 	t.Cleanup(cancel)
 	return ctx
 }
@@ -269,7 +272,7 @@ func (c *collect[T]) add(e T) {
 // wait returns the events once ok holds for them, or after a few
 // seconds.
 func (c *collect[T]) wait(ok func([]T) bool) []T {
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testenv.Timeout(5 * time.Second))
 	for {
 		c.mu.Lock()
 		got := slices.Clone(c.got)
@@ -383,7 +386,7 @@ func testScopeHeaders(t *testing.T, s *servers, tab capture.Tab, opts Options) {
 		t.Fatal(err)
 	}
 	navigate(t, tab, s.site.URL+"/third")
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(testenv.Timeout(5 * time.Second))
 	for len(s.requests("other")) == 0 || !slices.ContainsFunc(s.requests("site"), func(x seen) bool { return x.path == "/own.svg" }) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the page's images never loaded: site %+v, other %+v", s.requests("site"), s.requests("other"))

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -48,7 +49,7 @@ func TestLateLongTasksCountInTBT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := Options{Timeout: 20 * time.Second}
+	opts := Options{Timeout: testenv.Timeout(20 * time.Second)}
 	visit := func(path string) model.Metrics {
 		t.Helper()
 		tab, err := browser.NewTab(sess)

@@ -19,6 +19,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 // Several owners share one tab: each handler sees every request, a block
@@ -49,7 +50,7 @@ func TestHandlersShareATab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tab = tab.Timeout(20 * time.Second)
+	tab = tab.Timeout(testenv.Timeout(20 * time.Second))
 	visit := func(path string) {
 		t.Helper()
 		_ = tab.Navigate(srv.URL + path)
@@ -130,7 +131,7 @@ func newTab(t *testing.T) *rod.Page {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tab.Timeout(30 * time.Second)
+	return tab.Timeout(testenv.Timeout(30 * time.Second))
 }
 
 // Unsafe names exactly the headers Chrome refuses to let Fetch set.
