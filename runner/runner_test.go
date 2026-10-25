@@ -169,8 +169,10 @@ func TestFailedLoginIsOneWarning(t *testing.T) {
 	}
 }
 
-// A page that answers just inside the timeout is read in full. One
-// that answers after it is an error with its real duration.
+// A slow page that answers inside the timeout is read in full. One
+// that answers after it is an error with its real duration. The first
+// waits 3 s of the 5 s: a busy Windows runner has needed more than 1 s
+// on top of the server's wait to open the tab and load the page.
 func TestSlowPages(t *testing.T) {
 	needBrowser(t)
 	mux := http.NewServeMux()
@@ -187,17 +189,17 @@ func TestSlowPages(t *testing.T) {
 	defer srv.Close()
 	cfg := config.Default()
 	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs, cfg.Timeout = []string{"health"}, []string{"desktop"}, 0, 2, 5
-	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{"/slow?wait=4", "/slow?wait=7"},
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{"/slow?wait=3", "/slow?wait=8"},
 		Dir: t.TempDir(), Version: "test", Browser: browser.Options{NoDownload: true}, Modules: []check.Module{health.Module{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fast := run.Page("/slow?wait=4"); fast == nil || fast.Title != "Slow" || fast.Error != "" ||
+	if fast := run.Page("/slow?wait=3"); fast == nil || fast.Title != "Slow" || fast.Error != "" ||
 		slices.ContainsFunc(fast.Issues, func(i model.Issue) bool { return i.Check == "health/white-screen" }) {
-		t.Errorf("4 s page: %+v", fast)
+		t.Errorf("3 s page: %+v", fast)
 	}
-	if slow := run.Page("/slow?wait=7"); slow == nil || slow.Error != "timed out" || slow.Duration < 4500 {
-		t.Errorf("7 s page: %+v", slow)
+	if slow := run.Page("/slow?wait=8"); slow == nil || slow.Error != "timed out" || slow.Duration < 4500 {
+		t.Errorf("8 s page: %+v", slow)
 	}
 }
 
