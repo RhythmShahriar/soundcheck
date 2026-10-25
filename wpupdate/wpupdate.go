@@ -150,8 +150,8 @@ var classRank = map[string]int{model.Broke: 3, model.New: 2, model.Changed: 1, m
 // stopOns are the values StopOn takes.
 var stopOns = []string{model.Broke, model.New, model.Changed}
 
-// Exit codes of the Soundcheck binary that still carry a result: 0, and
-// 1 when a fail-on threshold in the config was reached.
+// Exit codes of the Soundcheck binary that still carry a result: 0
+// and 1 when a fail-on threshold in the config was reached.
 const exitFindings = 1
 
 // Run updates the target's plugins and returns the maintenance log, also

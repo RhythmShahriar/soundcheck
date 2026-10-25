@@ -95,8 +95,8 @@ func TestCompareGroupsPages(t *testing.T) {
 func TestFilterChanges(t *testing.T) {
 	in := []model.Change{
 		{Class: model.Broke, Check: "echo/message/missing", Title: "Email to admin@shop.test is no longer sent", Source: "Contact", Pages: []string{"/contact/"}},
-		{Class: model.New, Check: "echo/no-message", Title: "Form says sent, but no message went out", Source: "Contact", Pages: []string{"/contact/", "/other/"}},
-		{Class: model.New, Check: "echo/no-message", Title: "Form says sent, but no message went out", Source: "Poll", Pages: []string{"/contact/"}},
+		{Class: model.New, Check: "echo/no-message", Title: "Form says sent but no message went out", Source: "Contact", Pages: []string{"/contact/", "/other/"}},
+		{Class: model.New, Check: "echo/no-message", Title: "Form says sent but no message went out", Source: "Poll", Pages: []string{"/contact/"}},
 		{Class: model.New, Check: "health/php-error", Title: "PHP Warning", Pages: []string{"/contact/"}},
 	}
 	out := Module{}.FilterChanges(in)

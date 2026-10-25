@@ -72,13 +72,13 @@ func TestUsedChars(t *testing.T) {
 		return &proto.ProfilerCoverageRange{StartOffset: s, EndOffset: e, Count: c}
 	}
 	// A 1000-char script: top level ran, a function at 100–600 never ran,
-	// inside it a block (200–300) is also uncalled, and a called function
+	// inside it a block (200–300) is also uncalled. A called function
 	// sits at 700–800 with an unexecuted branch 750–760.
 	used, total := usedChars([]*proto.ProfilerCoverageRange{r(0, 1000, 1), r(100, 600, 0), r(200, 300, 0), r(700, 800, 1), r(750, 760, 0)})
 	if total != 1000 || used != 1000-500-10 {
 		t.Errorf("used %d of %d, want 490 of 1000", used, total)
 	}
-	// An uncalled function nested in another uncalled one, and a used
+	// An uncalled function nested in another uncalled one and a used
 	// function inside an unused one.
 	used, _ = usedChars([]*proto.ProfilerCoverageRange{r(0, 100, 1), r(10, 90, 0), r(20, 30, 1)})
 	if used != 20+10 {

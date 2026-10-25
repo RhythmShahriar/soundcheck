@@ -290,7 +290,7 @@ func TestFormMessagesSnapshotAndCompare(t *testing.T) {
 			t.Errorf("the autoresponder still goes out: %+v", ch)
 		}
 	}
-	if broke != 3 { // the form's admin email, the flow's, and the flow's failed expect
+	if broke != 3 { // the form's admin email, the flow's and the flow's failed expect
 		t.Errorf("%d BROKE changes: %+v", broke, c.Changes)
 	}
 }
@@ -304,7 +304,7 @@ func TestFormSaysSentButNothingGoesOut(t *testing.T) {
 	s.state.Store(silent)
 	after := s.run(t, cfg, false)
 	p := after.Page("/contact/")
-	i, ok := issueTitles(p.Issues)["Form says sent, but no message went out"]
+	i, ok := issueTitles(p.Issues)["Form says sent but no message went out"]
 	if !ok || i.Level != model.Notice || i.Check != "echo/no-message" || i.Source != "Contact Form 7 #7" {
 		t.Fatalf("no-message notice: %+v", p.Issues)
 	}
@@ -312,7 +312,7 @@ func TestFormSaysSentButNothingGoesOut(t *testing.T) {
 		t.Errorf("echo actions: %+v", p.Echo)
 	}
 
-	// Compared with the snapshot, the lost emails are BROKE, and the notice
+	// Compared with the snapshot, the lost emails are BROKE. The notice
 	// isn't repeated as NEW.
 	cc := &check.CompareContext{Config: cfg, Before: before, After: after, Dir: t.TempDir()}
 	c := compare.Compare(context.Background(), cc, modules(), "test")
@@ -323,7 +323,7 @@ func TestFormSaysSentButNothingGoesOut(t *testing.T) {
 	if got["Email to admin@shop.test is no longer sent"] != model.Broke || got["Email to the test submitter is no longer sent"] != model.Broke {
 		t.Errorf("changes: %v", got)
 	}
-	if _, dup := got["Form says sent, but no message went out"]; dup {
+	if _, dup := got["Form says sent but no message went out"]; dup {
 		t.Errorf("no-message notice repeated: %v", got)
 	}
 }

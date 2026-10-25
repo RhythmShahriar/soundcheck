@@ -14,7 +14,7 @@
 #   module    the Soundcheck module that should catch it
 #   levels    interaction levels the run needs (--level), when not the default
 #   login     the run needs SOUNDCHECK_USER / SOUNDCHECK_PASSWORD (see README)
-#   toggle    what the broken state changes, and where it's implemented
+#   toggle    what the broken state changes and where it's implemented
 #   expect    one or more matchers; the scenario is caught when the
 #             comparison has a change with that class whose check starts
 #             with `check` and whose title contains `title` (case-insensitive)

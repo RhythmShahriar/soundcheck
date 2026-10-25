@@ -277,7 +277,7 @@ func (u User) Values() []string {
 // WhoAmI returns the display name, email and login of the user logged in
 // within sess. It asks the REST API (/wp-json/wp/v2/users/me) with the
 // session's cookies and a REST nonce (from wpApiSettings on the home
-// page, or admin-ajax.php?action=rest-nonce), and falls back to reading
+// page, or admin-ajax.php?action=rest-nonce). It falls back to reading
 // the profile page (/wp-admin/profile.php). It only reads; nothing is
 // changed.
 func WhoAmI(ctx context.Context, sess *rod.Browser, base *url.URL) (User, error) {

@@ -5,8 +5,8 @@
 // layer serves pages (Cloudflare, Varnish, nginx, LiteSpeed, a WordPress
 // plugin…) and how often, that private pages (cart, checkout, account,
 // login) are never cached, that logged-in content never leaks to
-// visitors, that cached pages don't carry expired WordPress nonces, and
-// that cached copies aren't out of date.
+// visitors, that cached pages don't carry expired WordPress nonces
+// and that cached copies aren't out of date.
 //
 // Everything is fetched over plain HTTP (cc.Get: polite, rate-limited,
 // no cookies), except the leak test, which logs in through a separate
@@ -177,9 +177,9 @@ func fetchJSON(ctx context.Context, cc *check.Context, raw string) []byte {
 	return b
 }
 
-// double fetches a URL twice (the browser visit already warmed it), and,
-// when the second fetch was a cache hit, twice more with a cache-busting
-// query to compare the cached copy with a fresh render.
+// double fetches a URL twice (the browser visit already warmed it). When
+// the second fetch was a cache hit it fetches twice more with a
+// cache-busting query to compare the cached copy with a fresh render.
 func (s *site) double(ctx context.Context, raw string) *result {
 	r := &result{idx: -1, facts: map[string]string{}}
 	r.first = fetch(ctx, s.cc, raw)
@@ -305,7 +305,7 @@ func (m Module) CheckSite(ctx context.Context, cc *check.Context) {
 	}
 
 	// Probe private pages the crawl never visits: wp-login.php on
-	// WordPress, and WooCommerce's cart/checkout/account URLs from its
+	// WordPress and WooCommerce's cart/checkout/account URLs from its
 	// script settings.
 	visited := map[string]bool{}
 	wp := false

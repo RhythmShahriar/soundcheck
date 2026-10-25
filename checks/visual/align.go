@@ -49,7 +49,7 @@ type pair struct{ b, a int }
 // matchRows lines up two sequences of row hashes, patience-diff style:
 // common leading and trailing rows match, then rows that occur exactly
 // once on each side anchor the alignment (in order, via the longest
-// increasing subsequence), and the gaps between anchors are aligned the
+// increasing subsequence). The gaps between anchors are aligned the
 // same way. Blank or repeated rows never anchor on their own; they only
 // match next to unique rows, so a long white background can't pull
 // content out of place. A stretch with no unique rows at all (patterned
@@ -228,10 +228,10 @@ func plan(b, a *raster, w int, pairs []pair, window int) ([]int, []Band, int) {
 	// Blank space added or lost at the very end of the page (a document a
 	// little taller than its content) isn't part of a block: one-color
 	// rows that run to the end of the page are cut from a block that has
-	// content before them, and counted as padding.
+	// content before them and counted as padding.
 	padding := 0
 	// A page shorter than the window is screenshotted window-tall, so its
-	// last rows are filler, and content pushed down eats into it. Filler
+	// last rows are filler. Content pushed down eats into it. Filler
 	// rows (a window-tall shot, or both pages ending in the same color)
 	// are always padding; other one-color rows at the end only when
 	// content is left in the block.

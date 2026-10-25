@@ -52,7 +52,7 @@ const (
 )
 
 // CheckPage learns dynamic regions in a snapshot: the desktop shot is
-// taken twice a moment apart, and whatever differs between the two
+// taken twice a moment apart. Whatever differs between the two
 // (carousels, rotating ads, clocks) is recorded on the shot so later
 // comparisons ignore it.
 func (Module) CheckPage(cc *check.Context, p *model.Page) {
@@ -121,7 +121,7 @@ type shotDiff struct {
 }
 
 // Compare diffs every page's screenshots, saves before/after/diff images
-// for pages that changed, and reports them. Areas that changed the same
+// for pages that changed and reports them. Areas that changed the same
 // way on several pages (a new header) become one change listing those
 // pages, so a site-wide tweak is one line instead of hundreds.
 //
@@ -764,7 +764,7 @@ func looseBlocks(blocks []Band, grouped map[int]bool) []Band {
 const maxPages = 5
 
 // collapse folds more than maxPages page changes into one, keeping the
-// pages, the worst page's images, and the median and highest scores.
+// pages, the worst page's images and the median and highest scores.
 func collapse(cs []model.Change, vp string) []model.Change {
 	if len(cs) <= maxPages {
 		return cs

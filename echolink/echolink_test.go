@@ -80,7 +80,7 @@ func TestIssues(t *testing.T) {
 		t.Errorf("issue: %+v", i)
 	}
 	n := NoMessage(a, 1500*time.Millisecond)
-	if n.Check != "echo/no-message" || n.Level != model.Notice || n.Title != "Form says sent, but no message went out" ||
+	if n.Check != "echo/no-message" || n.Level != model.Notice || n.Title != "Form says sent but no message went out" ||
 		!strings.Contains(n.Detail, "within 1.5s") || n.Key == "" {
 		t.Errorf("no-message: %+v", n)
 	}
@@ -190,5 +190,28 @@ func TestTagSharesTheInterceptor(t *testing.T) {
 	}
 	if v := got[site+"/after"]; v != "|yes|" {
 		t.Errorf("after untag: %q", v)
+	}
+}
+
+// The no-message title lost its comma after v1.2.0. Its issue key and
+// change ID still use the released wording, so snapshots and accepted
+// changes from v1.2.0 compare as before. Compare's confirm pass and
+// accept find the issue from a change by model.IssueKey, so it must
+// give the same key.
+func TestNoMessageIDStable(t *testing.T) {
+	const released = "Form says sent, but no message went out" // style:ignore: the v1.2.0 title
+	n := NoMessage(model.EchoAction{Label: "Contact"}, time.Second)
+	if want := "echo/no-message|" + released + "|Contact"; n.Key != want {
+		t.Errorf("key = %q, want %q", n.Key, want)
+	}
+	// Confirm and accept rebuild the key from a change's title.
+	if k := model.IssueKey(n.Check, n.Title, n.Source); k != n.Key {
+		t.Errorf("IssueKey = %q, want the issue's key %q", k, n.Key)
+	}
+	c := model.Change{Class: model.New, Check: n.Check, Title: n.Title, Source: n.Source, Key: n.Key, Pages: []string{"/contact/"}}
+	old := c
+	old.Title = released
+	if id := model.ChangeID(c); id != "a6c19e96" || id != model.ChangeID(old) {
+		t.Errorf("ChangeID = %q, want the v1.2.0 ID a6c19e96 (old title gives %q)", id, model.ChangeID(old))
 	}
 }
