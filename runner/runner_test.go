@@ -23,6 +23,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -170,9 +171,11 @@ func TestFailedLoginIsOneWarning(t *testing.T) {
 }
 
 // A slow page that answers inside the timeout is read in full. One
-// that answers after it is an error with its real duration. The first
-// waits 3 s of the 5 s: a busy Windows runner has needed more than 1 s
-// on top of the server's wait to open the tab and load the page.
+// that answers after it is an error with its real duration. The timeout
+// is 5 s everywhere, since the durations are what this checks. The first
+// page leaves room for opening the tab and loading it on top of the
+// server's wait: 1 s on a quiet machine, more on a slow runner, where a
+// busy Windows runner has needed over 1 s.
 func TestSlowPages(t *testing.T) {
 	needBrowser(t)
 	mux := http.NewServeMux()
@@ -189,14 +192,15 @@ func TestSlowPages(t *testing.T) {
 	defer srv.Close()
 	cfg := config.Default()
 	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs, cfg.Timeout = []string{"health"}, []string{"desktop"}, 0, 2, 5
-	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{"/slow?wait=3", "/slow?wait=8"},
+	inside := fmt.Sprintf("/slow?wait=%d", max(1, 5-int(testenv.Timeout(time.Second).Seconds())))
+	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{inside, "/slow?wait=8"},
 		Dir: t.TempDir(), Version: "test", Browser: browser.Options{NoDownload: true}, Modules: []check.Module{health.Module{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fast := run.Page("/slow?wait=3"); fast == nil || fast.Title != "Slow" || fast.Error != "" ||
+	if fast := run.Page(inside); fast == nil || fast.Title != "Slow" || fast.Error != "" ||
 		slices.ContainsFunc(fast.Issues, func(i model.Issue) bool { return i.Check == "health/white-screen" }) {
-		t.Errorf("3 s page: %+v", fast)
+		t.Errorf("%s: %+v", inside, fast)
 	}
 	if slow := run.Page("/slow?wait=8"); slow == nil || slow.Error != "timed out" || slow.Duration < 4500 {
 		t.Errorf("8 s page: %+v", slow)

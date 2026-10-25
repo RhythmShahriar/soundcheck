@@ -26,6 +26,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/runner"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -168,11 +169,13 @@ steps:
 func (s *shop) config(t *testing.T, flows bool) config.Config {
 	t.Helper()
 	cfg := config.Default()
-	cfg.Rate, cfg.Tabs, cfg.Timeout = 0, 1, 5
+	// The waits are scaled for slow runners: a flow step typing into a
+	// field, or Echo's capture arriving, can take seconds there.
+	cfg.Rate, cfg.Tabs, cfg.Timeout = 0, 1, testenv.Seconds(config.Seconds(5))
 	cfg.Viewports = []string{"desktop"}
 	cfg.Modules = []string{"interact", "echo"}
 	cfg.Interactions.Levels = []string{"submit"}
-	cfg.Echo.URL, cfg.Echo.Quiet, cfg.Echo.Timeout = s.echo.URL, 300*time.Millisecond, 3*time.Second
+	cfg.Echo.URL, cfg.Echo.Quiet, cfg.Echo.Timeout = s.echo.URL, testenv.Timeout(300*time.Millisecond), testenv.Timeout(3*time.Second)
 	if flows {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "contact.yaml"), []byte(contactFlow), 0o600); err != nil {

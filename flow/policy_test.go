@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/go-rod/rod/lib/proto"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 func TestEnvNames(t *testing.T) {
@@ -115,15 +115,15 @@ func TestRunStaysOnSite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			page, err := b.Page(proto.TargetCreateTarget{})
+			page, err := browser.NewTab(b.Browser)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = page.Close() }()
 			base, _ := url.Parse(site.URL)
-			// 10 s: the first page a fresh Chrome opens can take a few
-			// seconds on a Windows runner.
-			o := Options{Base: base, Timeout: 10e9, Env: env, AllowEnv: tc.allowEnv}
+			// The first page a fresh Chrome opens can take a few seconds
+			// on a slow runner.
+			o := Options{Base: base, Timeout: testenv.Timeout(5 * time.Second), Env: env, AllowEnv: tc.allowEnv}
 			if tc.allowHosts {
 				o.AllowHosts = []string{hostOf(evil.URL)}
 			}
@@ -229,15 +229,15 @@ func TestRunKeepsSecretsOnSite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			page, err := b.Page(proto.TargetCreateTarget{})
+			page, err := browser.NewTab(b.Browser)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = page.Close() }()
 			base, _ := url.Parse(site.URL)
-			// 10 s: the first page a fresh Chrome opens can take a few
-			// seconds on a Windows runner.
-			o := Options{Base: base, Timeout: 10e9, Env: env}
+			// The first page a fresh Chrome opens can take a few seconds
+			// on a slow runner.
+			o := Options{Base: base, Timeout: testenv.Timeout(5 * time.Second), Env: env}
 			if tc.allowHosts {
 				o.AllowHosts = []string{hostOf(evil.URL)}
 			}

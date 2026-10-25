@@ -163,6 +163,9 @@ func TestChromeOnlyModulesSkipOnOtherEngines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(run.Pages) != 1 || run.Pages[0].Error != "" {
+		t.Fatalf("the page wasn't checked in Firefox: %+v (warnings %q)", run.Pages, run.Warnings)
+	}
 	if !slices.Equal(rec.calls, []string{"tabmod"}) {
 		t.Errorf("hooks ran %v, want only tabmod", rec.calls)
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/runner"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -397,7 +398,7 @@ steps:
 	cfg := config.Default()
 	cfg.Interactions.Levels = []string{"flows"}
 	cfg.Flows = dir
-	cfg.Timeout = 5
+	cfg.Timeout = testenv.Seconds(config.Seconds(5))
 	run := fx.run(t, cfg, "/")
 	got := map[string]model.Issue{}
 	for _, i := range run.Issues {
@@ -443,7 +444,7 @@ steps:
 	cfg := config.Default()
 	cfg.Interactions.Levels = []string{"flows"}
 	cfg.Flows = dir
-	cfg.Timeout = 5
+	cfg.Timeout = testenv.Seconds(config.Seconds(5))
 	cfg.Trust.AllowEnv = []string{"CONTACT_NAME_FOR_TEST"}
 	run := fx.run(t, cfg, "/")
 	for _, i := range run.Issues {
@@ -497,7 +498,7 @@ func TestFlowFilesAndProduction(t *testing.T) {
 	cfg := config.Default()
 	cfg.Interactions.Levels = []string{"flows"}
 	cfg.Flows = dir
-	cfg.Timeout = 5
+	cfg.Timeout = testenv.Seconds(config.Seconds(5))
 	cfg.Production = []string{fx.srv.URL}
 	run := fx.run(t, cfg, "/")
 	got := map[string]model.Issue{}
