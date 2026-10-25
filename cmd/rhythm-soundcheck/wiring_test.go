@@ -146,7 +146,7 @@ func TestProjectRules(t *testing.T) {
 	}
 	code, out, errOut := runCLI(t, "rules", "list")
 	if code != exitOK || !strings.Contains(out, "health/acme-banner") || !strings.Contains(out, "built in") ||
-		!strings.Contains(out, filepath.Join(".soundcheck", "rules", "banner.yaml")) {
+		!strings.Contains(out, ".soundcheck/rules/banner.yaml") {
 		t.Errorf("rules list: %d\n%s\n%s", code, out, errOut)
 	}
 	if err := os.WriteFile(".soundcheck/rules/broken.yaml", []byte("id: [\n"), 0o600); err != nil {

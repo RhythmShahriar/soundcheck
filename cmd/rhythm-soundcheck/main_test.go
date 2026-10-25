@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -38,15 +39,19 @@ func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	return code, slashes(out.String()), slashes(errb.String())
 }
 
-// slashes turns Windows path separators in the CLI's output into /, so
-// the tests can spell paths such as .soundcheck/config.yaml one way. The
-// CLI itself prints paths the way the OS writes them.
+// slashes turns the Windows path separators in the paths of the project's
+// own files (.soundcheck\config.yaml) and of the tests' out\ folder into
+// /, so the tests can spell them one way. The CLI itself prints paths the
+// way the OS writes them. Other backslashes, such as escaped control
+// characters, stay as they are.
 func slashes(s string) string {
 	if runtime.GOOS != "windows" {
 		return s
 	}
-	return strings.ReplaceAll(s, `\`, "/")
+	return projectPath.ReplaceAllStringFunc(s, filepath.ToSlash)
 }
+
+var projectPath = regexp.MustCompile(`(?:\.soundcheck|\bout)(?:\\[\w.~-]+)+`)
 
 func TestVersionAndHelp(t *testing.T) {
 	for _, a := range []string{"--version", "-v", "version"} {
