@@ -202,10 +202,7 @@ func TestRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	page, err := browser.NewTab(b.Browser)
-	if err != nil {
-		t.Fatal(err)
-	}
+	page := warmTab(t, b, srv.URL+"/")
 	base, _ := url.Parse(srv.URL)
 	f, err := Parse([]byte(`name: Sign up
 start: /signup/
@@ -226,8 +223,8 @@ steps:
 	}
 	saved := map[string]int{}
 	// Each failing step below waits out the step timeout: 2 s on a quiet
-	// machine, more on a slow runner, where the first page alone can take
-	// longer than 2 s.
+	// machine, more on a slow runner. warmTab took the cold start out of
+	// the first page.
 	fails := Run(context.Background(), page, f, Options{Base: base, Timeout: testenv.Timeout(2 * time.Second), Fake: Fake{Seed: "s"},
 		AllowEnv: []string{"SC_PASS"},
 		Env:      func(k string) string { return map[string]string{"SC_PASS": "s3cret-pw"}[k] },
