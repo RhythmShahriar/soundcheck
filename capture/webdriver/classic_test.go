@@ -246,8 +246,8 @@ func TestWebKitBiDiFallback(t *testing.T) {
 }
 
 // A session the driver couldn't create, or a request it dropped, is
-// asked for again up to sessionTries times; the last failure is the
-// error.
+// asked for again with a fresh driver up to sessionTries times; the last
+// failure is the error.
 func TestWebKitSessionRetry(t *testing.T) {
 	pause := sessionPause
 	sessionPause = time.Millisecond
@@ -257,18 +257,22 @@ func TestWebKitSessionRetry(t *testing.T) {
 		ok           bool
 		want         string
 	}{
-		{1, 0, true, ""}, {2, 0, true, ""}, {3, 0, false, "session not created"},
-		{0, 1, true, ""}, {1, 1, true, ""}, {0, 3, false, "EOF"},
+		{1, 0, true, ""}, {sessionTries - 1, 0, true, ""}, {sessionTries, 0, false, "session not created"},
+		{0, 1, true, ""}, {1, 1, true, ""}, {0, sessionTries, false, "EOF"},
 	} {
 		d := &fakeDriver{sessionFails: tc.fails, sessionDrops: tc.drops}
 		srv := httptest.NewServer(d)
 		var notes []string
-		b := &Browser{engine: capture.WebKit, logf: func(s string) { notes = append(notes, s) }}
-		err := b.startSession(context.Background(), srv.URL, map[string]any{})
+		starts := 0
+		start := func() (*Browser, string, error) {
+			starts++
+			return &Browser{engine: capture.WebKit}, srv.URL, nil
+		}
+		b, err := connectWebKit(context.Background(), start, map[string]any{}, func(s string) { notes = append(notes, s) })
 		srv.Close()
 		retries := min(tc.fails+tc.drops, sessionTries-1)
-		if (err == nil) != tc.ok || len(notes) != retries {
-			t.Errorf("%d failures, %d drops: %v, notes %q", tc.fails, tc.drops, err, notes)
+		if (err == nil) != tc.ok || (b != nil) != tc.ok || len(notes) != retries || starts != retries+1 {
+			t.Errorf("%d failures, %d drops: %v, %d starts, notes %q", tc.fails, tc.drops, err, starts, notes)
 		}
 		for _, n := range notes {
 			if !strings.Contains(n, "trying again") {
@@ -279,9 +283,18 @@ func TestWebKitSessionRetry(t *testing.T) {
 			t.Errorf("%d failures, %d drops: %v, want %q", tc.fails, tc.drops, err, tc.want)
 		}
 	}
-	// Other errors are not tried again.
+	// Other errors are not tried again. Neither is a driver that didn't
+	// start.
 	if retrySession(&Error{Code: "invalid argument"}) || retrySession(errors.New("no")) {
 		t.Error("retrySession tries other errors again")
+	}
+	starts := 0
+	_, err := connectWebKit(context.Background(), func() (*Browser, string, error) {
+		starts++
+		return nil, "", errExited
+	}, map[string]any{}, nil)
+	if !errors.Is(err, errExited) || starts != 1 {
+		t.Errorf("a driver that didn't start: %v after %d starts", err, starts)
 	}
 }
 
