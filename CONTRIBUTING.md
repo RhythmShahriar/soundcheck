@@ -149,3 +149,16 @@ Most modules need no browser to test:
   [runner/runner_test.go](runner/runner_test.go).
 
 Fixtures only ever run on `127.0.0.1`. Tests never contact real sites.
+
+Browser tests run on slow CI runners too, so a wait in a test is never a fixed number:
+
+- Write it as `testenv.Timeout(d)` (or `testenv.Seconds(n)` for a config setting), with `d` what
+  it takes on a quiet machine. [internal/testenv](internal/testenv/testenv.go) scales it by 2 on
+  Linux CI and 3 on Windows and macOS CI; `SOUNDCHECK_TEST_SCALE=4` sets the factor by hand.
+  When a duration is what the test checks, keep the timeout fixed and scale only the room left
+  around it, as `TestVisitSlow` does.
+- Open tabs with `browser.NewTab`, as runs do. A plain `sess.Page` tab can be hidden and never
+  paint.
+- Time a page against its own calibration, not a fixed number. A reading that is only higher than
+  expected may be load from other tests: measure it again (see `TestMetricsInParallelTabs`),
+  while a reading that shows the bug fails at once.
