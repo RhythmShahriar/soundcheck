@@ -76,7 +76,10 @@ func TestVisit(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	var mu sync.Mutex
-	opts := Options{Timeout: 20 * time.Second, Ignore: []string{"h1"}, Twice: true,
+	// 40 s gives reading the page a 10 s budget (readBudget): two tall
+	// desktop screenshots 1.2 s apart can take more than the 5 s a 20 s
+	// timeout gives on a Windows runner, and the second is then dropped.
+	opts := Options{Timeout: 40 * time.Second, Ignore: []string{"h1"}, Twice: true,
 		Save: func(name string, data []byte) error {
 			mu.Lock()
 			defer mu.Unlock()
