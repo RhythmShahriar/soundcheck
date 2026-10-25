@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
+	"github.com/RhythmShahriar/soundcheck/internal/proc"
+	"github.com/RhythmShahriar/soundcheck/internal/retry"
 )
 
 // Options for starting a browser.
@@ -125,35 +127,69 @@ var firefoxPrefs = map[string]any{
 }
 
 // LaunchFirefox starts Firefox in a throwaway profile with its WebDriver
-// BiDi server on a free local port and opens a session. A Firefox whose
-// BiDi server didn't start in time (a first start on a busy machine can
-// take that long) is stopped and started once more in a new profile.
+// BiDi server on a free local port and opens a session. A start that
+// fails (a BiDi server that didn't start in time, a Firefox that exited
+// first, a session it didn't open: a first start on a busy machine can
+// take that long) is stopped and tried again in a new profile, up to
+// firefoxTries times, after a pause that doubles each time.
 func LaunchFirefox(ctx context.Context, opts Options) (*Browser, error) {
-	b, err := startFirefox(ctx, opts)
-	if errors.Is(err, errSlowStart) && ctx.Err() == nil {
-		if opts.Log != nil {
-			opts.Log("Firefox: " + err.Error() + "; starting it once more")
-		}
-		b, err = startFirefox(ctx, opts)
-	}
-	return b, err
-}
-
-// firefoxStart is how long Firefox gets to start its BiDi server.
-var firefoxStart = 30 * time.Second
-
-// errSlowStart is a Firefox whose BiDi server didn't start in time.
-var errSlowStart = errors.New("its WebDriver BiDi server didn't start in time")
-
-// startFirefox is one try of LaunchFirefox.
-func startFirefox(ctx context.Context, opts Options) (*Browser, error) {
 	bin, err := FindFirefox(opts.Bin)
 	if err != nil {
 		return nil, err
 	}
+	var b *Browser
+	err = retry.Do(ctx, retry.Policy{Tries: firefoxTries, Pause: firefoxPause,
+		Again: func(err error) bool { return !errors.Is(err, errCantStart) },
+		Note: func(_ int, err error) {
+			if opts.Log != nil {
+				opts.Log("Firefox: " + err.Error() + "; starting it again")
+			}
+		},
+	}, func() error {
+		var err error
+		b, err = startFirefox(ctx, bin, opts)
+		return err
+	})
+	return b, err
+}
+
+// firefoxStart is how long Firefox gets to start its BiDi server;
+// firefoxTries and firefoxPause bound LaunchFirefox's tries.
+var (
+	firefoxStart = 30 * time.Second
+	firefoxTries = 3
+	firefoxPause = time.Second
+)
+
+// errSlowStart is a Firefox whose BiDi server didn't start in time.
+var errSlowStart = errors.New("its WebDriver BiDi server didn't start in time")
+
+// errCantStart marks a failure another try can't get past: the profile
+// can't be written, the proxy is malformed or the binary doesn't run.
+var errCantStart = errors.New("can't start Firefox")
+
+// firefoxArgs are the arguments Firefox is started with. On Windows,
+// firefox.exe is a launcher that starts the real browser as a child and
+// exits; --wait-for-browser keeps it until the browser exits, so the
+// process Soundcheck holds is the browser's lifetime and stopping its
+// tree stops the browser.
+func firefoxArgs(profile string, visible bool, goos string) []string {
+	args := []string{"--remote-debugging-port=0", "--remote-allow-origins=http://127.0.0.1",
+		"--no-remote", "--new-instance", "--profile", profile}
+	if goos == "windows" {
+		args = append(args, "--wait-for-browser")
+	}
+	if !visible {
+		args = append(args, "--headless")
+	}
+	return append(args, "about:blank")
+}
+
+// startFirefox is one try of LaunchFirefox.
+func startFirefox(ctx context.Context, bin string, opts Options) (*Browser, error) {
 	profile, err := os.MkdirTemp("", "soundcheck-firefox-")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errCantStart, err)
 	}
 	prefs := map[string]any{}
 	for k, v := range firefoxPrefs {
@@ -162,30 +198,25 @@ func startFirefox(ctx context.Context, opts Options) (*Browser, error) {
 	if opts.Proxy != "" {
 		if err := proxyPrefs(prefs, opts.Proxy); err != nil {
 			_ = os.RemoveAll(profile)
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", errCantStart, err)
 		}
 	}
 	if err := writePrefs(filepath.Join(profile, "user.js"), prefs); err != nil {
 		_ = os.RemoveAll(profile)
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errCantStart, err)
 	}
-	args := []string{"--remote-debugging-port=0", "--remote-allow-origins=http://127.0.0.1",
-		"--no-remote", "--new-instance", "--profile", profile}
-	if !opts.Visible {
-		args = append(args, "--headless")
-	}
-	args = append(args, "about:blank")
+	proc.KillOnExit()
 	// Not CommandContext: the browser outlives the start-up context and
 	// is stopped by Close.
-	cmd := exec.Command(bin, args...) //nolint:gosec // the user's own browser binary
+	cmd := exec.Command(bin, firefoxArgs(profile, opts.Visible, runtime.GOOS)...) //nolint:gosec // the user's own browser binary
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		_ = os.RemoveAll(profile)
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errCantStart, err)
 	}
 	if err := cmd.Start(); err != nil {
 		_ = os.RemoveAll(profile)
-		return nil, fmt.Errorf("starting %s: %w", bin, err)
+		return nil, fmt.Errorf("%w: starting %s: %w", errCantStart, bin, err)
 	}
 	b := &Browser{engine: capture.Firefox, bin: bin, cmd: cmd, profile: profile, logf: opts.Log}
 	wsURL, err := waitListening(ctx, stderr, firefoxStart)

@@ -97,15 +97,16 @@ func TestWindowsFirefox(t *testing.T) {
 	}
 }
 
-// A Firefox whose BiDi server doesn't start in time is started once
-// more; a second slow start is the error.
+// A Firefox whose BiDi server doesn't start in time is started again,
+// firefoxTries times in all; the last slow start is the error. A binary
+// that can't be run isn't tried again.
 func TestLaunchFirefoxSlowStart(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake Firefox is a shell script")
 	}
-	limit := firefoxStart
-	firefoxStart = 200 * time.Millisecond
-	t.Cleanup(func() { firefoxStart = limit })
+	limit, pause := firefoxStart, firefoxPause
+	firefoxStart, firefoxPause = 200*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { firefoxStart, firefoxPause = limit, pause })
 	dir := t.TempDir()
 	starts := filepath.Join(dir, "starts")
 	bin := filepath.Join(dir, "firefox")
@@ -119,7 +120,29 @@ func TestLaunchFirefoxSlowStart(t *testing.T) {
 		t.Errorf("LaunchFirefox = %v, want errSlowStart", err)
 	}
 	b, _ := os.ReadFile(starts)
-	if n := strings.Count(string(b), "start"); n != 2 || len(notes) != 1 || !strings.Contains(notes[0], "once more") {
+	if n := strings.Count(string(b), "start"); n != firefoxTries || len(notes) != firefoxTries-1 || !strings.Contains(notes[0], "starting it again") {
 		t.Errorf("%d starts, notes %q", n, notes)
+	}
+
+	notes = nil
+	noExec := filepath.Join(dir, "not-a-program")
+	if err := os.WriteFile(noExec, []byte("text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LaunchFirefox(context.Background(), Options{Bin: noExec, Log: func(s string) { notes = append(notes, s) }}); !errors.Is(err, errCantStart) || len(notes) != 0 {
+		t.Errorf("a binary that can't run: %v, notes %q", err, notes)
+	}
+}
+
+// On Windows the launcher process waits for the browser, so stopping
+// what Soundcheck started stops Firefox; elsewhere there is no launcher.
+func TestFirefoxArgs(t *testing.T) {
+	win := strings.Join(firefoxArgs("p", false, "windows"), " ")
+	if !strings.Contains(win, "--wait-for-browser") || !strings.Contains(win, "--headless") || !strings.HasSuffix(win, "about:blank") {
+		t.Errorf("windows: %s", win)
+	}
+	linux := strings.Join(firefoxArgs("p", true, "linux"), " ")
+	if strings.Contains(linux, "--wait-for-browser") || strings.Contains(linux, "--headless") || !strings.Contains(linux, "--profile p") {
+		t.Errorf("linux, visible: %s", linux)
 	}
 }

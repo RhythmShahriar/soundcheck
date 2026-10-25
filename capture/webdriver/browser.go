@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/capture"
+	"github.com/RhythmShahriar/soundcheck/internal/proc"
 )
 
 // Browser is a running Firefox or WebKit, driven over WebDriver BiDi or,
@@ -157,9 +158,9 @@ func (b *Browser) Close() error {
 	return nil
 }
 
-// stop ends the process: with wait it gets a moment to exit by itself
-// first. exited closes when the process has exited; when it is nil stop
-// waits for the process itself.
+// stop ends the process and the processes it started: with wait it gets
+// a moment to exit by itself first. exited closes when the process has
+// exited; when it is nil stop waits for the process itself.
 func stop(cmd *exec.Cmd, exited <-chan struct{}, wait bool) {
 	if exited == nil {
 		done := make(chan struct{})
@@ -173,7 +174,7 @@ func stop(cmd *exec.Cmd, exited <-chan struct{}, wait bool) {
 		case <-time.After(3 * time.Second):
 		}
 	}
-	_ = cmd.Process.Kill()
+	_ = proc.KillTree(cmd.Process)
 	<-exited
 }
 
