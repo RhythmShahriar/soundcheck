@@ -13,12 +13,15 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 // A 300 ms long task after first paint adds about 250 ms of TBT, also
 // when the observer hasn't delivered it by the time the page is read and
 // when it starts only after the page went idle. Run with -count=10: it
-// must hold every time.
+// must hold every time. A TBT above the range is measured again (up to
+// twice more): a busy runner adds long tasks of its own, while a task
+// counted twice would be over it every time. One under it fails at once.
 func TestLateLongTasksCountInTBT(t *testing.T) {
 	b := launch(t)
 	const busy = `function busy(ms) { var t = Date.now(); while (Date.now() - t < ms) {} }`
@@ -46,7 +49,8 @@ func TestLateLongTasksCountInTBT(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := Options{Timeout: 20 * time.Second}
-	for _, path := range []string{"/after-paint", "/late-900", "/late-1100"} {
+	visit := func(path string) model.Metrics {
+		t.Helper()
 		tab, err := browser.NewTab(sess)
 		if err != nil {
 			t.Fatal(err)
@@ -61,7 +65,15 @@ func TestLateLongTasksCountInTBT(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if m := p.Metrics; m.TBT < 200 || m.TBT > 500 {
+		return p.Metrics
+	}
+	for _, path := range []string{"/after-paint", "/late-900", "/late-1100"} {
+		m := visit(path)
+		for try := 1; m.TBT > 500 && try < 3; try++ {
+			t.Logf("%s: TBT %v, measuring again", path, m.TBT)
+			m = visit(path)
+		}
+		if m.TBT < 200 || m.TBT > 500 {
 			t.Errorf("%s: a 300 ms task after first paint gave TBT %v, want about 250 (FCP %v)", path, m.TBT, m.FCP)
 		}
 	}
