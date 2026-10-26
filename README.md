@@ -161,7 +161,7 @@ rhythm soundcheck snapshot staging.yoursite.com --eaa   # once: what the site do
 rhythm soundcheck compare --eaa --fail-on new           # after a change: new problems only
 ```
 
-`rhythm soundcheck snapshot <url> --eaa` is the first command. The same mode works on `compare`, `run`, `--against` and `fleet`.
+`rhythm soundcheck snapshot <url> --eaa` is the first command. The same mode works on `compare`, `run`, `--against` and `fleet`. The rest of this section uses `rhythm-soundcheck`; `rhythm soundcheck` runs the same commands through the router.
 
 **What it checks.** On every page it visits, in Chrome:
 
@@ -181,7 +181,7 @@ rhythm-soundcheck statement -o accessibility-statement.md   # also .html, .json,
 
 drafts a statement in the layout of the EU model statement, with a table of every WCAG 2.1 A and AA success criterion: failures found, no failures found by these tests, or not tested: needs a person. Every place only you can fill in is marked `[TO DO]`.
 
-**The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool, axe-core and Chrome versions and a hash chain to the previous `--eaa` run of the same site.
+**The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool and axe-core versions and a hash chain to the previous `--eaa` run of the same site.
 
 ```sh
 rhythm-soundcheck evidence verify                      # the files and the chain are unchanged
