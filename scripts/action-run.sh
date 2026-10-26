@@ -22,7 +22,9 @@
 # $RUNNER_TEMP/soundcheck-summary.md for the pull request comment. When
 # Soundcheck can't check at all (exit 2 or 3) the summary still says why,
 # with its last lines of output, so a staging site that is down doesn't
-# leave an empty summary and a log to dig through.
+# leave an empty summary and a log to dig through. An --eaa run that
+# exits 3 because some pages' audits didn't finish still writes every
+# report and output, sets incomplete=true and then fails the step.
 set -uo pipefail
 
 : "${GITHUB_OUTPUT:?}" "${RUNNER_TEMP:?}"
@@ -30,6 +32,12 @@ summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 markdown="$RUNNER_TEMP/soundcheck-summary.md"
 out="$RUNNER_TEMP/soundcheck-report"
 errlog="$RUNNER_TEMP/soundcheck-stderr.log"
+
+# incomplete_text starts the line Soundcheck prints when it exits 3
+# because the a11y or keyboard tests didn't finish on some pages of an
+# --eaa run (its other exits 3 are runs that couldn't check at all).
+incomplete_text="the accessibility evidence is incomplete"
+incomplete_note="**The accessibility evidence is incomplete:** the a11y or keyboard tests didn't finish on some pages (see \"not checked\" in the report), so the statement marks them not tested and the job fails."
 
 # couldnt CODE TEXT tells the job summary, the comment and the log why
 # Soundcheck couldn't check, then exits with CODE.
@@ -181,8 +189,14 @@ run() {
 
   # stderr goes to the log as it happens and to a file for the summary.
   { "${cmd[@]}" "${fail[@]}" "${extra[@]}" --plain 2>&1 1>&3 3>&- | tee "$errlog" >&2; } 3>&1
-  local code=$?
-  if [ "$code" -ge 2 ]; then
+  local code=$? incomplete=""
+  # Exit 3 of an --eaa run whose pages were checked but whose a11y or
+  # keyboard audit didn't finish on some of them: the evidence of every
+  # other page is there, so the reports, the outputs and the baseline
+  # are written as for any finished run before the step fails.
+  if [ "$code" = 3 ] && grep -qF "$incomplete_text" "$errlog"; then
+    incomplete=$(grep -F "$incomplete_text" "$errlog" | tail -n 1)
+  elif [ "$code" -ge 2 ]; then
     local lines
     lines=$(sed '/^[[:space:]]*$/d' "$errlog" | tail -n 5)
     couldnt "$code" "${lines:-rhythm-soundcheck exited with $code}"
@@ -214,7 +228,15 @@ run() {
     echo "statement=$draft"
     echo "a11y-open=$open"
     echo "criteria-failed=$criteria"
+    echo "incomplete=${incomplete:+true}"
   } >> "$GITHUB_OUTPUT"
+  if [ -n "$incomplete" ]; then
+    printf '\n%s\n' "$incomplete_note" >> "$summary"
+    printf '\n%s\n' "$incomplete_note" >> "$markdown"
+    # Workflow commands need % escaped.
+    echo "::error::${incomplete//%/%25}"
+    exit 3
+  fi
 }
 
 # statement writes the statement draft of the run that just finished into

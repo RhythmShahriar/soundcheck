@@ -190,7 +190,7 @@ rhythm-soundcheck evidence keygen -o soundcheck.key    # once
 rhythm-soundcheck evidence sign --key soundcheck.key   # sign the latest pack
 ```
 
-**In CI.** The [GitHub Action](#ci) takes `eaa`, `statement` and `wcag` inputs and gives `a11y-open` and `criteria-failed` outputs:
+**In CI.** The [GitHub Action](#ci) takes `eaa`, `statement` and `wcag` inputs and gives `a11y-open`, `criteria-failed` and `incomplete` outputs:
 
 ```yaml
 - uses: RhythmShahriar/soundcheck@v1.3.0

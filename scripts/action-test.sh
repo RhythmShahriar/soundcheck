@@ -8,6 +8,7 @@
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+yml_path="$here/../action.yml"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/bin"
@@ -310,6 +311,30 @@ act action-run.sh run MODE=compare EAA=true STATEMENT=true FAKE_EXIT=3
 if [ "$code" = 3 ] && [ ! -e "$work/statement-args" ]; then
   ok "no statement when Soundcheck couldn't check"
 else bad "no statement when Soundcheck couldn't check"; fi
+
+# Exit 3 of an --eaa run whose audits didn't finish on a page: every
+# report and output is written, then the step fails with the reason.
+incomplete_err='rhythm-soundcheck: the accessibility evidence is incomplete: the a11y or keyboard tests didn'"'"'t finish on 1 page (see "not checked" above), so the statement marks them not tested'
+act action-run.sh run MODE=snapshot EAA=true STATEMENT=true NAME=main FAKE_EXIT=3 FAKE_JSON="$work/eaa.json" FAKE_STDERR="$incomplete_err"
+if [ "$code" = 3 ] && has "$work/runner/output" exit-code=3 && has "$work/runner/output" incomplete=true &&
+  has "$work/runner/output" a11y-open=7 && has "$work/runner/output" "report=$work/runner/temp/soundcheck-report/soundcheck-report.html" &&
+  [ -s "$work/runner/temp/soundcheck-report/soundcheck-report.html" ] && [ -s "$work/runner/temp/soundcheck-report/soundcheck-junit.xml" ] &&
+  [ -s "$work/site/accessibility-statement-draft.md" ] && contains "$work/runner/summary" "fake report" &&
+  contains "$work/runner/summary" "The accessibility evidence is incomplete:" && ! contains "$work/runner/summary" "could not check" &&
+  contains "$work/log" "::error::rhythm-soundcheck: the accessibility evidence is incomplete"; then
+  ok "exit 3 for incomplete evidence still writes the reports and outputs"
+else bad "exit 3 for incomplete evidence still writes the reports and outputs"; fi
+act action-run.sh run MODE=compare FAKE_EXIT=3 FAKE_STDERR="rhythm-soundcheck: connection refused"
+if [ "$code" = 3 ] && ! has "$work/runner/output" incomplete=true && contains "$work/runner/summary" "could not check"; then
+  ok "another exit 3 is still 'could not check'"
+else bad "another exit 3 is still 'could not check'"; fi
+# shellcheck disable=SC2016 # the Action's own expressions, not shell
+if grep -qF "steps.check.outputs.incomplete == 'true'" "$yml_path" && grep -qE '^  incomplete:$' "$yml_path"; then
+  ok "action.yml saves the baseline of an incomplete run and has the incomplete output"
+else
+  : > "$work/log"
+  bad "action.yml saves the baseline of an incomplete run and has the incomplete output"
+fi
 
 act action-run.sh prepare MODE=run EAA=yes
 if [ "$code" = 2 ] && contains "$work/runner/summary" 'the eaa input is "yes": use true or false'; then

@@ -158,7 +158,9 @@ inputs:
 
 outputs:
   exit-code:
-    description: Soundcheck's exit code (0 ok, 1 --fail-on hit, 2 usage error, 3 couldn't check).
+    description: >
+      Soundcheck's exit code (0 ok, 1 --fail-on hit, 2 usage error, 3 couldn't check, or with
+      --eaa the a11y or keyboard tests didn't finish on some pages: see incomplete).
     value: ${{ steps.check.outputs.exit-code }}
   version:
     description: The Soundcheck version that ran, e.g. 1.2.3.
@@ -175,6 +177,11 @@ outputs:
   criteria-failed:
     description: WCAG success criteria with failures in an --eaa run, e.g. 3; empty without it.
     value: ${{ steps.check.outputs.criteria-failed }}
+  incomplete:
+    description: >
+      true when an --eaa run exited 3 because the a11y or keyboard tests didn't finish on some
+      pages; the reports, outputs and baseline are still written. Empty otherwise.
+    value: ${{ steps.check.outputs.incomplete }}
 
 runs:
   using: composite
@@ -246,12 +253,15 @@ runs:
         WCAG: ${{ inputs.wcag }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
-    # A snapshot with issues (exit 1) is still the baseline; one that
-    # couldn't be taken (2 or 3) is not saved.
+    # A snapshot with issues (exit 1) is still the baseline, and so is an
+    # --eaa one whose audits didn't finish on some pages (incomplete): a
+    # comparison keeps those pages' issues out of FIXED. One that couldn't
+    # be taken (2 or 3) is not saved.
     - name: Save the baseline
       if: >-
         always() && inputs.baseline != '' && steps.prep.outputs.mode == 'snapshot' &&
-        (steps.check.outputs.exit-code == '0' || steps.check.outputs.exit-code == '1')
+        (steps.check.outputs.exit-code == '0' || steps.check.outputs.exit-code == '1' ||
+        steps.check.outputs.incomplete == 'true')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.working-directory }}/${{ steps.prep.outputs.snapshots }}
