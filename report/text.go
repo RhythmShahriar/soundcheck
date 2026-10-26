@@ -199,8 +199,9 @@ func capitalize(s string) string {
 }
 
 // JUnit XML: one test suite per change class (or issue level), one test
-// case per change, plus a suite per page under --eaa (see eaaSuites). Cases at or above failOn fail; with no failOn, BROKE
-// and NEW changes (or errors, for a single run) fail.
+// case per change, plus a suite per page under --eaa (see eaaSuites).
+// Cases at or above failOn fail; with no failOn, BROKE and NEW changes
+// (or errors, for a single run) fail.
 type junitSuites struct {
 	XMLName  xml.Name     `xml:"testsuites"`
 	Name     string       `xml:"name,attr"`
