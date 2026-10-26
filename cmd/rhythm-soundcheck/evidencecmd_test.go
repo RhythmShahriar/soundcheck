@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RhythmShahriar/soundcheck/evidence"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -171,34 +169,78 @@ func TestEvidenceCommand(t *testing.T) {
 	}
 }
 
-// With the evidence package itself (pending until it is built).
+// With the evidence package itself.
 func TestEvidenceCommandReal(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if _, err := evidence.Keygen(filepath.Join(t.TempDir(), "k")); errors.Is(err, evidence.ErrNotBuilt) {
-		t.Skip("pending: statement (evidence)")
-	}
 	writeConfig(t, "")
 	dir := storeRun(t, time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC), model.Options{EAA: true, WCAG: "2.1"})
 	run, err := store.LoadRun(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := evidence.Write(dir, run, nil); err != nil {
+	if err := writePack(dir, run, nil, evidenceExtra{Chrome: "153.0.8010.52"}); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, errOut := runCLI(t, "evidence", "keygen", "-o", "sign.key"); code != exitOK {
+	if code, out, errOut := runCLI(t, "evidence", "verify"); code != exitOK || !strings.Contains(out, "not signed") {
+		t.Errorf("verify unsigned: %d %q %s", code, out, errOut)
+	}
+	code, out, errOut := runCLI(t, "evidence", "keygen", "-o", "sign.key")
+	if code != exitOK {
 		t.Fatalf("keygen: %d %s", code, errOut)
+	}
+	pub := strings.TrimSpace(strings.TrimPrefix(out, "public key: "))
+	if code, out, errOut := runCLI(t, "evidence", "verify", "--pub", pub); code != exitFindings || !strings.Contains(errOut, "isn't signed") {
+		t.Errorf("--pub on an unsigned pack: %d %q %s", code, out, errOut)
 	}
 	if code, _, errOut := runCLI(t, "evidence", "sign", "--key", "sign.key"); code != exitOK {
 		t.Errorf("sign: %d %s", code, errOut)
 	}
-	if code, _, errOut := runCLI(t, "evidence", "verify"); code != exitOK {
-		t.Errorf("verify: %d %s", code, errOut)
+	if code, out, errOut := runCLI(t, "evidence", "verify"); code != exitOK || !strings.Contains(out, "signed with key "+pub+";") {
+		t.Errorf("verify: %d %q %s", code, out, errOut)
+	}
+	if code, out, errOut := runCLI(t, "evidence", "verify", "--pub", pub); code != exitOK || !strings.Contains(out, "the --pub key") {
+		t.Errorf("verify --pub: %d %q %s", code, out, errOut)
+	}
+	_, other, _ := runCLI(t, "evidence", "keygen", "-o", "other.key")
+	otherPub := strings.TrimSpace(strings.TrimPrefix(other, "public key: "))
+	if code, _, errOut := runCLI(t, "evidence", "verify", "--pub", otherPub); code != exitFindings || !strings.Contains(errOut, "not the --pub key") {
+		t.Errorf("verify --pub with another key: %d %s", code, errOut)
+	}
+	if code, _, _ := runCLI(t, "evidence", "verify", "--pub", "not-a-key"); code != exitUsage {
+		t.Errorf("--pub not a key: exit %d", code)
+	}
+	if code, _, _ := runCLI(t, "evidence", "sign", "--key", "sign.key", "--pub", pub); code != exitUsage {
+		t.Errorf("--pub with sign: exit %d", code)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if code, _, errOut := runCLI(t, "evidence", "verify", dir); code != exitFindings || !strings.Contains(errOut, "run.json changed after it was recorded") {
 		t.Errorf("tampered: %d %s", code, errOut)
+	}
+}
+
+// A pack of a run made with -k records it through the real package, so
+// sign refuses it.
+func TestEvidenceRefusesInsecurePack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeConfig(t, "")
+	dir := storeRun(t, time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC), model.Options{EAA: true, WCAG: "2.1"})
+	run, err := store.LoadRun(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePack(dir, run, nil, evidenceExtra{Insecure: true}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, eaaDir, evidenceFile))
+	if err != nil || !strings.Contains(string(data), `"insecure": true`) && !strings.Contains(string(data), `"insecure":true`) {
+		t.Fatalf("pack doesn't record -k: %v %s", err, data)
+	}
+	if code, _, errOut := runCLI(t, "evidence", "keygen", "-o", "sign.key"); code != exitOK {
+		t.Fatalf("keygen: %d %s", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "evidence", "sign", "--key", "sign.key"); code != exitUsage || !strings.Contains(errOut, "made with -k") {
+		t.Errorf("sign of a -k pack: %d %s", code, errOut)
 	}
 }

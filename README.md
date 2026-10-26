@@ -181,10 +181,11 @@ rhythm-soundcheck statement -o accessibility-statement.md   # also .html, .json,
 
 drafts a statement in the layout of the EU model statement, with a table of every WCAG 2.1 A and AA success criterion: failures found, no failures found by these tests, or not tested: needs a person. Every place only you can fill in is marked `[TO DO]`.
 
-**The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool and axe-core versions and a hash chain to the previous `--eaa` run of the same site.
+**The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool, Chrome and axe-core versions and a hash chain to the previous `--eaa` run of the same site.
 
 ```sh
 rhythm-soundcheck evidence verify                      # the files and the chain are unchanged
+rhythm-soundcheck evidence verify --pub <key>          # and it was signed with this public key
 rhythm-soundcheck evidence keygen -o soundcheck.key    # once
 rhythm-soundcheck evidence sign --key soundcheck.key   # sign the latest pack
 ```

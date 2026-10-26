@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
+	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 

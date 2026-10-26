@@ -4,6 +4,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,7 +22,7 @@ import (
 )
 
 const evidenceUsage = `Usage:
-  rhythm soundcheck evidence verify [run folder|snapshot]
+  rhythm soundcheck evidence verify [run folder|snapshot] [--pub <key>]
   rhythm soundcheck evidence sign [run folder|snapshot] --key <file>
   rhythm soundcheck evidence keygen -o <file>
 
@@ -30,6 +32,11 @@ site. verify checks the files and the chain (default: the latest --eaa
 run or snapshot). sign signs the pack with an ed25519 key from keygen, which
 prints the public key to give whoever checks it. A run made with -k can't
 be signed: its TLS certificates weren't verified.
+
+verify prints the key a signed pack was signed with. Anyone who changes a
+pack can sign it again with their own key, so compare it with the key the
+owner published, or pass that key with --pub and verify fails when the
+pack wasn't signed with it.
 
 A signed evidence pack proves who produced it and that it wasn't changed
 afterwards. It doesn't prove the site was in that state for every visitor.
@@ -51,6 +58,7 @@ var (
 func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("evidence", flag.ContinueOnError)
 	key := flags.String("key", "", "")
+	pub := flags.String("pub", "", "")
 	var out string
 	flags.StringVar(&out, "o", "", "")
 	flags.StringVar(&out, "output", "", "")
@@ -75,6 +83,10 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 		return failed(stderr, cli.Usagef("--key goes with evidence sign"))
 	case sub != "keygen" && (set["o"] || set["output"]):
 		return failed(stderr, cli.Usagef("-o goes with evidence keygen"))
+	case sub != "verify" && set["pub"]:
+		return failed(stderr, cli.Usagef("--pub goes with evidence verify"))
+	case set["pub"] && !validPub(*pub):
+		return failed(stderr, cli.Usagef("--pub wants the base64 public key evidence keygen printed"))
 	}
 	if sub == "keygen" {
 		return keygen(out, stdout, stderr)
@@ -106,8 +118,7 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, prefix(), err)
 			return exitFindings
 		}
-		fmt.Fprintf(stdout, "Verified %s: every file matches and the chain is whole\n", rel(pack))
-		return exitOK
+		return verified(dir, pack, *pub, stdout, stderr)
 	}
 	// The pack says whether the run checked TLS; a signature would vouch
 	// for pages that may not have come from the site.
@@ -128,6 +139,41 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "Signed %s\n", rel(pack))
 	return exitOK
+}
+
+// verified reports a pack Verify passed, with the key it was signed
+// with. Verify trusts the key found next to the signature, so with
+// --pub a pack signed with any other key (or not signed) fails.
+func verified(dir, pack, want string, stdout, stderr io.Writer) int {
+	got, err := evidence.SigningKey(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, prefix(), err)
+		return exitFindings
+	}
+	switch {
+	case want != "" && got == "":
+		fmt.Fprintf(stderr, "%s %s isn't signed, so it can't match --pub\n", prefix(), rel(pack))
+		return exitFindings
+	case want != "" && got != want:
+		fmt.Fprintf(stderr, "%s %s was signed with key %s, not the --pub key\n", prefix(), rel(pack), got)
+		return exitFindings
+	}
+	fmt.Fprintf(stdout, "Verified %s: every file matches and the chain is whole\n", rel(pack))
+	switch {
+	case want != "":
+		fmt.Fprintf(stdout, "signed with key %s, the --pub key\n", got)
+	case got != "":
+		fmt.Fprintf(stdout, "signed with key %s; check it against the key the owner published\n", got)
+	default:
+		fmt.Fprintln(stdout, "not signed")
+	}
+	return exitOK
+}
+
+// validPub reports whether s is a base64 ed25519 public key.
+func validPub(s string) bool {
+	b, err := base64.StdEncoding.DecodeString(s)
+	return err == nil && len(b) == ed25519.PublicKeySize
 }
 
 // keygen writes a new signing key to path and prints its public key. It
