@@ -63,7 +63,7 @@ func fixture(t *testing.T) *httptest.Server {
 		fmt.Fprint(w, `<!doctype html><html><head><title> Shop </title><meta name="robots" content="index,follow"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
 <h1>Hello</h1><p>Some text.</p>
 <img src="/missing.png">
-<a href="/about/">About</a> <a href="https://other.example/">Other</a>
+<a href="/about/">About</a> <a href="https://other.example/">Other</a> <a href="/invoice/" download>Invoice</a>
 <script>
 console.error("checkout widget failed");
 fetch("/api/cart").then(r => r.text());
@@ -134,7 +134,7 @@ func TestVisit(t *testing.T) {
 	if !slices.Contains(failed, "404 /missing.png") || !slices.Contains(failed, "500 /api/cart") {
 		t.Errorf("failed = %v", failed)
 	}
-	if !slices.Contains(p.Links, srv.URL+"/about/") || slices.Contains(p.Links, "https://other.example/") {
+	if !slices.Contains(p.Links, srv.URL+"/about/") || slices.Contains(p.Links, "https://other.example/") || slices.Contains(p.Links, srv.URL+"/invoice/") {
 		t.Errorf("links = %v", p.Links)
 	}
 	if p.Metrics.TTFB <= 0 || p.Metrics.Requests < 2 || p.TextLength == 0 {

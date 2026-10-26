@@ -503,7 +503,10 @@ const factsJS = `async () => {
     if (end - start > 50 && d > 50) tbt += d - 50;
   }
   const robots = [...document.querySelectorAll('meta[name="robots" i],meta[name="googlebot" i]')].map(m => m.content).join(', ');
-  const links = [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))].slice(0, 2000);
+  // A link with the download attribute is a file, not a page: it is
+  // neither followed nor link-checked, since fetching one can be what
+  // makes a site generate an invoice or count a download.
+  const links = [...new Set([...document.querySelectorAll('a[href]:not([download])')].map(a => a.href))].slice(0, 2000);
   return {
     title: document.title || '', robots, links,
     text: (document.body && document.body.innerText || '').slice(0, 200000),
