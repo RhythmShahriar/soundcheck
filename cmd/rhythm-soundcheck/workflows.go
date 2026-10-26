@@ -163,6 +163,7 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "Accepted %s %s (%s)\n", a.ID, report.Term(a.Title), report.Term(where))
 	}
 	fmt.Fprintf(stdout, "Snapshot %q now holds %s. Run %s compare to check again.\n", sc.c.Before.Name, plural(len(accepted), "accepted change"), cmdName())
+	evidenceNote(sc.snapDir, sc.c.Before.Name, stderr)
 	return exitOK
 }
 
@@ -226,6 +227,17 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 	}
 	fmt.Fprintf(stdout, "Commit %s to share the rules; the snapshot is unchanged.\n", path)
 	return exitOK
+}
+
+// evidenceNote tells, after an accept, that the snapshot's evidence pack
+// was recorded before it: accept rewrites the snapshot's run.json, so
+// evidence verify of it reports the change. The pack isn't rewritten, as
+// later packs are chained to it as it was.
+func evidenceNote(snapDir, name string, stderr io.Writer) {
+	if _, err := os.Lstat(filepath.Join(snapDir, eaaDir, evidenceFile)); err != nil {
+		return
+	}
+	fmt.Fprintf(stderr, "note: snapshot %q has an evidence pack from before this accept, so evidence verify of it now reports run.json as changed; take a new --eaa snapshot for evidence of the accepted state\n", name)
 }
 
 // ignoreRule is the rule that ignores ch from now on. Its source and

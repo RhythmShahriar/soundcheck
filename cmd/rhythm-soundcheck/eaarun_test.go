@@ -474,3 +474,24 @@ func TestStatementHidesTheLoginUser(t *testing.T) {
 		t.Errorf("user: %q", got)
 	}
 }
+
+// accept says when the snapshot it changed has an evidence pack, and
+// stays quiet for one without.
+func TestAcceptEvidenceNote(t *testing.T) {
+	dir := t.TempDir()
+	var b strings.Builder
+	evidenceNote(dir, "base", &b)
+	if b.Len() != 0 {
+		t.Errorf("no pack: %q", b.String())
+	}
+	if err := os.MkdirAll(filepath.Join(dir, eaaDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, eaaDir, evidenceFile), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	evidenceNote(dir, "base", &b)
+	if !strings.HasPrefix(b.String(), `note: snapshot "base" has an evidence pack from before this accept`) {
+		t.Errorf("pack: %q", b.String())
+	}
+}
