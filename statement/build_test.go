@@ -313,3 +313,26 @@ func TestCleanText(t *testing.T) {
 		t.Errorf("cleanText = %q, want %q", got, want)
 	}
 }
+
+// Three checkout fields reported both by axe (a11y/label) and by
+// interact (interact/unlabeled) are three label failures in the draft,
+// not six (testbed s50).
+func TestBuildCountsALabelOnce(t *testing.T) {
+	var issues []model.Issue
+	for _, sel := range []string{"#billing_name", "#billing_email", "#billing_phone"} {
+		u := model.Issue{Check: "interact/unlabeled", Title: "Required field has no label", Detail: sel, WCAG: []string{"3.3.2", "4.1.2"}}
+		u.Identify()
+		issues = append(issues, issue("a11y/label", sel, "4.1.2"), u)
+	}
+	in := input([]model.Page{{Path: "/checkout/", Audits: audited(), Keyboard: &model.KeyboardSummary{Stops: 6}, Issues: issues}}, owner())
+	d, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "4.1.2"); r.Issues != 3 || r.Pages != 1 {
+		t.Errorf("4.1.2: %d issues on %d pages, want 3 on 1", r.Issues, r.Pages)
+	}
+	if r := row(d, "3.3.2"); r.Issues != 3 {
+		t.Errorf("3.3.2: %d issues, want 3", r.Issues)
+	}
+}
