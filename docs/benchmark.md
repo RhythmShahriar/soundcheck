@@ -242,3 +242,234 @@ make -C testbed down
 Scenarios that need a login (s19) use the testbed's own account unless `SOUNDCHECK_USER` and `SOUNDCHECK_PASSWORD` are set.
 Scenarios that need Echo (s33) run only with `-echo http://127.0.0.1:8025` and Echo running.
 Runs are kept in `testbed/bench/work/<id>/` (snapshot, compare.json, tool output) and the control pass in `work/control/`; `work/results.json` has every result.
+
+<!-- eaa:begin -->
+## EAA mode
+
+The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims compliance.
+
+> Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
+>
+> The testbed is written by the same people as the tool. It shows each detector works on a known case, not how much of a real site's accessibility it covers. Deque reports axe-based tests found 57% of issues by count in its own audits; that is a vendor figure counting issues, not success criteria.
+
+**Caught 29 of 29 broken scenarios.** 1 more waits for a detector that isn't merged yet (0 of them caught already). **False alarms: 0 of 11 good scenarios, 0** in 60 `--eaa` compares of unchanged sites. Target (PRD 16.3): every broken scenario caught, none pending, no false alarm.
+
+Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
+
+### Scenarios
+
+| # | Scenario | Expected | Soundcheck | Detector | Unlighthouse | axe-core CLI | pa11y |
+|---|---|---|---|---|---|---|---|
+| s49 | Keyboard trap in the checkout's coupon field (broken) | BROKE keyboard/trap in #tb_coupon<br>and exit 1 (keyboard)<br>and no any keyboard/trap in #news<br>harness: orders | **caught** | merged | not run | not run | not run |
+| s50 | Checkout fields lose their labels (broken) | NEW a11y/label (3×) (a11y)<br>and no BROKE<br>harness: statement | **caught** | merged | not run | not run | not run |
+| s51 | Focus lost when the newsletter dialog closes (broken) | NEW keyboard/focus-lost (keyboard)<br>and no any keyboard/trap | **caught** | merged | not run | not run | not run |
+| s52 | Modal dialog stops containing focus (broken) | NEW keyboard/dialog-focus (keyboard) | **caught** | merged | not run | not run | not run |
+| s53 | Dialog opens without taking focus (plain PHP) (broken) | NEW keyboard/dialog-focus (keyboard) | **caught** | merged | not run | not run | not run |
+| s54 | Theme removes every focus outline (broken) | NEW keyboard/no-focus-ring (keyboard) | **caught** | merged | not run | not run | not run |
+| s55 | Skip link points nowhere (broken) | NEW keyboard/skip-link-broken (keyboard) | **caught** | merged | not run | not run | not run |
+| s56 | Menu toggle becomes a div (broken) | NEW keyboard/not-reachable (keyboard) | **caught** | merged | not run | not run | not run |
+| s57 | Custom button ignores Enter and Space (plain PHP) (broken) | NEW keyboard/not-operable (keyboard) | **caught** | merged | not run | not run | not run |
+| s58 | Submenu opens on hover only (broken) | NEW keyboard/menu (keyboard) | **caught** | merged | not run | not run | not run |
+| s59 | Invalid autocomplete tokens in the checkout (broken) | NEW a11y/autocomplete-valid (a11y) | **caught** | merged | not run | not run | not run |
+| s60 | Checkout labels replaced by placeholders (broken) | NEW a11y/placeholder-label (a11y)<br>and no any a11y/label | **caught** | merged | not run | not run | not run |
+| s61 | Place order text too light to read (broken) | NEW a11y/color-contrast in #place_order (a11y) | **caught** | merged | not run | not run | not run |
+| s62 | Pages lose their lang attribute (broken) | NEW a11y/html-has-lang (a11y) | **caught** | merged | not run | not run | not run |
+| s63 | Gallery images lose their alt text (broken) | NEW a11y/image-alt (a11y) | **caught** | merged | not run | not run | not run |
+| s64 | Contact form errors shown by colour only (key flow) (broken) | NEW keyboard/error-not-linked (keyboard) | **caught** | merged | not run | not run | not run |
+| s65 | Cookie banner traps the keyboard (plain PHP) (broken) | BROKE keyboard/trap (keyboard) | **caught** | merged | not run | not run | not run |
+| s66 | Zoom switched off (plain PHP) (broken) | NEW a11y/meta-viewport (a11y) | **caught** | merged | not run | not run | not run |
+| s67 | Web component loses its label in a shadow root (plain PHP) (broken) | NEW a11y/label in  >>>  (a11y) | **caught** | merged | not run | not run | not run |
+| s68 | Account form drops a label; prefilled with canaries (login) (broken) | NEW a11y/label in acc_phone (a11y)<br>harness: canaries, requests | missed | pending (axe lane) | not run | not run | not run |
+| s69 | Promo bar too wide to reflow (plain PHP) (broken) | NEW a11y/reflow (a11y) | **caught** | merged | not run | not run | not run |
+| s70 | Place order reachable only by mouse (key flow) (broken) | BROKE keyboard/flow (keyboard)<br>harness: orders | **caught** | merged | not run | not run | not run |
+| s71 | Select navigates when it gets focus (plain PHP) (broken) | NEW keyboard/context-change (keyboard) | **caught** | merged | not run | not run | not run |
+| s72 | Closed off-canvas menu stays tabbable (plain PHP) (broken) | NEW keyboard/focus-invisible (keyboard) | **caught** | merged | not run | not run | not run |
+| s73 | Accessibility overlay script added (broken) | NEW a11y/overlay (a11y)<br>harness: requests | **caught** | merged | not run | not run | not run |
+| s74 | Page too big and busy for the audits to finish (plain PHP) (broken) | exit 3<br>and warning “not checked” (a11y)<br>and no FIXED | **caught** | merged | not run | not run | not run |
+| s75 | Dialog ignores Escape (plain PHP) (broken) | NEW keyboard/escape (keyboard)<br>and no any keyboard/trap | **caught** | merged | not run | not run | not run |
+| s76 | Focus handler reloads the page (plain PHP) (broken) | any keyboard/trap<br>or warning “keyboard: /a11y/reload-trap.php:” (keyboard) | **caught** | merged | not run | not run | not run |
+| s77 | Native dialog with showModal() (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **caught** | merged | not run | not run | not run |
+| s78 | Custom modal done right (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **caught** | merged | not run | not run | not run |
+| s79 | Focus shown without an outline (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/no-focus-ring | **caught** | merged | not run | not run | not run |
+| s80 | Visually hidden skip link that shows on focus (hard good) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/skip-link, any keyboard/focus-invisible, any keyboard/no-focus-ring | **caught** | merged | not run | not run | not run |
+| s81 | Page that changes on every load (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW | **caught** | merged | not run | not run | not run |
+| s82 | 300 old contrast problems, nothing changes (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW, FIXED | **caught** | merged | not run | not run | not run |
+| s83 | One of 300 old contrast problems fixed (plain PHP) (broken) | FIXED a11y/color-contrast in row-5 (a11y)<br>and no NEW | **caught** | merged | not run | not run | not run |
+| s84 | Frames from the same and another origin (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW<br>harness: statement, canaries, requests | **caught** | merged | not run | not run | not run |
+| s85 | Checkout on a busy machine (hard good) (good) | nothing at or above NEW (keyboard)<br>and no NEW, any keyboard/trap<br>harness: stress, orders | **caught** | merged | not run | not run | not run |
+| s86 | Checkout answers 500 under --eaa (broken) | BROKE health/ (health)<br>harness: statement | **caught** | merged | not run | not run | not run |
+| s87 | Snapshot from Soundcheck 1.2 compared with --eaa (plain PHP) (good) | warning “used the WCAG 2.0 rules”<br>and nothing at or above NEW (a11y)<br>and no NEW a11y/autocomplete-valid | **caught** | merged | not run | not run | not run |
+| s88 | Page with side effects on GET and on focus (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW<br>harness: orders, requests | **caught** | merged | not run | not run | not run |
+| s89 | A fully accessible small site (plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any a11y/, any keyboard/<br>harness: statement, requests | **caught** | merged | not run | not run | not run |
+
+- **s49**: BROKE keyboard/trap: Keyboard focus is trapped [#tb_coupon] (/checkout/); exit 1
+- **s50**: NEW a11y/label: Form elements must have labels [#tb_billing_name] (/checkout/)
+- **s51**: NEW keyboard/focus-lost: Focus is lost after closing [#news-open] (/s51-newsletter/)
+- **s52**: NEW keyboard/dialog-focus: Dialog doesn't take or keep focus [#grind-open] (/s52-modal/)
+- **s53**: NEW keyboard/dialog-focus: Dialog doesn't take or keep focus [#client-open] (/a11y/dialog-nofocus.php)
+- **s54**: NEW keyboard/no-focus-ring: No visible focus indicator [#main > article > p:nth-of-type(2) > a] (/s54-focus/)
+- **s55**: NEW keyboard/skip-link-broken: Skip link doesn't move focus to the content [a] (/s55-skip/)
+- **s56**: NEW keyboard/not-reachable: Clickable element can't be reached by keyboard [header > div] (/s56-toggle/)
+- **s57**: NEW keyboard/not-operable: Control doesn't respond to Enter or Space [#save] (/a11y/wishlist.php)
+- **s58**: NEW keyboard/menu: Submenu doesn't open by keyboard [#menu-primary > li:nth-of-type(8) > a] (/s58-submenu/)
+- **s59**: NEW a11y/autocomplete-valid: autocomplete attribute must be used correctly [#tb_billing_address] (/checkout/)
+- **s60**: NEW a11y/placeholder-label: Form field is labelled only by its placeholder [#tb_billing_address] (/checkout/)
+- **s61**: NEW a11y/color-contrast: Elements must meet minimum color contrast ratio thresholds [#place_order] (/checkout/)
+- **s62**: NEW a11y/html-has-lang: <html> element must have a lang attribute [html] (/s62-lang/)
+- **s63**: NEW a11y/image-alt: Images must have alternative text [#main > article > figure > img:nth-of-type(1)] (/s63-gallery/)
+- **s64**: NEW keyboard/error-not-linked: Form errors aren't tied to their fields [#tb-contact] (/contact/)
+- **s65**: BROKE keyboard/trap: Keyboard focus is trapped [#consent] (/a11y/consent.php)
+- **s66**: NEW a11y/meta-viewport: Zooming and scaling must not be disabled [meta[name="viewport"]] (/a11y/zoom.php)
+- **s67**: NEW a11y/label: Form elements must have labels [#card-field >>> #card] (/a11y/widget.php)
+- **s69**: NEW a11y/reflow: Page scrolls sideways at 320 px wide [#promo] (/a11y/promo.php)
+- **s70**: BROKE keyboard/flow: Key flow can't be finished by keyboard [keyboard-checkout.yaml: click #place_order] (/checkout/)
+- **s71**: NEW keyboard/context-change: Moving focus changes the page [#view] (/a11y/autonav.php)
+- **s72**: NEW keyboard/focus-invisible: Focused element is hidden [#drawer > a:nth-of-type(1)] (/a11y/offcanvas.php)
+- **s73**: NEW a11y/overlay: Accessibility overlay widget found [pojo-accessibility] (/s73-overlay/)
+- **s74**: exit 3; warning: not checked: /a11y/big.php (a11y: reflow check at 320 px: context deadline exceeded); its issues are kept from the snapshot, not counted as fixed
+- **s75**: NEW keyboard/escape: Escape doesn't close it [#filters-open] (/a11y/noescape.php)
+- **s76**: warning: keyboard: /a11y/reload-trap.php: Tab stop 6 (body) left the page; the rest of the page wasn't walked
+- **s77**: nothing at or above NEW
+- **s78**: nothing at or above NEW
+- **s79**: nothing at or above NEW
+- **s80**: nothing at or above NEW
+- **s81**: nothing at or above NEW
+- **s82**: nothing at or above NEW
+- **s83**: FIXED a11y/color-contrast: Elements must meet minimum color contrast ratio thresholds [#row-5] (/a11y/backlog.php)
+- **s84**: nothing at or above NEW
+- **s85**: nothing at or above NEW
+- **s86**: BROKE health/status: Server error 500 (/checkout/)
+- **s87**: warning: note: snapshot "good" used the WCAG 2.0 rules; take a new snapshot to add the 2.1 rules; nothing at or above NEW
+- **s88**: nothing at or above NEW
+- **s89**: nothing at or above NEW
+
+### False alarms on unchanged sites
+
+Every scenario good. Each round takes an `--eaa` snapshot and compares twice with nothing changed; the rounds marked by a scenario run on its pages with its flags. Target: 0.
+
+| Site | Rounds | Compares | Pages | False alarms | Errors |
+|---|---:|---:|---:|---:|---:|
+| wp | 10 | 20 | 17 | 0 | 0 |
+| php | 10 | 20 | 17 | 0 | 0 |
+| s89 | 10 | 20 | 1 | 0 | 0 |
+
+### Determinism
+
+Issue keys of each round's snapshot against the first round's, for the same unchanged pages. Target: 0 differing keys.
+
+| Site | Snapshots | Issue keys in the first | Differing keys |
+|---|---:|---:|---:|
+| wp | 10 | 34 | 0 |
+| php | 10 | 0 | 0 |
+| s89 | 10 | 0 | 0 |
+
+### Cost
+
+16 cores, linux/amd64, Chrome 153.0.8010.52, axe-core 4.14.0 (tags wcag2a, wcag2aa, wcag21a, wcag21aa), 2026-10-26. Seconds per page, median / p95, over the control pass's pages of each site. A page visit is the time Soundcheck records for the page; the keyboard walk is counted apart. The a11y audit is a run with `--modules health,a11y` minus one with `--modules health`, page by page.
+
+| Measure | wp | php | Target (PRD 16.3) |
+|---|---:|---:|---|
+| Page visit, default run | 2.82 / 2.98 | 2.67 / 4.22 |  |
+| Page visit, `--eaa` run | 1.36 / 1.47 | 1.38 / 2.90 |  |
+| a11y audit per page | 0.07 / 0.87 | 0.00 / 0.02 | median at most 2 s |
+| Keyboard walk per page | 4.32 / 5.59 **over** | 1.17 / 3.60 | median at most 3 s |
+| Whole `--eaa` run ÷ default run | 0.7× (23 s ÷ 33 s) | 0.8× (24 s ÷ 32 s) | at most 3× |
+| One key flow (s70, `/checkout/`) | 1.4 s | | at most 15 s |
+
+### Coverage
+
+Which WCAG A and AA success criteria the tests can find failures of. A criterion with a test still needs a person to judge it: the tests find some failures, never a pass. The rest are `not tested: needs a person`.
+
+| WCAG | Criteria | Automated | Keyboard | Needs a person only |
+|---|---:|---:|---:|---:|
+| 2.1 | 50 | 22 | 7 | 23 |
+| 2.2 | 55 | 23 | 8 | 26 |
+
+<details><summary>Every criterion</summary>
+
+| Criterion | Level | EN 301 549 | WCAG | Automated | Keyboard |
+|---|---|---|---|---|---|
+| 1.1.1 Non-text Content | A | 9.1.1.1 | 2.1, 2.2 | `axe:aria-meter-name`, `axe:aria-progressbar-name`, `axe:image-alt`, `axe:input-image-alt`, `axe:object-alt`, `axe:role-img-alt`, `axe:svg-img-alt` | – |
+| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | 2.1, 2.2 | `axe:audio-caption` | – |
+| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | 2.1, 2.2 | `axe:video-caption` | – |
+| 1.2.3 Audio Description or Media Alternative (Prerecorded) | A | 9.1.2.3 | 2.1, 2.2 | needs a person | needs a person |
+| 1.2.4 Captions (Live) | AA | 9.1.2.4 | 2.1, 2.2 | needs a person | needs a person |
+| 1.2.5 Audio Description (Prerecorded) | AA | 9.1.2.5 | 2.1, 2.2 | needs a person | needs a person |
+| 1.3.1 Info and Relationships | A | 9.1.3.1 | 2.1, 2.2 | `axe:aria-hidden-body`, `axe:aria-required-children`, `axe:aria-required-parent`, `axe:definition-list`, `axe:dlitem`, `axe:list`, `axe:listitem`, `axe:td-headers-attr`, `axe:th-has-data-cells` | – |
+| 1.3.2 Meaningful Sequence | A | 9.1.3.2 | 2.1, 2.2 | needs a person | needs a person |
+| 1.3.3 Sensory Characteristics | A | 9.1.3.3 | 2.1, 2.2 | needs a person | needs a person |
+| 1.3.4 Orientation | AA | 9.1.3.4 | 2.1, 2.2 | needs a person | needs a person |
+| 1.3.5 Identify Input Purpose | AA | 9.1.3.5 | 2.1, 2.2 | `axe:autocomplete-valid` | – |
+| 1.4.1 Use of Color | A | 9.1.4.1 | 2.1, 2.2 | `axe:link-in-text-block` | – |
+| 1.4.2 Audio Control | A | 9.1.4.2 | 2.1, 2.2 | `axe:no-autoplay-audio` | – |
+| 1.4.3 Contrast (Minimum) | AA | 9.1.4.3 | 2.1, 2.2 | `axe:color-contrast` | – |
+| 1.4.4 Resize Text | AA | 9.1.4.4 | 2.1, 2.2 | `axe:meta-viewport` | – |
+| 1.4.5 Images of Text | AA | 9.1.4.5 | 2.1, 2.2 | needs a person | needs a person |
+| 1.4.10 Reflow | AA | 9.1.4.10 | 2.1, 2.2 | `a11y/reflow` | – |
+| 1.4.11 Non-text Contrast | AA | 9.1.4.11 | 2.1, 2.2 | needs a person | needs a person |
+| 1.4.12 Text Spacing | AA | 9.1.4.12 | 2.1, 2.2 | `axe:avoid-inline-spacing` | – |
+| 1.4.13 Content on Hover or Focus | AA | 9.1.4.13 | 2.1, 2.2 | needs a person | needs a person |
+| 2.1.1 Keyboard | A | 9.2.1.1 | 2.1, 2.2 | `axe:frame-focusable-content`, `axe:scrollable-region-focusable`, `axe:server-side-image-map` | `keyboard/not-reachable`, `keyboard/not-operable`, `keyboard/menu`, `keyboard/flow` |
+| 2.1.2 No Keyboard Trap | A | 9.2.1.2 | 2.1, 2.2 | – | `keyboard/trap` |
+| 2.1.4 Character Key Shortcuts | A | 9.2.1.4 | 2.1, 2.2 | needs a person | needs a person |
+| 2.2.1 Timing Adjustable | A | 9.2.2.1 | 2.1, 2.2 | `axe:meta-refresh` | – |
+| 2.2.2 Pause, Stop, Hide | A | 9.2.2.2 | 2.1, 2.2 | `axe:blink`, `axe:marquee` | – |
+| 2.3.1 Three Flashes or Below Threshold | A | 9.2.3.1 | 2.1, 2.2 | needs a person | needs a person |
+| 2.4.1 Bypass Blocks | A | 9.2.4.1 | 2.1, 2.2 | `axe:bypass` | `keyboard/skip-link-broken` |
+| 2.4.2 Page Titled | A | 9.2.4.2 | 2.1, 2.2 | `axe:document-title` | – |
+| 2.4.3 Focus Order | A | 9.2.4.3 | 2.1, 2.2 | – | `keyboard/focus-lost`, `keyboard/dialog-focus` |
+| 2.4.4 Link Purpose (In Context) | A | 9.2.4.4 | 2.1, 2.2 | `axe:area-alt`, `axe:link-name` | – |
+| 2.4.5 Multiple Ways | AA | 9.2.4.5 | 2.1, 2.2 | needs a person | needs a person |
+| 2.4.6 Headings and Labels | AA | 9.2.4.6 | 2.1, 2.2 | needs a person | needs a person |
+| 2.4.7 Focus Visible | AA | 9.2.4.7 | 2.1, 2.2 | – | `keyboard/no-focus-ring`, `keyboard/focus-invisible` |
+| 2.4.11 Focus Not Obscured (Minimum) | AA | 9.2.4.11 | 2.2 only | – | `keyboard/focus-obscured` |
+| 2.5.1 Pointer Gestures | A | 9.2.5.1 | 2.1, 2.2 | needs a person | needs a person |
+| 2.5.2 Pointer Cancellation | A | 9.2.5.2 | 2.1, 2.2 | needs a person | needs a person |
+| 2.5.3 Label in Name | A | 9.2.5.3 | 2.1, 2.2 | `axe:label-content-name-mismatch` | – |
+| 2.5.4 Motion Actuation | A | 9.2.5.4 | 2.1, 2.2 | needs a person | needs a person |
+| 2.5.7 Dragging Movements | AA | 9.2.5.7 | 2.2 only | needs a person | needs a person |
+| 2.5.8 Target Size (Minimum) | AA | 9.2.5.8 | 2.2 only | `axe:target-size` | – |
+| 3.1.1 Language of Page | A | 9.3.1.1 | 2.1, 2.2 | `axe:html-has-lang`, `axe:html-lang-valid`, `axe:html-xml-lang-mismatch` | – |
+| 3.1.2 Language of Parts | AA | 9.3.1.2 | 2.1, 2.2 | `axe:valid-lang` | – |
+| 3.2.1 On Focus | A | 9.3.2.1 | 2.1, 2.2 | – | `keyboard/context-change` |
+| 3.2.2 On Input | A | 9.3.2.2 | 2.1, 2.2 | needs a person | needs a person |
+| 3.2.3 Consistent Navigation | AA | 9.3.2.3 | 2.1, 2.2 | needs a person | needs a person |
+| 3.2.4 Consistent Identification | AA | 9.3.2.4 | 2.1, 2.2 | needs a person | needs a person |
+| 3.2.6 Consistent Help | A | 9.3.2.6 | 2.2 only | needs a person | needs a person |
+| 3.3.1 Error Identification | A | 9.3.3.1 | 2.1, 2.2 | – | `keyboard/error-not-linked` |
+| 3.3.2 Labels or Instructions | A | 9.3.3.2 | 2.1, 2.2 | `a11y/placeholder-label`, `interact/unlabeled`, `axe:form-field-multiple-labels` | – |
+| 3.3.3 Error Suggestion | AA | 9.3.3.3 | 2.1, 2.2 | needs a person | needs a person |
+| 3.3.4 Error Prevention (Legal, Financial, Data) | AA | 9.3.3.4 | 2.1, 2.2 | needs a person | needs a person |
+| 3.3.7 Redundant Entry | A | 9.3.3.7 | 2.2 only | needs a person | needs a person |
+| 3.3.8 Accessible Authentication (Minimum) | AA | 9.3.3.8 | 2.2 only | needs a person | needs a person |
+| 4.1.1 Parsing | A | 9.4.1.1 | 2.1 only | needs a person | needs a person |
+| 4.1.2 Name, Role, Value | A | 9.4.1.2 | 2.1, 2.2 | `interact/unlabeled`, `axe:area-alt`, `axe:aria-allowed-attr`, `axe:aria-braille-equivalent`, `axe:aria-command-name`, `axe:aria-conditional-attr`, `axe:aria-deprecated-role`, `axe:aria-hidden-body`, `axe:aria-hidden-focus`, `axe:aria-input-field-name`, `axe:aria-prohibited-attr`, `axe:aria-required-attr`, `axe:aria-roledescription`, `axe:aria-roles`, `axe:aria-tab-name`, `axe:aria-toggle-field-name`, `axe:aria-tooltip-name`, `axe:aria-valid-attr`, `axe:aria-valid-attr-value`, `axe:button-name`, `axe:duplicate-id-aria`, `axe:frame-title`, `axe:frame-title-unique`, `axe:input-button-name`, `axe:input-image-alt`, `axe:label`, `axe:link-name`, `axe:nested-interactive`, `axe:select-name`, `axe:summary-name` | – |
+| 4.1.3 Status Messages | AA | 9.4.1.3 | 2.1, 2.2 | needs a person | needs a person |
+
+</details>
+
+### Other tools
+
+Run on the same states when installed. Caught means a violation in the broken state that the good state lacks.
+
+| Tool | Caught (broken scenarios) | False alarms (good scenarios) | Violations in good states | Errors |
+|---|---:|---:|---:|---:|
+| Unlighthouse | not run | | | |
+| axe-core CLI | not run | | | |
+| pa11y | not run | | | |
+
+- **Unlighthouse**: Lighthouse on the scenario's page in both states (desktop); caught when a category score drops by 0.03 or more (performance: 0.10). Not run; to include it, `npm i -g @unlighthouse/cli@0.19.1` (or `-tools unlighthouse` to run it through npx).
+- **axe-core CLI**: axe-core with the WCAG 2.1 A and AA tags on the scenario's page in both states; caught when broken has a violation good lacks. Not run; to include it, `npm i -g @axe-core/cli@4.14.0` and a matching ChromeDriver (or `-tools axe` to run it through npx).
+- **pa11y**: pa11y (HTML_CodeSniffer, WCAG2AA) on the scenario's page in both states; caught when broken has an error good lacks. Not run; to include it, `npm i -g pa11y@10.0.0` (or `-tools pa11y` to run it through npx).
+
+### Run it
+
+```sh
+make build
+make -C testbed up
+make -C testbed bench-eaa      # go run -tags testbed ./testbed/bench -only eaa (10 control rounds)
+go run -tags testbed ./testbed/bench -only eaa -tools axe,pa11y,unlighthouse   # also run the other tools
+```
+
+An `-only eaa` run rewrites only this section of `docs/benchmark.md`. Runs are kept in `testbed/bench/work/<id>/` (with `statement.md` for the statement harness), the `--eaa` control pass in `work/control/eaa-<site>/` and the cost pass in `work/cost/`.
+<!-- eaa:end -->
