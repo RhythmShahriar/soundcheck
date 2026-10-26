@@ -136,3 +136,35 @@ func TestAuditPage(t *testing.T) {
 	t.Logf("%d findings in %s", len(found), time.Since(start).Round(time.Millisecond))
 }
 
+// TestPreflight switches every accessibility scenario good and broken
+// and checks its page does what scenarios.yaml says (preflight.go): the
+// plain-PHP pages' self-tests pass in both states.
+func TestPreflight(t *testing.T) {
+	dir, m := setup(t)
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := browser.NewTab(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tab.Close() }()
+	results, err := preflight(context.Background(), dir, m.Sites, tab, wpLogin(m.Sites["wp"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if !r.OK() {
+			t.Errorf("%s, want %s", r, map[bool]string{true: r.Probe.Good, false: r.Probe.Broken}[r.State == "good"])
+		} else {
+			t.Log(r)
+		}
+	}
+}
+

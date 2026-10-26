@@ -100,13 +100,18 @@ services:
   # Plain PHP over http and, for s25 (mixed content), https. The
   # certificate is a throwaway self-signed one made at start, so the
   # repository holds no key; Soundcheck needs -k for the https site.
+  # The third port serves the same site as another origin: a11y/embed.php
+  # (s84) loads its cross-origin payment frame from it, as 127.0.0.1
+  # while the site is localhost.
   php:
     image: php:8.3.27-apache
     ports:
       - "127.0.0.1:${TESTBED_PHP_PORT:-18810}:80"
       - "127.0.0.1:${TESTBED_PHP_HTTPS_PORT:-18811}:443"
+      - "127.0.0.1:${TESTBED_PHP_FRAME_PORT:-18812}:80"
     environment:
       TESTBED_HTTP_ORIGIN: http://localhost:${TESTBED_PHP_PORT:-18810}
+      TESTBED_FRAME_ORIGIN: http://127.0.0.1:${TESTBED_PHP_FRAME_PORT:-18812}
     command:
       - sh
       - -c
@@ -116,7 +121,8 @@ services:
         && a2enmod -q ssl && a2ensite -q default-ssl && exec apache2-foreground
     volumes:
       - ./php:/var/www/html:ro
-      - ./state:/var/www/state:ro
+      # Read-write for the side-effect counter (state/sidefx.txt, s88).
+      - ./state:/var/www/state
 
 volumes:
   wp: {}
