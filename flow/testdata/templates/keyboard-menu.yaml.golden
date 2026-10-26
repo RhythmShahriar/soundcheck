@@ -1,0 +1,20 @@
+# A Soundcheck key flow: a journey played by keyboard only (Tab, Enter,
+# Space and the arrow keys), never by mouse, on every run with --level
+# flows. A step Tab can't reach, or a key that does nothing, is reported
+# as keyboard/flow.
+#
+# keyboard: true holds anything the flow would send to the site;
+# keyboard: send lets it through, only on a loopback or private address
+# or with --staging. Opening a menu sends nothing, so either works.
+#
+# The toggle shows at narrow widths in most themes: run the flow with a
+# mobile viewport, or point on: at the button your menu uses.
+name: Menu opens by keyboard
+start: /
+keyboard: true
+steps:
+  # Tab to the menu toggle, then Enter.
+  - press: {key: Enter, on: ".menu-toggle, button[aria-controls][aria-expanded]"}
+  - expect: {selector: "[aria-expanded=true]"}
+  - press: Tab
+  - expect: {focus_within: nav}
