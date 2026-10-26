@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/launcher/flags"
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/rhythm/kit/config"
@@ -42,6 +43,10 @@ type Options struct {
 	Insecure bool
 	// Visible shows the browser window, for debugging flows.
 	Visible bool
+	// Switches are more Chrome command-line switches, by name without
+	// the dashes; "" sets one without a value. Tests use them to keep
+	// Chrome off the network (a proxy bypass list, resolver rules).
+	Switches map[string]string
 	// Log receives one-line progress messages, e.g. about a download,
 	// the browser version and sandbox warnings.
 	Log func(string)
@@ -193,6 +198,13 @@ func launchOnce(ctx context.Context, opts Options, bin string, noSandbox bool) (
 	}
 	if opts.Insecure {
 		l = l.Set("ignore-certificate-errors")
+	}
+	for name, value := range opts.Switches {
+		if value == "" {
+			l = l.Set(flags.Flag(name))
+		} else {
+			l = l.Set(flags.Flag(name), value)
+		}
 	}
 	u, proc, err := start(ctx, l, bin)
 	if err != nil {
