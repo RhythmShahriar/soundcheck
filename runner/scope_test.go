@@ -70,22 +70,27 @@ func listen(t *testing.T, port int, h http.HandlerFunc) *counter {
 // metadataAddr is the cloud metadata service's address.
 const metadataAddr = "169.254.169.254"
 
-// trapMetadata sends the run's client's connections to the metadata
-// address to a local counter (on port) once the guard's check let them
-// through, so a guard that regressed never reaches the real service.
+// trapMetadata sends the run's client's connections to any host but
+// loopback to a local counter (on port) once the guard's check let them
+// through, so a guard that regressed never reaches the real network.
+// The metadata service's are counted for the test to judge; any other
+// one fails the test on the spot.
 func trapMetadata(t *testing.T, port int) *counter {
 	t.Helper()
 	trap := listen(t, port, nil)
 	old := dialWith
 	dialWith = func(ctx context.Context, d *net.Dialer, network, addr string) (net.Conn, error) {
 		host, _, err := net.SplitHostPort(addr)
-		if err != nil || host != metadataAddr {
+		if err == nil && (host == "127.0.0.1" || host == "::1" || host == "localhost") {
 			return old(ctx, d, network, addr)
 		}
 		if d.ControlContext != nil {
 			if err := d.ControlContext(ctx, network, addr, nil); err != nil {
 				return nil, err
 			}
+		}
+		if host != metadataAddr {
+			t.Errorf("the client dialed %s, which isn't loopback", addr)
 		}
 		var to net.Dialer
 		return to.DialContext(ctx, network, strings.TrimPrefix(trap.url, "http://"))
