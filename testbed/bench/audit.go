@@ -102,6 +102,13 @@ func (a *auditor) Audit(ctx context.Context, tab *rod.Page, url, path string) ([
 	if err := load(page, url); err != nil { // a fresh page for the walk
 		return nil, err
 	}
+	// Pages with a side effect on focus (s88's chat field opens a
+	// WebSocket that bumps state/sidefx.txt) ask window.testbedDry first.
+	// Setting it in the page's own world keeps the audit from moving the
+	// counters, so they only move when Soundcheck causes a side effect.
+	if _, err := page.Eval(`() => { window.testbedDry = [] }`); err != nil {
+		return nil, err
+	}
 	walk, err := a.tabWalk(ctx, page, path)
 	if err != nil {
 		return nil, err
