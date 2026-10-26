@@ -552,7 +552,10 @@ func (s Store) list(kind string) ([]string, error) {
 }
 
 // Prune keeps the newest keep runs and deletes older ones. Snapshots are
-// never pruned and neither is a run another process is still writing.
+// never pruned and neither is a run another process is still writing,
+// nor an --eaa run with an evidence pack (eaa/evidence.json): each pack
+// is chained to the one before it, so deleting one would leave every
+// later pack's chain with a gap. Such runs are deleted by hand.
 func (s Store) Prune(keep int) error {
 	unlock, err := s.lock()
 	if err != nil {
@@ -566,7 +569,7 @@ func (s Store) Prune(keep int) error {
 	for len(runs) > keep {
 		dir := filepath.Join(s.Root, "runs", runs[0])
 		runs = runs[1:]
-		if inUse(filepath.Join(dir, owner)) {
+		if inUse(filepath.Join(dir, owner)) || hasEvidence(dir) {
 			continue
 		}
 		if err := os.RemoveAll(dir); err != nil {
@@ -574,6 +577,16 @@ func (s Store) Prune(keep int) error {
 		}
 	}
 	return nil
+}
+
+// evidencePack is where an --eaa run keeps its evidence pack, relative
+// to the run's folder (the evidence package's File).
+const evidencePack = "eaa/evidence.json"
+
+// hasEvidence reports whether the run in dir has an evidence pack.
+func hasEvidence(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(evidencePack)))
+	return err == nil
 }
 
 // realPath resolves symlinks and short names in p. The store folder may

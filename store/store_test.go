@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +202,34 @@ func TestSaveRunMarksInterrupted(t *testing.T) {
 	}
 	if got, _ := LoadRun(dir); !got.Interrupted {
 		t.Error("a run with a canceled page must be saved as interrupted")
+	}
+}
+
+// An --eaa run's evidence pack is chained to the next one, so Prune
+// keeps the run; a run without a pack goes as before.
+func TestPruneKeepsEvidenceRuns(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var dirs []string
+	for i := range 4 {
+		dir, err := s.NewDir("runs", Stamp(start.Add(time.Duration(i)*time.Minute)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, dir)
+	}
+	if err := os.MkdirAll(filepath.Join(dirs[0], "eaa"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirs[0], "eaa", "evidence.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	runs, _ := s.list("runs")
+	want := []string{filepath.Base(dirs[0]), filepath.Base(dirs[3])}
+	if !slices.Equal(runs, want) {
+		t.Errorf("kept %v, want %v", runs, want)
 	}
 }
