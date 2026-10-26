@@ -296,9 +296,20 @@ func TestIgnoreRuleAndEscape(t *testing.T) {
 			}
 		}
 	}
-	r := ignoreRule(model.Change{Check: "visual/page", Title: "Page looks different", Pages: []string{"/team/"}}, "photos", "")
-	if r.Title != "Page looks different" || r.Source != "" {
-		t.Errorf("no source: %+v", r)
+	r, err := ignoreRule(model.Change{Check: "visual/page", Title: "Page looks different", Pages: []string{"/team/"}}, "photos", "")
+	if err != nil || r.Title != "Page looks different" || r.Source != "" {
+		t.Errorf("no source: %+v %v", r, err)
+	}
+	// Brackets and ? are literal in a page glob, so those pages are kept
+	// as they are and match only themselves.
+	odd := []string{"/q?a=[1]/"}
+	if r, err := ignoreRule(model.Change{ID: "c1", Check: "a11y/x", Pages: odd}, "known", ""); err != nil || !slices.Equal(r.Pages, odd) || !model.Glob(r.Pages[0], odd[0]) || model.Glob(r.Pages[0], "/q/") {
+		t.Errorf("literal page: %+v %v", r, err)
+	}
+	// A * would widen the rule to other pages: refused.
+	_, err = ignoreRule(model.Change{ID: "c2", Check: "a11y/x", Pages: []string{"/ok/", "/a*b/"}}, "known", "")
+	if err == nil || !strings.Contains(err.Error(), `can't ignore c2: page "/a*b/" has a *`) {
+		t.Errorf("star page: %v", err)
 	}
 	if got := ruleText(config.IgnoreRule{Check: "a11y/color-contrast", Pages: []string{"/legal/*"}}); got != "a11y/color-contrast on /legal/*" {
 		t.Errorf("ruleText = %q", got)
