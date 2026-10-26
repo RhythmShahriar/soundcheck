@@ -17,7 +17,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +80,7 @@ type server struct {
 	host   string // 127.0.0.1:port, the only Host accepted
 	token  string
 	page   []byte
+	csp    string // the page's Content-Security-Policy header
 	byID   map[string]model.Change
 	decide Decide
 
@@ -146,7 +149,29 @@ func newServer(res report.Result, decide Decide) (*server, error) {
 		end = len(html)
 	}
 	s.page = append(append(append([]byte{}, html[:end]...), bar.Bytes()...), html[end:]...)
+	s.page, s.csp = reviewCSP(s.page)
 	return s, nil
+}
+
+var (
+	cspMeta       = regexp.MustCompile(`<meta http-equiv="Content-Security-Policy"[^>]*>`)
+	inlineScripts = regexp.MustCompile(`(?s)<script>(.*?)</script>`)
+)
+
+// reviewCSP swaps the report's own policy for the review page's. The
+// report allows only its own script and no requests; the review page
+// also runs the toolbar's script and posts decisions to this server.
+// Both scripts are allowed by hash, so nothing else on the page can
+// run. A browser enforces every policy it's given, so the report's
+// meta has to go rather than be added to.
+func reviewCSP(page []byte) ([]byte, string) {
+	page = cspMeta.ReplaceAll(page, nil)
+	var hashes []string
+	for _, m := range inlineScripts.FindAllSubmatch(page, -1) {
+		hashes = append(hashes, "'"+report.CSPHash(string(m[1]))+"'")
+	}
+	return page, "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src " + strings.Join(hashes, " ") +
+		"; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 }
 
 // URL is the page's address, token included.
@@ -185,8 +210,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.Set("Content-Type", "text/html; charset=utf-8")
-		h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "+
-			"script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", s.csp)
 		_, _ = w.Write(s.page)
 	case "/decide":
 		s.serveDecide(w, r)
