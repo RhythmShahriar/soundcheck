@@ -427,3 +427,38 @@ func TestReflowIssue(t *testing.T) {
 		t.Errorf("issue = %+v", i)
 	}
 }
+
+func TestOverlayScript(t *testing.T) {
+	script := func(u string) model.Resource { return model.Resource{URL: u, Type: "Script", Status: 200} }
+	cases := []struct {
+		res          []model.Resource
+		source, what string
+	}{
+		{[]model.Resource{script("https://acsbapp.com/apps/app/dist/js/app.js")}, "acsbapp.com", "acsbapp.com"},
+		{[]model.Resource{script("https://cdn.userway.org/widget.js")}, "cdn.userway.org", "cdn.userway.org"},
+		{[]model.Resource{script("https://shop.example.org/wp-content/plugins/pojo-accessibility/assets/js/app.js")},
+			"pojo-accessibility", "the WordPress plugin pojo-accessibility"},
+		{[]model.Resource{script("https://eu.acsbap.com/x.js")}, "eu.acsbap.com", "eu.acsbap.com"},
+		// Not overlays: a site's own script named after one, a host that
+		// only starts like one, an image from one, a script that isn't.
+		{[]model.Resource{script("https://shop.example.org/js/userway-analytics.js")}, "", ""},
+		{[]model.Resource{script("https://acsbapp.com.example.org/app.js")}, "", ""},
+		{[]model.Resource{script("https://notacsbapp.com/app.js")}, "", ""},
+		{[]model.Resource{{URL: "https://cdn.userway.org/logo.png", Type: "Image"}}, "", ""},
+		{[]model.Resource{script("https://shop.example.org/wp-content/plugins/pojo-accessibility-pro/app.js")}, "", ""},
+		{nil, "", ""},
+	}
+	for _, c := range cases {
+		source, what, ok := overlayScript(c.res)
+		if source != c.source || what != c.what || ok != (c.source != "") {
+			t.Errorf("%v: %q %q %v, want %q %q", c.res, source, what, ok, c.source, c.what)
+		}
+	}
+	i := overlayIssue("cdn.userway.org", "cdn.userway.org")
+	want := "This page loads cdn.userway.org. Overlay widgets don't make a site accessible; the FTC's 2025 order against accessiBe is about claims like that: " +
+		"https://www.ftc.gov/news-events/news/press-releases/2025/04/ftc-approves-final-order-requiring-accessibe-pay-1-million"
+	if i.Check != "a11y/overlay" || i.Level != model.Notice || i.Title != "Accessibility overlay widget found" || i.Detail != want ||
+		i.Source != "cdn.userway.org" || len(i.WCAG) != 0 || len(i.EN301549) != 0 || i.Impact != "minor" || i.Key == "" {
+		t.Errorf("issue = %+v", i)
+	}
+}

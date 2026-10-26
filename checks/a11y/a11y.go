@@ -84,6 +84,10 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 		setAudit(p, model.Audit{Status: model.AuditSkipped, Reason: "status " + strconv.Itoa(p.Status)})
 		return
 	}
+	// The overlay notice reads what the page loaded, whatever axe finds.
+	if i, ok := overlay(tab.Context(ctx), p); ok {
+		p.Issues = append(p.Issues, i)
+	}
 	s := settingsOf(cc.Config)
 	version := runVersion(cc.Run)
 	opts := auditOptions{Tags: tags(version), Max: s.MaxElements, Rules: needRules(cc)}
@@ -175,7 +179,7 @@ func recordRules(cc *check.Context, opts auditOptions, rules []string) {
 // comparison with a snapshot made before a check existed doesn't call
 // everything it finds NEW (compare's rule-set guard).
 func ownRules(tags []string) []string {
-	out := []string{"placeholder-label"}
+	out := []string{"overlay", "placeholder-label"}
 	if slices.Contains(tags, "wcag21aa") {
 		out = append(out, "reflow")
 	}

@@ -24,5 +24,8 @@ func (Module) Checks() []check.CheckInfo {
 			Doc: "A field's only name is its placeholder, which disappears when someone types. Search boxes with a search button are left out. Add a visible <label for> or aria-labelledby that points at visible text."},
 		{ID: "a11y/reflow", Level: model.Warning, Title: "Page scrolls sideways at 320 px wide (WCAG 1.4.10)",
 			Doc: "At 320 CSS px wide (1280 px zoomed to 400%) the page needs scrolling in two directions. Tables, code, media and [data-soundcheck-2d] are exempt. Runs for WCAG 2.1 and 2.2."},
+		// Advisory: a notice that names no WCAG criterion.
+		{ID: "a11y/overlay", Level: "advisory", Title: "Accessibility overlay widget found (no WCAG criterion)",
+			Doc: "The page loads an overlay widget (accessiBe, UserWay, EqualWeb, AudioEye, Enable, Access Ally or One Click Accessibility). A widget doesn't make a site accessible; it's reported as a notice."},
 	}
 }
