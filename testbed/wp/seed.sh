@@ -70,7 +70,8 @@ page about "About us" "<p>We started roasting in a garage in 2014. Today six of 
 page shop "Shop" "<p>Whole beans, roasted this week.</p>[testbed_products]<p><a href=\"/cart/\">View cart</a></p>" >/dev/null
 page cart "Cart" "[testbed_cart]" >/dev/null
 page checkout "Checkout" "<p>Check your details and place the order.</p>[testbed_checkout]" >/dev/null
-page contact "Contact" "<p>Questions about an order? Write to us and we'll answer within a day.</p>[testbed_contact_form]" >/dev/null
+page contact "Contact" "<p>Questions about an order? Write to us and we'll answer within a day.</p>[testbed_contact_form validate=\"1\"]" >/dev/null
+page my-account "My account" "<p>Your details and orders.</p>[testbed_account]" >/dev/null
 
 # One page per WordPress scenario; testbed/scenarios.yaml lists them.
 page s01-fatal "Subscription plans" "<p>Choose how much coffee you want each month.</p>[testbed_pricing]" >/dev/null
@@ -104,6 +105,18 @@ page s29-redirect "Old offers" "<p>Last season's offers, kept for reference.</p>
 page s30-stale "Roasting days" "[testbed_roast_day]<p>Questions about a roast? Ask us.</p>[testbed_contact_form]" >/dev/null
 page s32-captcha "Trade accounts" "<p>Apply for a trade account.</p>[testbed_contact_form captcha=\"1\"]" >/dev/null
 page s33-mail "Corporate gifts" "<p>Gift boxes for your team or clients.</p>[testbed_contact_form mail=\"1\"]" >/dev/null
+page s51-newsletter "Newsletter" "<p>New roasts, once a month.</p>[testbed_newsletter]" >/dev/null
+page s52-modal "Grind guide" "<p>Not sure how fine to grind? Ask the guide.</p>[testbed_modal]" >/dev/null
+# Site-wide accessibility scenarios: each gets a page of its own, like s02.
+page s54-focus "Tasting notes" "<p>Bright, sweet and round: how we describe a roast.</p><p><a href=\"/shop/\">Shop the roasts</a></p>" >/dev/null
+page s55-skip "Wholesale" "<p>Beans for cafés and offices, roasted to order.</p>" >/dev/null
+page s56-toggle "Subscriptions" "<p>A bag every two weeks, paused whenever you like.</p>" >/dev/null
+page s58-submenu "Guides index" "<p>Every guide we wrote, from filter to espresso.</p>" >/dev/null
+page s62-lang "Sourcing" "<p>We buy directly from farms we visit.</p>" >/dev/null
+page s73-overlay "Accessibility" "<p>We want everyone to be able to order from us.</p>" >/dev/null
+page s80-skip "Our coffee" "<p>Four origins, roasted twice a week.</p>" >/dev/null
+IMG=/wp-content/plugins/testbed-shop/assets/team.svg
+page s63-gallery "Roastery gallery" "<p>A look inside the roastery.</p><figure class=\"tb-gallery\"><img src=\"$IMG\" width=\"320\" height=\"160\" alt=\"The roasting drum, mid-roast\"> <img src=\"$IMG\" width=\"320\" height=\"160\" alt=\"Green beans in sacks from Huila\"> <img src=\"$IMG\" width=\"320\" height=\"160\" alt=\"Cupping bowls on the tasting table\"></figure>" >/dev/null
 page s46-widgets "Featured roasts" "<p>This month's featured roasts:</p><div class=\"tb-carousel\">Kenya Nyeri · Guatemala Huehuetenango · Decaf Colombia</div>" >/dev/null
 
 {
@@ -111,7 +124,8 @@ page s46-widgets "Featured roasts" "<p>This month's featured roasts:</p><div cla
 	for slug in s01-fatal s02-warning s04-blank s05-js-error s06-jquery s07-ajax s08-rest s09-links s10-image \
 		s11-form s12-menu s13-button s14-layout s15-mobile s16-noindex s17-title s19-account s20-heavy \
 		s21-maintenance s22-database s23-fatal s24-styles s26-robots s27-seo s28-sitemap s29-redirect s30-stale \
-		s32-captcha s33-mail s46-widgets shop cart checkout; do
+		s32-captcha s33-mail s46-widgets s51-newsletter s52-modal s54-focus s55-skip s56-toggle s58-submenu s62-lang s63-gallery \
+		s73-overlay s80-skip shop cart checkout contact my-account; do
 		echo "<li><a href=\"/$slug/\">/$slug/</a></li>"
 	done
 	echo "</ul>"

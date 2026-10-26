@@ -24,6 +24,43 @@ function testbed_broken( string $id ): bool {
 }
 
 /**
+ * Adds one to the counter <state>/<name>.txt and returns the new count,
+ * or -1 when the file can't be written. The shop counts placed orders in
+ * orders.txt; the benchmark's orders harness fails a scenario whose
+ * keyboard walk or key flow changed it (s70).
+ */
+function testbed_bump( string $name ): int {
+	$f = @fopen( testbed_state_dir() . '/' . $name . '.txt', 'c+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	if ( ! $f ) {
+		error_log( "testbed: can't write the $name counter in " . testbed_state_dir() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+		return -1;
+	}
+	flock( $f, LOCK_EX );
+	$n = (int) stream_get_contents( $f ) + 1;
+	ftruncate( $f, 0 );
+	rewind( $f );
+	fwrite( $f, $n . "\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	flock( $f, LOCK_UN );
+	fclose( $f ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	return $n;
+}
+
+/**
+ * The canaries the benchmark wrote into <state>/canaries (name=value per
+ * line), for s68. They are made at run time and never committed: a value
+ * that shows up in any of Soundcheck's files was leaked. Without the
+ * file there are none.
+ */
+function testbed_canaries(): array {
+	$out = array();
+	foreach ( @file( testbed_state_dir() . '/canaries', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ) ?: array() as $line ) {
+		[ $k, $v ] = array_pad( explode( '=', $line, 2 ), 2, '' );
+		$out[ trim( $k ) ] = trim( $v );
+	}
+	return $out;
+}
+
+/**
  * A fingerprint of every scenario's state. The page cache keys on it, so
  * toggling a scenario never serves a page rendered in the other state.
  * The wp-update scenarios (s47, s48) change the site by updating plugins
@@ -31,7 +68,7 @@ function testbed_broken( string $id ): bool {
  * testbed-update-* plugin counts too.
  */
 function testbed_state_hash(): string {
-	$files = glob( testbed_state_dir() . '/s*' ) ?: array();
+	$files = glob( testbed_state_dir() . '/s[0-9][0-9]' ) ?: array();
 	sort( $files );
 	$parts = array_map( 'basename', $files );
 	foreach ( glob( WP_PLUGIN_DIR . '/testbed-update-*/testbed-update-*.php' ) ?: array() as $plugin ) {
