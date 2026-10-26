@@ -4,6 +4,7 @@
 package report
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
@@ -36,9 +37,12 @@ type PrettyOptions struct {
 	// user typed; see InvokedAs.
 	Name string
 	// Accept, when set, is the command that accepts a change ("rhythm
-	// soundcheck accept"). CHANGED lines of a comparison with a snapshot
-	// then end with how to accept them.
+	// soundcheck accept"). BROKE, NEW and CHANGED lines of a comparison
+	// with a snapshot then end with how to accept them.
 	Accept string
+	// Columns is the terminal's width, for text wrapped to fit it such
+	// as the accessibility evidence note. Zero is 80.
+	Columns int
 }
 
 // InvokedAs is the name the user ran Soundcheck by, for the header and
@@ -297,6 +301,9 @@ func (p *Pretty) pageDetail(pg *model.Page) {
 		}
 		lines = append(lines, "console: "+Term(c))
 	}
+	if k := keyboardLine(pg); k != "" {
+		lines = append(lines, k)
+	}
 	for _, l := range lines {
 		if p.o.Plain {
 			fmt.Fprintf(p.w, "  %s\n", l)
@@ -411,12 +418,15 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		}
 		for _, class := range model.Classes {
 			for _, ch := range groups[class] {
-				fmt.Fprintf(p.w, "[%s] %s - %s\n", classes[class].Label, ch.Title, pagesLabel(ch.Pages, 3))
+				fmt.Fprintf(p.w, "[%s] %s - %s\n", classes[class].Label, ch.Title, whereLabel(ch.Check, ch.Pages))
 				if ba := beforeAfter(ch); ba != "" {
 					fmt.Fprintf(p.w, "  %s\n", ba)
 				}
 				if ch.Source != "" {
 					fmt.Fprintf(p.w, "  source: %s\n", ch.Source)
+				}
+				for _, l := range issueExtras(ch.Check, ch.WCAG, ch.EN301549, ch.FocusPath, true) {
+					fmt.Fprintf(p.w, "  %s\n", l)
 				}
 				if ch.Detail != "" {
 					fmt.Fprintf(p.w, "  %s\n", firstLine(ch.Detail))
@@ -430,14 +440,18 @@ func (p *Pretty) comparison(r Result, hints []string) {
 			}
 		}
 		if p.o.Quiet {
+			p.evidence(r, len(c.Changes) > 0)
 			return
 		}
 		var parts []string
 		for _, class := range shownClasses(c) {
 			parts = append(parts, fmt.Sprintf("%d %s", len(groups[class]), class))
 		}
-		fmt.Fprintf(p.w, "\n%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
+		fmt.Fprintln(p.w)
+		p.accessibility(r)
+		fmt.Fprintf(p.w, "%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
 			snapshotName(c.Before), r.stats())
+		p.evidence(r, false)
 		p.notes(c.Warnings)
 		p.hints(hints)
 		return
@@ -455,7 +469,7 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		fmt.Fprintln(p.w, "  "+ui.Section(classes[class].Label, len(cs), color, width)+"\n")
 		for _, ch := range cs {
 			if class == model.Broke || class == model.New {
-				fmt.Fprintln(p.w, changeCard(ch))
+				fmt.Fprintln(p.w, changeCard(ch, p.acceptHint(c, ch)))
 				fmt.Fprintln(p.w)
 			} else {
 				fmt.Fprintln(p.w, changeLine(ch))
@@ -469,19 +483,24 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		}
 	}
 	if p.o.Quiet {
+		p.evidence(r, false)
 		return
 	}
+	p.accessibility(r)
 	fmt.Fprintln(p.w, comparePanel(c))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(fmt.Sprintf("compared with %s · %s", snapshotName(c.Before), r.stats())))
+	p.evidence(r, false)
 	p.notes(c.Warnings)
 	p.hints(hints)
 	fmt.Fprintln(p.w)
 }
 
-// acceptHint says how to accept a CHANGED change of a comparison with a
-// snapshot: "rhythm soundcheck accept 3f2a9c01 if this is expected".
+// acceptHint says how to accept a BROKE, NEW or CHANGED change of a
+// comparison with a snapshot: "rhythm soundcheck accept 3f2a9c01 if
+// this is expected".
 func (p *Pretty) acceptHint(c *model.Comparison, ch model.Change) string {
-	if p.o.Accept == "" || ch.Class != model.Changed || ch.ID == "" || c.Before.Name == "" {
+	acceptable := ch.Class == model.Broke || ch.Class == model.New || ch.Class == model.Changed
+	if p.o.Accept == "" || !acceptable || ch.ID == "" || c.Before.Name == "" {
 		return ""
 	}
 	return p.o.Accept + " " + Term(ch.ID) + " if this is expected"
@@ -497,9 +516,12 @@ func (p *Pretty) run(r Result, hints []string) {
 			fmt.Fprintln(p.w)
 		}
 		for _, i := range issues {
-			fmt.Fprintf(p.w, "[%s] %s - %s\n", strings.ToUpper(string(i.Level)), i.Title, pagesLabel(i.Pages, 3))
+			fmt.Fprintf(p.w, "[%s] %s - %s\n", strings.ToUpper(string(i.Level)), i.Title, whereLabel(i.Check, i.Pages))
 			if i.Source != "" {
 				fmt.Fprintf(p.w, "  source: %s\n", i.Source)
+			}
+			for _, l := range issueExtras(i.Check, i.WCAG, i.EN301549, i.FocusPath, true) {
+				fmt.Fprintf(p.w, "  %s\n", l)
 			}
 			if d := firstLine(i.Detail); d != "" && len(i.Pages) <= 1 {
 				fmt.Fprintf(p.w, "  %s\n", d)
@@ -509,12 +531,17 @@ func (p *Pretty) run(r Result, hints []string) {
 			}
 		}
 		if p.o.Quiet {
+			p.evidence(r, len(issues) > 0)
 			return
 		}
 		counts := Counts(issues)
-		fmt.Fprintf(p.w, "\n%s - %s, %s, %s - %s\n", runVerdict(r.Run, counts),
+		fmt.Fprintln(p.w)
+		p.notChecked(r)
+		p.accessibility(r)
+		fmt.Fprintf(p.w, "%s - %s, %s, %s - %s\n", runVerdict(r.Run, counts),
 			plural(counts[model.Error], "error", "errors"), plural(counts[model.Warning], "warning", "warnings"),
 			plural(counts[model.Notice], "notice", "notices"), r.stats())
+		p.evidence(r, false)
 		p.notes(r.Run.Warnings)
 		p.hints(hints)
 		return
@@ -547,13 +574,70 @@ func (p *Pretty) run(r Result, hints []string) {
 		}
 	}
 	if p.o.Quiet {
+		p.evidence(r, false)
 		return
 	}
+	p.notChecked(r)
+	p.accessibility(r)
 	fmt.Fprintln(p.w, runPanel(r.Run, Counts(issues)))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(r.stats()))
+	p.evidence(r, false)
 	p.notes(r.Run.Warnings)
 	p.hints(hints)
 	fmt.Fprintln(p.w)
+}
+
+// columns is the width the terminal view wraps text at.
+func (p *Pretty) columns() int {
+	if p.o.Plain {
+		return cmp.Or(p.o.Columns, defaultColumns)
+	}
+	// The live view indents by two and keeps to its own width.
+	return min(width, cmp.Or(p.o.Columns, defaultColumns)-2)
+}
+
+// paragraph prints s wrapped to the terminal, indented by two in the
+// live view.
+func (p *Pretty) paragraph(s string, style lipgloss.Style) {
+	for _, l := range wrap(s, p.columns()) {
+		if p.o.Plain {
+			fmt.Fprintln(p.w, l)
+		} else {
+			fmt.Fprintln(p.w, "  "+style.Render(l))
+		}
+	}
+}
+
+// notChecked lists the pages of an --eaa run or snapshot a module
+// couldn't audit. A comparison's warnings already say it, so it isn't
+// printed twice there.
+func (p *Pretty) notChecked(r Result) {
+	if r.Compared() || r.Run.EAA == nil {
+		return
+	}
+	for _, l := range notCheckedLines(r.Run.EAA) {
+		p.paragraph(l, lipgloss.NewStyle().Foreground(lipgloss.Color(ui.High)))
+	}
+}
+
+// accessibility prints the counts line of an --eaa result.
+func (p *Pretty) accessibility(r Result) {
+	if l := accessibilityLine(r); l != "" {
+		p.paragraph(l, bold)
+	}
+}
+
+// evidence prints model.EvidenceNote under an --eaa result, after an
+// empty line when gap is set. It is printed with -q too: the tests'
+// limits are part of every result.
+func (p *Pretty) evidence(r Result, gap bool) {
+	if eaaOf(r) == nil {
+		return
+	}
+	if gap {
+		fmt.Fprintln(p.w)
+	}
+	p.paragraph(model.EvidenceNote, lipgloss.NewStyle())
 }
 
 // notes prints run warnings, at most a few of each kind.
@@ -625,8 +709,9 @@ func echoSummary(run *model.Run) string {
 	return fmt.Sprintf("Echo: %s from %s", sent, plural(len(acts), "form or flow", "forms and flows"))
 }
 
-// changeCard renders a BROKE or NEW change with its evidence and fix.
-func changeCard(c model.Change) string {
+// changeCard renders a BROKE or NEW change with its evidence, fix and
+// hint, the line that says how to accept it.
+func changeCard(c model.Change, hint string) string {
 	color := ClassColor(c.Class)
 	titleCol := width - indent - 2
 	where := countLabel(c.Pages)
@@ -646,8 +731,15 @@ func changeCard(c model.Change) string {
 	add := func(s string, style lipgloss.Style) {
 		body = append(body, pad+style.Render(ui.Truncate(s, width-indent-2)))
 	}
+	// A focus path ends where the problem is, so it wraps rather than
+	// losing its end.
+	addAll := func(s string, style lipgloss.Style) {
+		for _, l := range wrap(s, width-indent-2) {
+			add(l, style)
+		}
+	}
 	if !listed {
-		add(pagesLabel(c.Pages, 3), muted)
+		add(whereLabel(c.Check, c.Pages), muted)
 	}
 	if ba := beforeAfter(c); ba != "" {
 		add(ba, muted)
@@ -655,11 +747,17 @@ func changeCard(c model.Change) string {
 	if c.Source != "" {
 		add(c.Source, muted)
 	}
+	for _, l := range issueExtras(c.Check, c.WCAG, c.EN301549, c.FocusPath, false) {
+		addAll(l, muted)
+	}
 	if d := firstLine(c.Detail); d != "" {
 		add(d, muted.Italic(true))
 	}
 	if fix := firstLine(c.Fix); fix != "" {
 		body = append(body, pad+ui.Brand.Render("→")+" "+ui.Truncate(fix, width-indent-4))
+	}
+	if hint != "" {
+		add(hint, muted)
 	}
 	rail := lipgloss.NewStyle().Border(lipgloss.Border{Left: "▌"}, false, false, false, true).
 		BorderForeground(color).PaddingLeft(1).MarginLeft(1)
@@ -699,11 +797,21 @@ func issueCard(i model.Issue) string {
 	add := func(s string, style lipgloss.Style) {
 		body = append(body, pad+style.Render(ui.Truncate(s, width-indent-2)))
 	}
+	// A focus path ends where the problem is, so it wraps rather than
+	// losing its end.
+	addAll := func(s string, style lipgloss.Style) {
+		for _, l := range wrap(s, width-indent-2) {
+			add(l, style)
+		}
+	}
 	if len(i.Pages) > 1 {
-		add(pagesLabel(i.Pages, 3), muted)
+		add(whereLabel(i.Check, i.Pages), muted)
 	}
 	if i.Source != "" {
 		add(i.Source, muted)
+	}
+	for _, l := range issueExtras(i.Check, i.WCAG, i.EN301549, i.FocusPath, false) {
+		addAll(l, muted)
 	}
 	if fix := firstLine(i.Fix); fix != "" {
 		body = append(body, pad+ui.Brand.Render("→")+" "+ui.Truncate(fix, width-indent-4))
@@ -746,6 +854,8 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 		return prefix + "the site already has errors"
 	case counts[model.Warning] > 0:
 		return prefix + "a few warnings"
+	case counts[model.Notice] == 0 && r.EAA != nil:
+		return prefix + noFailuresVerdict
 	}
 	return prefix + "all clear"
 }
@@ -838,6 +948,9 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 	body := strings.Join(parts, "   ")
 	if counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0 {
 		body = ui.Good.Render("✓ no problems found")
+		if r.EAA != nil {
+			body = ui.Good.Render(noFailuresVerdict)
+		}
 	}
 	return ui.Panel(head+"\n"+body, color)
 }

@@ -144,21 +144,37 @@ func TestProgressPlain(t *testing.T) {
 	}
 }
 
-// CHANGED lines of a comparison with a snapshot say how to accept them;
-// BROKE ones and comparisons with another site don't.
+// BROKE, NEW and CHANGED lines of a comparison with a snapshot say how
+// to accept them; FIXED ones and comparisons with another site don't.
 func TestAcceptHint(t *testing.T) {
 	c := &model.Comparison{Before: model.RunRef{Name: "good"}, Changes: []model.Change{
 		{ID: "c1", Class: model.Changed, Check: "visual/page", Title: "Page looks different", Pages: []string{"/"}},
 		{ID: "b1", Class: model.Broke, Check: "health/status", Title: "Page not found (404)", Pages: []string{"/x/"}},
+		{ID: "n1", Class: model.New, Check: "health/js-error", Title: "JS error", Pages: []string{"/y/"}},
+		{ID: "f1", Class: model.Fixed, Check: "health/favicon", Title: "No favicon", Pages: []string{"/"}},
 	}}
 	res := Result{Run: &model.Run{}, Comparison: c}
 	var out bytes.Buffer
 	NewPretty(&out, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm-soundcheck accept"}).Summary(res, "")
-	if !strings.Contains(out.String(), "[CHANGED] Page looks different - /\n  rhythm-soundcheck accept c1 if this is expected\n") {
-		t.Errorf("no hint:\n%s", out.String())
+	for _, want := range []string{
+		"[CHANGED] Page looks different - /\n  rhythm-soundcheck accept c1 if this is expected\n",
+		"[BROKE] Page not found (404) - /x/\n  rhythm-soundcheck accept b1 if this is expected\n",
+		"[NEW] JS error - /y/\n  rhythm-soundcheck accept n1 if this is expected\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no hint %q:\n%s", want, out.String())
+		}
 	}
-	if strings.Contains(out.String(), "accept b1") {
-		t.Errorf("BROKE got a hint:\n%s", out.String())
+	if strings.Contains(out.String(), "accept f1") {
+		t.Errorf("FIXED got a hint:\n%s", out.String())
+	}
+	out.Reset()
+	lipgloss.SetColorProfile(termenv.Ascii)
+	NewPretty(&out, io.Discard, PrettyOptions{Accept: "rhythm-soundcheck accept"}).Summary(res, "")
+	for _, id := range []string{"b1", "n1", "c1"} {
+		if !strings.Contains(out.String(), "rhythm-soundcheck accept "+id+" if this is expected") {
+			t.Errorf("live view has no hint for %s:\n%s", id, out.String())
+		}
 	}
 	out.Reset()
 	c.Before.Name = ""

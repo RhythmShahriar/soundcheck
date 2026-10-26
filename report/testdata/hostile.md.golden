@@ -4,7 +4,7 @@
 
 | Broke | New | Changed | Slower | Fixed |
 |---:|---:|---:|---:|---:|
-| 1 | 0 | 1 | 0 | 0 |
+| 1 | 1 | 1 | 0 | 0 |
 
 ### ✗ BROKE (1)
 
@@ -13,6 +13,14 @@ _Worked in the snapshot, fails now._
 | Change | Where | Before → after | Fix |
 |---|---|---|---|
 | JS error: boom \\x1b\]52;c;Y3VybCBldmlsLnRlc3QgfCBzaA==\\x07\\x1b\[1A\\x1b\[2Kall good<br><sub>inline \\x1b\[1Ascript</sub> | `/b\x1b[2K` |  | fix \\x1b\[2J it |
+
+### ▲ NEW (1)
+
+_Problems that weren't there before._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| Keyboard focus is trapped: JS error: boom \\x1b\]52;c;Y3VybCBldmlsLnRlc3QgfCBzaA==\\x07\\x1b\[1A\\x1b\[2Kall good<br><sub>\#x\\x1b\[1A</sub> | `/b\x1b[2K` |  |  |
 
 ### ■ CHANGED (1)
 
