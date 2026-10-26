@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Key flow for s70, from Soundcheck's keyboard-checkout.yaml template
+# (flow.KeyboardTemplates) with the testbed shop's selectors in place of
+# WooCommerce's. keyboard: true runs it with the keyboard alone and holds
+# the order request, so no order is ever placed (the orders harness
+# checks state/orders.txt); keyboard: send would really place it.
+#
+# In s70's broken state Place order is out of the Tab order and only a
+# mouse click submits, so keyboard/flow fires.
+name: Checkout by keyboard
+start: /checkout/
+keyboard: true
+steps:
+  - fill: {selector: "#tb_billing_name", value: "${fake:name}"}
+  - fill: {selector: "#tb_billing_email", value: "${fake:email}"}
+  - fill: {selector: "#tb_billing_address", value: "1 Test Street, Testtown"}
+  - expect: {selector: "#place_order"}
+  - click: {selector: "#place_order"}

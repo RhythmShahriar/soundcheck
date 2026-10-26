@@ -21,6 +21,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -118,6 +119,7 @@ func run(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
+	sitesFromEnv(m)
 	for k, v := range o.sites {
 		if v != "" {
 			m.Sites[k] = v
@@ -213,7 +215,7 @@ func run(ctx context.Context, o options) error {
 func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Scenario, wd, bin string, binErr error,
 	tools []*Tool, results map[string]Result) Result {
 	o.timeout = max(o.timeout, s.Timeout)
-	if s.Harness == "wp-update" {
+	if s.Harness.Has("wp-update") {
 		return wpUpdateScenario(ctx, o, m, s, wd, bin, binErr)
 	}
 	url := m.URL(s)
@@ -222,6 +224,9 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	if err := copyRules(dir, wd, s.Rules); err != nil {
+		return Result{Outcome: Failed, Detail: err.Error()}
+	}
+	if err := copyInto(dir, filepath.Join(wd, ".soundcheck", "flows"), s.Flows, nil); err != nil {
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	defer func() { _ = Toggle(dir, s.ID, "good") }()
@@ -237,13 +242,18 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		sc = Result{Outcome: NotRun, Detail: binErr.Error()}
 	case s.Echo && o.echo == "":
 		sc = Result{Outcome: NotRun, Detail: "needs Echo: start it (rhythm echo up), start the testbed with TESTBED_SMTP=host.docker.internal:1025 and pass -echo http://127.0.0.1:8025"}
+	case s.Fixture != "":
+		// A snapshot an older Soundcheck wrote stands in for one taken now.
+		if err := copyFixture(dir, s.Fixture, filepath.Join(wd, ".soundcheck", "snapshots", "good"), m.Defaults[s.Site], m.Sites[s.Site]); err != nil {
+			sc = Result{Outcome: Failed, Detail: "fixture: " + err.Error()}
+		}
 	default:
 		snap := append([]string{"snapshot", url, "--name", "good", "--json", "-o", "good.json", "--config", cfgPath}, args...)
 		if _, _, err := command(ctx, o.timeout, wd, env(s), bin, snap...); err != nil {
 			sc = Result{Outcome: Failed, Detail: "snapshot: " + err.Error()}
 		}
 	}
-	if sc.Outcome == "" && s.Harness == "delete-shots" {
+	if sc.Outcome == "" && s.Harness.Has("delete-shots") {
 		if err := os.RemoveAll(filepath.Join(wd, ".soundcheck", "snapshots", "good", "shots")); err != nil {
 			sc = Result{Outcome: Failed, Detail: err.Error()}
 		}
@@ -258,9 +268,11 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		baselines[t.Key] = obs
 	}
 
-	// Broken state.
-	if err := Toggle(dir, s.ID, "broken"); err != nil {
-		return Result{Outcome: Failed, Detail: err.Error()}
+	// Broken state (the good one again for a scenario marked same).
+	if !s.Same {
+		if err := Toggle(dir, s.ID, "broken"); err != nil {
+			return Result{Outcome: Failed, Detail: err.Error()}
+		}
 	}
 	if sc.Outcome == "" {
 		cmp := append([]string{"compare", "--against-snapshot", "good", "--json", "-o", "compare.json", "--config", cfgPath}, args...)
@@ -299,8 +311,8 @@ func scenarioArgs(s Scenario, echo string) []string {
 // compareScenario runs compare in the broken state the way the
 // scenario's harness says and evaluates what it wrote.
 func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string, args []string) Result {
-	switch s.Harness {
-	case "interrupt":
+	switch {
+	case s.Harness.Has("interrupt"):
 		code, err := interrupted(ctx, o.timeout, s.InterruptAfter, wd, env(s), bin, args...)
 		if err != nil {
 			return Result{Outcome: Failed, Detail: "compare: " + err.Error()}
@@ -311,7 +323,7 @@ func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string,
 		}
 		return evaluateFile(s, filepath.Join(wd, "compare.json"), code, nil)
 
-	case "parallel":
+	case s.Harness.Has("parallel"):
 		a := slices.Clone(args)
 		b := slices.Clone(args)
 		a[slices.Index(a, "compare.json")] = "compare-a.json"
@@ -345,14 +357,19 @@ func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string,
 		ra.Found = fmt.Sprintf("both compares clean, in %d separate run folders", folders)
 		return ra
 
-	case "stress":
+	case s.Harness.Has("stress"):
 		stop := stress(ctx)
 		_, code, err := command(ctx, o.timeout, wd, env(s), bin, args...)
 		stop()
 		return evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
 	}
+	start := time.Now()
 	_, code, err := command(ctx, o.timeout, wd, env(s), bin, args...)
-	return evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
+	r := evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
+	if took := time.Since(start); s.Within > 0 && took > s.Within && r.Outcome == Caught {
+		return Result{Outcome: Missed, Detail: fmt.Sprintf("compare took %s, want at most %s", took.Round(time.Second), s.Within), Others: r.Others}
+	}
+	return r
 }
 
 // evaluateFile reads a compare's JSON output and evaluates it. A compare
@@ -440,6 +457,53 @@ func copyRules(testbed, wd string, rules []string) error {
 		}
 	}
 	return nil
+}
+
+// copyInto copies the given files (relative to testbed/) into dst under
+// their base names. edit, when set, may change each file's content.
+func copyInto(testbed, dst string, files []string, edit func([]byte) []byte) error {
+	if len(files) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dst, 0o750); err != nil {
+		return err
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Join(testbed, f)) //nolint:gosec // the testbed's own files
+		if err != nil {
+			return err
+		}
+		if edit != nil {
+			data = edit(data)
+		}
+		if err := os.WriteFile(filepath.Join(dst, filepath.Base(f)), data, 0o600); err != nil { //nolint:gosec // a base name, inside the run folder
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFixture copies a committed snapshot folder into dst. The fixture
+// was taken of the site at its default address (scenarios.yaml); when
+// the bench points the site elsewhere, from is replaced by to in it so
+// the compare checks the same pages.
+func copyFixture(testbed, fixture, dst, from, to string) error {
+	entries, err := os.ReadDir(filepath.Join(testbed, fixture))
+	if err != nil {
+		return err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join(fixture, e.Name()))
+		}
+	}
+	return copyInto(testbed, dst, files, func(b []byte) []byte {
+		if from == "" || from == to {
+			return b
+		}
+		return bytes.ReplaceAll(b, []byte(strings.TrimRight(from, "/")), []byte(strings.TrimRight(to, "/")))
+	})
 }
 
 // soundcheck finds the binary and its version. A missing binary isn't

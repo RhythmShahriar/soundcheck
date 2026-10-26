@@ -59,7 +59,7 @@ func scoreboard(m *Manifest, outcomes []Outcome, rounds []ControlRound, version 
 
 	var counted, pending []Outcome
 	for _, o := range outcomes {
-		if o.Scenario.Pending {
+		if o.Scenario.Pending.Is() {
 			pending = append(pending, o)
 		} else {
 			counted = append(counted, o)
@@ -71,12 +71,12 @@ func scoreboard(m *Manifest, outcomes []Outcome, rounds []ControlRound, version 
 	if len(pending) > 0 {
 		w("## Pending\n\n")
 		w("These scenarios expect a detector or fix that another part of the roadmap is building. They run like the others but don't count in the score. ")
-		w("When one shows **caught**, its `pending: true` can go from `testbed/scenarios.yaml`.\n\n")
+		w("When one shows **caught**, its `pending:` mark can go from `testbed/scenarios.yaml`.\n\n")
 		table(&b, pending, ran)
 		w("\n")
 		for _, o := range pending {
-			if o.Scenario.Note != "" {
-				w("- **%s**: %s\n", o.Scenario.ID, o.Scenario.Note)
+			if note := pendingNote(o.Scenario); note != "" {
+				w("- **%s**: %s\n", o.Scenario.ID, note)
 			}
 		}
 		w("\n")
@@ -286,4 +286,16 @@ func upper(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// pendingNote says what a pending scenario waits for: its note, or the
+// lane it names.
+func pendingNote(s Scenario) string {
+	switch {
+	case s.Note != "":
+		return s.Note
+	case s.Pending.Lane() != "":
+		return "waits for the " + s.Pending.Lane() + " lane of Soundcheck 1.3"
+	}
+	return ""
 }

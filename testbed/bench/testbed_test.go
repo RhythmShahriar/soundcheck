@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod/lib/proto"
+	"gopkg.in/yaml.v3"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -367,6 +368,7 @@ func TestStateFromEnv(t *testing.T) {
 // has a unique id toggle.sh accepts, a known site, a toggle and at least
 // one well-formed expectation (LoadManifest). Every scenario whose broken
 // state changes the site must be implemented behind testbed_broken().
+// The EAA scenarios are checked further by checkEAAScenarios.
 func TestManifest(t *testing.T) {
 	dir, err := Testbed()
 	if err != nil {
@@ -401,8 +403,8 @@ func TestManifest(t *testing.T) {
 		if s.ChangesSite() && !strings.Contains(code.String(), "testbed_broken( '"+s.ID+"' )") {
 			t.Errorf("%s: no testbed_broken( '%s' ) in testbed/wp or testbed/php", s.ID, s.ID)
 		}
-		if s.Pending && s.Note == "" {
-			t.Errorf("%s: pending without a note saying what it waits for", s.ID)
+		if s.Pending.Is() && s.Note == "" && s.Pending.Lane() == "" {
+			t.Errorf("%s: pending without a lane or a note saying what it waits for", s.ID)
 		}
 		for _, r := range s.Rules {
 			if _, err := os.Stat(filepath.Join(dir, r)); err != nil {
@@ -410,6 +412,8 @@ func TestManifest(t *testing.T) {
 			}
 		}
 	}
+	checkEAAScenarios(t, dir, m)
+
 	// toggle.sh knows every scenario.
 	state := t.TempDir()
 	t.Setenv("TESTBED_STATE", state)
@@ -532,3 +536,105 @@ type shotsOnly struct{}
 func (shotsOnly) Name() string                { return "shots" }
 func (shotsOnly) NeedsShots() bool            { return true }
 func (shotsOnly) NeedsSecondShot(_ bool) bool { return false }
+
+// checkEAAScenarios checks the EAA mode scenarios (PRD 16.1): s49 to s89
+// all there, each run with --eaa by the module that should catch it, a
+// pending mark naming a lane, a preflight probe for every page that
+// changes. The fixtures, flows and harnesses they use must be in place.
+func checkEAAScenarios(t *testing.T, dir string, m *Manifest) {
+	t.Helper()
+	eaa := map[string]Scenario{}
+	for _, s := range m.Scenarios {
+		if s.EAA() {
+			eaa[s.ID] = s
+		}
+	}
+	for n := 49; n <= 89; n++ {
+		id := fmt.Sprintf("s%02d", n)
+		s, ok := eaa[id]
+		if !ok {
+			t.Errorf("%s: missing, or not run with --eaa", id)
+			continue
+		}
+		delete(eaa, id)
+		switch {
+		case s.Module != "a11y" && s.Module != "keyboard" && (id != "s86" || s.Module != "health"):
+			t.Errorf("%s: module %q, want a11y or keyboard (health for s86)", id, s.Module)
+		case s.Pending.Is() && s.Pending.Lane() == "":
+			t.Errorf("%s: pending: true; name the lane it waits for", id)
+		}
+		if s.ChangesSite() && !slices.ContainsFunc(probes, func(p probe) bool { return p.ID == id }) {
+			t.Errorf("%s: its broken state changes the site but the preflight (preflight.go) has no probe for it", id)
+		}
+		for _, f := range s.Flows {
+			data, err := os.ReadFile(filepath.Join(dir, f)) //nolint:gosec // the testbed's own files
+			if err != nil {
+				t.Errorf("%s: flow: %v", id, err)
+				continue
+			}
+			var fl struct {
+				Start    string `yaml:"start"`
+				Keyboard bool   `yaml:"keyboard"`
+				Steps    []any  `yaml:"steps"`
+			}
+			if err := yaml.Unmarshal(data, &fl); err != nil || !fl.Keyboard || !strings.HasPrefix(s.Path, fl.Start) || len(fl.Steps) == 0 {
+				t.Errorf("%s: %s isn't a key flow (keyboard: true) starting at %s: %v", id, f, s.Path, err)
+			}
+		}
+		if (len(s.Flows) > 0) != slices.Contains(s.Args, "flows") {
+			t.Errorf("%s: key flows run only with --level flows; --level flows needs a flow", id)
+		}
+		if s.Fixture != "" {
+			checkFixture(t, id, filepath.Join(dir, s.Fixture))
+		}
+	}
+	for id := range eaa {
+		t.Errorf("%s: runs with --eaa outside s49 to s89", id)
+	}
+	// The harnesses PRD 16.2 asks for are where it asks for them.
+	want := map[string][]string{
+		"canaries":  {"s68", "s84"},
+		"orders":    {"s49", "s70", "s85", "s88"},
+		"statement": {"s50", "s84", "s86", "s89"},
+	}
+	for h, ids := range want {
+		for _, id := range ids {
+			if i := slices.IndexFunc(m.Scenarios, func(s Scenario) bool { return s.ID == id }); i < 0 || !m.Scenarios[i].Harness.Has(h) {
+				t.Errorf("%s: no harness %s", id, h)
+			}
+		}
+	}
+	if i := slices.IndexFunc(m.Scenarios, func(s Scenario) bool { return s.ID == "s89" }); i < 0 || !m.Scenarios[i].Control {
+		t.Error("s89 isn't in the control pass")
+	}
+}
+
+// checkFixture checks a snapshot fixture is one Soundcheck 1.2 wrote: a
+// run.json with no options.wcag and no options.a11y, next to its pages.
+func checkFixture(t *testing.T, id, dir string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "run.json")) //nolint:gosec // the testbed's own fixture
+	if err != nil {
+		t.Errorf("%s: fixture: %v", id, err)
+		return
+	}
+	var run struct {
+		Version   string         `json:"version"`
+		Target    string         `json:"target"`
+		PagesFile string         `json:"pages_file"`
+		Options   map[string]any `json:"options"`
+	}
+	if err := json.Unmarshal(data, &run); err != nil {
+		t.Errorf("%s: fixture run.json: %v", id, err)
+		return
+	}
+	if !strings.HasPrefix(run.Version, "1.2.") || run.Options["wcag"] != nil || run.Options["a11y"] != nil || run.Options["eaa"] != nil {
+		t.Errorf("%s: fixture is version %s with options %v, want a 1.2 run without wcag, a11y or eaa", id, run.Version, run.Options)
+	}
+	if !strings.HasPrefix(run.Target, "http://localhost:18810/") {
+		t.Errorf("%s: fixture target %s, want the php site at its default address", id, run.Target)
+	}
+	if _, err := os.Stat(filepath.Join(dir, run.PagesFile)); err != nil {
+		t.Errorf("%s: fixture pages: %v", id, err)
+	}
+}

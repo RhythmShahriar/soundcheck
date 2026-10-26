@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Key flow for s64, from Soundcheck's keyboard-contact.yaml template
+# (flow.KeyboardTemplates) with the testbed contact page's selectors.
+# keyboard: true runs it with the keyboard alone and holds any request
+# that would send the form; keyboard: send would really submit it.
+#
+# The email is wrong on purpose: the form must show its errors so a
+# keyboard user can find them (WCAG 3.3.1). In s64's broken state the
+# errors are shown by colour alone and keyboard/error-not-linked fires.
+name: Contact form by keyboard
+start: /contact/
+keyboard: true
+steps:
+  - fill: {selector: "#tb_name", value: "${fake:name}"}
+  - fill: {selector: "#tb_email", value: "not an email address"}
+  - fill: {selector: "#tb_message", value: "${fake:message}"}
+  - submit: {text: Send message}

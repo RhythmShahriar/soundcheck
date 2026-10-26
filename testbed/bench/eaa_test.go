@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -44,7 +45,8 @@ func discover(t *testing.T, base string, limit int) []string {
 // scenario good, the testbed's own audit (audit.go: axe-core with the
 // WCAG 2.1 A and AA rules, placeholder labels, reflow and a Tab walk)
 // finds nothing on any page of either site: the pages a run discovers
-// and every scenario's own page. Set TESTBED_AUDIT_LOG=1 to list every
+// and every scenario's own page, except the backlog pages that keep
+// their findings on purpose. Set TESTBED_AUDIT_LOG=1 to list every
 // finding instead of the first ones per page.
 func TestGoodStateAudit(t *testing.T) {
 	dir, m := setup(t)
@@ -72,7 +74,7 @@ func TestGoodStateAudit(t *testing.T) {
 		// What a run discovers, plus every scenario's own page.
 		paths := discover(t, base, 60)
 		for _, s := range m.Scenarios {
-			if s.Site == site && !slices.Contains(paths, s.Path) {
+			if s.Site == site && !s.Backlog && !slices.Contains(paths, s.Path) {
 				paths = append(paths, s.Path)
 			}
 		}
@@ -138,7 +140,8 @@ func TestAuditPage(t *testing.T) {
 
 // TestPreflight switches every accessibility scenario good and broken
 // and checks its page does what scenarios.yaml says (preflight.go): the
-// plain-PHP pages' self-tests pass in both states.
+// plain-PHP pages' self-tests pass in both states and each WordPress
+// page shows its broken state only when broken.
 func TestPreflight(t *testing.T) {
 	dir, m := setup(t)
 	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
@@ -168,3 +171,71 @@ func TestPreflight(t *testing.T) {
 	}
 }
 
+// brokenAudit is what the testbed's own audit must see on a scenario's
+// page in its broken state: the positive half of TestGoodStateAudit, so
+// both the audit and the broken states are shown to work.
+var brokenAudit = map[string]string{
+	"s49": "keyboard/trap",
+	"s50": "a11y/label",
+	"s54": "keyboard/no-focus-ring",
+	"s55": "keyboard/skip-link-broken",
+	"s59": "a11y/autocomplete-valid",
+	"s60": "a11y/placeholder-label",
+	"s61": "a11y/color-contrast",
+	"s62": "a11y/html-has-lang",
+	"s63": "a11y/image-alt",
+	"s65": "keyboard/trap",
+	"s66": "a11y/meta-viewport",
+	"s67": "a11y/label",
+	"s69": "a11y/reflow",
+	"s72": "keyboard/focus-invisible",
+	"s87": "a11y/autocomplete-valid", // the same in both states: a 2.1 failure
+}
+
+// TestBrokenStatesAudit switches each scenario in brokenAudit broken and
+// checks the testbed's own audit finds the problem on its page.
+func TestBrokenStatesAudit(t *testing.T) {
+	dir, m := setup(t)
+	a, err := newAuditor(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := browser.NewTab(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tab.Close() }()
+	ids := slices.Sorted(maps.Keys(brokenAudit))
+	scenarios, err := m.Pick(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range scenarios {
+		if err := Toggle(dir, s.ID, "broken"); err != nil {
+			t.Fatal(err)
+		}
+		found, err := a.Audit(context.Background(), tab, m.URL(s), s.Path)
+		if terr := Toggle(dir, s.ID, "good"); terr != nil {
+			t.Fatal(terr)
+		}
+		if err != nil {
+			t.Errorf("%s: %v", s.ID, err)
+			continue
+		}
+		want := brokenAudit[s.ID]
+		if !slices.ContainsFunc(found, func(f Finding) bool { return f.Check == want }) {
+			t.Errorf("%s broken: no %s in %v", s.ID, want, found)
+		} else {
+			t.Logf("%s broken: %s", s.ID, want)
+		}
+	}
+}
