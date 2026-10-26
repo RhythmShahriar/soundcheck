@@ -52,6 +52,11 @@
 //	  - press: {key: Space, on: "#terms"}
 //	  - expect: {focus: "#terms"}
 //	  - click: {text: Place order}
+//
+// The hold covers the flow's own tab only. Neither a popup or
+// target=_blank form a key press opens nor messages sent over an open
+// WebSocket are held: a site that places orders that way can still get
+// one from a keyboard: true flow.
 package flow
 
 import (
