@@ -8,7 +8,8 @@
 #   ./toggle.sh status                  lists the broken scenarios
 #
 # A scenario is broken while state/<id> exists. The WordPress and PHP
-# containers mount state/ read-only and check it on every request, so a
+# containers mount state/ read-write and check it on every request (the
+# sites write only the orders.txt and sidefx.txt counters there), so a
 # switch takes effect immediately, with no rebuild or restart. Set
 # TESTBED_STATE to use another folder, e.g. for the plain-PHP site under
 # PHP's built-in server (see README.md); the site must get the same one. The page
