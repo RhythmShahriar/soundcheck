@@ -50,6 +50,12 @@ type Options struct {
 	// and select steps with ${env:…} refuse an http page unless it's this
 	// machine. So do clicks and submits after them.
 	PlainHTTP bool
+	// MaxTabs caps the Tab presses (then as many Shift+Tab presses) a key
+	// flow makes to reach one target (keyboard.max_tabs); default 150.
+	MaxTabs int
+	// Dry holds what a key flow sends, as keyboard: true does, also for a
+	// keyboard: send flow that may not send here.
+	Dry bool
 }
 
 // ErrOffSite is a goto or start refused because it leaves the site, or
@@ -70,6 +76,29 @@ type Failure struct {
 	Desc    string // the step, from its definition
 	Err     error  // what went wrong, with secrets masked
 	Refused bool   // a write step refused by the production guard
+	// Key is set when a key flow's step couldn't be done by keyboard:
+	// its target wasn't reached or its key did nothing.
+	Key *KeyFailure
+}
+
+// Result is what became of a flow: the steps that failed and, for a dry
+// key flow, the step that would have sent something.
+type Result struct {
+	Failures []Failure
+	// Held is the step of a dry key flow that would have sent a request.
+	// The step passed and the flow ended there.
+	Held *Held
+	// Trace has a line per step a key flow played by keyboard: the Tab
+	// stops it took and the key it pressed. Typed values show only as
+	// "<typed N characters>".
+	Trace []string
+}
+
+// Held is what a dry key flow would have sent and where it stopped.
+type Held struct {
+	Step   int    // 1-based; the steps after it didn't run
+	Method string // POST, PUT, ...
+	Path   string // the request's path, without its query
 }
 
 func (f Failure) Error() string {
@@ -83,16 +112,32 @@ func (f Failure) Error() string {
 // stops the flow, since later steps depend on it; a failed expect is
 // reported and the flow goes on.
 func Run(ctx context.Context, page *rod.Page, f Flow, o Options) []Failure {
+	return Play(ctx, page, f, o).Failures
+}
+
+// Play plays f in page as Run does and returns all that became of it.
+// A key flow (f.Keyboard set) is played by keyboard only (see
+// keyStep); a dry one holds every request but GET and HEAD and ends at
+// the first click, submit or Enter or Space press that would send one
+// to the site.
+func Play(ctx context.Context, page *rod.Page, f Flow, o Options) (res Result) {
 	if o.Timeout <= 0 {
 		o.Timeout = 10 * time.Second
+	}
+	if o.MaxTabs <= 0 {
+		o.MaxTabs = 150
 	}
 	r := &runner{page: page.Context(ctx), o: o, ctx: ctx, name: slug(f.Name)}
 	stop := r.watch()
 	defer stop()
-	var out []Failure
 	fail := func(step int, desc string, err error) {
-		out = append(out, Failure{Step: step, Desc: desc, Err: errors.New(Mask(err.Error(), r.secrets...)),
-			Refused: errors.Is(err, ErrProduction)})
+		fl := Failure{Step: step, Desc: desc, Err: errors.New(Mask(err.Error(), r.secrets...)),
+			Refused: errors.Is(err, ErrProduction)}
+		var kf *KeyFailure
+		if errors.As(err, &kf) {
+			fl.Key = kf
+		}
+		res.Failures = append(res.Failures, fl)
 	}
 	start := f.Start
 	if start == "" {
@@ -100,29 +145,54 @@ func Run(ctx context.Context, page *rod.Page, f Flow, o Options) []Failure {
 	}
 	if err := f.CheckEnv(o.AllowEnv); err != nil {
 		fail(0, "read the environment", err)
-		return out
+		return res
+	}
+	if f.Keyboard != "" {
+		dry := f.Keyboard == KeyboardDry || o.Dry
+		remove, err := r.keyboard(page, dry)
+		if err != nil {
+			if dry {
+				fail(0, "hold what the flow sends", err)
+				return res
+			}
+		} else {
+			defer remove()
+		}
+		defer func() { res.Trace = r.keys.trace }()
 	}
 	if err := r.gotoURL(start); err != nil {
 		fail(0, "open "+start, err)
-		return out
+		return res
 	}
 	for i, s := range f.Steps {
 		if ctx.Err() != nil {
 			fail(i+1, s.String(), ctx.Err())
-			return out
+			return res
 		}
-		if (s.Click != nil || s.Submit != nil) && !f.Production && r.onProduction() {
+		if (s.Click != nil || s.Submit != nil || s.Press.activates()) && !f.Production && r.onProduction() {
 			fail(i+1, s.String(), ErrProduction)
-			return out
+			return res
 		}
-		if err := r.step(i+1, s); err != nil {
+		var err error
+		if r.keys != nil {
+			r.keys.begin(s.Click != nil || s.Submit != nil || s.Press.activates())
+			err = r.keyStep(i+1, s)
+			if h := r.keys.end(); h != nil {
+				h.Step = i + 1
+				res.Held = h
+				return res
+			}
+		} else {
+			err = r.step(i+1, s)
+		}
+		if err != nil {
 			fail(i+1, s.String(), err)
 			if s.Expect == nil {
-				return out
+				return res
 			}
 		}
 	}
-	return out
+	return res
 }
 
 type runner struct {
@@ -132,6 +202,7 @@ type runner struct {
 	name    string
 	secrets []string
 	status  atomic.Int64 // last main-document HTTP status
+	keys    *keys        // set while a key flow plays
 }
 
 // watch records the HTTP status of each page load, for expect: status.
@@ -330,6 +401,13 @@ func (r *runner) settle() {
 }
 
 func (r *runner) element(t Target) (*rod.Element, error) {
+	if t.Text == "" && strings.Contains(t.Selector, ">>>") {
+		el, err := r.t().ElementByJS(rod.Eval(pierceJS, t.Selector))
+		if err != nil {
+			return nil, notFound(t.Selector, err)
+		}
+		return el, nil
+	}
 	if t.Text == "" {
 		el, err := r.t().Element(t.Selector)
 		if err != nil {
@@ -350,6 +428,19 @@ func notFound(what string, err error) error {
 	}
 	return err
 }
+
+// pierceJS finds the element a selector with " >>> " names, each part
+// inside the shadow root of the element before it, as the keyboard
+// trace writes selectors.
+const pierceJS = `(sel) => {
+  let root = document, el = null;
+  for (const part of sel.split('>>>')) {
+    el = root.querySelector(part.trim());
+    if (!el) return null;
+    root = el.shadowRoot || el;
+  }
+  return el;
+}`
 
 // byTextJS finds a clickable element whose text, value or aria-label is
 // the given text (exact match first, then contains), preferring visible
@@ -454,6 +545,17 @@ func (r *runner) step(n int, s Step) error {
 		}
 	case s.Expect != nil:
 		return r.expect(*s.Expect)
+	case s.Press != nil:
+		if s.Press.On != nil {
+			el, err := r.element(*s.Press.On)
+			if err != nil {
+				return err
+			}
+			if err := el.Timeout(r.o.Timeout).Focus(); err != nil {
+				return fmt.Errorf("couldn't focus it: %w", err)
+			}
+		}
+		return r.press(*s.Press)
 	case s.Screenshot != "":
 		if r.o.Save == nil {
 			return nil
@@ -560,6 +662,16 @@ func (r *runner) check(e Expect) error {
 	if e.Status != 0 {
 		if got := int(r.status.Load()); got != e.Status {
 			return fmt.Errorf("the page returned HTTP %d", got)
+		}
+	}
+	if e.Focus != "" {
+		if err := r.expectFocus(e.Focus, false, e.Absent); err != nil {
+			return err
+		}
+	}
+	if e.FocusWithin != "" {
+		if err := r.expectFocus(e.FocusWithin, true, e.Absent); err != nil {
+			return err
 		}
 	}
 	if e.Message != nil {

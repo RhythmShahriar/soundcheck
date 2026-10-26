@@ -42,7 +42,7 @@ func TestParseKeyboard(t *testing.T) {
 		}
 	}
 	// The rest of the flow decodes as strictly as before.
-	if _, err := Parse([]byte("name: x\nkeyboard: true\nkeybaord: true\nsteps: [{wait: 1}]\n")); err == nil || !strings.Contains(err.Error(), "keybaord") {
+	if _, err := Parse([]byte("name: x\nkeyboard: true\nkeyboardd: true\nsteps: [{wait: 1}]\n")); err == nil || !strings.Contains(err.Error(), "keyboardd") {
 		t.Errorf("unknown key next to keyboard: %v", err)
 	}
 }
