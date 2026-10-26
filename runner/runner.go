@@ -301,6 +301,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 	}
 	run.Options.LoggedIn = cc.Login != nil
+	planPages(opts.Modules, opts.Done, pages)
 
 	// Visit pages in parallel tabs; links found while rendering are added
 	// to the queue when discovering.
@@ -415,6 +416,35 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		run.Interrupted = true
 	}
 	return run, ctx.Err()
+}
+
+// planner is a module that wants the run's page list before the visits
+// start, such as the keyboard module, which tests each URL group's
+// widgets on the group's first page by path. Pages run in parallel, so
+// without the plan that would be whichever page a tab reached first.
+type planner interface{ Plan(paths []string) }
+
+// planPages hands every planner the paths the run plans to visit: the
+// pages a resumed run already finished and the ones still to visit.
+// Pages discovered later aren't in it; the module decides for those.
+func planPages(modules []check.Module, done []*model.Page, pages []crawl.Page) {
+	var paths []string
+	for _, m := range modules {
+		pl, ok := m.(planner)
+		if !ok {
+			continue
+		}
+		if paths == nil {
+			paths = make([]string, 0, len(done)+len(pages))
+			for _, p := range done {
+				paths = append(paths, p.Path)
+			}
+			for _, p := range pages {
+				paths = append(paths, pathOf(p.URL))
+			}
+		}
+		pl.Plan(slices.Clone(paths))
+	}
 }
 
 // markSiteIssues marks the page issues the site-wide checks added, those
