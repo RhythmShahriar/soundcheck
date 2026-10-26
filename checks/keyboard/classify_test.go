@@ -361,3 +361,31 @@ func FuzzTrace(f *testing.F) {
 		}
 	})
 }
+
+// An issue's key never holds an accessible name: a link labelled with
+// the signed-in customer's email or phone keeps its key when they
+// change. The Detail shows neither.
+func TestClassifyKeyIgnoresPII(t *testing.T) {
+	run := func(email, phone string) []model.Issue {
+		tr := fixture(t, "judged.json")
+		for i := range tr.Forward {
+			tr.Forward[i].Name = "Signed in as " + email + ", call " + phone
+		}
+		return Classify(tr, defaults(), "2.2")
+	}
+	a := run("jane"+"@"+"example.com", "+49 30 1234567")
+	b := run("max.mustermann"+"@"+"example.org", "+49 40 7654321")
+	if len(a) == 0 || len(a) != len(b) {
+		t.Fatalf("%d and %d issues", len(a), len(b))
+	}
+	for i := range a {
+		if a[i].Key != b[i].Key || a[i].Detail != b[i].Detail {
+			t.Errorf("%q / %q, then %q / %q", a[i].Key, a[i].Detail, b[i].Key, b[i].Detail)
+		}
+		for _, leak := range []string{"example", "1234567", "7654321"} {
+			if strings.Contains(a[i].Key+a[i].Detail, leak) {
+				t.Errorf("%s in %q / %q", leak, a[i].Key, a[i].Detail)
+			}
+		}
+	}
+}
