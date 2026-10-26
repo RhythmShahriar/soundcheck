@@ -338,7 +338,7 @@ func statementInput(dir, drawAs string) (statement.Input, error) {
 		ignored = c.Ignored
 	}
 	return statement.Input{Run: run, Pages: pages, Ignored: ignored, Summary: wcag.Summarize(run, pages, run.Issues, ignored),
-		Version: version, Now: time.Now(), Insecure: insecureRun(dir)}, nil
+		Version: version, Now: time.Now(), Insecure: insecureRun(dir), Hide: statementHide()}, nil
 }
 
 // insecureRun reads from a run's evidence pack whether it was made with

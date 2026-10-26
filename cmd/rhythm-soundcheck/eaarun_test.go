@@ -12,11 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/evidence"
+	"github.com/RhythmShahriar/soundcheck/login"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/runner"
 	"github.com/RhythmShahriar/soundcheck/statement"
@@ -458,5 +460,17 @@ func TestEAAFolderRefusesSymlink(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
 		t.Errorf("wrote into the link's target: %v", entries)
+	}
+}
+
+// The draft never shows the test account's user name.
+func TestStatementHidesTheLoginUser(t *testing.T) {
+	t.Setenv(login.EnvUser, "")
+	if got := statementHide(); got != nil {
+		t.Errorf("no user: %q", got)
+	}
+	t.Setenv(login.EnvUser, "shopper")
+	if got := statementHide(); !slices.Equal(got, []string{"shopper"}) {
+		t.Errorf("user: %q", got)
 	}
 }

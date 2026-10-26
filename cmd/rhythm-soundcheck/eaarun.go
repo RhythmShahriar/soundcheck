@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/evidence"
+	"github.com/RhythmShahriar/soundcheck/login"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/statement"
@@ -272,11 +273,21 @@ func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), ru
 	owner.Website = cmpOr(owner.Website, todoWebsite)
 	owner.Contact.Email = cmpOr(owner.Contact.Email, todoEmail)
 	d, err := buildStatement(statement.Input{Run: run, Pages: pages, Ignored: ignored, Summary: sum, Owner: owner,
-		Version: version, Layout: "model", Now: time.Now(), Insecure: s.o.insecure})
+		Version: version, Layout: "model", Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
 	if err != nil {
 		return err
 	}
 	return writePrivate(path, func(w io.Writer) error { return statementMD(w, d) })
+}
+
+// statementHide is what a draft must never show besides the site's own
+// host, which statement.Build hides itself: the test account's user
+// name, which a logged-in page's path or a page title can hold.
+func statementHide() []string {
+	if user := os.Getenv(login.EnvUser); user != "" {
+		return []string{user}
+	}
+	return nil
 }
 
 // storedPages yields the run's pages from its folder one at a time, so
