@@ -150,6 +150,31 @@ func TestEAASnapshotWritesDraftAndEvidence(t *testing.T) {
 		t.Errorf("--json: exit %d %+v\n%s\n%s", code, res.EAA, out, errOut)
 	}
 
+	// A compare and a run write both files into their own run folder (the
+	// after run for a comparison), as does --against.
+	for _, args := range [][]string{
+		{"compare", "eaa-1", "--confirm=off", "--plain"},
+		{"run", "127.0.0.1:20260", "--eaa", "--plain"},
+		{"127.0.0.1:20260", "--against", "127.0.0.1:20261", "--eaa", "--confirm=off", "--plain"},
+	} {
+		before, _ := filepath.Glob(filepath.Join(".soundcheck", "runs", "*", eaaDir, draftFile))
+		code, out, errOut := runCLI(t, args...)
+		after, _ := filepath.Glob(filepath.Join(".soundcheck", "runs", "*", eaaDir, draftFile))
+		if code != exitOK || len(after) != len(before)+1 {
+			t.Errorf("%v: exit %d, drafts %d -> %d\n%s\n%s", args, code, len(before), len(after), out, errOut)
+			continue
+		}
+		draft := after[len(after)-1]
+		for _, path := range []string{draft, filepath.Join(filepath.Dir(draft), evidenceFile)} {
+			if m := mode(t, path); m != 0o600 {
+				t.Errorf("%v: %s mode %o", args, path, m)
+			}
+		}
+		if !strings.Contains(slashes(out), "statement: "+slashes(draft)+" (a draft for you to finish:\n") {
+			t.Errorf("%v: no statement line for %s\n%s", args, draft, out)
+		}
+	}
+
 	// With statement: filled in, the draft uses it; a mistake in it is a
 	// usage error before anything runs.
 	old := decodeOwner
