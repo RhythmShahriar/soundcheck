@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,6 +118,17 @@ func TestEvidenceCommand(t *testing.T) {
 	if code != exitFindings || errOut != "rhythm-soundcheck: evidence: keyboard/p1.json changed after it was recorded (sha256 differs)\n" {
 		t.Errorf("tampered: exit %d %q", code, errOut)
 	}
+
+	// A recorded file that can't be read is exit 3, not a mismatch.
+	verify := verifyEvidence
+	verifyEvidence = func(string) error {
+		return &fs.PathError{Op: "open", Path: filepath.Join(dir, "keyboard", "p1.json"), Err: fs.ErrPermission}
+	}
+	code, _, errOut = runCLI(t, "evidence", "verify", dir)
+	if code != exitError || !strings.Contains(errOut, "permission denied") {
+		t.Errorf("unreadable: exit %d %q", code, errOut)
+	}
+	verifyEvidence = verify
 
 	// A run made with -k can't be signed.
 	insecure := packRun(t, now.Add(time.Minute), true)
