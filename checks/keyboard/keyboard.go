@@ -98,6 +98,9 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	case err != nil:
 		audit = model.Audit{Status: model.AuditError, Reason: err.Error()}
 		cc.Warn(fmt.Sprintf("keyboard: %s: %v", p.Path, err))
+	case t != nil && t.Capped && t.Stopped != "":
+		audit = model.Audit{Status: model.AuditCapped, Reason: t.Stopped}
+		cc.Warn(fmt.Sprintf("keyboard: %s: %s; the rest of the page wasn't walked", p.Path, t.Stopped))
 	case t != nil && t.Capped:
 		audit = model.Audit{Status: model.AuditCapped, Reason: fmt.Sprintf("stopped after %d Tab stops (keyboard.max_tabs)", s.MaxTabs)}
 		cc.Warn(fmt.Sprintf("keyboard: %s: stopped after %d Tab stops (keyboard.max_tabs); raise it if the page has more", p.Path, s.MaxTabs))

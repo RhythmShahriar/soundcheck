@@ -39,7 +39,8 @@ const Schema = "rhythm-soundcheck/keyboard-trace/v1"
 //	  "listeners":  [Candidate, ...],
 //	  "held":       ["POST /cart/"],    requests held while keys were pressed
 //	  "events":     ["download blocked"], what else the safety envelope stopped
-//	  "capped":     false               the walk hit max_tabs (or ran out of time)
+//	  "capped":     false,              the walk hit max_tabs, ran out of time or stopped early
+//	  "stopped":    "..." | absent      why it stopped early, other than max_tabs
 //	}
 //
 // Every forward and backward entry carries focus.Stop's fields at its
@@ -62,6 +63,9 @@ type Trace struct {
 	Held      []string       `json:"held"`
 	Events    []string       `json:"events"`
 	Capped    bool           `json:"capped"`
+	// Stopped says why the walk ended before it was back round, other
+	// than max_tabs, such as a Tab press that took the page away.
+	Stopped string `json:"stopped,omitempty"`
 }
 
 // Step is one key press of the walk and the stop it left focus on.
@@ -192,7 +196,7 @@ func DecodeTrace(data []byte) (Trace, error) {
 
 // clamp holds t to the caps.
 func (t *Trace) clamp() {
-	t.Page, t.Viewport = clip(t.Page, maxText), clip(t.Viewport, maxText)
+	t.Page, t.Viewport, t.Stopped = clip(t.Page, maxText), clip(t.Viewport, maxText), clip(t.Stopped, maxText)
 	t.Forward, t.Backward = clampSteps(t.Forward), clampSteps(t.Backward)
 	if t.MainIndex < -1 || t.MainIndex >= len(t.Forward) {
 		t.MainIndex = -1

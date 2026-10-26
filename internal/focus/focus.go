@@ -227,7 +227,8 @@ func (r *Reader) Active(ctx context.Context) (Stop, error) {
 
 // ActiveWith returns the stop that has focus and the result of fn, a
 // JavaScript function declaration called on the focused element (this)
-// in the isolated world that returns a string, such as JSON. fn ""
+// in the isolated world that returns a string, such as JSON, or a
+// promise of one. fn ""
 // calls nothing. A probe that judges the focused element (is it hidden,
 // covered, ignored) uses it, so the element it judges is the one the
 // stop describes. It isn't called for the document's own stop.
@@ -283,7 +284,7 @@ func (r *Reader) ActiveWith(ctx context.Context, fn string) (Stop, string, error
 	}
 	extra := ""
 	if fn != "" {
-		out, err := proto.RuntimeCallFunctionOn{FunctionDeclaration: fn, ObjectID: obj, ReturnByValue: true}.Call(p)
+		out, err := proto.RuntimeCallFunctionOn{FunctionDeclaration: fn, ObjectID: obj, ReturnByValue: true, AwaitPromise: true}.Call(p)
 		if err != nil {
 			return s, "", err
 		}
@@ -313,6 +314,48 @@ func (r *Reader) Eval(ctx context.Context, expr string) (string, error) {
 		return "", errors.New(res.ExceptionDetails.Text)
 	}
 	return res.Result.Value.Str(), nil
+}
+
+// CallOn calls fn, a JavaScript function declaration that returns a
+// string or a promise of one, in the reader's isolated world on DOM
+// nodes named by their backend node ids (Stop.BackendNodeID): this is
+// the first node and every node is an argument. A probe that needs the
+// stops of a walk again, such as the elements of a suspected trap, uses
+// it instead of looking them up by selector.
+func (r *Reader) CallOn(ctx context.Context, fn string, nodes ...int) (string, error) {
+	if len(nodes) == 0 {
+		return "", errors.New("CallOn needs a node")
+	}
+	p := r.page.Context(ctx)
+	var out string
+	err := r.inWorld(ctx, func(world proto.RuntimeExecutionContextID) error {
+		args := make([]*proto.RuntimeCallArgument, 0, len(nodes))
+		var objs []proto.RuntimeRemoteObjectID
+		defer func() {
+			for _, o := range objs {
+				_ = proto.RuntimeReleaseObject{ObjectID: o}.Call(p)
+			}
+		}()
+		for _, id := range nodes {
+			res, err := proto.DOMResolveNode{BackendNodeID: proto.DOMBackendNodeID(id), ExecutionContextID: world}.Call(p)
+			if err != nil {
+				return err
+			}
+			objs = append(objs, res.Object.ObjectID)
+			args = append(args, &proto.RuntimeCallArgument{ObjectID: res.Object.ObjectID})
+		}
+		call, err := proto.RuntimeCallFunctionOn{FunctionDeclaration: fn, ObjectID: objs[0], Arguments: args,
+			ReturnByValue: true, AwaitPromise: true}.Call(p)
+		if err != nil {
+			return err
+		}
+		if call.ExceptionDetails != nil {
+			return errors.New(call.ExceptionDetails.Text)
+		}
+		out = call.Result.Value.Str()
+		return nil
+	})
+	return out, err
 }
 
 // inWorld calls f with the reader's isolated world, making one first if
