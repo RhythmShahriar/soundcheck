@@ -78,7 +78,7 @@ func controlRound(ctx context.Context, o options, bin string, t controlTarget, r
 		return r
 	}
 	cfg := filepath.Join(wd, ".soundcheck", "config.yaml")
-	if err := writeConfig(cfg, t.pages, nil); err != nil {
+	if err := writeConfig(cfg, t.pages, nil, nil); err != nil {
 		r.Error = err.Error()
 		return r
 	}

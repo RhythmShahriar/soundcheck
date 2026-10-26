@@ -123,7 +123,7 @@ func wpUpdateScenario(ctx context.Context, o options, m *Manifest, s Scenario, w
 	defer func() { _, _, _ = command(context.WithoutCancel(ctx), o.timeout, "", nil, reset[0], reset[1:]...) }()
 
 	cfgPath := filepath.Join(wd, ".soundcheck", "config.yaml")
-	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels); err != nil {
+	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels, nil); err != nil {
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	wp := append(slices.Clone(o.compose), "run", "--rm", "--no-deps", "-T", "--entrypoint", "wp", "cli")

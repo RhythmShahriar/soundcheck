@@ -220,7 +220,11 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 	}
 	url := m.URL(s)
 	cfgPath := filepath.Join(wd, ".soundcheck", "config.yaml")
-	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels); err != nil {
+	var owner map[string]any
+	if s.Harness.Has("statement") {
+		owner = statementOwner(m.Sites[s.Site])
+	}
+	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels, owner); err != nil {
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	if err := copyRules(dir, wd, s.Rules); err != nil {
@@ -230,6 +234,11 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	defer func() { _ = Toggle(dir, s.ID, "good") }()
+	h, stopHarnesses, err := startHarnesses(dir, s)
+	defer stopHarnesses()
+	if err != nil {
+		return Result{Outcome: Failed, Detail: "harness: " + err.Error()}
+	}
 
 	// Good state.
 	if err := Toggle(dir, s.ID, "good"); err != nil {
@@ -277,6 +286,7 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 	if sc.Outcome == "" {
 		cmp := append([]string{"compare", "--against-snapshot", "good", "--json", "-o", "compare.json", "--config", cfgPath}, args...)
 		sc = compareScenario(ctx, o, s, wd, bin, cmp)
+		sc = withHarnesses(sc, h.check(ctx, o, dir, s, wd, bin, cfgPath))
 	}
 	for _, t := range tools {
 		base := baselines[t.Key]
@@ -531,8 +541,8 @@ type pages struct {
 }
 
 // writeConfig limits the run to the given pages (page limit default 20)
-// and sets the interaction levels.
-func writeConfig(path string, p pages, levels []string) error {
+// and sets the interaction levels and, when given, the statement: block.
+func writeConfig(path string, p pages, levels []string, statement map[string]any) error {
 	type interactions struct {
 		Levels []string `yaml:"levels,omitempty"`
 	}
@@ -540,9 +550,10 @@ func writeConfig(path string, p pages, levels []string) error {
 		p.Limit = 20
 	}
 	cfg := struct {
-		Pages        pages         `yaml:"pages"`
-		Interactions *interactions `yaml:"interactions,omitempty"`
-	}{Pages: p}
+		Pages        pages          `yaml:"pages"`
+		Interactions *interactions  `yaml:"interactions,omitempty"`
+		Statement    map[string]any `yaml:"statement,omitempty"`
+	}{Pages: p, Statement: statement}
 	if len(levels) > 0 {
 		cfg.Interactions = &interactions{Levels: levels}
 	}
