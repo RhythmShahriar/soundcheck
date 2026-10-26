@@ -350,16 +350,30 @@ func TestPlaceholderIssues(t *testing.T) {
 		return field{Path: [][]Elem{{{Tag: "html"}, {Tag: "body"}, {Tag: "input", Name: name}}}, Placeholder: ph}
 	}
 	label := model.Issue{Check: "a11y/label", Source: `input[name="email"]`}
-	got, capped := placeholderIssues([]field{f("email", "Email"), f("city", "City"), f("city", "City")}, []model.Issue{label}, 20)
+	got, capped := placeholderIssues([]field{f("email", "Email"), f("city", "City"), f("city", "City")}, beyond{}, []model.Issue{label}, 20)
 	if len(got) != 1 || got[0].Source != `input[name="city"]` || capped != 0 {
 		t.Errorf("issues = %+v, capped %d", got, capped)
 	}
-	got, capped = placeholderIssues([]field{f("a", "A"), f("b", "B"), f("c", "C")}, nil, 2)
+	got, capped = placeholderIssues([]field{f("a", "A"), f("b", "B"), f("c", "C")}, beyond{}, nil, 2)
 	if len(got) != 2 || capped != 3 || !strings.HasSuffix(got[1].Detail, "The first 2 of 3 fields named only by their placeholder on the page are reported.") {
 		t.Errorf("capped: %+v, %d", got, capped)
 	}
-	if got, _ := placeholderIssues(nil, nil, 20); len(got) != 0 {
+	if got, _ := placeholderIssues(nil, beyond{}, nil, 20); len(got) != 0 {
 		t.Errorf("no fields: %+v", got)
+	}
+	// Fields past the ones looked at count toward the total, not the list.
+	got, capped = placeholderIssues([]field{f("a", "A"), f("b", "B"), f("c", "C")}, beyond{N: 300}, nil, 2)
+	if len(got) != 2 || capped != 303 || !strings.HasSuffix(got[0].Detail, "The first 2 of 303 fields named only by their placeholder on the page are reported.") {
+		t.Errorf("beyond: %+v, %d", got, capped)
+	}
+	got, capped = placeholderIssues([]field{f("a", "A")}, beyond{N: 5000, AtLeast: true}, nil, 20)
+	if len(got) != 1 || capped != 5001 || !strings.HasSuffix(got[0].Detail, "The first 1 of at least 5001 fields named only by their placeholder on the page are reported.") {
+		t.Errorf("at least: %+v, %d", got, capped)
+	}
+	// Under the cap, nothing is capped and the Detail says nothing of it.
+	got, capped = placeholderIssues([]field{f("a", "A")}, beyond{N: 1}, nil, 20)
+	if len(got) != 1 || capped != 0 || strings.Contains(got[0].Detail, "The first") {
+		t.Errorf("under the cap: %+v, %d", got, capped)
 	}
 }
 
@@ -371,7 +385,7 @@ func TestPlaceholderDetail(t *testing.T) {
 	got, _ := placeholderIssues([]field{
 		{Path: [][]Elem{{{Tag: "input", Name: "k"}}}, Placeholder: "e.g.\n" + key},
 		{Path: [][]Elem{{{Tag: "input", Name: "l"}}}, Placeholder: long},
-	}, nil, 20)
+	}, beyond{}, nil, 20)
 	if len(got) != 2 {
 		t.Fatal(got)
 	}
@@ -380,6 +394,27 @@ func TestPlaceholderDetail(t *testing.T) {
 	}
 	if !strings.Contains(got[1].Detail, `"`+strings.Repeat("é", 59)+`…"`) {
 		t.Errorf("detail = %q", got[1].Detail)
+	}
+}
+
+// axe's failure summary is masked like a snippet: a credential the kit
+// knows and a quoted value attribute never reach the Detail. A plain
+// summary keeps its words and lines.
+func TestSummaryMasked(t *testing.T) {
+	key := "sk_" + "live_" + "4eC39HqLyjWDarjtT1zdp7dc"
+	got := issues([]result{{ID: "aria-valid-attr-value", Nodes: []node{{
+		Path:    [][]Elem{{{Tag: "input", Name: "k"}}},
+		Summary: "Fix all of the following:\n  Invalid ARIA attribute value: aria-label=\"" + key + "\"\n  Element has value=\"ana@example.org\"",
+	}}}}, 20, "2.1")
+	if len(got) != 1 {
+		t.Fatal(got)
+	}
+	if d := got[0].Detail; strings.Contains(d, key) || strings.Contains(d, "ana@example.org") || !strings.HasPrefix(d, "Fix all of the following:\nInvalid ARIA attribute value:") {
+		t.Errorf("detail = %q", d)
+	}
+	plain := "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>"
+	if got := summary(plain); got != "Fix any of the following:\nElement does not have an implicit (wrapped) <label>" {
+		t.Errorf("plain summary = %q", got)
 	}
 }
 

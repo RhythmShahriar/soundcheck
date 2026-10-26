@@ -112,3 +112,30 @@ func TestPlaceholderLabelCapped(t *testing.T) {
 		t.Errorf("capped rules = %v", p.Audits["a11y"].CappedRules)
 	}
 }
+
+// More fields than the check looks at per document: the ones past
+// maxFields still count toward the total the audit records.
+func TestPlaceholderLabelCountsPastTheLimit(t *testing.T) {
+	needBrowser(t)
+	var b strings.Builder
+	b.WriteString("<form>")
+	const total = 210 // the check looks at 201 per document
+	for n := range total {
+		fmt.Fprintf(&b, `<input name="f%d" placeholder="Field %d">`, n, n)
+	}
+	// Fields named past the limit don't count.
+	for n := range 3 {
+		fmt.Fprintf(&b, `<input name="l%d" placeholder="Named %d" aria-label="Named %d">`, n, n, n)
+	}
+	b.WriteString("<button>Send</button></form>")
+	srv := pages(t, map[string]string{"/": fmt.Sprintf(form, b.String())})
+	r := audited(t, srv, "2.1", "  max_elements: 2\n", "/")
+	p := r.Page("/")
+	want := fmt.Sprintf("The first 2 of %d fields", total)
+	if got := placeholderOn(p); len(got) != 2 || !strings.Contains(got[0].Detail, want) {
+		t.Errorf("issues = %+v, want %q", got, want)
+	}
+	if n := p.Audits["a11y"].CappedRules["placeholder-label"]; n != total {
+		t.Errorf("capped rules = %v, want %d", p.Audits["a11y"].CappedRules, total)
+	}
+}

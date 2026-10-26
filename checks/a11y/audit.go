@@ -51,6 +51,8 @@ type docReport struct {
 	// Fields are the fields named only by their placeholder, which
 	// the module's own check finds after axe (see fields).
 	Fields []field `json:"-"`
+	// FieldsBeyond counts such fields past the ones looked at.
+	FieldsBeyond beyond `json:"-"`
 	// Notes are warnings about the module's own checks in the document.
 	Notes []string `json:"-"`
 }
@@ -61,6 +63,7 @@ type report struct {
 	Frames     []string // hosts of the frames not audited, sorted
 	Rules      []string // as in docReport, from the page's own document
 	Fields     []field  // as in docReport, from every document audited
+	Beyond     beyond   // docReport.FieldsBeyond, from every document audited
 	Notes      []string // as in docReport
 }
 
@@ -181,7 +184,7 @@ func audit(parent context.Context, tab *rod.Page, opts auditOptions, iframes boo
 		}
 		return report{}, err
 	}
-	rep := report{Violations: main.Violations, Rules: main.Rules, Fields: main.Fields, Notes: main.Notes}
+	rep := report{Violations: main.Violations, Rules: main.Rules, Fields: main.Fields, Beyond: main.FieldsBeyond, Notes: main.Notes}
 	hosts := map[string]bool{}
 	for _, f := range main.Frames {
 		if !iframes || !f.Same {
@@ -245,6 +248,7 @@ func (fa *frameAudit) walk(t *proto.PageFrameTree, world proto.RuntimeExecutionC
 		}
 		fa.rep.Violations = merge(fa.rep.Violations, doc.Violations)
 		fa.rep.Fields = append(fa.rep.Fields, doc.Fields...)
+		fa.rep.Beyond.add(doc.FieldsBeyond)
 		fa.rep.Notes = append(fa.rep.Notes, doc.Notes...)
 		fa.walk(c, inner, path, depth+1)
 	}
@@ -309,14 +313,14 @@ func auditFrame(page *rod.Page, frame proto.PageFrameID, opts auditOptions, pref
 	}
 	// The placeholder check runs in the same world, after axe: it reads
 	// the same DOM and needs nothing axe left behind.
-	found, err := fields(page, world.ExecutionContextID, prefix)
+	found, more, err := fields(page, world.ExecutionContextID, prefix)
 	switch {
 	case page.GetContext().Err() != nil:
 		return docReport{}, 0, page.GetContext().Err()
 	case err != nil:
 		doc.Notes = append(doc.Notes, "placeholder check: "+err.Error())
 	default:
-		doc.Fields = found
+		doc.Fields, doc.FieldsBeyond = found, more
 	}
 	if len(prefix) > 0 {
 		for i := range doc.Violations {
