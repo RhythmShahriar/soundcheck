@@ -5,7 +5,6 @@ package main
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -250,8 +249,8 @@ func TestAcceptIgnore(t *testing.T) {
 		r.Reason != "new theme in December" || r.Title != "" {
 		t.Errorf("rule %+v", r)
 	}
-	if ok, err := path.Match(r.Source, `footer a[href*="x"]`); !ok || err != nil {
-		t.Errorf("source %q doesn't match the selector: %v", r.Source, err)
+	if !model.Glob(r.Source, `footer a[href*="x"]`) {
+		t.Errorf("source %q doesn't match the selector", r.Source)
 	}
 	// The config is meant to be committed, so the rule writer leaves it
 	// readable (0644) even when it was private before.
@@ -285,15 +284,23 @@ func TestAcceptNewBrokeAndBacklog(t *testing.T) {
 	}
 }
 
-func TestIgnoreRuleAndEscape(t *testing.T) {
-	for in, want := range map[string]string{"": "", "footer a": "footer a", `a[x*="?"]\`: `a\[x\*="\?"\]\\`} {
-		if got := globEscape(in); got != want {
-			t.Errorf("globEscape(%q) = %q, want %q", in, got, want)
+func TestIgnoreRule(t *testing.T) {
+	// A selector is written as it is and matches itself as compare reads
+	// it; brackets and question marks are text there.
+	for _, sel := range []string{`input[name="email"]`, `a[x*="?"]\`, "footer a"} {
+		r, err := ignoreRule(model.Change{Check: "a11y/label", Source: sel, Pages: []string{"/"}}, "", "")
+		if err != nil || r.Source != sel || !model.Glob(r.Source, sel) {
+			t.Errorf("%q: rule %+v %v", sel, r, err)
 		}
-		if in != "" {
-			if ok, err := path.Match(globEscape(in), in); !ok || err != nil {
-				t.Errorf("%q doesn't match itself: %v", in, err)
-			}
+		if model.Glob(r.Source, "input#other") {
+			t.Errorf("%q matches another selector", sel)
+		}
+		// The rule as the config holds it ignores the change in a
+		// comparison, so StaleIgnores never calls it stale.
+		c := &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "a11y/label", Source: sel, Pages: []string{"/"}}}}
+		compare.ApplyIgnore(c, ignoreRules(config.Config{Ignore: []config.IgnoreRule{r}}), time.Now())
+		if len(c.Changes) != 0 || len(c.Ignored) != 1 {
+			t.Errorf("%q: the rule didn't ignore its change: %+v", sel, c)
 		}
 	}
 	r, err := ignoreRule(model.Change{Check: "visual/page", Title: "Page looks different", Pages: []string{"/team/"}}, "photos", "")

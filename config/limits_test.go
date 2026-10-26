@@ -109,11 +109,11 @@ func TestIgnoreSource(t *testing.T) {
 	if err != nil || c.Ignore[0].Source != "footer a" || c.Ignore[1].Source != "#chat *" {
 		t.Errorf("good sources: %+v %v", c.Ignore, err)
 	}
-	_, err = Load(write(t, "ignore:\n  - check: a/b\n  - check: a11y/label\n    source: \"input[name\"\n"))
-	var se *SettingError
-	if !errors.As(err, &se) || se.Key != "ignore.2.source" ||
-		!strings.HasSuffix(err.Error(), `ignore.2.source: "input[name" isn't a glob: syntax error in pattern`) {
-		t.Errorf("bad source: %v", err)
+	// Only * is special in a source, as in the other globs: brackets
+	// from a selector are text.
+	c, err = Load(write(t, "ignore:\n  - check: a11y/label\n    source: \"input[name\"\n"))
+	if err != nil || c.Ignore[0].Source != "input[name" {
+		t.Errorf("a selector with brackets: %+v %v", c.Ignore, err)
 	}
 }
 

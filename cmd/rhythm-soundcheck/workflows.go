@@ -228,36 +228,26 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 	return exitOK
 }
 
-// ignoreRule is the rule that ignores ch from now on. Its source is a
-// glob (path.Match), so a selector's own brackets and stars are escaped
-// to match only themselves; a change without a source is matched by its
-// title instead, so the rule doesn't cover the whole check. Its pages are
-// globs too (model.Glob), where only * is special and can't be escaped:
-// a page with a * in its path would ignore more pages than the change, so
-// it is refused and the rule is left to be written by hand.
+// ignoreRule is the rule that ignores ch from now on. Its source and
+// pages are globs (model.Glob), where only * is special and can't be
+// escaped. A selector's brackets match themselves, so the source is
+// written as it is; a * in it (a[href*="x"]) matches itself and, rarely,
+// a sibling selector of the same check on the same pages. A change
+// without a source is matched by its title instead, so the rule doesn't
+// cover the whole check. A page with a * in its path would ignore more
+// pages than the change, so it is refused and the rule is left to be
+// written by hand.
 func ignoreRule(ch model.Change, reason, until string) (config.IgnoreRule, error) {
 	for _, p := range ch.Pages {
 		if strings.Contains(p, "*") {
 			return config.IgnoreRule{}, fmt.Errorf("can't ignore %s: page %q has a *, which an ignore rule reads as any text; add the rule to config.yaml by hand", ch.ID, p)
 		}
 	}
-	r := config.IgnoreRule{Check: ch.Check, Pages: slices.Clone(ch.Pages), Source: globEscape(ch.Source), Until: until, Reason: reason}
+	r := config.IgnoreRule{Check: ch.Check, Pages: slices.Clone(ch.Pages), Source: ch.Source, Until: until, Reason: reason}
 	if r.Source == "" {
 		r.Title = ch.Title
 	}
 	return r, nil
-}
-
-// globEscape makes s a path.Match pattern that matches s alone.
-func globEscape(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if strings.ContainsRune(`*?[]\`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // failed prints err and returns its exit code: 2 for a usage error.

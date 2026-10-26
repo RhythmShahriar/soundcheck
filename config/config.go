@@ -14,7 +14,6 @@ import (
 	"maps"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -141,7 +140,8 @@ type Trust struct {
 // IgnoreRule names changes that shouldn't count. It has the fields of
 // compare.IgnoreRule, which the CLI converts it to: Check, Title and
 // Source are globs, Pages page globs, Until the last day it applies
-// (YYYY-MM-DD).
+// (YYYY-MM-DD). Every glob is a model.Glob, where only * is special, so
+// a selector's brackets in Source match themselves.
 type IgnoreRule struct {
 	Check  string   `yaml:"check" json:"check,omitempty"`
 	Pages  []string `yaml:"pages" json:"pages,omitempty"`
@@ -334,11 +334,6 @@ func (c *Config) Validate() error {
 	for n, r := range c.Ignore {
 		if r.Check == "" && r.Title == "" && len(r.Pages) == 0 && r.Source == "" {
 			return settingErr("ignore", "rule %d has nothing to match: give it a check, a title, pages or a source", n+1)
-		}
-		// source is matched with path.Match, which reports a bad pattern
-		// only when it is used: catch it here, where the line is known.
-		if _, err := path.Match(r.Source, ""); err != nil {
-			return settingErr(fmt.Sprintf("ignore.%d.source", n+1), "%q isn't a glob: %v", r.Source, err)
 		}
 		if r.Until != "" {
 			if _, err := time.Parse("2006-01-02", r.Until); err != nil {
