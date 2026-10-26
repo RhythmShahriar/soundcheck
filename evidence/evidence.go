@@ -442,7 +442,18 @@ func verifyPack(dir string, p *Pack, prefix string) error {
 // with the latest start that was made with --eaa against the same
 // target and has a pack. A run without a pack yet (the one being
 // written) is skipped. It is nil when there is none.
+//
+// Previous is for a run being written now, the newest of its target. To
+// write the pack of an older run again, use PreviousBefore with its
+// start, or the chain would point forward.
 func Previous(storeRoot, target string) (*Ref, error) {
+	return PreviousBefore(storeRoot, target, time.Time{})
+}
+
+// PreviousBefore is Previous for a run that started at before: it only
+// considers runs that started earlier. A zero before considers them
+// all.
+func PreviousBefore(storeRoot, target string, before time.Time) (*Ref, error) {
 	var best *Ref
 	var bestStart time.Time
 	for _, kind := range []string{"runs", "snapshots"} {
@@ -459,7 +470,8 @@ func Previous(storeRoot, target string) (*Ref, error) {
 			}
 			dir := filepath.Join(storeRoot, kind, e.Name())
 			head, err := readHead(dir)
-			if err != nil || !head.Options.EAA || !sameTarget(head.Target, target) {
+			if err != nil || !head.Options.EAA || !sameTarget(head.Target, target) ||
+				(!before.IsZero() && !head.Started.Before(before)) {
 				continue
 			}
 			data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(File))) //nolint:gosec // a folder of the store

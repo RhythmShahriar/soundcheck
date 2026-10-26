@@ -253,6 +253,14 @@ func TestPrevious(t *testing.T) {
 	if want := sum(must(os.ReadFile(filepath.Join(root, "snapshots", "eaa-1", File)))); p.SHA256 != want {
 		t.Errorf("sha = %s, want %s", p.SHA256, want)
 	}
+
+	// Writing the old run's pack again chains back, never forward.
+	if p, err := PreviousBefore(root, target, time.Unix(2000, 0)); err != nil || p == nil || p.Run != "runs/old" {
+		t.Errorf("PreviousBefore(eaa-1) = %+v, %v", p, err)
+	}
+	if p, err := PreviousBefore(root, target, time.Unix(1000, 0)); err != nil || p != nil {
+		t.Errorf("PreviousBefore(old) = %+v, %v", p, err)
+	}
 }
 
 func TestSign(t *testing.T) {
