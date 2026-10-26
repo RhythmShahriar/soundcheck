@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: MIT
 
 // Scenario s74: a page too big to audit. Good: a short price table.
-// Broken: an import fills the page with 60,000 elements, enough that
-// axe-core runs out of time. Soundcheck must say the page was not
+// Broken: an import fills the page with 20,000 elements and a runaway
+// price ticker keeps the page's main thread busy 98% of the time, so the
+// audits can't finish: the keyboard walk runs out of time and, on a
+// slower machine, axe-core too (axe alone gets through 20,000 elements in
+// seconds now). Soundcheck must say the page was not
 // checked (a "not checked" warning, exit 3 under --eaa) and keep the
 // snapshot's issues rather than count them as fixed.
 
@@ -27,7 +30,7 @@ page_start(
 <?php if ( $broken ) : ?>
 	<div class="grid" id="grid">
 	<?php
-	for ( $row = 0; $row < 3000; $row++ ) {
+	for ( $row = 0; $row < 1000; $row++ ) {
 		echo '<p>';
 		for ( $i = 0; $i < 19; $i++ ) {
 			echo '<span>', 20 * $row + $i, '</span> ';
@@ -36,13 +39,21 @@ page_start(
 	}
 	?>
 	</div>
+	<script>
+	// The ticker: after the load, 2950 ms of every 3 s in a loop.
+	addEventListener('load', function () {
+		setTimeout(function () {
+			setInterval(function () { var end = performance.now() + 2950; while (performance.now() < end) {} }, 3000);
+		}, 300);
+	});
+	</script>
 <?php endif; ?>
 <?php
 testbed_selftest(
 	sprintf(
 		<<<'JS'
 	var n = document.getElementsByTagName('*').length;
-	return (n >= 60000) === %s ? true : n + ' elements';
+	return (n >= 20000) === %s ? true : n + ' elements';
 JS,
 		$broken ? 'true' : 'false'
 	)

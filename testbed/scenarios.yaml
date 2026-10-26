@@ -1031,14 +1031,14 @@ scenarios:
     tools: []
 
   - id: s74
-    name: Page too big for axe to finish (plain PHP)
+    name: Page too big and busy for the audits to finish (plain PHP)
     site: php
     path: /a11y/big.php
     include: ["/a11y/big.php*"]
     module: a11y
     args: [--eaa]
     all: true
-    toggle: "the page grows to 60,000 elements (php/a11y/big.php)"
+    toggle: "the page grows to 20,000 elements and a runaway script keeps it busy 95% of the time (php/a11y/big.php)"
     expect:
       - {exit: 3}
       - {warning: not checked}
