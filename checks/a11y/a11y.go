@@ -106,8 +106,20 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 			a.CappedRules[v.ID] = v.Total
 		}
 	}
+	found := issues(rep.Violations, s.MaxElements, version)
+	placeholder, capped := placeholderIssues(rep.Fields, found, s.MaxElements)
+	if capped > 0 {
+		if a.CappedRules == nil {
+			a.CappedRules = map[string]int{}
+		}
+		a.CappedRules["placeholder-label"] = capped
+	}
+	for _, n := range rep.Notes {
+		cc.Warn(fmt.Sprintf("a11y: %s: %s", p.Path, secrets.Redact(n)))
+	}
 	setAudit(p, a)
-	p.Issues = append(p.Issues, issues(rep.Violations, s.MaxElements, version)...)
+	p.Issues = append(p.Issues, found...)
+	p.Issues = append(p.Issues, placeholder...)
 }
 
 // runVersion is the WCAG version run's rules are for. A run made before
@@ -139,8 +151,18 @@ func recordRules(cc *check.Context, opts auditOptions, rules []string) {
 	if cc.Run.Options.A11y != nil {
 		return
 	}
+	all := append(slices.Clone(rules), ownRules(opts.Tags)...)
+	slices.Sort(all)
 	cc.Run.Options.A11y = &model.A11yRules{Axe: axeVersion, AxeSHA256: axeDigest, Tags: slices.Clone(opts.Tags),
-		Rules: rules, MaxElements: opts.Max}
+		Rules: slices.Compact(all), MaxElements: opts.Max}
+}
+
+// ownRules are the module's own checks that run with axe's rules of
+// tags, by the name after "a11y/". They're recorded with axe's, so a
+// comparison with a snapshot made before a check existed doesn't call
+// everything it finds NEW (compare's rule-set guard).
+func ownRules(tags []string) []string {
+	return []string{"placeholder-label"}
 }
 
 func setAudit(p *model.Page, a model.Audit) {

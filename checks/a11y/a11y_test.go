@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-rod/rod/lib/proto"
+	"github.com/ysmood/gson"
+
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -337,5 +340,73 @@ func TestMerge(t *testing.T) {
 	got := merge(page, frame)
 	if len(got) != 2 || got[0].Total != 3 || len(got[0].Nodes) != 3 || got[0].Nodes[0].HTML != "a" || got[1].ID != "image-alt" {
 		t.Errorf("merge = %+v", got)
+	}
+}
+
+// A field axe already reported as a11y/label on the page isn't reported
+// twice; the issues are capped at keep.
+func TestPlaceholderIssues(t *testing.T) {
+	f := func(name, ph string) field {
+		return field{Path: [][]Elem{{{Tag: "html"}, {Tag: "body"}, {Tag: "input", Name: name}}}, Placeholder: ph}
+	}
+	label := model.Issue{Check: "a11y/label", Source: `input[name="email"]`}
+	got, capped := placeholderIssues([]field{f("email", "Email"), f("city", "City"), f("city", "City")}, []model.Issue{label}, 20)
+	if len(got) != 1 || got[0].Source != `input[name="city"]` || capped != 0 {
+		t.Errorf("issues = %+v, capped %d", got, capped)
+	}
+	got, capped = placeholderIssues([]field{f("a", "A"), f("b", "B"), f("c", "C")}, nil, 2)
+	if len(got) != 2 || capped != 3 || !strings.HasSuffix(got[1].Detail, "The first 2 of 3 fields named only by their placeholder on the page are reported.") {
+		t.Errorf("capped: %+v, %d", got, capped)
+	}
+	if got, _ := placeholderIssues(nil, nil, 20); len(got) != 0 {
+		t.Errorf("no fields: %+v", got)
+	}
+}
+
+// The placeholder in a Detail is on one line and at most 60 runes; a
+// credential in it is redacted.
+func TestPlaceholderDetail(t *testing.T) {
+	key := "sk_" + "live_" + strings.Repeat("4eC39HqLyjWDarjtT1zdp7dc", 1)
+	long := strings.Repeat("é", 80)
+	got, _ := placeholderIssues([]field{
+		{Path: [][]Elem{{{Tag: "input", Name: "k"}}}, Placeholder: "e.g.\n" + key},
+		{Path: [][]Elem{{{Tag: "input", Name: "l"}}}, Placeholder: long},
+	}, nil, 20)
+	if len(got) != 2 {
+		t.Fatal(got)
+	}
+	if strings.Contains(got[0].Detail, key) || strings.Contains(got[0].Detail, "\n") {
+		t.Errorf("detail = %q", got[0].Detail)
+	}
+	if !strings.Contains(got[1].Detail, `"`+strings.Repeat("é", 59)+`…"`) {
+		t.Errorf("detail = %q", got[1].Detail)
+	}
+}
+
+// Every name source but the placeholder names a field.
+func TestNamedBy(t *testing.T) {
+	src := func(typ proto.AccessibilityAXValueSourceType, attr, v string) *proto.AccessibilityAXValueSource {
+		s := &proto.AccessibilityAXValueSource{Type: typ, Attribute: attr}
+		if v != "-" {
+			s.Value = &proto.AccessibilityAXValue{Value: gson.New(v)}
+		}
+		return s
+	}
+	cases := []struct {
+		sources []*proto.AccessibilityAXValueSource
+		want    bool
+	}{
+		{[]*proto.AccessibilityAXValueSource{src(proto.AccessibilityAXValueSourceTypePlaceholder, "placeholder", "Email")}, false},
+		{[]*proto.AccessibilityAXValueSource{src(proto.AccessibilityAXValueSourceTypeAttribute, "aria-label", "  "),
+			src(proto.AccessibilityAXValueSourceTypeAttribute, "aria-placeholder", "Email"), src(proto.AccessibilityAXValueSourceTypeAttribute, "title", "-")}, false},
+		{[]*proto.AccessibilityAXValueSource{src(proto.AccessibilityAXValueSourceTypeRelatedElement, "", "Email"),
+			src(proto.AccessibilityAXValueSourceTypePlaceholder, "placeholder", "Email")}, true},
+		{[]*proto.AccessibilityAXValueSource{src(proto.AccessibilityAXValueSourceTypeAttribute, "title", "Coupon")}, true},
+		{nil, false},
+	}
+	for n, c := range cases {
+		if got := namedBy(c.sources); got != c.want {
+			t.Errorf("case %d: %v, want %v", n, got, c.want)
+		}
 	}
 }

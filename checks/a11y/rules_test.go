@@ -135,8 +135,17 @@ func TestRulesRecorded(t *testing.T) {
 			if !slices.IsSorted(got.Rules) || slices.Contains(got.Rules, "") {
 				t.Errorf("rules aren't sorted ids: %v", got.Rules)
 			}
+			// The goldens are axe's rules; the module's own checks are
+			// recorded with them.
+			own := a11y.OwnRules(v)
+			for _, r := range own {
+				if !slices.Contains(got.Rules, r) {
+					t.Errorf("rules don't list the module's own %s", r)
+				}
+			}
+			axeRules := slices.DeleteFunc(slices.Clone(got.Rules), func(r string) bool { return slices.Contains(own, r) })
 			golden := filepath.Join("testdata", "rules-"+v+".golden")
-			text := strings.Join(got.Rules, "\n") + "\n"
+			text := strings.Join(axeRules, "\n") + "\n"
 			if *update {
 				if err := os.WriteFile(golden, []byte(text), 0o644); err != nil {
 					t.Fatal(err)

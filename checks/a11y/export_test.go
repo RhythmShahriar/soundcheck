@@ -12,3 +12,6 @@ func SetTimeout(d time.Duration) (restore func()) {
 	timeout = d
 	return func() { timeout = old }
 }
+
+// OwnRules is ownRules for the WCAG version's tags.
+func OwnRules(version string) []string { return ownRules(tags(version)) }
