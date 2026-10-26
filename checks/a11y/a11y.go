@@ -377,7 +377,7 @@ func snippet(html string) string {
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
 	// Each step can make text another step matches again: the kit's
 	// redaction can leave "key=" in front of a quote that now reads as a
-	// value, and cutting a long tag can open a quote. So the steps run
+	// value; cutting a long tag can open a quote. So the steps run
 	// until the text stops changing. Every pass only masks or shortens,
 	// which settles in a few; maxPasses is a backstop.
 	for range maxPasses {

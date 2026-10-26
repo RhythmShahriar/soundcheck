@@ -48,8 +48,8 @@ func TestUnjudgersFindsRegisteredModules(t *testing.T) {
 
 // A walk capped on the later visit can't call its module's issues
 // FIXED: they're kept aside like those of an unfinished audit. A walk
-// that ran clean fixes them, and so does a capped audit of a module
-// that can't say what it couldn't judge.
+// that ran clean fixes them. So does a capped audit of a module that
+// can't say what it couldn't judge.
 func TestCappedWalkFixesNothing(t *testing.T) {
 	trap := issue("judged/trap", model.Warning, "Keyboard trap")
 	other := issue("other/thing", model.Warning, "Thing")

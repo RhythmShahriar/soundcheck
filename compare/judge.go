@@ -14,7 +14,7 @@ import (
 // Unjudger is a module that can say which of its issues a page can't
 // judge: issues the page doesn't report whose absence proves nothing.
 // The keyboard walk is one. A walk capped by keyboard.max_tabs is a
-// finished audit (model.Audit.Finished), but a trap past the cap or a
+// finished audit (model.Audit.Finished). Yet a trap past the cap or a
 // stop it never reached isn't fixed for being missing.
 //
 // keys are the issue keys looked for on p; Unjudged returns those of
