@@ -357,7 +357,7 @@ func writePrivate(path string, write func(io.Writer) error) error {
 // writePrivate only replaces a linked file, not a linked folder.
 func eaaFolder(dir string) error {
 	path := filepath.Join(dir, eaaDir)
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 { //nolint:gosec // a run folder of the store
 		return fmt.Errorf("%s is a symbolic link; not writing the EAA files through it", path)
 	}
 	return nil
