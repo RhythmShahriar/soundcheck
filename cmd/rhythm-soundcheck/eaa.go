@@ -253,7 +253,17 @@ func (s *session) inheritEAA(snap *model.Run, changes []settingChange) ([]settin
 	}
 	if !s.o.quiet {
 		if cfg.EAA && !snap.Options.EAA {
-			fmt.Fprintf(s.stderr, "note: snapshot %q was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n", snap.Name)
+			// The modules --eaa added that the snapshot didn't run have
+			// nothing to compare with (compare.addedByEAA).
+			var added []string
+			for _, m := range eaaNeeds {
+				if len(snap.Options.Modules) > 0 && !slices.Contains(snap.Options.Modules, m) {
+					added = append(added, m)
+				}
+			}
+			if len(added) > 0 {
+				fmt.Fprintf(s.stderr, "note: snapshot %q was taken without --eaa; %s issues will all be new. Take a new snapshot with --eaa\n", snap.Name, strings.Join(added, " and "))
+			}
 		}
 	}
 	// This one goes with the comparison's warnings, so the reports and

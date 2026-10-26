@@ -275,9 +275,15 @@ func TestCompareInheritsEAA(t *testing.T) {
 	// rules and what differs for --strict.
 	s, errb = newSession(t, "--eaa")
 	changes, err = compare(t, s, oldSnap)
-	want := "note: snapshot \"before\" was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n"
+	want := "note: snapshot \"before\" was taken without --eaa; a11y and keyboard issues will all be new. Take a new snapshot with --eaa\n"
 	if err != nil || s.wcag != "2.1" || errb.String() != want || len(s.compareNotes) != 1 {
 		t.Errorf("--eaa on a 1.2 snapshot: %v wcag %q\n%s\nwant\n%s", err, s.wcag, errb, want)
+	}
+	// A snapshot that ran a11y: only the keyboard issues are all new.
+	s, errb = newSession(t, "--eaa")
+	if _, err := compare(t, s, a11ySnap); err != nil ||
+		errb.String() != "note: snapshot \"a11y\" was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n" {
+		t.Errorf("--eaa on an a11y snapshot: %v\n%s", err, errb)
 	}
 	if got := joinChanges(changes); got != "modules health,visual -> health,visual,a11y,keyboard (--eaa); eaa off -> on (--eaa)" {
 		t.Errorf("changes: %s", got)

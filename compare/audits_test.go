@@ -7,6 +7,7 @@ import (
 	"context"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -223,5 +224,49 @@ func TestConfirmNeedsAFinishedAudit(t *testing.T) {
 	}
 	if want := map[string]string{"a11y/label": model.New, "keyboard/trap": model.Unstable}; !reflect.DeepEqual(got, want) {
 		t.Errorf("classes = %v, want %v", got, want)
+	}
+}
+
+// compare --eaa of a snapshot taken without it: the a11y and keyboard
+// modules --eaa added have no snapshot issues to match, so each of
+// their issues is new (as the CLI's note says), while a module added
+// without --eaa is still left out. A page whose added audit didn't
+// finish keeps its issues aside.
+func TestModulesAddedByEAA(t *testing.T) {
+	trap := model.Issue{Check: "keyboard/trap", Level: model.Error, Title: "Keyboard trap", Source: "#news"}
+	trap.Identify()
+	label := a11yIssue("label", "#email")
+	speed := issue("speed/lcp", model.Warning, "LCP over 2.5 s")
+	before := &model.Run{Options: model.Options{Modules: []string{"health"}}, Pages: []model.Page{{Path: "/"}, {Path: "/b/"}}}
+	audits := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditOK}}
+	timedOut := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditTimeout, Reason: "the walk took over 60 s"}}
+	after := &model.Run{Options: model.Options{Modules: []string{"health", "speed", "a11y", "keyboard"}, EAA: true}, Pages: []model.Page{
+		{Path: "/", Issues: []model.Issue{trap, label, speed}, Audits: audits},
+		{Path: "/b/", Issues: []model.Issue{trap}, Audits: timedOut},
+	}}
+	c := both(t, before, after)
+	var got []string
+	for _, ch := range c.Changes {
+		got = append(got, ch.Class+" "+ch.Check+" "+strings.Join(ch.Pages, ","))
+	}
+	if want := []string{"broke keyboard/trap /", "new a11y/label /"}; !slices.Equal(got, want) {
+		t.Errorf("changes = %q, want %q", got, want)
+	}
+	w := "modules differ (snapshot [health], now [health speed a11y keyboard]); only modules in both are compared, besides a11y and keyboard, which --eaa added: all their issues are new"
+	if !slices.Contains(c.Warnings, w) {
+		t.Errorf("warnings = %q", c.Warnings)
+	}
+	if len(c.Ignored) != 1 || c.Ignored[0].Check != "keyboard/trap" || c.Ignored[0].Pages[0] != "/b/" {
+		t.Errorf("ignored = %+v", c.Ignored)
+	}
+
+	// Negative: the same modules added without --eaa are left out.
+	after.Options.EAA = false
+	c = both(t, before, after)
+	if len(c.Changes) != 0 {
+		t.Errorf("without --eaa: changes = %+v", c.Changes)
+	}
+	if w := "modules differ (snapshot [health], now [health speed a11y keyboard]); only modules in both are compared"; !slices.Contains(c.Warnings, w) {
+		t.Errorf("without --eaa: warnings = %q", c.Warnings)
 	}
 }

@@ -111,10 +111,13 @@ func aside(out *model.Comparison, ignored []model.Change, notes []string) {
 func compared(changes []model.Change, cc *check.CompareContext, modules []check.Module) []model.Change {
 	// A module that ran only once has nothing to compare against: all its
 	// issues would look new (or fixed).
+	// The a11y and keyboard modules --eaa added are the exception: the
+	// snapshot had none of their issues, so each one now is new.
 	if b, a := cc.Before.Options.Modules, cc.After.Options.Modules; len(b) > 0 && len(a) > 0 {
+		added := addedByEAA(cc.Before, cc.After)
 		changes = slices.DeleteFunc(changes, func(c model.Change) bool {
 			mod, _, _ := strings.Cut(c.Check, "/")
-			return !slices.Contains(b, mod) || !slices.Contains(a, mod)
+			return (!slices.Contains(b, mod) || !slices.Contains(a, mod)) && !added(mod)
 		})
 	}
 	for _, m := range modules {
@@ -215,6 +218,7 @@ func IssuesWithGaps(before, after *model.Run) (changes, ignored []model.Change, 
 func diffIssues(before, after *model.Run) *issueDiff {
 	ran, listed := ranInBoth(before, after), func(m string) bool { return slices.Contains(after.Options.Modules, m) }
 	d := newIssueDiff(rulesOf(before, after, ran))
+	diffed := diffedIn(before, after)
 	// Every page with a path counts, when a path is there twice.
 	byPath := func(r *model.Run) map[string][]model.Issue {
 		m := map[string][]model.Issue{}
@@ -227,7 +231,7 @@ func diffIssues(before, after *model.Run) *issueDiff {
 	ba, aa := auditsByPath(before), auditsByPath(after)
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
-			d.page(path, bi, ai, aa[path], gaps(path, ba[path], aa[path], ran, listed), d.guard(bi, ba[path], aa[path]))
+			d.page(path, bi, ai, aa[path], gaps(path, ba[path], aa[path], diffed, listed), d.guard(bi, ba[path], aa[path]))
 		}
 	}
 	d.site(before.Issues, after.Issues)
@@ -497,7 +501,19 @@ func mismatchWith(before, after *model.Run, missing int) []string {
 		w = append(w, fmt.Sprintf("viewports differ (snapshot %v, now %v)", before.Options.Viewports, after.Options.Viewports))
 	}
 	if !slices.Equal(before.Options.Modules, after.Options.Modules) {
-		w = append(w, fmt.Sprintf("modules differ (snapshot %v, now %v); only modules in both are compared", before.Options.Modules, after.Options.Modules))
+		var added []string
+		for _, m := range eaaModules {
+			if addedByEAA(before, after)(m) {
+				added = append(added, m)
+			}
+		}
+		switch len(added) {
+		case 0:
+			w = append(w, fmt.Sprintf("modules differ (snapshot %v, now %v); only modules in both are compared", before.Options.Modules, after.Options.Modules))
+		default:
+			w = append(w, fmt.Sprintf("modules differ (snapshot %v, now %v); only modules in both are compared, besides %s, which --eaa added: all their issues are new",
+				before.Options.Modules, after.Options.Modules, strings.Join(added, " and ")))
+		}
 	}
 	if !slices.Equal(before.Options.Levels, after.Options.Levels) {
 		w = append(w, fmt.Sprintf("interaction levels differ (snapshot %v, now %v)", before.Options.Levels, after.Options.Levels))

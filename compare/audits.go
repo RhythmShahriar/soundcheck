@@ -137,3 +137,25 @@ func ranInBoth(before, after *model.Run) func(string) bool {
 	b, a := ranIn(before), ranIn(after)
 	return func(m string) bool { return b(m) && a(m) }
 }
+
+// addedByEAA reports whether --eaa added module m to a comparison with
+// a snapshot taken without it: a11y or keyboard, run now and not in the
+// snapshot. Such a module's issues are compared with none, so each is
+// new, where any other module that ran only once is left out.
+func addedByEAA(before, after *model.Run) func(string) bool {
+	b, a := ranIn(before), ranIn(after)
+	return func(m string) bool {
+		return after.Options.EAA && !before.Options.EAA && slices.Contains(eaaModules, m) && !b(m) && a(m)
+	}
+}
+
+// eaaModules are the modules --eaa adds.
+var eaaModules = []string{"a11y", "keyboard"}
+
+// diffedIn reports whether the issues of module m are diffed: it ran in
+// both runs or --eaa added it (addedByEAA). An unfinished audit of such
+// a module keeps its page's issues out of the count (gaps).
+func diffedIn(before, after *model.Run) func(string) bool {
+	both, added := ranInBoth(before, after), addedByEAA(before, after)
+	return func(m string) bool { return both(m) || added(m) }
+}
