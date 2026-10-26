@@ -95,6 +95,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdWPUpdate(args[1:], stdout, stderr)
 	case "rules":
 		return cmdRules(args[1:], stdout, stderr)
+	case "statement":
+		return cmdStatement(args[1:], stdout, stderr)
 	}
 	// `rhythm soundcheck staging.example.com --against example.com`
 	if len(args) > 1 || looksLikeTarget(args[0]) {

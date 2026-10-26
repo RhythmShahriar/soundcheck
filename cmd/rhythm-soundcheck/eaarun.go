@@ -248,14 +248,14 @@ func notAudited(run *model.Run) int {
 // renames a finished temporary file into place, so a symlink at path is
 // replaced, never followed.
 func writePrivate(path string, write func(io.Writer) error) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // a file -o names or one in a run folder
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".write-*") // 0600
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".write-*") //nolint:gosec // 0600, next to the file -o names
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
+	defer func() { _ = os.Remove(tmp.Name()) }() //nolint:gosec // the temporary file made above
 	if err := write(tmp); err != nil {
 		_ = tmp.Close()
 		return err
@@ -263,10 +263,10 @@ func writePrivate(path string, write func(io.Writer) error) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil { //nolint:gosec // the temporary file made above
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return os.Rename(tmp.Name(), path) //nolint:gosec // as above
 }
 
 // errNotAudited words the exit 3 of an --eaa run with pages its tests

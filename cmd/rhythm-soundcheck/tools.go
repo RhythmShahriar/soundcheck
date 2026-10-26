@@ -451,7 +451,7 @@ func (s *session) clientReport(res report.Result) int {
 // helpTopics are the commands with their own --help plus the main ones
 // that `help <command>` describes before the full list of flags.
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
-	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage,
+	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage, "statement": statementUsage,
 	"snapshots": snapshotsUsage, "flows": flowsUsage, "update": updateUsage, "init": initUsage,
 	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic}
 
