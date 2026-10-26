@@ -1,16 +1,19 @@
 # Soundcheck testbed: broken-site scenarios on WordPress and plain PHP.
 # Needs Docker with Compose v2. Ports: WordPress 18800, plain PHP 18810
-# (http) and 18811 (https).
+# (http), 18811 (https) and 18812 (the same site as another origin, for
+# the cross-origin frame of s84).
 
 COMPOSE := docker compose -f docker-compose.yml
 WP_URL   := http://localhost:$(or $(TESTBED_WP_PORT),18800)
 PHP_URL  := http://localhost:$(or $(TESTBED_PHP_PORT),18810)
 PHPS_URL := https://localhost:$(or $(TESTBED_PHP_HTTPS_PORT),18811)
 
-.PHONY: up down reset good broken status logs wp wp-update-reset wp-updates
+.PHONY: up down reset good broken status logs wp wp-update-reset wp-updates bench-eaa
 
 up: ## start and seed the sites (a fresh install every time)
 	@mkdir -p state
+	@# The counters the sites write (the web servers run as www-data).
+	@for f in orders sidefx; do touch state/$$f.txt && chmod 666 state/$$f.txt; done
 	$(COMPOSE) up -d --wait db wp php
 	$(COMPOSE) run --rm cli
 	@for i in $$(seq 1 30); do curl -fsS -o /dev/null $(WP_URL)/ && curl -fsS -o /dev/null $(PHP_URL)/ && curl -kfsS -o /dev/null $(PHPS_URL)/ && break; sleep 1; done
@@ -43,3 +46,6 @@ wp-update-reset: ## put the ten testbed-update plugins back at 1.0 (s47, s48)
 
 wp-updates: ## list the plugin updates WordPress offers
 	$(COMPOSE) run --rm --no-deps -T --entrypoint wp cli plugin list --update=available --fields=name,version,update_version
+
+bench-eaa: ## run EAA mode's benchmark (s49 to s89, the --eaa control pass and the cost pass); needs make build first
+	cd .. && go run -tags testbed ./testbed/bench -bin bin/rhythm-soundcheck -only eaa $(ARGS)

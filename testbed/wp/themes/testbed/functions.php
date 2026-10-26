@@ -43,6 +43,8 @@ add_action(
 	}
 );
 
+require __DIR__ . '/inc/eaa.php';
+
 // No favicon request: keeps every page's request list to what the page itself loads.
 add_action(
 	'wp_head',

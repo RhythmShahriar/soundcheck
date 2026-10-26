@@ -4,7 +4,7 @@
 
 /**
  * Plugin Name: Testbed Forms
- * Description: A contact form, [testbed_contact_form]. It posts to the page it's on, checks the fields and the nonce, then shows a success or error message after redirecting back. A good submission is counted; with mail="1" it is also emailed to the admin address. Scenario s11 broken: the mail step fails, so every valid message gets "could not be sent". Scenario s32 broken: a form with captcha="1" gets a reCAPTCHA that automated submits can't pass. Scenario s33 broken: a form with mail="1" says "sent" but sends nothing.
+ * Description: A contact form, [testbed_contact_form]. It posts to the page it's on, checks the fields and the nonce, then shows a success or error message after redirecting back. A good submission is counted; with mail="1" it is also emailed to the admin address. Scenario s11 broken: the mail step fails, so every valid message gets "could not be sent". Scenario s32 broken: a form with captcha="1" gets a reCAPTCHA that automated submits can't pass. Scenario s33 broken: a form with mail="1" says "sent" but sends nothing. A form with validate="1" (the contact page) checks its fields in the browser first; scenario s64 broken: it shows errors by colour alone.
  * Version: 1.0.0
  */
 
@@ -68,8 +68,9 @@ add_shortcode(
 		);
 		$atts = shortcode_atts(
 			array(
-				'captcha' => '',
-				'mail'    => '',
+				'captcha'  => '',
+				'mail'     => '',
+				'validate' => '',
 			),
 			$atts
 		);
@@ -87,16 +88,72 @@ add_shortcode(
 			[ $class, $role, $text ] = $messages[ $state ];
 			$out .= sprintf( '<div class="form-message %s" role="%s">%s</div>', $class, $role, esc_html( $text ) );
 		}
-		$out .= '<form class="tb-contact" method="post" action="">'
+		$validate = (bool) $atts['validate'];
+		$field    = function ( string $id, string $label, string $control ) use ( $validate ): string {
+			$error = $validate ? '<span class="tb-field-error" id="' . $id . '-error"></span>' : '';
+			return '<label for="' . $id . '">' . $label . '</label>' . $control . $error;
+		};
+		$out .= '<form class="tb-contact" id="tb-contact" method="post" action=""' . ( $validate ? ' novalidate' : '' ) . '>'
 			. wp_nonce_field( 'tb_contact', '_tb_nonce', true, false )
 			. '<input type="hidden" name="tb_contact" value="1">'
 			. ( $atts['mail'] ? '<input type="hidden" name="tb_mail" value="1">' : '' )
-			. '<label for="tb_name">Your name (required)</label><input id="tb_name" name="tb_name" type="text" required autocomplete="name">'
-			. '<label for="tb_email">Your email (required)</label><input id="tb_email" name="tb_email" type="email" required autocomplete="email">'
-			. '<label for="tb_message">Your message (required)</label><textarea id="tb_message" name="tb_message" rows="5" required></textarea>'
+			. $field( 'tb_name', 'Your name (required)', '<input id="tb_name" name="tb_name" type="text" required autocomplete="name">' )
+			. $field( 'tb_email', 'Your email (required)', '<input id="tb_email" name="tb_email" type="email" required autocomplete="email">' )
+			. $field( 'tb_message', 'Your message (required)', '<textarea id="tb_message" name="tb_message" rows="5" required></textarea>' )
 			. $captcha
 			. '<button type="submit">Send message</button>'
 			. '</form>';
+		if ( $validate ) {
+			$out .= testbed_contact_validation( testbed_broken( 's64' ) );
+		}
 		return $out;
 	}
 );
+
+/**
+ * The contact page's browser-side check (validate="1"). Good: each wrong
+ * field gets aria-invalid and an error message tied to it with
+ * aria-describedby. Focus moves to the first one. s64 broken: a
+ * theme restyle shows errors by colour alone: the fields turn red with
+ * no message, nothing is marked invalid and focus stays on the button.
+ */
+function testbed_contact_validation( bool $broken ): string {
+	$messages = wp_json_encode(
+		array(
+			'tb_name'    => 'Enter your name.',
+			'tb_email'   => 'Enter an email address like name@example.com.',
+			'tb_message' => 'Write a message.',
+		)
+	);
+	$broken = $broken ? 'true' : 'false';
+	return <<<HTML
+<script>
+(function () {
+	var form = document.getElementById('tb-contact');
+	var messages = $messages;
+	var colourOnly = $broken;
+	form.addEventListener('submit', function (e) {
+		var wrong = [];
+		Object.keys(messages).forEach(function (id) {
+			var field = document.getElementById(id);
+			var error = document.getElementById(id + '-error');
+			var ok = field.checkValidity();
+			if (!ok) wrong.push(field);
+			if (colourOnly) {
+				field.classList.toggle('tb-invalid', !ok);
+				return;
+			}
+			field.setAttribute('aria-invalid', String(!ok));
+			error.textContent = ok ? '' : messages[id];
+			if (ok) field.removeAttribute('aria-describedby');
+			else field.setAttribute('aria-describedby', error.id);
+		});
+		if (wrong.length) {
+			e.preventDefault();
+			if (!colourOnly) wrong[0].focus();
+		}
+	});
+})();
+</script>
+HTML;
+}

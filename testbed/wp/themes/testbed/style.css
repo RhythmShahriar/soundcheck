@@ -11,7 +11,7 @@ a { color: #8a3b12; }
 .site-header a { color: #fbf7f2; text-decoration: none; }
 .brand { font-size: 24px; font-weight: bold; letter-spacing: .5px; }
 .primary-nav ul { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; margin: 0; padding: 0; }
-.menu-toggle { margin-left: auto; background: #c96b2c; color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.menu-toggle { margin-left: auto; background: #a24a17; color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
 .browse-panel { background: #f1e6da; padding: 16px 32px; border-bottom: 1px solid #e0cfbd; }
 .browse-panel ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; flex-wrap: wrap; }
 .site-main { max-width: 960px; margin: 0 auto; padding: 32px; min-height: 60vh; }
@@ -31,6 +31,30 @@ form.tb-contact button, .tb-wishlist { margin-top: 16px; background: #8a3b12; co
 .site-footer { background: #2b211b; color: #e9dccd; padding: 24px 32px; }
 .site-footer a { color: #e9dccd; }
 img { max-width: 100%; height: auto; }
+
+/* Keyboard users: a visible ring on every control and a skip link that
+   shows when focused (step zero in testbed/README.md). */
+:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 2px; }
+.site-header :focus-visible, .site-footer :focus-visible { outline-color: #ffd23f; }
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 10; background: #fff; color: #2b211b; padding: 8px 16px; }
+.skip-link:focus { top: 8px; }
+.skip-link-clip { top: 8px; clip-path: inset(50%); }
+.skip-link-clip:focus { clip-path: none; }
+
+/* The primary menu's submenu (s58): hover, or focus inside it. */
+.primary-nav .has-sub { position: relative; }
+.primary-nav .sub-menu { display: none; position: absolute; top: 100%; left: 0; z-index: 5; min-width: 220px; flex-direction: column; gap: 4px; background: #2b211b; padding: 12px 16px; }
+.primary-nav .has-sub:hover > .sub-menu, .primary-nav .has-sub:focus-within > .sub-menu { display: flex; }
+.tb-hover-menus .primary-nav .has-sub:focus-within:not(:hover) > .sub-menu { display: none; }
+
+/* Dialogs and buttons in page content (s49, s51, s52). */
+.tb-button { background: #8a3b12; color: #fff; border: 0; border-radius: 4px; padding: 10px 20px; font: inherit; cursor: pointer; }
+.tb-modal { position: fixed; inset: 15% auto auto 50%; transform: translateX(-50%); z-index: 20; width: min(440px, 90vw); background: #fff; border: 2px solid #2b211b; border-radius: 8px; padding: 24px; }
+.tb-modal label, form.tb-checkout label { display: block; margin-top: 12px; }
+.tb-modal input, .tb-modal select, form.tb-checkout input, form.tb-checkout textarea { width: 100%; max-width: 480px; padding: 8px; font: inherit; }
+form.tb-checkout button { margin-top: 16px; background: #8a3b12; color: #fff; border: 0; border-radius: 4px; padding: 10px 20px; font: inherit; cursor: pointer; }
+.tb-field-error { color: #a4161a; display: block; }
+.tb-invalid { border: 2px solid #d0021b; }
 
 /* s14 (broken): the "2.0" layout drops the hero and puts the logo on the right. */
 .tb-layout-v2 .hero { display: none; }

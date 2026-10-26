@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,7 +25,10 @@ import (
 
 // Manifest is testbed/scenarios.yaml.
 type Manifest struct {
-	Sites     map[string]string `yaml:"sites"`
+	Sites map[string]string `yaml:"sites"`
+	// Defaults are the sites as scenarios.yaml gives them, before -wp,
+	// -php or TESTBED_*_PORT move them (fixtures were taken there).
+	Defaults  map[string]string `yaml:"-"`
 	Control   Control           `yaml:"control"`
 	Scenarios []Scenario        `yaml:"scenarios"`
 }
@@ -51,37 +55,132 @@ type Scenario struct {
 	Forbid  []Expect `yaml:"forbid"`
 	Tools   []string `yaml:"tools"`
 
-	Args    []string `yaml:"args"`    // extra flags for snapshot and compare
-	Modules []string `yaml:"modules"` // --modules, when set
-	Limit   int      `yaml:"limit"`   // page limit (default 20)
+	Args []string `yaml:"args"` // extra flags for snapshot and compare
+	// CompareArgs are extra flags for compare only, such as
+	// --fail-on broke, which snapshot refuses.
+	CompareArgs []string `yaml:"compare_args"`
+	Modules     []string `yaml:"modules"` // --modules, when set
+	Limit       int      `yaml:"limit"`   // page limit (default 20)
 	// PerGroup is pages.per_group: how many pages of one URL pattern
 	// are checked (-1 for all).
-	PerGroup int      `yaml:"per_group"`
-	Echo     bool     `yaml:"echo"`    // needs Echo (-echo)
-	Rules    []string `yaml:"rules"`   // rule files under testbed/, copied to .soundcheck/rules/
-	Harness  string   `yaml:"harness"` // see harnesses
+	PerGroup int       `yaml:"per_group"`
+	Echo     bool      `yaml:"echo"`    // needs Echo (-echo)
+	Rules    []string  `yaml:"rules"`   // rule files under testbed/, copied to .soundcheck/rules/
+	Harness  Harnesses `yaml:"harness"` // see harnesses
+
+	// All makes every expect entry a requirement: the scenario is caught
+	// only when each one holds (for example a BROKE change and an exit
+	// code). Without it one is enough.
+	All bool `yaml:"all"`
+	// Same says the broken state is the good state: nothing is switched,
+	// the scenario checks that an unchanged page gets no false alarm.
+	Same bool `yaml:"same"`
+	// Backlog says the page has accessibility findings in its good state
+	// on purpose (an old backlog a compare must keep quiet about), so the
+	// good-state audit (TestGoodStateAudit) leaves it out.
+	Backlog bool `yaml:"backlog"`
+	// Fixture is a snapshot folder under testbed/ that is copied into
+	// the run's .soundcheck/snapshots/good instead of taking a snapshot,
+	// e.g. one written by an older Soundcheck.
+	Fixture string `yaml:"fixture"`
+	// Flows are flow files under testbed/ copied into the run's
+	// .soundcheck/flows/.
+	Flows []string `yaml:"flows"`
+	// Says are lines the statement draft must contain besides the ones
+	// every statement harness checks (harness statement).
+	Says []string `yaml:"says"`
+	// Control runs the scenario's page in every round of the control
+	// pass too.
+	Control bool `yaml:"control"`
 
 	// InterruptAfter is when harness interrupt sends Ctrl+C.
 	InterruptAfter time.Duration `yaml:"interrupt_after"`
 	// Timeout is the time limit for each of the scenario's commands when
 	// it needs more than -timeout (a big site).
 	Timeout time.Duration `yaml:"timeout"`
+	// Within is how long the compare may take at most: one that takes
+	// longer (a walk that doesn't stop at its cap) is missed.
+	Within time.Duration `yaml:"within"`
 
 	// Pending marks a scenario whose detector isn't merged yet; the
-	// scoreboard reports it apart from the score. Note says what it waits for.
-	Pending bool   `yaml:"pending"`
-	Note    string `yaml:"note"`
+	// scoreboard reports it apart from the score. It is true or the name
+	// of the build lane the scenario waits for (see lanes); Note says
+	// more.
+	Pending Pending `yaml:"pending"`
+	Note    string  `yaml:"note"`
 }
 
 // Harnesses are what the benchmark can do besides switching the state.
-var harnesses = []string{"", "interrupt", "parallel", "delete-shots", "stress", "wp-update"}
+var harnesses = []string{"interrupt", "parallel", "delete-shots", "stress", "wp-update", "statement", "requests", "orders", "canaries"}
+
+// Harnesses is a scenario's harness list. scenarios.yaml writes one as a
+// plain value (harness: stress) and several as a list.
+type Harnesses []string
+
+// UnmarshalYAML reads a single harness or a list of them.
+func (h *Harnesses) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*h = Harnesses{n.Value}
+		return nil
+	}
+	var list []string
+	if err := n.Decode(&list); err != nil {
+		return err
+	}
+	*h = list
+	return nil
+}
+
+// Has reports whether name is one of the harnesses.
+func (h Harnesses) Has(name string) bool { return slices.Contains(h, name) }
+
+// lanes are the build lanes of Soundcheck 1.3 a scenario can wait for
+// (pending: <lane>).
+var lanes = []string{"axe", "keyboard", "flows", "statement", "report", "cli"}
+
+// Pending is a scenario's pending mark: empty (not pending), "true" or a
+// lane's name.
+type Pending string
+
+// UnmarshalYAML reads true, false or a lane's name.
+func (p *Pending) UnmarshalYAML(n *yaml.Node) error {
+	var b bool
+	if n.Tag == "!!bool" {
+		if err := n.Decode(&b); err != nil {
+			return err
+		}
+		*p = ""
+		if b {
+			*p = "true"
+		}
+		return nil
+	}
+	*p = Pending(n.Value)
+	return nil
+}
+
+// Is reports whether the scenario is pending.
+func (p Pending) Is() bool { return p != "" }
+
+// Lane is the lane the scenario waits for, or "" when it names none.
+func (p Pending) Lane() string {
+	if p == "true" {
+		return ""
+	}
+	return string(p)
+}
 
 // ChangesSite reports whether the scenario's state file changes the
 // site. The parallel and stress cases only change how Soundcheck runs;
-// wp-update breaks the site by updating plugins, not through a state file.
+// wp-update breaks the site by updating plugins, not through a state
+// file; a scenario marked same changes nothing.
 func (s Scenario) ChangesSite() bool {
-	return s.Harness != "parallel" && s.Harness != "stress" && s.Harness != "wp-update"
+	return !s.Same && !s.Harness.Has("parallel") && !s.Harness.Has("stress") && !s.Harness.Has("wp-update")
 }
+
+// EAA reports whether the scenario belongs to EAA mode (s49 to s89):
+// the ones -only eaa picks.
+func (s Scenario) EAA() bool { return slices.Contains(s.Args, "--eaa") }
 
 // Expect is one acceptable result. Exactly one kind is set:
 //
@@ -95,11 +194,16 @@ func (s Scenario) ChangesSite() bool {
 //     site, in at most Compares compares when that is set (harness
 //     wp-update only)
 //
-// Forbid entries use the change form only.
+// A change matcher may also ask for Source (the change's source, such as
+// the element's selector, contains it) and Count (at least that many
+// changes match, e.g. one per field). Forbid entries use the change form
+// only.
 type Expect struct {
 	Class       string `yaml:"class"`
 	Check       string `yaml:"check"`
 	Title       string `yaml:"title"`
+	Source      string `yaml:"source"`
+	Count       int    `yaml:"count"`
 	Warning     string `yaml:"warning"`
 	Interrupted bool   `yaml:"interrupted"`
 	Clean       bool   `yaml:"clean"`
@@ -122,7 +226,7 @@ const (
 // than one.
 func (e Expect) kind() string {
 	var kinds []string
-	if e.Class != "" || e.Check != "" || e.Title != "" {
+	if e.Class != "" || e.Check != "" || e.Title != "" || e.Source != "" {
 		kinds = append(kinds, kindChange)
 	}
 	if e.Warning != "" {
@@ -154,7 +258,8 @@ func (e Expect) Match(c model.Change) bool {
 // about reports whether c is about the expected problem, whatever its class.
 func (e Expect) about(c model.Change) bool {
 	return e.kind() == kindChange && strings.HasPrefix(c.Check, e.Check) &&
-		strings.Contains(strings.ToLower(c.Title), strings.ToLower(e.Title))
+		strings.Contains(strings.ToLower(c.Title), strings.ToLower(e.Title)) &&
+		strings.Contains(c.Source, e.Source)
 }
 
 func (e Expect) String() string {
@@ -183,6 +288,12 @@ func (e Expect) String() string {
 	if e.Title != "" {
 		s += " “" + e.Title + "”"
 	}
+	if e.Source != "" {
+		s += " in " + e.Source
+	}
+	if e.Count > 1 {
+		s += fmt.Sprintf(" (%d×)", e.Count)
+	}
 	return s
 }
 
@@ -204,6 +315,7 @@ func LoadManifest(path string) (*Manifest, error) {
 	if err := m.check(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	m.Defaults = maps.Clone(m.Sites)
 	return &m, nil
 }
 
@@ -230,14 +342,22 @@ func (m *Manifest) check() error {
 			return fmt.Errorf("%s: no toggle (say what the broken state changes)", s.ID)
 		case len(s.Expect) == 0:
 			return fmt.Errorf("%s: no expect", s.ID)
-		case !slices.Contains(harnesses, s.Harness):
-			return fmt.Errorf("%s: unknown harness %q", s.ID, s.Harness)
-		case s.Harness == "interrupt" && s.InterruptAfter <= 0:
+		case slices.ContainsFunc(s.Harness, func(h string) bool { return !slices.Contains(harnesses, h) }):
+			return fmt.Errorf("%s: unknown harness in %v (want %s)", s.ID, []string(s.Harness), strings.Join(harnesses, ", "))
+		case s.Harness.Has("interrupt") && s.InterruptAfter <= 0:
 			return fmt.Errorf("%s: harness interrupt needs interrupt_after", s.ID)
-		case s.Limit < 0:
-			return fmt.Errorf("%s: negative limit", s.ID)
-		case s.Harness == "wp-update" && len(s.Forbid) > 0:
+		case s.Limit < 0 || s.Within < 0:
+			return fmt.Errorf("%s: negative limit or within", s.ID)
+		case s.Harness.Has("wp-update") && len(s.Forbid) > 0:
 			return fmt.Errorf("%s: harness wp-update scores culprits; forbid doesn't apply", s.ID)
+		case s.Harness.Has("wp-update") && len(s.Harness) > 1:
+			return fmt.Errorf("%s: harness wp-update runs alone", s.ID)
+		case s.Pending.Lane() != "" && !slices.Contains(lanes, s.Pending.Lane()):
+			return fmt.Errorf("%s: pending %q isn't true or a lane (%s)", s.ID, s.Pending, strings.Join(lanes, ", "))
+		case len(s.Says) > 0 && !s.Harness.Has("statement"):
+			return fmt.Errorf("%s: says needs harness statement", s.ID)
+		case s.Same && s.Harness.Has("wp-update"):
+			return fmt.Errorf("%s: a wp-update scenario changes the site", s.ID)
 		}
 		for _, e := range s.Expect {
 			if err := checkExpect(s, e, false); err != nil {
@@ -259,15 +379,17 @@ func checkExpect(s Scenario, e Expect, forbid bool) error {
 	switch {
 	case kind == "":
 		return fmt.Errorf("%s: expect %+v must set exactly one of class/check/title, warning, interrupted, clean, exit or culprit", s.ID, e)
-	case (kind == kindCulprit) != (s.Harness == "wp-update"):
+	case (kind == kindCulprit) != s.Harness.Has("wp-update"):
 		return fmt.Errorf("%s: only harness wp-update expects culprits and it expects nothing else", s.ID)
 	case kind == kindCulprit && (e.Culprit == "" || e.Compares < 0):
 		return fmt.Errorf("%s: culprit needs a plugin slug and compares can't be negative", s.ID)
 	case forbid && kind != kindChange:
-		return fmt.Errorf("%s: forbid entries are changes (class, check, title)", s.ID)
+		return fmt.Errorf("%s: forbid entries are changes (class, check, title, source)", s.ID)
+	case e.Count < 0 || e.Count > 0 && kind != kindChange:
+		return fmt.Errorf("%s: count is a positive number of changes", s.ID)
 	case kind != kindChange || e.Class == "" || slices.Contains(model.Classes, e.Class):
 		return nil
-	case s.Pending && e.Class == strings.ToLower(e.Class):
+	case s.Pending.Is() && e.Class == strings.ToLower(e.Class):
 		return nil // a class that is being added, e.g. unstable
 	}
 	return fmt.Errorf("%s: unknown class %q", s.ID, e.Class)
@@ -279,17 +401,29 @@ func (m *Manifest) URL(s Scenario) string {
 }
 
 // Pick returns the scenarios whose IDs are in only (all when empty).
+// The name eaa picks every EAA mode scenario (s49 to s89). Each scenario
+// comes back once, however often only names it.
 func (m *Manifest) Pick(only []string) ([]Scenario, error) {
 	if len(only) == 0 {
 		return m.Scenarios, nil
 	}
 	var out []Scenario
 	for _, id := range only {
+		if id == "eaa" {
+			for _, s := range m.Scenarios {
+				if s.EAA() && !slices.ContainsFunc(out, func(o Scenario) bool { return o.ID == s.ID }) {
+					out = append(out, s)
+				}
+			}
+			continue
+		}
 		i := slices.IndexFunc(m.Scenarios, func(s Scenario) bool { return s.ID == id })
 		if i < 0 {
 			return nil, fmt.Errorf("unknown scenario %q", id)
 		}
-		out = append(out, m.Scenarios[i])
+		if !slices.ContainsFunc(out, func(o Scenario) bool { return o.ID == id }) {
+			out = append(out, m.Scenarios[i])
+		}
 	}
 	return out, nil
 }
@@ -310,6 +444,9 @@ type Result struct {
 	Found   string   `json:"found,omitempty"`  // the change that matched, or the tool's evidence
 	Detail  string   `json:"detail,omitempty"` // why it errored or wasn't run
 	Others  []string `json:"others,omitempty"` // other changes the comparison reported
+	// Good counts the violations an accessibility tool listed in the
+	// good state (EAA scenarios only).
+	Good int `json:"good_violations,omitempty"`
 }
 
 // Observed is what one Soundcheck compare produced.
@@ -327,11 +464,16 @@ func Evaluate(s Scenario, obs Observed) Result {
 	if cmp == nil {
 		cmp = &model.Comparison{}
 	}
+	held := make([]string, len(s.Expect)) // what each expectation found, "" while unmet
+	matches := make([]int, len(s.Expect))
 	for i, c := range cmp.Changes {
 		matched := false
-		for _, e := range s.Expect {
-			if e.Match(c) && r.Outcome != Caught {
-				r.Outcome, r.Found, matched = Caught, describe(c), true
+		for j, e := range s.Expect {
+			if e.Match(c) {
+				matched = true
+				if matches[j]++; matches[j] >= max(e.Count, 1) && held[j] == "" {
+					held[j] = describe(c)
+				}
 			}
 			if e.about(c) {
 				matched = true
@@ -344,32 +486,49 @@ func Evaluate(s Scenario, obs Observed) Result {
 			r.Others = append(r.Others, describe(c))
 		}
 	}
-	for _, e := range s.Expect {
-		if r.Outcome == Caught {
-			break
-		}
+	for j, e := range s.Expect {
 		switch e.kind() {
 		case kindWarning:
 			for _, w := range cmp.Warnings {
 				if strings.Contains(strings.ToLower(w), strings.ToLower(e.Warning)) {
-					r.Outcome, r.Found = Caught, "warning: "+w
+					held[j] = "warning: " + w
 					break
 				}
 			}
 		case kindInterrupted:
 			if obs.Interrupted {
-				r.Outcome, r.Found = Caught, "the comparison is marked interrupted"
+				held[j] = "the comparison is marked interrupted"
 			}
 		case kindClean:
-			if alarms := FalseAlarms(cmp); len(alarms) == 0 {
-				r.Outcome, r.Found = Caught, "nothing at or above NEW"
+			if len(FalseAlarms(cmp)) == 0 {
+				held[j] = "nothing at or above NEW"
 			}
 		case kindExit:
 			if obs.Exit == *e.Exit {
-				r.Outcome, r.Found = Caught, fmt.Sprintf("exit %d", obs.Exit)
+				held[j] = fmt.Sprintf("exit %d", obs.Exit)
 			}
 		}
 	}
+	var found, missing []string
+	for j, h := range held {
+		if h != "" {
+			found = append(found, h)
+		} else {
+			missing = append(missing, s.Expect[j].String())
+		}
+	}
+	switch {
+	case s.All && len(missing) == 0, !s.All && len(found) > 0:
+		r.Outcome = Caught
+		if s.All {
+			r.Found = strings.Join(found, "; ")
+		} else {
+			r.Found = found[0]
+		}
+	case s.All && len(found) > 0:
+		r.Detail = "still missing: " + strings.Join(missing, ", ")
+	}
+	alarms := FalseAlarms(cmp)
 	for _, c := range cmp.Changes {
 		for _, f := range s.Forbid {
 			if f.Match(c) {
@@ -379,12 +538,16 @@ func Evaluate(s Scenario, obs Observed) Result {
 	}
 	switch {
 	case r.Outcome == Caught:
+	case len(alarms) > 0 && slices.ContainsFunc(s.Expect, func(e Expect) bool { return e.kind() == kindClean }):
+		// A clean expectation failed: whatever reached NEW is a false
+		// alarm, even when the forbid list doesn't name it.
+		r.Outcome, r.Found = FalseAlarm, strings.Join(alarms, "; ")
 	case about != nil:
 		r.Outcome, r.Found = OtherClass, describe(*about)
 	default:
 		r.Outcome = Missed
 		if obs.Comparison == nil {
-			r.Detail = fmt.Sprintf("compare wrote no comparison (exit %d)", obs.Exit)
+			r.Detail = strings.TrimSpace(r.Detail + fmt.Sprintf(" compare wrote no comparison (exit %d)", obs.Exit))
 		}
 	}
 	return r
@@ -404,6 +567,9 @@ func FalseAlarms(cmp *model.Comparison) []string {
 
 func describe(c model.Change) string {
 	s := strings.ToUpper(c.Class) + " " + c.Check + ": " + c.Title
+	if c.Source != "" && (strings.HasPrefix(c.Check, "a11y/") || strings.HasPrefix(c.Check, "keyboard/")) {
+		s += " [" + c.Source + "]"
+	}
 	if len(c.Pages) > 0 {
 		s += " (" + strings.Join(c.Pages, ", ") + ")"
 	}
@@ -435,4 +601,23 @@ func Toggle(testbed, id, state string) error {
 		return fmt.Errorf("toggle.sh %s %s: %w: %s", id, state, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// sitePorts are the environment variables that move each site, as
+// docker-compose.yml and the Makefile read them.
+var sitePorts = map[string]struct{ env, scheme string }{
+	"wp":        {"TESTBED_WP_PORT", "http"},
+	"php":       {"TESTBED_PHP_PORT", "http"},
+	"php-https": {"TESTBED_PHP_HTTPS_PORT", "https"},
+}
+
+// sitesFromEnv points the sites at the ports in TESTBED_WP_PORT,
+// TESTBED_PHP_PORT and TESTBED_PHP_HTTPS_PORT when they are set, so the
+// tests follow a stack started on other ports.
+func sitesFromEnv(m *Manifest) {
+	for site, p := range sitePorts {
+		if port := os.Getenv(p.env); port != "" && m.Sites[site] != "" {
+			m.Sites[site] = p.scheme + "://localhost:" + port
+		}
+	}
 }

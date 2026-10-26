@@ -20,6 +20,8 @@
 #             with `check` and whose title contains `title` (case-insensitive)
 #   tools     third-party tools in the benchmark that could catch it
 #   args      extra rhythm-soundcheck flags for both runs, e.g. [--timeout, 6s]
+#   compare_args  extra flags for compare only, e.g. [--fail-on, broke],
+#             which snapshot refuses
 #   modules   run exactly these modules (--modules), e.g. to add seo or a11y
 #   limit     page limit (default 20)
 #   timeout   time limit for each command when the bench's -timeout (5m)
@@ -27,7 +29,8 @@
 #   per_group pages.per_group: pages per URL pattern (-1 for all)
 #   echo      the run needs Echo (bench -echo URL); "not run" without it
 #   rules     YAML rule files (relative to testbed/) copied into .soundcheck/rules/
-#   harness   what the benchmark does besides switching the state:
+#   harness   what the benchmark does besides switching the state; one
+#             value or a list:
 #               interrupt     sends Ctrl+C (SIGINT) to compare after interrupt_after
 #               parallel      runs two compares in the same folder at once
 #               delete-shots  deletes the snapshot's screenshots before comparing
@@ -37,13 +40,41 @@
 #                             breaks the contact page) instead of snapshot
 #                             and compare; wp/updates/reset.sh puts them
 #                             back at 1.0 before and after
-#   pending   the detector the expectation needs isn't merged yet; the
-#             scoreboard counts these separately (see note)
+#               statement     writes the statement draft after compare
+#                             (`statement -o`) and checks it says the
+#                             evidence note, "not tested: needs a person"
+#                             and the scenario's `says` and never claims
+#                             compliance, conformance or a certification
+#               requests      fails when Chrome asked any host besides
+#                             localhost, 127.0.0.1 or a compose service
+#               orders        fails when state/orders.txt (the shop's
+#                             orders) or state/sidefx.txt (s88's side
+#                             effects) changed during the scenario
+#               canaries      writes runtime canaries into state/canaries
+#                             for the pages to show and fails when one
+#                             turns up in any file the run wrote
+#   pending   the detector the expectation needs isn't merged yet: true or
+#             the Soundcheck 1.3 build lane it waits for (axe, keyboard,
+#             flows, statement, report, cli); the scoreboard counts these
+#             separately (see note)
 #   forbid    changes that must not be reported (false alarms), same
 #             matchers as expect
+#   all       every expect entry must hold (default: any one of them)
+#   same      the broken state is the good state: nothing is switched
+#   backlog   the good state has accessibility findings on purpose, so the
+#             good-state audit (TestGoodStateAudit) leaves the page out
+#   fixture   a snapshot folder under testbed/ copied in as the snapshot
+#             "good" instead of taking one (e.g. one Soundcheck 1.2 wrote)
+#   flows     flow files under testbed/ copied into .soundcheck/flows/
+#   says      more lines the statement must contain (harness statement)
+#   within    the compare must finish within this long
+#   control   the scenario's page is checked in every control round too
 #
 # An expect entry is one of:
-#   {class: …, check: …, title: …}   a change (class may be left out: any class)
+#   {class: …, check: …, title: …}   a change (class may be left out: any class);
+#                                     source: … also asks the change's source
+#                                     (an element's selector) to contain it,
+#                                     count: N at least N such changes
 #   {warning: "text"}                 a comparison warning containing the text
 #   {interrupted: true}               the comparison is marked interrupted
 #   {clean: true}                     nothing at or above NEW was reported
@@ -52,7 +83,8 @@
 #                                     compares (wp-update harness only)
 #
 # Checks for modules that aren't merged yet are matched by module prefix
-# only, e.g. "interact/".
+# only, e.g. "interact/". The EAA scenarios (args: [--eaa], s49 to s89)
+# run with -only eaa; the a11y/ and keyboard/ check names are PRD 8's.
 
 sites:
   wp: http://localhost:18800
@@ -663,3 +695,635 @@ scenarios:
     expect:
       - {culprit: testbed-update-07, compares: 10}
     tools: []
+
+  # EAA mode (Soundcheck 1.3, --eaa): accessibility and keyboard
+  # scenarios from PRD 16.1. Broken ones first (s49 to s76), then the
+  # good and hard-good ones (s77 to s89) that must stay quiet. Each waits
+  # for the 1.3 build lane that ships its detector (pending: <lane>).
+
+  - id: s49
+    name: Keyboard trap in the checkout's coupon field
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: keyboard
+    args: [--eaa]
+    compare_args: [--fail-on, broke]
+    harness: orders
+    all: true
+    toggle: "the coupon field's script cancels Tab and Shift+Tab (wp/plugins/testbed-shop)"
+    expect:
+      - {class: broke, check: keyboard/trap, source: "#tb_coupon"}
+      - {exit: 1}
+    # The newsletter dialog on the same page contains focus on purpose.
+    forbid:
+      - {check: keyboard/trap, source: "#news"}
+    tools: []
+    pending: keyboard
+
+  - id: s50
+    name: Checkout fields lose their labels
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: a11y
+    args: [--eaa]
+    harness: statement
+    toggle: "name, email and address render without <label for>, as plain text (wp/plugins/testbed-shop)"
+    expect:
+      - {class: new, check: a11y/label, count: 3}
+    forbid:
+      - {class: broke}
+    tools: []
+    pending: axe
+    # The bench doesn't parse the draft's rows: the one-count rule is the
+    # statement lane's unit test (changes-testbed.md follow-ups).
+    note: "the statement must count each field once although interact/unlabeled and a11y/label both name it (statement lane test; the bench checks wording only)"
+
+  - id: s51
+    name: Focus lost when the newsletter dialog closes
+    site: wp
+    path: /s51-newsletter/
+    include: ["/s51-newsletter*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the dialog's 2.0 close button removes itself, so focus falls to the page (wp/themes/testbed/inc/eaa.php, js/dialog.js)"
+    expect:
+      - {class: new, check: keyboard/focus-lost}
+    forbid:
+      - {check: keyboard/trap}
+    tools: []
+    pending: keyboard
+
+  - id: s52
+    name: Modal dialog stops containing focus
+    site: wp
+    path: /s52-modal/
+    include: ["/s52-modal*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the aria-modal dialog's Tab containment is gone, so Tab walks out behind it (wp/themes/testbed/inc/eaa.php)"
+    expect:
+      - {class: new, check: keyboard/dialog-focus}
+    tools: []
+    pending: keyboard
+
+  - id: s53
+    name: Dialog opens without taking focus (plain PHP)
+    site: php
+    path: /a11y/dialog-nofocus.php
+    include: ["/a11y/dialog-nofocus.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "opening the dialog leaves focus on the button behind it (php/a11y/dialog-nofocus.php)"
+    expect:
+      - {class: new, check: keyboard/dialog-focus}
+    tools: []
+    pending: keyboard
+
+  - id: s54
+    name: Theme removes every focus outline
+    site: wp
+    path: /s54-focus/
+    include: ["/s54-focus*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the theme adds *:focus{outline:none} on every page (wp/themes/testbed/inc/eaa.php)"
+    expect:
+      - {class: new, check: keyboard/no-focus-ring}
+    tools: []
+    pending: keyboard
+
+  - id: s55
+    name: Skip link points nowhere
+    site: wp
+    path: /s55-skip/
+    include: ["/s55-skip*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the header renames #main, so the skip link's target is gone on every page (wp/themes/testbed/header.php)"
+    expect:
+      - {class: new, check: keyboard/skip-link-broken}
+    tools: []
+    pending: keyboard
+
+  - id: s56
+    name: Menu toggle becomes a div
+    site: wp
+    path: /s56-toggle/
+    include: ["/s56-toggle*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the header's Browse toggle is a div with a click listener on every page (wp/themes/testbed/header.php)"
+    expect:
+      - {class: new, check: keyboard/not-reachable}
+    tools: []
+    pending: keyboard
+
+  - id: s57
+    name: Custom button ignores Enter and Space (plain PHP)
+    site: php
+    path: /a11y/wishlist.php
+    include: ["/a11y/wishlist.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the div role=button tabindex=0 loses its key handler; a click still works (php/a11y/wishlist.php)"
+    expect:
+      - {class: new, check: keyboard/not-operable}
+    tools: []
+    pending: keyboard
+
+  - id: s58
+    name: Submenu opens on hover only
+    site: wp
+    path: /s58-submenu/
+    include: ["/s58-submenu*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the menu's Guides submenu no longer opens on :focus-within, only on :hover (wp/themes/testbed/inc/eaa.php, style.css)"
+    expect:
+      - {class: new, check: keyboard/menu}
+    tools: []
+    pending: keyboard
+
+  - id: s59
+    name: Invalid autocomplete tokens in the checkout
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "the checkout fields get autocomplete=\"nope\" (wp/plugins/testbed-shop); only the WCAG 2.1 rules catch it"
+    expect:
+      - {class: new, check: a11y/autocomplete-valid}
+    tools: []
+    pending: axe
+
+  - id: s60
+    name: Checkout labels replaced by placeholders
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "the billing fields lose their labels and show placeholders instead (wp/plugins/testbed-shop)"
+    expect:
+      - {class: new, check: a11y/placeholder-label}
+    # axe takes a placeholder for a label, so its label rule stays quiet.
+    forbid:
+      - {check: a11y/label}
+    tools: []
+    pending: axe
+
+  - id: s61
+    name: Place order text too light to read
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "Place order becomes #c8c8c8 on white (wp/plugins/testbed-shop)"
+    expect:
+      - {class: new, check: a11y/color-contrast, source: "#place_order"}
+    tools: []
+    pending: axe
+
+  - id: s62
+    name: Pages lose their lang attribute
+    site: wp
+    path: /s62-lang/
+    include: ["/s62-lang*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "<html lang> is dropped on every page (wp/themes/testbed/inc/eaa.php)"
+    expect:
+      - {class: new, check: a11y/html-has-lang}
+    tools: []
+    pending: axe
+
+  - id: s63
+    name: Gallery images lose their alt text
+    site: wp
+    path: /s63-gallery/
+    include: ["/s63-gallery*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "a media plugin update strips the gallery images' alt attributes (wp/themes/testbed/inc/eaa.php)"
+    expect:
+      - {class: new, check: a11y/image-alt}
+    tools: []
+    pending: axe
+
+  - id: s64
+    name: Contact form errors shown by colour only (key flow)
+    site: wp
+    path: /contact/
+    include: ["/contact*"]
+    module: keyboard
+    args: [--eaa, --level, flows]
+    flows: [flows/keyboard-contact.yaml]
+    toggle: "the form's errors become red borders alone: no message, no aria-invalid, no aria-describedby, focus stays put (wp/plugins/testbed-forms)"
+    expect:
+      - {class: new, check: keyboard/error-not-linked}
+    tools: []
+    pending: flows
+
+  - id: s65
+    name: Cookie banner traps the keyboard (plain PHP)
+    site: php
+    path: /a11y/consent.php
+    include: ["/a11y/consent.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the banner grabs focus, cancels Tab and Shift+Tab and has mouse-only buttons (php/a11y/consent.php)"
+    expect:
+      - {class: broke, check: keyboard/trap}
+    tools: []
+    pending: keyboard
+
+  - id: s66
+    name: Zoom switched off (plain PHP)
+    site: php
+    path: /a11y/zoom.php
+    include: ["/a11y/zoom.php*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "the viewport says user-scalable=no, maximum-scale=1 (php/a11y/zoom.php)"
+    expect:
+      - {class: new, check: a11y/meta-viewport}
+    tools: []
+    pending: axe
+
+  - id: s67
+    name: Web component loses its label in a shadow root (plain PHP)
+    site: php
+    path: /a11y/widget.php
+    include: ["/a11y/widget.php*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "the card field's shadow root drops its <label for> (php/a11y/widget.php)"
+    expect:
+      - {class: new, check: a11y/label, source: " >>> "}
+    tools: []
+    pending: axe
+
+  - id: s68
+    name: Account form drops a label; prefilled with canaries (login)
+    site: wp
+    path: /my-account/
+    include: ["/my-account*"]
+    module: a11y
+    login: true
+    args: [--eaa, --level, flows]
+    # Soundcheck visits pages anonymously; only flows run logged in. The
+    # key flow puts the canaries in front of the keyboard walk's trace.
+    flows: [flows/keyboard-account.yaml]
+    harness: [canaries, requests]
+    toggle: "the phone field loses its label; the form is filled with the benchmark's runtime canaries (wp/plugins/testbed-shop)"
+    expect:
+      - {class: new, check: a11y/label, source: "acc_phone"}
+    tools: []
+    pending: axe
+    note: "Soundcheck audits pages anonymously and logs in only for the leak test and flows, so /my-account/ shows its login prompt to the a11y module; the label can only be caught once --eaa audits logged-in pages (axe lane, lead's call). The canary sweep already covers the logged-in key flow."
+
+  - id: s69
+    name: Promo bar too wide to reflow (plain PHP)
+    site: php
+    path: /a11y/promo.php
+    include: ["/a11y/promo.php*"]
+    module: a11y
+    args: [--eaa]
+    toggle: "the promo bar gets a fixed 600 px width (php/a11y/promo.php)"
+    expect:
+      - {class: new, check: a11y/reflow}
+    tools: []
+    pending: axe
+
+  - id: s70
+    name: Place order reachable only by mouse (key flow)
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: keyboard
+    args: [--eaa, --level, flows]
+    flows: [flows/keyboard-checkout.yaml]
+    harness: orders
+    toggle: "Place order gets tabindex=-1 and submits from a click handler (wp/plugins/testbed-shop)"
+    expect:
+      - {class: broke, check: keyboard/flow}
+    tools: []
+    pending: flows
+
+  - id: s71
+    name: Select navigates when it gets focus (plain PHP)
+    site: php
+    path: /a11y/autonav.php
+    include: ["/a11y/autonav.php"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "focusing the period select loads another view (php/a11y/autonav.php)"
+    expect:
+      - {class: new, check: keyboard/context-change}
+    tools: []
+    pending: keyboard
+
+  - id: s72
+    name: Closed off-canvas menu stays tabbable (plain PHP)
+    site: php
+    path: /a11y/offcanvas.php
+    include: ["/a11y/offcanvas.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the closed drawer is only moved off screen, not hidden (php/a11y/offcanvas.php)"
+    expect:
+      - {class: new, check: keyboard/focus-invisible}
+    tools: []
+    pending: keyboard
+
+  - id: s73
+    name: Accessibility overlay script added
+    site: wp
+    path: /s73-overlay/
+    include: ["/s73-overlay*"]
+    module: a11y
+    args: [--eaa]
+    harness: requests
+    toggle: "an overlay plugin's script tag appears on every page, served as a stub from its plugin path (wp/themes/testbed/inc/eaa.php, wp/plugins/pojo-accessibility)"
+    expect:
+      - {class: new, check: a11y/overlay}
+    tools: []
+    pending: axe
+
+  - id: s74
+    name: Page too big for axe to finish (plain PHP)
+    site: php
+    path: /a11y/big.php
+    include: ["/a11y/big.php*"]
+    module: a11y
+    args: [--eaa]
+    all: true
+    toggle: "the page grows to 20,000 elements (php/a11y/big.php)"
+    expect:
+      - {exit: 3}
+      - {warning: not checked}
+    # The snapshot's issues are kept, never counted as fixed.
+    forbid:
+      - {class: fixed}
+    tools: []
+    pending: axe
+
+  - id: s75
+    name: Dialog ignores Escape (plain PHP)
+    site: php
+    path: /a11y/noescape.php
+    include: ["/a11y/noescape.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the Filters dialog no longer closes on Escape; its Close button still works (php/a11y/noescape.php)"
+    expect:
+      - {class: new, check: keyboard/escape}
+    forbid:
+      - {check: keyboard/trap}
+    tools: []
+    pending: keyboard
+
+  - id: s76
+    name: Focus handler reloads the page (plain PHP)
+    site: php
+    path: /a11y/reload-trap.php
+    include: ["/a11y/reload-trap.php*"]
+    module: keyboard
+    args: [--eaa]
+    # PRD 16.1 asks for the walk's cap plus 10%: 60 s a page (PRD 8.3)
+    # is 66 s. within times the whole compare, so it adds 24 s for
+    # Chrome's start, the crawl and the other --eaa audits of the page.
+    within: 90s
+    toggle: "the second link's focus handler reloads the page (php/a11y/reload-trap.php)"
+    expect:
+      - {check: keyboard/trap}
+      - {warning: "keyboard: /a11y/reload-trap.php:"}
+    tools: []
+    pending: keyboard
+
+  - id: s77
+    name: Native dialog with showModal() (hard good, plain PHP)
+    site: php
+    path: /a11y/dialog.php
+    include: ["/a11y/dialog.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "a correct native <dialog> says something else and gains a link (php/a11y/dialog.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {check: keyboard/trap}
+      - {check: keyboard/focus-lost}
+      - {check: keyboard/dialog-focus}
+    tools: []
+    pending: keyboard
+
+  - id: s78
+    name: Custom modal done right (hard good, plain PHP)
+    site: php
+    path: /a11y/modal.php
+    include: ["/a11y/modal.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "a correct custom modal gains a labelled field (php/a11y/modal.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {check: keyboard/trap}
+      - {check: keyboard/focus-lost}
+      - {check: keyboard/dialog-focus}
+    tools: []
+    pending: keyboard
+
+  - id: s79
+    name: Focus shown without an outline (hard good, plain PHP)
+    site: php
+    path: /a11y/rings.php
+    include: ["/a11y/rings.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the controls swap their box-shadow, underline and background focus styles (php/a11y/rings.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {check: keyboard/no-focus-ring}
+    tools: []
+    pending: keyboard
+
+  - id: s80
+    name: Visually hidden skip link that shows on focus (hard good)
+    site: wp
+    path: /s80-skip/
+    include: ["/s80-skip*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the skip link hides with clip-path instead of an offset and still shows on focus (wp/themes/testbed/header.php, style.css)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {check: keyboard/skip-link}
+      - {check: keyboard/focus-invisible}
+      - {check: keyboard/no-focus-ring}
+    tools: []
+    pending: keyboard
+
+  - id: s81
+    name: Page that changes on every load (hard good, plain PHP)
+    site: php
+    path: /a11y/live.php
+    include: ["/a11y/live.php*"]
+    module: keyboard
+    args: [--eaa]
+    toggle: "the carousel rotates faster; the plan order, the time and the caret change anyway (php/a11y/live.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {class: new}
+    tools: []
+    pending: keyboard
+
+  - id: s82
+    name: 300 old contrast problems, nothing changes (hard good, plain PHP)
+    site: php
+    path: /a11y/backlog.php
+    include: ["/a11y/backlog.php*"]
+    module: a11y
+    args: [--eaa]
+    same: true
+    backlog: true
+    toggle: "none: the page and its 300 contrast violations stay as they are (php/a11y/backlog.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {class: new}
+      - {class: fixed}
+    tools: []
+    pending: axe
+
+  - id: s83
+    name: One of 300 old contrast problems fixed (plain PHP)
+    site: php
+    path: /a11y/backlog.php
+    include: ["/a11y/backlog.php*"]
+    module: a11y
+    args: [--eaa]
+    backlog: true
+    toggle: "row 5 of the 300 low-contrast rows gets dark text (php/a11y/backlog.php)"
+    expect:
+      - {class: fixed, check: a11y/color-contrast, source: "row-5"}
+    # Row 21 moving into a per-rule cap of 20 must not look new.
+    forbid:
+      - {class: new}
+    tools: []
+    pending: axe
+
+  - id: s84
+    name: Frames from the same and another origin (hard good, plain PHP)
+    site: php
+    path: /a11y/embed.php
+    include: ["/a11y/embed.php*"]
+    module: a11y
+    args: [--eaa]
+    harness: [statement, canaries, requests]
+    says: ["frame"]
+    toggle: "the same-origin map frame gets more accessibility problems; frames aren't audited (php/a11y/embed.php, php/a11y/frame.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {class: new}
+    tools: []
+    pending: statement
+
+  - id: s85
+    name: Checkout on a busy machine (hard good)
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: keyboard
+    args: [--eaa]
+    harness: [stress, orders]
+    toggle: "none: the site doesn't change; the benchmark keeps every CPU busy while compare runs"
+    expect:
+      - {clean: true}
+    forbid:
+      - {class: new}
+      - {check: keyboard/trap}
+    tools: []
+    pending: keyboard
+
+  - id: s86
+    name: Checkout answers 500 under --eaa
+    site: wp
+    path: /checkout/
+    include: ["/checkout*"]
+    module: health
+    args: [--eaa]
+    harness: statement
+    says: ["/checkout/"]
+    toggle: "the payment gateway update of s31 breaks showing the checkout too: critical error, 500 (wp/plugins/testbed-shop)"
+    expect:
+      - {class: broke, check: health/}
+    tools: []
+    pending: statement
+    note: "the statement must list /checkout/ as not audited and never claim it was (statement lane, harness statement)"
+
+  - id: s87
+    name: Snapshot from Soundcheck 1.2 compared with --eaa (plain PHP)
+    site: php
+    path: /a11y/legacy.php
+    include: ["/a11y/legacy.php*"]
+    module: a11y
+    args: [--eaa]
+    same: true
+    backlog: true
+    fixture: fixtures/s87-snapshot
+    all: true
+    toggle: "none: the page and its invalid autocomplete tokens (a WCAG 2.1 failure 1.2 never checked) stay; the snapshot is a committed 1.2.2 one without options.wcag or options.a11y (fixtures/s87-snapshot, php/a11y/legacy.php)"
+    expect:
+      - {warning: used the WCAG 2.0 rules}
+      - {clean: true}
+    # The 2.1 rules the old snapshot never ran must not make NEW issues.
+    forbid:
+      - {class: new, check: a11y/autocomplete-valid}
+    tools: []
+    pending: cli
+
+  - id: s88
+    name: Page with side effects on GET and on focus (hard good, plain PHP)
+    site: php
+    path: /a11y/sidefx.php
+    include: ["/a11y/sidefx.php"]
+    module: keyboard
+    args: [--eaa]
+    same: true
+    harness: [orders, requests]
+    toggle: "none: the add-to-cart and logout links, the WebSocket on focus, the download and the popup are there in both states (php/a11y/sidefx.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {class: new}
+    tools: []
+    pending: keyboard
+
+  - id: s89
+    name: A fully accessible small site (plain PHP)
+    site: php
+    path: /a11y/
+    include: ["/a11y/", "/a11y/index.php"]
+    module: keyboard
+    args: [--eaa]
+    same: true
+    control: true
+    harness: [statement, requests]
+    toggle: "none: a site with a skip link, landmarks, a native dialog, visible focus and a labelled checkout (php/a11y/index.php)"
+    expect:
+      - {clean: true}
+    forbid:
+      - {check: a11y/}
+      - {check: keyboard/}
+    tools: []
+    pending: statement

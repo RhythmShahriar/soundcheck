@@ -21,6 +21,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,7 +67,7 @@ func main() {
 	flag.StringVar(&o.out, "out", "docs/benchmark.md", "where to write the scoreboard")
 	flag.StringVar(&o.work, "work", "", "working folder for runs (default testbed/bench/work)")
 	flag.StringVar(&only, "only", "", "comma-separated scenario IDs to run (default all)")
-	flag.StringVar(&o.tools, "tools", "auto", "third-party tools: auto (those installed), none, all, or a list: backstop,lychee,unlighthouse")
+	flag.StringVar(&o.tools, "tools", "auto", "third-party tools: auto (those installed), none, all, or a list: backstop,lychee,unlighthouse,axe,pa11y")
 	flag.DurationVar(&o.timeout, "timeout", 5*time.Minute, "time limit for each command")
 	flag.StringVar(&wp, "wp", "", "WordPress testbed URL (default from scenarios.yaml)")
 	flag.StringVar(&php, "php", "", "plain-PHP testbed URL (default from scenarios.yaml)")
@@ -77,10 +78,11 @@ func main() {
 	flag.Parse()
 	if only != "" {
 		o.only = strings.Split(only, ",")
-		// A partial run skips the control pass unless -control was given.
+		// A partial run skips the control pass unless -control was given;
+		// -only eaa is EAA mode's whole benchmark and keeps it.
 		set := false
 		flag.Visit(func(f *flag.Flag) { set = set || f.Name == "control" })
-		if !set {
+		if !set && !slices.Contains(o.only, "eaa") {
 			o.control = 0
 		}
 	}
@@ -99,6 +101,7 @@ func main() {
 type Results struct {
 	Scenarios []Outcome      `json:"scenarios"`
 	Control   []ControlRound `json:"control,omitempty"`
+	Cost      *Cost          `json:"cost,omitempty"` // EAA mode's cost pass
 }
 
 // Outcome is everything recorded for one scenario.
@@ -118,6 +121,7 @@ func run(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
+	sitesFromEnv(m)
 	for k, v := range o.sites {
 		if v != "" {
 			m.Sites[k] = v
@@ -165,31 +169,51 @@ func run(ctx context.Context, o options) error {
 		out.Seconds = time.Since(start).Seconds()
 		fmt.Fprintf(os.Stderr, "    soundcheck: %s %s\n", out.Soundcheck.Outcome, out.Soundcheck.Found+out.Soundcheck.Detail)
 		for _, t := range tools {
-			fmt.Fprintf(os.Stderr, "    %s: %s %s\n", t.Key, out.Tools[t.Key].Outcome, out.Tools[t.Key].Found+out.Tools[t.Key].Detail)
+			if r, ok := out.Tools[t.Key]; ok {
+				fmt.Fprintf(os.Stderr, "    %s: %s %s\n", t.Key, r.Outcome, r.Found+r.Detail)
+			}
 		}
 		outcomes = append(outcomes, out)
 	}
 
+	plain := slices.ContainsFunc(scenarios, func(s Scenario) bool { return !s.EAA() })
+	eaa := slices.ContainsFunc(scenarios, Scenario.EAA)
 	var rounds []ControlRound
 	if binErr == nil && o.control > 0 {
-		if rounds, err = controlPass(ctx, o, dir, m, bin); err != nil {
+		if rounds, err = controlPass(ctx, o, dir, m, bin, plain, eaa); err != nil {
+			return err
+		}
+	}
+	// The cost pass belongs to EAA mode's whole benchmark (a full run or
+	// -only eaa), not to a few scenarios picked by id.
+	var cost *Cost
+	if binErr == nil && eaa && (len(o.only) == 0 || slices.Contains(o.only, "eaa")) {
+		if cost, err = costPass(ctx, o, dir, m, bin); err != nil {
 			return err
 		}
 	}
 
-	data, err := json.MarshalIndent(Results{Scenarios: outcomes, Control: rounds}, "", "  ")
+	data, err := json.MarshalIndent(Results{Scenarios: outcomes, Control: rounds, Cost: cost}, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(o.work, "results.json"), data, 0o600); err != nil {
 		return err
 	}
-	md := scoreboard(m, outcomes, rounds, version, binErr, tools, len(o.only) > 0)
-	if err := os.MkdirAll(filepath.Dir(o.out), 0o750); err != nil {
+	board := Board{Manifest: m, Outcomes: outcomes, Rounds: rounds, Cost: cost, Version: version, BinErr: binErr, Tools: tools,
+		Partial: len(o.only) > 0, Date: time.Now().UTC().Format("2006-01-02")}
+	if err := writeBoard(o.out, board, !plain); err != nil {
 		return err
 	}
-	if err := os.WriteFile(o.out, []byte(md), 0o600); err != nil {
-		return err
+	if eaa {
+		e := eaaScore(outcomes)
+		fmt.Fprintf(os.Stderr, "EAA mode: caught %d of %d broken scenarios (pending: %d); %d false alarms in good scenarios, %d in %d --eaa control compares.\n",
+			e.caught, e.broken, e.pending, e.goodAlarms, falseAlarmCount(eaaRounds(rounds)), 2*len(eaaRounds(rounds)))
+	}
+	outcomes = classicOutcomes(outcomes)
+	rounds = classicRounds(rounds)
+	if len(outcomes) == 0 {
+		return nil
 	}
 	sc := score(outcomes)
 	if len(sc.notRun) > 0 {
@@ -213,18 +237,30 @@ func run(ctx context.Context, o options) error {
 func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Scenario, wd, bin string, binErr error,
 	tools []*Tool, results map[string]Result) Result {
 	o.timeout = max(o.timeout, s.Timeout)
-	if s.Harness == "wp-update" {
+	if s.Harness.Has("wp-update") {
 		return wpUpdateScenario(ctx, o, m, s, wd, bin, binErr)
 	}
 	url := m.URL(s)
 	cfgPath := filepath.Join(wd, ".soundcheck", "config.yaml")
-	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels); err != nil {
+	var owner map[string]any
+	if s.Harness.Has("statement") {
+		owner = statementOwner(m.Sites[s.Site])
+	}
+	if err := writeConfig(cfgPath, pages{Include: s.Include, Limit: s.Limit, PerGroup: s.PerGroup}, s.Levels, owner); err != nil {
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
 	if err := copyRules(dir, wd, s.Rules); err != nil {
 		return Result{Outcome: Failed, Detail: err.Error()}
 	}
+	if err := copyInto(dir, filepath.Join(wd, ".soundcheck", "flows"), s.Flows, nil); err != nil {
+		return Result{Outcome: Failed, Detail: err.Error()}
+	}
 	defer func() { _ = Toggle(dir, s.ID, "good") }()
+	h, stopHarnesses, err := startHarnesses(dir, s)
+	defer stopHarnesses()
+	if err != nil {
+		return Result{Outcome: Failed, Detail: "harness: " + err.Error()}
+	}
 
 	// Good state.
 	if err := Toggle(dir, s.ID, "good"); err != nil {
@@ -237,18 +273,24 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		sc = Result{Outcome: NotRun, Detail: binErr.Error()}
 	case s.Echo && o.echo == "":
 		sc = Result{Outcome: NotRun, Detail: "needs Echo: start it (rhythm echo up), start the testbed with TESTBED_SMTP=host.docker.internal:1025 and pass -echo http://127.0.0.1:8025"}
+	case s.Fixture != "":
+		// A snapshot an older Soundcheck wrote stands in for one taken now.
+		if err := copyFixture(dir, s.Fixture, filepath.Join(wd, ".soundcheck", "snapshots", "good"), m.Defaults[s.Site], m.Sites[s.Site]); err != nil {
+			sc = Result{Outcome: Failed, Detail: "fixture: " + err.Error()}
+		}
 	default:
 		snap := append([]string{"snapshot", url, "--name", "good", "--json", "-o", "good.json", "--config", cfgPath}, args...)
 		if _, _, err := command(ctx, o.timeout, wd, env(s), bin, snap...); err != nil {
 			sc = Result{Outcome: Failed, Detail: "snapshot: " + err.Error()}
 		}
 	}
-	if sc.Outcome == "" && s.Harness == "delete-shots" {
+	if sc.Outcome == "" && s.Harness.Has("delete-shots") {
 		if err := os.RemoveAll(filepath.Join(wd, ".soundcheck", "snapshots", "good", "shots")); err != nil {
 			sc = Result{Outcome: Failed, Detail: err.Error()}
 		}
 	}
 	baselines := map[string]*Observation{}
+	tools = slices.DeleteFunc(slices.Clone(tools), func(t *Tool) bool { return !t.Runs(s) })
 	for _, t := range tools {
 		obs, err := t.Observe(ctx, o.timeout, "good", url, filepath.Join(wd, t.Key))
 		if err != nil {
@@ -256,15 +298,24 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 			continue
 		}
 		baselines[t.Key] = obs
+		if s.EAA() {
+			// The good state's own violations: the tool's noise on a page
+			// the testbed made clean (step zero).
+			results[t.Key] = Result{Outcome: NotRun, Good: len(obs.Violations)}
+		}
 	}
 
-	// Broken state.
-	if err := Toggle(dir, s.ID, "broken"); err != nil {
-		return Result{Outcome: Failed, Detail: err.Error()}
+	// Broken state (the good one again for a scenario marked same).
+	if !s.Same {
+		if err := Toggle(dir, s.ID, "broken"); err != nil {
+			return Result{Outcome: Failed, Detail: err.Error()}
+		}
 	}
 	if sc.Outcome == "" {
 		cmp := append([]string{"compare", "--against-snapshot", "good", "--json", "-o", "compare.json", "--config", cfgPath}, args...)
+		cmp = append(cmp, s.CompareArgs...)
 		sc = compareScenario(ctx, o, s, wd, bin, cmp)
+		sc = withHarnesses(sc, h.check(ctx, o, dir, s, wd, bin, cfgPath))
 	}
 	for _, t := range tools {
 		base := baselines[t.Key]
@@ -276,7 +327,9 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 			results[t.Key] = Result{Outcome: Failed, Detail: err.Error()}
 			continue
 		}
-		results[t.Key] = t.Judge(base, obs)
+		r := t.Judge(base, obs)
+		r.Good = len(base.Violations)
+		results[t.Key] = r
 	}
 	return sc
 }
@@ -299,8 +352,8 @@ func scenarioArgs(s Scenario, echo string) []string {
 // compareScenario runs compare in the broken state the way the
 // scenario's harness says and evaluates what it wrote.
 func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string, args []string) Result {
-	switch s.Harness {
-	case "interrupt":
+	switch {
+	case s.Harness.Has("interrupt"):
 		code, err := interrupted(ctx, o.timeout, s.InterruptAfter, wd, env(s), bin, args...)
 		if err != nil {
 			return Result{Outcome: Failed, Detail: "compare: " + err.Error()}
@@ -311,7 +364,7 @@ func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string,
 		}
 		return evaluateFile(s, filepath.Join(wd, "compare.json"), code, nil)
 
-	case "parallel":
+	case s.Harness.Has("parallel"):
 		a := slices.Clone(args)
 		b := slices.Clone(args)
 		a[slices.Index(a, "compare.json")] = "compare-a.json"
@@ -345,14 +398,19 @@ func compareScenario(ctx context.Context, o options, s Scenario, wd, bin string,
 		ra.Found = fmt.Sprintf("both compares clean, in %d separate run folders", folders)
 		return ra
 
-	case "stress":
+	case s.Harness.Has("stress"):
 		stop := stress(ctx)
 		_, code, err := command(ctx, o.timeout, wd, env(s), bin, args...)
 		stop()
 		return evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
 	}
+	start := time.Now()
 	_, code, err := command(ctx, o.timeout, wd, env(s), bin, args...)
-	return evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
+	r := evaluateFile(s, filepath.Join(wd, "compare.json"), code, err)
+	if took := time.Since(start); s.Within > 0 && took > s.Within && r.Outcome == Caught {
+		return Result{Outcome: Missed, Detail: fmt.Sprintf("compare took %s, want at most %s", took.Round(time.Second), s.Within), Others: r.Others}
+	}
+	return r
 }
 
 // evaluateFile reads a compare's JSON output and evaluates it. A compare
@@ -442,6 +500,53 @@ func copyRules(testbed, wd string, rules []string) error {
 	return nil
 }
 
+// copyInto copies the given files (relative to testbed/) into dst under
+// their base names. edit, when set, may change each file's content.
+func copyInto(testbed, dst string, files []string, edit func([]byte) []byte) error {
+	if len(files) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dst, 0o750); err != nil {
+		return err
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Join(testbed, f)) //nolint:gosec // the testbed's own files
+		if err != nil {
+			return err
+		}
+		if edit != nil {
+			data = edit(data)
+		}
+		if err := os.WriteFile(filepath.Join(dst, filepath.Base(f)), data, 0o600); err != nil { //nolint:gosec // a base name, inside the run folder
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFixture copies a committed snapshot folder into dst. The fixture
+// was taken of the site at its default address (scenarios.yaml); when
+// the bench points the site elsewhere, from is replaced by to in it so
+// the compare checks the same pages.
+func copyFixture(testbed, fixture, dst, from, to string) error {
+	entries, err := os.ReadDir(filepath.Join(testbed, fixture))
+	if err != nil {
+		return err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join(fixture, e.Name()))
+		}
+	}
+	return copyInto(testbed, dst, files, func(b []byte) []byte {
+		if from == "" || from == to {
+			return b
+		}
+		return bytes.ReplaceAll(b, []byte(strings.TrimRight(from, "/")), []byte(strings.TrimRight(to, "/")))
+	})
+}
+
 // soundcheck finds the binary and its version. A missing binary isn't
 // fatal: third-party tools can still be benchmarked.
 func soundcheck(ctx context.Context, bin string) (string, string, error) {
@@ -467,8 +572,8 @@ type pages struct {
 }
 
 // writeConfig limits the run to the given pages (page limit default 20)
-// and sets the interaction levels.
-func writeConfig(path string, p pages, levels []string) error {
+// and sets the interaction levels and, when given, the statement: block.
+func writeConfig(path string, p pages, levels []string, statement map[string]any) error {
 	type interactions struct {
 		Levels []string `yaml:"levels,omitempty"`
 	}
@@ -476,9 +581,10 @@ func writeConfig(path string, p pages, levels []string) error {
 		p.Limit = 20
 	}
 	cfg := struct {
-		Pages        pages         `yaml:"pages"`
-		Interactions *interactions `yaml:"interactions,omitempty"`
-	}{Pages: p}
+		Pages        pages          `yaml:"pages"`
+		Interactions *interactions  `yaml:"interactions,omitempty"`
+		Statement    map[string]any `yaml:"statement,omitempty"`
+	}{Pages: p, Statement: statement}
 	if len(levels) > 0 {
 		cfg.Interactions = &interactions{Levels: levels}
 	}

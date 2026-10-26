@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Key flow for s68: the logged-in account page, by keyboard only. The
+# page is prefilled with the benchmark's runtime canaries (field values,
+# a data attribute, an aria-label and a link's query string), so the
+# canaries harness checks that the flow's trace and every other file
+# Soundcheck writes keep them out. Soundcheck visits pages anonymously
+# and logs in only for flows like this one (login: true).
+name: Account by keyboard
+start: /my-account/
+login: true
+keyboard: true
+steps:
+  - expect: {selector: "#acc_phone"}
