@@ -73,7 +73,7 @@ const startJS = `(() => {
 // won't let be canceled is logged all the same.
 const guardJS = `(() => {
   if (window.__scKbNav) return 'ok';
-  const g = window.__scKbNav = {on: false, log: [], els: []};
+  const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: []};
   if (!window.navigation) return 'no navigation API';
   navigation.addEventListener('navigate', e => {
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;
@@ -97,6 +97,9 @@ const (
 	guardOn  = `(() => { if (window.__scKbNav) window.__scKbNav.on = true; return ''; })()`
 	guardOff = `(() => { if (window.__scKbNav) window.__scKbNav.on = false; return ''; })()`
 	navLogJS = `(() => JSON.stringify(window.__scKbNav ? window.__scKbNav.log.splice(0) : []))()`
+	// envLogJS returns and clears the WebSocket hosts the envelope's
+	// policy refused and the passkey requests it refused (envelope.go).
+	envLogJS = `(() => { const g = window.__scKbNav; return JSON.stringify(g ? {ws: g.ws.splice(0), pk: g.pk.splice(0)} : {ws: [], pk: []}); })()`
 	hasMain  = `String(!!document.querySelector('main, [role="main"]'))`
 )
 

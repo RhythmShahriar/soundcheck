@@ -42,6 +42,11 @@ type walker struct {
 
 	reader *focus.Reader
 	guard  *guard
+
+	mu         sync.Mutex
+	workerSeen map[proto.TargetTargetID]bool // service workers held
+	workers    sync.WaitGroup                // their watches
+
 	trace  *Trace
 	aux    []stepResult // what the probe found at each forward stop, besides the Step
 	probed []int        // the forward index of each stop stepJS handed the guard
@@ -108,6 +113,17 @@ func (w *walker) reload(ctx context.Context) error {
 			return err
 		}
 	}
+	g := w.guard
+	if g != nil {
+		g.mu.Lock()
+		g.reloading = true
+		g.mu.Unlock()
+		defer func() {
+			g.mu.Lock()
+			g.reloading, g.left = false, false
+			g.mu.Unlock()
+		}()
+	}
 	tab := w.tab.Context(ctx)
 	if err := tab.Navigate(raw); err != nil {
 		return err
@@ -117,7 +133,15 @@ func (w *walker) reload(ctx context.Context) error {
 	_ = tab.WaitLoad()
 	tab.WaitRequestIdle(700*time.Millisecond, nil, nil, nil)()
 	w.loaded = time.Now()
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if g == nil {
+		return nil
+	}
+	// A new document: the guard and the envelope's page parts go on it
+	// again. The probes get a fresh world.
+	return w.armDoc(ctx)
 }
 
 // guard watches the tab while the walk presses keys. Requests other
@@ -134,6 +158,25 @@ type guard struct {
 	held    []string
 	events  []string
 	left    bool // a navigation the page couldn't be kept from committed
+	// armed is true while the walk has the page; reloading while the
+	// walk loads it again itself, which isn't the page leaving.
+	armed, reloading bool
+	stopped          []string // main-frame navigations stopped through the protocol
+}
+
+// on reports whether navigations the page starts are stopped now.
+func (g *guard) on() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.armed && !g.reloading
+}
+
+// stopTop records a main-frame navigation stopped through the protocol,
+// so its request is held should it still come. g.mu is held.
+func (g *guard) stopTop(raw string) {
+	if len(g.stopped) < maxList {
+		g.stopped = append(g.stopped, raw)
+	}
 }
 
 // rank orders effects: a form sent says more than a window opened,
@@ -214,14 +257,32 @@ func (w *walker) arm(ctx context.Context) (func(), error) {
 		since: func() float64 { return float64(time.Since(w.loaded).Microseconds()) / 1000 }}
 	w.guard = g
 	remove, err := intercept.Add(w.tab, func(r *intercept.Request) {
+		if r.Header("Upgrade") != "" || r.Type == proto.NetworkResourceTypeWebSocket {
+			// A connection that would stay open past the walk (K2).
+			r.Block()
+			g.mu.Lock()
+			g.hold(pathOf(r.Method, r.URL))
+			g.event("connection upgrade held: " + pathOf(r.Method, r.URL))
+			g.mu.Unlock()
+			return
+		}
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			if r.Type == proto.NetworkResourceTypeDocument {
-				// A navigation guardJS couldn't cancel. Failing it would
-				// put Chrome's error page in its place, so it is only
-				// noted (see the frame watch below).
 				g.mu.Lock()
+				defer g.mu.Unlock()
+				if !g.armed || g.reloading {
+					return
+				}
+				if r.URL != nil && slices.Contains(g.stopped, r.URL.String()) {
+					// The request of a navigation the envelope stopped
+					// that got here all the same.
+					r.Block()
+					return
+				}
+				// A navigation neither guard stopped, perhaps a frame's.
+				// Failing it would put Chrome's error page in its place,
+				// so it is only noted (see the frame watch below).
 				g.effect(EffectNavigation)
-				g.mu.Unlock()
 			}
 			return
 		}
@@ -241,7 +302,9 @@ func (w *walker) arm(ctx context.Context) (func(), error) {
 	waitPage := w.tab.Context(wctx).EachEvent(func(e *proto.PageFrameNavigated) {
 		if e.Frame != nil && e.Frame.ID == main {
 			g.mu.Lock()
-			g.left = true
+			if g.armed && !g.reloading {
+				g.left = true
+			}
 			g.mu.Unlock()
 		}
 	})
@@ -265,30 +328,49 @@ func (w *walker) arm(ctx context.Context) (func(), error) {
 		g.mu.Unlock()
 	})
 	go waitTargets()
-	if err := w.caret(ctx); err != nil {
-		g.mu.Lock()
-		g.event("caret not hidden: " + err.Error())
-		g.mu.Unlock()
-	}
-	if _, err := w.reader.Eval(ctx, guardJS); err != nil {
+	undo := w.envelope(ctx, wctx)
+	g.mu.Lock()
+	g.armed = true
+	g.mu.Unlock()
+	if err := w.armDoc(ctx); err != nil {
 		cancel()
-		remove()
-		return func() {}, fmt.Errorf("can't guard the page: %w", err)
-	}
-	if _, err := w.reader.Eval(ctx, guardOn); err != nil {
-		cancel()
+		undo()
 		remove()
 		return func() {}, err
 	}
 	return func() {
+		g.mu.Lock()
+		g.armed = false
+		g.mu.Unlock()
 		// The walk's own context may be spent (a timeout): turning the
 		// guard off gets a moment of its own.
 		octx, ocancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer ocancel()
 		_, _ = w.reader.Eval(octx, guardOff)
 		cancel()
+		undo()
 		remove()
 	}, nil
+}
+
+// armDoc installs what each document of the walk needs: the caret
+// style, the navigation guard and the envelope's WebSocket policy and
+// passkey refusal. A reload calls it again.
+func (w *walker) armDoc(ctx context.Context) error {
+	g := w.guard
+	if err := w.caret(ctx); err != nil {
+		g.mu.Lock()
+		g.event("caret not hidden: " + err.Error())
+		g.mu.Unlock()
+	}
+	if _, err := w.reader.Eval(ctx, guardJS); err != nil {
+		return fmt.Errorf("can't guard the page: %w", err)
+	}
+	if _, err := w.reader.Eval(ctx, guardOn); err != nil {
+		return err
+	}
+	w.docArm(ctx)
+	return nil
 }
 
 func orNone(s string) string {
@@ -485,9 +567,26 @@ func (w *walker) navigations(ctx context.Context) error {
 	if err := json.Unmarshal([]byte(raw), &log); err != nil {
 		return fmt.Errorf("navigation log: %w", err)
 	}
+	var env struct {
+		WS []string `json:"ws"`
+		PK []string `json:"pk"`
+	}
+	raw, err = w.reader.Eval(ctx, envLogJS)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		return fmt.Errorf("navigation log: %w", err)
+	}
 	g := w.guard
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	for _, h := range env.WS {
+		g.event("WebSocket refused: " + orNone(clip(h, maxText)))
+	}
+	for _, k := range env.PK {
+		g.event("passkey request refused: " + clip(k, 10))
+	}
 	for _, n := range log {
 		kind := EffectNavigation
 		if n.Form {
