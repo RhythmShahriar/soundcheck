@@ -76,7 +76,7 @@ document.addEventListener('focusin', () => { const end = Date.now() + 100; while
 
 // On the confirm visit, a re-walk that times out or is capped finds no
 // trap and leaves the first visit's trap UNSTABLE; a re-walk that finds
-// the page fixed marks it FIXED, and one that finds it again keeps it.
+// the page fixed marks it FIXED; one that finds it again keeps it.
 func TestConfirmRewalk(t *testing.T) {
 	srv := serve(t, &pages{html: map[string]string{"/slow": slowTrap, "/trap": datePicker, "/fixed": links(3, "")}})
 	c := launch(t)

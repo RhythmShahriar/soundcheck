@@ -82,7 +82,7 @@ const wsPolicyJS = `(() => {
 //
 // The name is the walk's own (passkeyEvent): a page that doesn't know
 // it can't write a made-up refusal into the trace by firing the event
-// itself, and the replacements' source text shows only the variable.
+// itself. The replacements' source text shows only the variable.
 func webAuthnJS(name string) string {
 	return `(() => {
   const c = navigator.credentials, name = ` + strconv.Quote(name) + `;

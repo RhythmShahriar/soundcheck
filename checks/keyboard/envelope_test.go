@@ -250,7 +250,7 @@ function forge() {
 	}
 }
 
-// Each walk gets its own passkey event name, and the scripts use it.
+// Each walk gets its own passkey event name; the scripts use it.
 func TestPasskeyEventName(t *testing.T) {
 	a, b := passkeyEvent(), passkeyEvent()
 	if a == b || !strings.HasPrefix(a, "soundcheck-keyboard-passkey-") || len(a) != len("soundcheck-keyboard-passkey-")+16 {
