@@ -109,7 +109,7 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 			if err != nil {
 				return nil, err
 			}
-			d.page(path, bi, ai, gaps(path, baud, aaud, ran, listed), d.guard(bi, baud, aaud))
+			d.page(path, bi, ai, aaud, gaps(path, baud, aaud, ran, listed), d.guard(bi, baud, aaud))
 		}
 		for _, s := range sinks {
 			if s.s == nil {

@@ -227,7 +227,7 @@ func diffIssues(before, after *model.Run) *issueDiff {
 	ba, aa := auditsByPath(before), auditsByPath(after)
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
-			d.page(path, bi, ai, gaps(path, ba[path], aa[path], ran, listed), d.guard(bi, ba[path], aa[path]))
+			d.page(path, bi, ai, aa[path], gaps(path, ba[path], aa[path], ran, listed), d.guard(bi, ba[path], aa[path]))
 		}
 	}
 	d.site(before.Issues, after.Issues)
@@ -258,11 +258,12 @@ type issueDiff struct {
 	notes   map[string]bool
 	rules   ruleSets
 	moved   map[string]bool // rules whose NEW changes were put aside as not in the baseline
+	judges  judges          // modules that say which missing issues a page can't judge
 }
 
 func newIssueDiff(rules ruleSets) *issueDiff {
 	return &issueDiff{groups: map[string]*issueGroup{}, ignored: map[string]*issueGroup{}, notes: map[string]bool{},
-		rules: rules, moved: map[string]bool{}}
+		rules: rules, moved: map[string]bool{}, judges: unjudgers()}
 }
 
 // guard is the a11y guard of a page pair: the snapshot's issues on the
@@ -327,8 +328,10 @@ func addTo(groups map[string]*issueGroup, k, class string, x issueAt) *issueGrou
 
 // page diffs the issues of every page with path in each run. The first
 // issue with a key is the one reported. The issues of the modules in
-// gaps go aside. So do the a11y changes guard puts aside.
-func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudited, guard *pageGuard) {
+// gaps go aside. So do the a11y changes guard puts aside and the issues
+// missing from the later page that their module can't judge there with
+// its audits (see Unjudger).
+func (d *issueDiff) page(path string, before, after []model.Issue, audits map[string]model.Audit, gaps unaudited, guard *pageGuard) {
 	byKey := func(is []model.Issue) map[string]model.Issue {
 		m := make(map[string]model.Issue, len(is))
 		for _, i := range is {
@@ -343,6 +346,14 @@ func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudite
 		x := issueAt{issue: i, pages: []string{path}}
 		if gap, ok := gaps.of(i.Check); ok {
 			d.addAside(class, x, gap.reason, gap.note)
+			return
+		}
+		// An issue missing from a walk that stopped at its cap isn't
+		// fixed: the module says the page can't judge it.
+		if class == model.Fixed && d.judges.of(i.Key) != nil &&
+			d.judges.cantJudge(&model.Page{Path: path, Issues: after, Audits: audits}, i.Key) {
+			reason, note := unjudged(path, i.Check, audits)
+			d.addAside(class, x, reason, note)
 			return
 		}
 		if why := guard.reason(class, i); why != "" {

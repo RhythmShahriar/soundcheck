@@ -24,7 +24,10 @@ import (
 // nothing and keep the change. A second visit whose audit of the
 // change's module didn't finish (model.Audit) can't confirm it either:
 // the change is UNSTABLE there, never confirmed by an audit that
-// stopped halfway.
+// stopped halfway. A keyboard walk capped on the second visit counts
+// as finished but only confirms the issues it finds again: the others
+// are UNSTABLE too. (Issues uses the module's Unjudged so that such a
+// walk never makes a change FIXED.)
 func Confirm(c *model.Comparison, before, again *model.Run) {
 	if again == nil || len(again.Pages) == 0 {
 		return
