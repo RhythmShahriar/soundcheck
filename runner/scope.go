@@ -98,5 +98,13 @@ func (g *guard) dial(ctx context.Context, network, addr string) (net.Conn, error
 			return nil
 		}
 	}
+	return dialWith(ctx, &d, network, addr)
+}
+
+// dialWith dials addr with d, whose ControlContext holds the scope
+// check. Tests replace it to send an address that must never be reached
+// (the metadata service) to a local listener, once d's check let it
+// through.
+var dialWith = func(ctx context.Context, d *net.Dialer, network, addr string) (net.Conn, error) {
 	return d.DialContext(ctx, network, addr)
 }

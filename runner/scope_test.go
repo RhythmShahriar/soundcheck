@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -66,6 +67,52 @@ func listen(t *testing.T, port int, h http.HandlerFunc) *counter {
 	return c
 }
 
+// metadataAddr is the cloud metadata service's address.
+const metadataAddr = "169.254.169.254"
+
+// trapMetadata sends the run's client's connections to the metadata
+// address to a local counter (on port) once the guard's check let them
+// through, so a guard that regressed never reaches the real service.
+func trapMetadata(t *testing.T, port int) *counter {
+	t.Helper()
+	trap := listen(t, port, nil)
+	old := dialWith
+	dialWith = func(ctx context.Context, d *net.Dialer, network, addr string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil || host != metadataAddr {
+			return old(ctx, d, network, addr)
+		}
+		if d.ControlContext != nil {
+			if err := d.ControlContext(ctx, network, addr, nil); err != nil {
+				return nil, err
+			}
+		}
+		var to net.Dialer
+		return to.DialContext(ctx, network, strings.TrimPrefix(trap.url, "http://"))
+	}
+	t.Cleanup(func() { dialWith = old })
+	return trap
+}
+
+// trapProxy is set as the browser's proxy on port. Chrome sends a tab's
+// requests to any host but 127.0.0.1 through it (see the bypass list),
+// so a scope that regressed hands the metadata requests to it, never to
+// the real service. It answers every request with an error (Chrome's
+// own background requests come too) and counts those for the metadata
+// service.
+func trapProxy(t *testing.T, port int) *atomic.Int32 {
+	t.Helper()
+	var asked atomic.Int32
+	listen(t, port, func(w http.ResponseWriter, r *http.Request) {
+		if h := strings.Split(r.Host, ":")[0]; h == metadataAddr || h == "metadata.google.internal" {
+			asked.Add(1)
+			t.Errorf("the browser asked the trap proxy for %s", r.URL)
+		}
+		http.Error(w, "trapped", http.StatusBadGateway)
+	})
+	return &asked
+}
+
 // The run's own client reaches only the target's networks: with a
 // public target, another local port and the metadata address are
 // refused before anything is sent; with a local target, its neighbors
@@ -73,6 +120,7 @@ func listen(t *testing.T, port int, h http.HandlerFunc) *counter {
 func TestGuardKeepsTheClientInScope(t *testing.T) {
 	site := listen(t, 37010, nil)
 	other := listen(t, 37011, nil)
+	trap := trapMetadata(t, 37013)
 	u, _ := url.Parse(site.url)
 	get := func(c *http.Client, raw string) error {
 		resp, err := c.Get(raw)
@@ -101,6 +149,25 @@ func TestGuardKeepsTheClientInScope(t *testing.T) {
 	}
 	if err := get(local, "http://169.254.169.254/"); !errors.Is(err, httpx.ErrPrivate) {
 		t.Errorf("link-local from a local target: %v", err)
+	}
+	if n := trap.n.Load(); n != 0 {
+		t.Errorf("the metadata address got %d requests", n)
+	}
+}
+
+// The trap itself works: a client without the guard's check reaches it.
+func TestTrapMetadataCatchesAnUnguardedDial(t *testing.T) {
+	trap := trapMetadata(t, 37014)
+	c := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return dialWith(ctx, &net.Dialer{}, network, addr)
+	}}}
+	resp, err := c.Get("http://" + metadataAddr + "/latest/meta-data/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if n := trap.n.Load(); n != 1 {
+		t.Errorf("the trap got %d requests, want 1", n)
 	}
 }
 
@@ -174,13 +241,20 @@ func TestNetworkScope(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
+	// The metadata URLs are never fetched: Chrome would send them to the
+	// trap proxy and the client's dial to the trap listener.
+	asked := trapProxy(t, 37002)
+	trap := trapMetadata(t, 37003)
 	run := func() (*model.Run, *targetSeen) {
 		t.Helper()
 		seen := &targetSeen{}
 		cfg := config.Default()
 		cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Pages.Limit = []string{"health"}, []string{"desktop"}, 0, 1
 		r, err := Run(context.Background(), Options{Config: cfg, Target: site.url, Dir: t.TempDir(), Version: "test",
-			Modules: []check.Module{seen}, Browser: browser.Options{NoDownload: true}})
+			Modules: []check.Module{seen}, Browser: browser.Options{NoDownload: true, Proxy: "http://127.0.0.1:37002",
+				// Chrome sends link-local hosts past a proxy unless told not
+				// to; the site and its frame on 127.0.0.1 still go direct.
+				Switches: map[string]string{"proxy-bypass-list": "<-loopback>;127.0.0.1/32"}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,5 +297,8 @@ func TestNetworkScope(t *testing.T) {
 	}
 	if !slices.Equal(seen.public, []bool{false}) {
 		t.Errorf("TargetPublic = %v, want false", seen.public)
+	}
+	if n := asked.Load() + trap.n.Load(); n != 0 {
+		t.Errorf("the metadata service was asked %d times", n)
 	}
 }
