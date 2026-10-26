@@ -163,7 +163,7 @@ func keyboardHelp() string {
 
 `)
 	b.WriteString(para("The keyboard module walks each page the way a keyboard user would, in Chrome only. " +
-		"It presses Tab until focus comes back to the start (up to keyboard.max_tabs), then Shift+Tab back, " +
+		"It presses Tab until focus comes back to the start (up to keyboard.max_tabs), then Shift+Tab back " +
 		"and records every stop. On the first page of each URL group and on keyboard.pages it opens and " +
 		"closes menus, dialogs and disclosures by keyboard and checks where focus goes. Key flows " +
 		"(flows with keyboard: true or send) run at --level flows; rhythm soundcheck flows init --keyboard " +
