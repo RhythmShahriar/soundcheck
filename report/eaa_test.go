@@ -427,3 +427,23 @@ func TestEAAMarkdownSectionHasNoPageText(t *testing.T) {
 		}
 	}
 }
+
+// A clean --eaa comparison says what the tests found; with problems
+// still open, or without --eaa, it says only that nothing changed.
+func TestEAACleanCompareVerdict(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		eaa  *model.EAASummary
+		want string
+	}{
+		{"eaa, none open", &model.EAASummary{}, "Nothing changed; no failures found by these tests"},
+		{"eaa, one open", &model.EAASummary{Open: 1}, "Nothing changed"},
+		{"no eaa", nil, "Nothing changed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := verdict(&model.Comparison{EAA: c.eaa}); got != c.want {
+				t.Errorf("verdict = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

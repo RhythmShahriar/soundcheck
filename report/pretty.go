@@ -832,6 +832,8 @@ func issueLine(i model.Issue) string {
 }
 
 // verdict is the one-line answer to "did my change break anything?".
+// An --eaa comparison with nothing changed and no open problem says what
+// the tests found, never that the site is clear.
 func verdict(c *model.Comparison) string {
 	switch {
 	case c.Count(model.Broke) > 0:
@@ -840,6 +842,8 @@ func verdict(c *model.Comparison) string {
 		return "New problems"
 	case c.Count(model.Changed)+c.Count(model.Slower) > 0:
 		return "Nothing broke; some pages changed"
+	case c.EAA != nil && c.EAA.Open == 0:
+		return "Nothing changed; " + noFailuresVerdict
 	}
 	return "Nothing changed"
 }
