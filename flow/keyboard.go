@@ -43,7 +43,10 @@ const effectWait = time.Second
 // writes to it from its own goroutine, so mu guards everything below
 // it.
 type keys struct {
-	dry      bool
+	dry bool
+	// form is the form the step's key press may submit, watched for
+	// errors once the step is done. Only the flow's own goroutine uses it.
+	form     *errorWatch
 	mu       sync.Mutex
 	requests int   // requests the page made
 	armed    bool  // this step's held writes end the flow
@@ -87,7 +90,7 @@ func orSlash(p string) string {
 // flow.
 func (k *keys) begin(armed bool) {
 	k.mu.Lock()
-	k.armed, k.held = armed, nil
+	k.armed, k.held, k.form = armed, nil, nil
 	k.mu.Unlock()
 }
 
@@ -310,6 +313,9 @@ func (r *runner) keyActivate(n int, kind string, t Target, submit bool) error {
 	if err != nil {
 		return err
 	}
+	// Read before Tab moves through the form: an error a field shows
+	// when focus leaves it is one this step shows too.
+	r.keys.form = r.watchErrors(el, submit)
 	if submit {
 		// A form holds every field, so focus on any of them would count
 		// as reaching it: its submit button (or first field) is reached

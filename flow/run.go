@@ -92,6 +92,9 @@ type Result struct {
 	// stops it took and the key it pressed. Typed values show only as
 	// "<typed N characters>".
 	Trace []string
+	// Unlinked lists the forms of a key flow that showed errors after a
+	// submit or click step, not tied to their fields.
+	Unlinked []Unlinked
 }
 
 // Held is what a dry key flow would have sent and where it stopped.
@@ -177,10 +180,18 @@ func Play(ctx context.Context, page *rod.Page, f Flow, o Options) (res Result) {
 		if r.keys != nil {
 			r.keys.begin(s.Click != nil || s.Submit != nil || s.Press.activates())
 			err = r.keyStep(i+1, s)
+			form := r.keys.form
 			if h := r.keys.end(); h != nil {
+				// What the page shows after a held write is its answer to
+				// the hold, not to what was typed: no errors are read.
 				h.Step = i + 1
 				res.Held = h
 				return res
+			}
+			if err == nil && form != nil {
+				if u := r.checkErrors(i+1, form); u != nil {
+					res.Unlinked = append(res.Unlinked, *u)
+				}
 			}
 		} else {
 			err = r.step(i+1, s)

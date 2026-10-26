@@ -261,3 +261,30 @@ func TestSkips(t *testing.T) {
 		t.Errorf("warnings %q", cc.Run.Warnings)
 	}
 }
+
+// Form errors a key flow saw that aren't tied to their fields are
+// keyboard/error-not-linked on its start page, keyed by the form.
+func TestReportUnlinked(t *testing.T) {
+	cc := fakeContext(t, map[string]string{"b-checkout.yaml": dryFlow})
+	fake(t, func(flow.Flow, flow.Options) (flow.Result, string) {
+		return flow.Result{Unlinked: []flow.Unlinked{
+			{Step: 2, Form: "#checkout", Fields: 3, Focus: "#place_order"},
+			{Step: 3, Form: "form.cart", Fields: 1, Focus: "body"},
+		}}, ""
+	})
+	Run(context.Background(), cc, model.KeyboardOptions{MaxTabs: 150})
+	page := cc.Run.Page("/checkout/")
+	if len(page.Issues) != 2 {
+		t.Fatalf("issues %+v", page.Issues)
+	}
+	i := page.Issues[0]
+	if i.Check != ids.ErrorNotLinked || i.Level != model.Warning || i.Title != "Form errors aren't tied to their fields" ||
+		i.Source != "#checkout" || i.Impact != "serious" || !slices.Equal(i.WCAG, []string{"3.3.1"}) ||
+		!slices.Equal(i.EN301549, []string{"9.3.3.1"}) || i.Key != "keyboard/error-not-linked|#checkout" ||
+		i.Detail != "After Checkout dry step 2, 3 fields show errors but focus stayed on #place_order and the errors aren't linked with aria-describedby or aria-errormessage." {
+		t.Errorf("issue %+v", i)
+	}
+	if d := page.Issues[1].Detail; d != "After Checkout dry step 3, 1 field shows errors but focus stayed on body and the errors aren't linked with aria-describedby or aria-errormessage." {
+		t.Errorf("detail %q", d)
+	}
+}

@@ -241,6 +241,25 @@ func report(cc *check.Context, f flow.Flow, res flow.Result) {
 		}
 		addIssue(cc, pagePath(f), i)
 	}
+	for _, u := range res.Unlinked {
+		addIssue(cc, pagePath(f), unlinked(f, u, ver))
+	}
+}
+
+// unlinked is the keyboard/error-not-linked issue of form errors key
+// flow f ran into.
+func unlinked(f flow.Flow, u flow.Unlinked, ver string) model.Issue {
+	info, _ := ids.Lookup(ids.ErrorNotLinked)
+	shown := fmt.Sprintf("%d fields show errors", u.Fields)
+	if u.Fields == 1 {
+		shown = "1 field shows errors"
+	}
+	return model.Issue{Check: ids.ErrorNotLinked, Level: info.Level, Title: info.Title,
+		WCAG: info.WCAG(ver), EN301549: info.Clauses(ver), Impact: info.Impact,
+		Detail: fmt.Sprintf("After %s step %d, %s but focus stayed on %s and the errors aren't linked with aria-describedby or aria-errormessage.",
+			f.Name, u.Step, shown, u.Focus),
+		Source: u.Form, Pages: []string{startPath(f)},
+		Fix: "Move focus to the first field with an error or to an error summary, or point each field at its message with aria-describedby or aria-errormessage."}
 }
 
 // addIssue adds i to the page at path, or to the run's site issues when
