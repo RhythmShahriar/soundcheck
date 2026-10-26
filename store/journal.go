@@ -69,7 +69,7 @@ type PageWriter struct {
 // short is dropped first, so the next page starts on a line of its own.
 func NewPageWriter(dir string) (*PageWriter, error) {
 	path := filepath.Join(dir, PagesFile)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // our own snapshot folder
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, fileMode) //nolint:gosec // our own snapshot folder
 	if err != nil {
 		return nil, err
 	}

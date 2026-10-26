@@ -133,14 +133,14 @@ func touchBeats() bool {
 
 // lock takes the store's lock and returns the function that releases it.
 func (s Store) lock() (func(), error) {
-	if err := os.MkdirAll(s.Root, 0o750); err != nil {
+	if err := os.MkdirAll(s.Root, dirMode); err != nil {
 		return nil, err
 	}
 	lockMu.Lock()
 	path := filepath.Join(s.Root, lockFile)
 	deadline := time.Now().Add(lockWait)
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // the store's own lock file
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileMode) //nolint:gosec // the store's own lock file
 		if err == nil {
 			_, werr := f.Write(stamp())
 			if cerr := f.Close(); werr == nil {
@@ -184,7 +184,7 @@ func (s Store) lock() (func(), error) {
 // writeOwner records this process as the owner in path and keeps the
 // file fresh until Release.
 func writeOwner(path string) error {
-	if err := os.WriteFile(path, stamp(), 0o600); err != nil {
+	if err := os.WriteFile(path, stamp(), fileMode); err != nil {
 		return err
 	}
 	beat(path)

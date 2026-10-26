@@ -112,7 +112,8 @@ type tabState struct {
 	tab      *rod.Page
 	mu       sync.Mutex
 	handlers []entry
-	dead     bool // the last handler left; Add starts a new tabState
+	dead     bool     // the last handler left; Add starts a new tabState
+	patterns []string // the URL patterns Fetch pauses; nil until started
 	stop     func()
 	done     chan struct{}
 }
@@ -120,6 +121,8 @@ type tabState struct {
 type entry struct {
 	id int
 	h  Handler
+	// patterns are the URLs the handler needs paused; nil is all.
+	patterns []string
 }
 
 var (
@@ -132,7 +135,19 @@ var (
 // is called. The first handler on a tab enables Fetch interception; the
 // last one removed disables it, which lets any request still paused go
 // on.
-func Add(tab *rod.Page, h Handler) (remove func(), err error) {
+func Add(tab *rod.Page, h Handler) (remove func(), err error) { return AddFor(tab, nil, h) }
+
+// AddFor is Add for a handler that needs only the requests whose URL
+// matches one of patterns paused (Fetch's URL patterns: "*" any run of
+// characters, "?" one). Pausing a request costs it a round trip to
+// Soundcheck, which a page's timings would show, so a handler that
+// cares about a few URLs leaves the rest alone. It still sees every
+// request another handler has paused and decides for itself. Empty
+// patterns are every URL.
+func AddFor(tab *rod.Page, patterns []string, h Handler) (remove func(), err error) {
+	if len(patterns) == 0 {
+		patterns = nil
+	}
 	for {
 		mu.Lock()
 		next++
@@ -152,30 +167,65 @@ func Add(tab *rod.Page, h Handler) (remove func(), err error) {
 		}
 		// Whichever Add gets the lock first starts it, which needn't be
 		// the one that made it.
+		want := union(st.handlers, patterns)
 		if st.stop == nil {
-			if err := st.start(); err != nil {
+			if err := st.start(want); err != nil {
 				st.dead = true
 				st.mu.Unlock()
 				st.forget()
 				return func() {}, err
 			}
+		} else if !slices.Equal(want, st.patterns) {
+			// Fetch.enable again only widens what is paused. Patterns are
+			// never narrowed while handlers stay: a request paused under
+			// the old ones still reaches them.
+			if err := enable(st.tab, want); err != nil {
+				st.mu.Unlock()
+				return func() {}, err
+			}
+			st.patterns = want
 		}
-		st.handlers = append(st.handlers, entry{id, h})
+		st.handlers = append(st.handlers, entry{id, h, patterns})
 		st.mu.Unlock()
 		var once sync.Once
 		return func() { once.Do(func() { st.remove(id) }) }, nil
 	}
 }
 
-// start enables interception of every request on the tab and runs the
-// loop that passes paused requests through the handlers. st.mu is held.
-func (st *tabState) start() error {
-	err := proto.FetchEnable{Patterns: []*proto.FetchRequestPattern{
-		{URLPattern: "*", RequestStage: proto.FetchRequestStageRequest},
-	}}.Call(st.tab)
-	if err != nil {
+// union is the patterns Fetch pauses for the handlers plus one with
+// more: every URL when any of them needs all, else each pattern once.
+func union(handlers []entry, more []string) []string {
+	if more == nil {
+		return []string{"*"}
+	}
+	all := slices.Clone(more)
+	for _, x := range handlers {
+		if x.patterns == nil {
+			return []string{"*"}
+		}
+		all = append(all, x.patterns...)
+	}
+	slices.Sort(all)
+	return slices.Compact(all)
+}
+
+// enable pauses the requests of tab whose URL matches patterns.
+func enable(tab *rod.Page, patterns []string) error {
+	ps := make([]*proto.FetchRequestPattern, 0, len(patterns))
+	for _, p := range patterns {
+		ps = append(ps, &proto.FetchRequestPattern{URLPattern: p, RequestStage: proto.FetchRequestStageRequest})
+	}
+	return proto.FetchEnable{Patterns: ps}.Call(tab)
+}
+
+// start enables interception of the requests matching patterns on the
+// tab and runs the loop that passes paused requests through the
+// handlers. st.mu is held.
+func (st *tabState) start(patterns []string) error {
+	if err := enable(st.tab, patterns); err != nil {
 		return err
 	}
+	st.patterns = patterns
 	// Its own context: the loop lives as long as a handler does, not as
 	// long as whichever owner came first.
 	ctx, cancel := context.WithCancel(context.Background())

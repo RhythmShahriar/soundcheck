@@ -153,3 +153,95 @@ func TestStaleIgnoresNoRules(t *testing.T) {
 		t.Errorf("StaleIgnores(nil) = %v", got)
 	}
 }
+
+// A rule's source is a glob on the change's source, such as the
+// selector of an a11y issue's element.
+func TestIgnoreBySource(t *testing.T) {
+	c := &model.Comparison{Changes: []model.Change{
+		{Class: model.New, Check: "a11y/color-contrast", Title: "contrast", Source: "footer a", Pages: []string{"/"}, Score: 1},
+		{Class: model.New, Check: "a11y/color-contrast", Title: "contrast", Source: "header a", Pages: []string{"/"}, Score: 1},
+	}}
+	c.Complete()
+	ApplyIgnore(c, []IgnoreRule{{Check: "a11y/*", Source: "footer *", Reason: "brand colors"}}, day)
+	if len(c.Ignored) != 1 || c.Ignored[0].Source != "footer a" || c.Ignored[0].Reason != "brand colors" {
+		t.Errorf("ignored = %+v", c.Ignored)
+	}
+	if len(c.Changes) != 1 || c.Changes[0].Source != "header a" {
+		t.Errorf("changes = %+v", c.Changes)
+	}
+
+	// Without a glob the source must be the same.
+	c = &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "a11y/link-name", Source: "header a", Pages: []string{"/"}}}}
+	ApplyIgnore(c, []IgnoreRule{{Source: "footer a"}}, day)
+	if len(c.Ignored) != 0 || len(c.Changes) != 1 {
+		t.Errorf("a source-only rule for footer a matched header a: %+v", c.Ignored)
+	}
+	ApplyIgnore(c, []IgnoreRule{{Source: "header a"}}, day)
+	if len(c.Ignored) != 1 || len(c.Warnings) != 0 {
+		t.Errorf("a source-only rule is a rule: ignored %+v, warnings %q", c.Ignored, c.Warnings)
+	}
+
+	// A selector copied from a report matches itself: brackets aren't a
+	// character class.
+	sel := `form > input[name="email"]`
+	for _, c := range []struct {
+		source string
+		want   int
+	}{{sel, 1}, {`form > input[name="email"] *`, 0}, {`form > input[name="*"]`, 1}, {`form > input[name=email]`, 0}} {
+		cmp := &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "a11y/label", Source: sel, Pages: []string{"/"}}}}
+		ApplyIgnore(cmp, []IgnoreRule{{Source: c.source}}, day)
+		if len(cmp.Ignored) != c.want {
+			t.Errorf("source %q ignored %d changes, want %d", c.source, len(cmp.Ignored), c.want)
+		}
+	}
+}
+
+func TestEmptyRuleNamesSource(t *testing.T) {
+	c := ignoreFixture()
+	ApplyIgnore(c, []IgnoreRule{{Reason: "everything"}}, day)
+	want := "ignore rule 1 has no check, title, source or pages and would hide every change; it is skipped"
+	if len(c.Ignored) != 0 || !slices.Equal(c.Warnings, []string{want}) {
+		t.Errorf("ignored %d, warnings %q", len(c.Ignored), c.Warnings)
+	}
+}
+
+func pagesOf(ps ...model.Page) func(func(*model.Page) bool) {
+	return func(yield func(*model.Page) bool) {
+		for i := range ps {
+			if !yield(&ps[i]) {
+				return
+			}
+		}
+	}
+}
+
+// A rule is stale once the run no longer has the issue it hides. It is
+// judged on issues: a problem still there makes no change, which must
+// not look fixed.
+func TestStaleIgnores(t *testing.T) {
+	contrast := model.Issue{Check: "a11y/color-contrast", Title: "contrast", Source: "footer a"}
+	rules := []IgnoreRule{
+		{Check: "a11y/color-contrast", Pages: []string{"/legal/*"}, Reason: "brand colors"},
+		{Check: "a11y/color-contrast", Pages: []string{"/legal/*"}, Until: "2026-10-01"}, // expired
+		{Check: "visual/*", Pages: []string{"/team/*"}},                                  // may hide a change no issue carries
+		{Check: "a11y/label", Source: "#q"},
+		{Check: "health/broken-link", Pages: []string{"/legal/*"}},
+		{Check: "a11y/label", Until: "soon"},
+		{Reason: "empty"},
+	}
+	with := pagesOf(model.Page{Path: "/legal/terms/", Issues: []model.Issue{contrast}}, model.Page{Path: "/", Issues: []model.Issue{{Check: "a11y/label", Source: "#search"}}})
+	site := []model.Issue{{Check: "health/broken-link", Title: "Broken link", Pages: []string{"/legal/terms/"}}}
+	if got, want := StaleIgnores(rules, day, with, site), []int{3}; !slices.Equal(got, want) {
+		t.Errorf("stale = %v, want %v", got, want)
+	}
+	gone := pagesOf(model.Page{Path: "/legal/terms/"}, model.Page{Path: "/", Issues: []model.Issue{contrast}})
+	if got, want := StaleIgnores(rules, day, gone, nil), []int{0, 3, 4}; !slices.Equal(got, want) {
+		t.Errorf("stale once fixed = %v, want %v", got, want)
+	}
+	if got := StaleIgnores(nil, day, gone, nil); got != nil {
+		t.Errorf("no rules: %v", got)
+	}
+	if got := StaleIgnores(rules[:1], day, nil, nil); !slices.Equal(got, []int{0}) {
+		t.Errorf("no pages: %v", got)
+	}
+}

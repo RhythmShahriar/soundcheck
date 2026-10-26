@@ -1,0 +1,73 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:b4d15f3d-8675-4f8f-ad5c-d383129ba174",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:golang/github.com/RhythmShahriar/soundcheck",
+      "name": "rhythm-soundcheck",
+      "purl": "pkg:golang/github.com/RhythmShahriar/soundcheck",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/axe-core@4.14.0",
+      "supplier": {
+        "name": "Deque Systems, Inc."
+      },
+      "name": "axe-core",
+      "version": "4.14.0",
+      "description": "Accessibility rules engine. axe.min.js from the npm package, unmodified, embedded in the binary from checks/a11y/vendor/.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/axe-core@4.14.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "20c09fe157a8a34a30e241aaa1fcdade657734f08ab379ecfbeb7d45cc46e878"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/axe-core/-/axe-core-4.14.0.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dequelabs/axe-core"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/dequelabs/axe-core/blob/v4.14.0/LICENSE"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:golang/github.com/RhythmShahriar/soundcheck",
+      "dependsOn": [
+        "pkg:npm/axe-core@4.14.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/axe-core@4.14.0",
+      "dependsOn": []
+    }
+  ]
+}

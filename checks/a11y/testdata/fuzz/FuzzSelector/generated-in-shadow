@@ -1,0 +1,2 @@
+go test fuzz v1
+string("[[{\"tag\":\"html\"},{\"tag\":\"body\"},{\"tag\":\"x-card\",\"id\":\"uid-42\"}],[{\"tag\":\"button\",\"id\":\"react-select-3\",\"nth\":2}]]")

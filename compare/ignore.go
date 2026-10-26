@@ -14,8 +14,8 @@ import (
 
 // IgnoreRule names changes that are known and shouldn't count, such as
 // a missing favicon nobody will fix or a team page that changes weekly.
-// Every field that is set must match: Check and Title are globs (see
-// model.Glob), Pages a list of page globs. A rule with Pages ignores the
+// Every field that is set must match: Check, Title and Source are globs
+// (see model.Glob), Pages a list of page globs. A rule with Pages ignores the
 // change only on those pages; its other pages still count.
 type IgnoreRule struct {
 	Check string   `yaml:"check" json:"check,omitempty"` // e.g. "health/favicon" or "visual/*"
@@ -48,21 +48,16 @@ func ApplyIgnore(c *model.Comparison, rules []IgnoreRule, now time.Time) {
 	}
 	for n, r := range rules {
 		label := fmt.Sprintf("ignore rule %d (%s)", n+1, r.describe())
-		if r.Check == "" && r.Title == "" && len(r.Pages) == 0 {
-			c.Warnings = append(c.Warnings, fmt.Sprintf("ignore rule %d has no check, title or pages and would hide every change; it is skipped", n+1))
+		switch r.state(now) {
+		case ruleEmpty:
+			c.Warnings = append(c.Warnings, fmt.Sprintf("ignore rule %d has no check, title, source or pages and would hide every change; it is skipped", n+1))
 			continue
-		}
-		if r.Until != "" {
-			until, err := time.ParseInLocation(dateLayout, r.Until, now.Location())
-			if err != nil {
-				c.Warnings = append(c.Warnings, fmt.Sprintf("%s: until %q isn't a date like 2026-12-31; the rule is skipped", label, r.Until))
-				continue
-			}
-			// The rule covers the whole of its last day.
-			if !now.Before(until.AddDate(0, 0, 1)) {
-				c.Warnings = append(c.Warnings, fmt.Sprintf("%s expired on %s; its changes count again", label, r.Until))
-				continue
-			}
+		case ruleBadDate:
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: until %q isn't a date like 2026-12-31; the rule is skipped", label, r.Until))
+			continue
+		case ruleExpired:
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s expired on %s; its changes count again", label, r.Until))
+			continue
 		}
 		kept := c.Changes[:0:0]
 		for _, ch := range c.Changes {
@@ -84,11 +79,51 @@ func ApplyIgnore(c *model.Comparison, rules []IgnoreRule, now time.Time) {
 	c.Complete()
 }
 
+// Rule states: whether a rule applies at a time (see state).
+const (
+	ruleLive = iota
+	ruleEmpty
+	ruleBadDate
+	ruleExpired
+)
+
+// state says whether the rule applies at now: it has something to match
+// by and its Until, if any, is a date not before now's day.
+func (r IgnoreRule) state(now time.Time) int {
+	if r.Check == "" && r.Title == "" && r.Source == "" && len(r.Pages) == 0 {
+		return ruleEmpty
+	}
+	if r.Until == "" {
+		return ruleLive
+	}
+	until, err := time.ParseInLocation(dateLayout, r.Until, now.Location())
+	if err != nil {
+		return ruleBadDate
+	}
+	// The rule covers the whole of its last day.
+	if !now.Before(until.AddDate(0, 0, 1)) {
+		return ruleExpired
+	}
+	return ruleLive
+}
+
+// matches reports whether the rule's check, title and source match.
+func (r IgnoreRule) matches(check, title, source string) bool {
+	return (r.Check == "" || model.Glob(r.Check, check)) && (r.Title == "" || model.Glob(r.Title, title)) &&
+		(r.Source == "" || model.Glob(r.Source, source))
+}
+
+// onPage reports whether the rule covers page: it names no pages or one
+// of its globs matches.
+func (r IgnoreRule) onPage(page string) bool {
+	return len(r.Pages) == 0 || slices.ContainsFunc(r.Pages, func(g string) bool { return model.Glob(g, page) })
+}
+
 // split matches a change against the rule. ok is false when the rule
 // doesn't apply. Otherwise hit is what to ignore and rest, when the rule
 // covers only some of the change's pages, is the part that still counts.
 func (r IgnoreRule) split(ch model.Change) (hit model.Change, rest *model.Change, ok bool) {
-	if (r.Check != "" && !model.Glob(r.Check, ch.Check)) || (r.Title != "" && !model.Glob(r.Title, ch.Title)) {
+	if !r.matches(ch.Check, ch.Title, ch.Source) {
 		return ch, nil, false
 	}
 	if len(r.Pages) == 0 {
@@ -96,7 +131,7 @@ func (r IgnoreRule) split(ch model.Change) (hit model.Change, rest *model.Change
 	}
 	var in, out []string
 	for _, p := range ch.Pages {
-		if slices.ContainsFunc(r.Pages, func(g string) bool { return model.Glob(g, p) }) {
+		if r.onPage(p) {
 			in = append(in, p)
 		} else {
 			out = append(out, p)
@@ -132,6 +167,9 @@ func (r IgnoreRule) describe() string {
 	if r.Title != "" {
 		parts = append(parts, fmt.Sprintf("title %q", r.Title))
 	}
+	if r.Source != "" {
+		parts = append(parts, fmt.Sprintf("source %q", r.Source))
+	}
 	if len(r.Pages) > 0 {
 		parts = append(parts, "pages "+strings.Join(r.Pages, ", "))
 	}
@@ -145,6 +183,68 @@ func (r IgnoreRule) describe() string {
 // nothing in the run: not its pages (pages yields them) nor its
 // site-level issues (site). The problem they hide looks fixed, so the
 // rule can go. now decides which rules have expired.
+//
+// It reads the run's issues, not a comparison's changes: a problem a
+// rule ignores that is still there makes no change at all, which must
+// not make the rule look stale. Rules that don't apply (expired, a bad
+// date or nothing to match by) are never listed: ApplyIgnore already
+// warns about them. Only issues are matched, so a rule that may hide
+// another kind of change is never listed either (see issueRule).
 func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page) bool), site []model.Issue) []int {
-	return nil
+	var open []int
+	for n, r := range rules {
+		if r.state(now) == ruleLive && issueRule(r) {
+			open = append(open, n)
+		}
+	}
+	if len(open) == 0 {
+		return nil
+	}
+	hit := make([]bool, len(rules))
+	left := len(open)
+	match := func(i model.Issue, on func(IgnoreRule) bool) {
+		for _, n := range open {
+			if !hit[n] && rules[n].matches(i.Check, i.Title, i.Source) && on(rules[n]) {
+				hit[n] = true
+				left--
+			}
+		}
+	}
+	if pages != nil {
+		pages(func(p *model.Page) bool {
+			on := func(r IgnoreRule) bool { return r.onPage(p.Path) }
+			for _, i := range p.Issues {
+				match(i, on)
+			}
+			return left > 0
+		})
+	}
+	for _, i := range site {
+		match(i, func(r IgnoreRule) bool {
+			// A site issue lists its pages; a rule with pages needs one of
+			// them, as split does.
+			return len(r.Pages) == 0 || slices.ContainsFunc(i.Pages, r.onPage)
+		})
+	}
+	var out []int
+	for _, n := range open {
+		if !hit[n] {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// comparers are the modules that report changes of their own besides
+// issue changes (screenshots, timings, page content, messages). A rule
+// for one of them may hide a change no issue carries.
+var comparers = []string{"visual", "speed", "seo", "echo"}
+
+// issueRule reports whether a rule can only hide issue changes, so that
+// matching no issue makes it stale: its check names one module, which
+// isn't one of the comparers. A rule for any check ("*" or none) may
+// hide a visual change and is never called stale.
+func issueRule(r IgnoreRule) bool {
+	mod, _, _ := strings.Cut(r.Check, "/")
+	return mod != "" && !strings.Contains(mod, "*") && !slices.Contains(comparers, mod)
 }

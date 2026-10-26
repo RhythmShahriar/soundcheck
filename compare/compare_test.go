@@ -296,3 +296,39 @@ func TestIssueKeepsItsIDOnMorePages(t *testing.T) {
 		t.Errorf("the warning on one more page got another id: %s, %s", one, two)
 	}
 }
+
+// A NEW or FIXED accessibility change names the criteria, clauses and
+// impact of the issue it comes from. Keyboard ones also name the focus
+// path.
+func TestChangeCarriesAccessibilityFields(t *testing.T) {
+	label := model.Issue{Check: "a11y/label", Level: model.Warning, Title: "Form elements must have labels", Source: "#email",
+		WCAG: []string{"1.3.1", "4.1.2"}, EN301549: []string{"9.1.3.1", "9.4.1.2"}, Impact: "critical"}
+	label.Identify()
+	trap := model.Issue{Check: "keyboard/trap", Level: model.Error, Title: "Keyboard trap", Source: "#map",
+		WCAG: []string{"2.1.2"}, EN301549: []string{"9.2.1.2"}, Impact: "critical", FocusPath: []string{"#search", "#map", "#map"}}
+	trap.Identify()
+	plain := issue("health/php-error", model.Warning, "PHP Warning")
+	before := &model.Run{Pages: []model.Page{{Path: "/", Issues: []model.Issue{trap}}, {Path: "/b"}}}
+	after := &model.Run{Pages: []model.Page{{Path: "/", Issues: []model.Issue{label, plain}}, {Path: "/b", Issues: []model.Issue{label}}}}
+	got := map[string]model.Change{}
+	for _, c := range Issues(before, after) {
+		got[c.Check] = c
+	}
+	n := got["a11y/label"]
+	if n.Class != model.New || !slices.Equal(n.WCAG, label.WCAG) || !slices.Equal(n.EN301549, label.EN301549) || n.Impact != "critical" ||
+		n.FocusPath != nil || !slices.Equal(n.Pages, []string{"/", "/b"}) {
+		t.Errorf("new a11y change = %+v", n)
+	}
+	f := got["keyboard/trap"]
+	if f.Class != model.Fixed || !slices.Equal(f.WCAG, trap.WCAG) || !slices.Equal(f.FocusPath, trap.FocusPath) || f.Impact != "critical" {
+		t.Errorf("fixed keyboard change = %+v", f)
+	}
+	if p := got["health/php-error"]; p.WCAG != nil || p.EN301549 != nil || p.Impact != "" || p.FocusPath != nil {
+		t.Errorf("a change without accessibility data = %+v", p)
+	}
+	// The change has lists of its own.
+	n.WCAG[0] = "x"
+	if label.WCAG[0] != "1.3.1" {
+		t.Error("the change shares the issue's WCAG list")
+	}
+}

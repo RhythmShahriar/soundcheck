@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -67,7 +68,12 @@ func (s Store) NewDir(kind, name string) (string, error) {
 		}
 	}
 	_, statErr := os.Stat(parent)
-	if err := os.MkdirAll(parent, 0o750); err != nil {
+	if err := os.MkdirAll(parent, dirMode); err != nil {
+		return "", err
+	}
+	// A linked runs/ or snapshots/ would put every new folder (with
+	// every write into it) wherever the link points.
+	if err := refuseLinks(parent); err != nil {
 		return "", err
 	}
 	if kind == Incoming {
@@ -83,7 +89,7 @@ func (s Store) NewDir(kind, name string) (string, error) {
 		}
 		// Mkdir fails when the folder exists, which makes it the claim:
 		// two processes can't both create the same one.
-		err := os.Mkdir(dir, 0o750)
+		err := os.Mkdir(dir, dirMode)
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}
@@ -107,15 +113,120 @@ func Release(dir string) error {
 	return err
 }
 
-// Saver returns a function that writes files into dir.
+// Modes of what the store writes: only the user who runs Soundcheck
+// reads a run. Screenshots and traces show pages behind a login and
+// run.json holds what the site sent.
+const (
+	dirMode  = 0o700
+	fileMode = 0o600
+)
+
+// Saver returns a function that writes files into dir (see writeIn).
 func Saver(dir string) func(name string, data []byte) error {
 	return func(name string, data []byte) error {
-		path, err := Contained(dir, name)
-		if err != nil {
+		if _, err := Contained(dir, name); err != nil {
 			return fmt.Errorf("refusing to write %q outside the run folder", name)
 		}
-		return cache.WriteFile(path, data)
+		return writeIn(dir, name, data)
 	}
+}
+
+// writeIn writes data to rel inside dir atomically, creating the folders
+// on the way, with the store's modes. It refuses to write through a
+// symlink: a run folder someone else made, or a link planted in
+// .soundcheck/ (runs/x/keyboard pointing at ~/.ssh), must not turn a
+// screenshot into a write anywhere on the machine. The folders are
+// checked one by one, from just below .soundcheck/ down to the file (see
+// refuseLinks). The write goes through an os.Root of dir, so a link
+// swapped in between can't lead out of it either.
+func writeIn(dir, rel string, data []byte) (err error) {
+	rel = filepath.Clean(filepath.FromSlash(rel))
+	if err := refuseLinks(dir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, dirMode); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	parts := strings.Split(rel, string(filepath.Separator))
+	for i := range parts {
+		sub := filepath.Join(parts[:i+1]...)
+		fi, err := root.Lstat(sub)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			if i < len(parts)-1 {
+				if err := root.Mkdir(sub, dirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+					return err
+				}
+			}
+		case err != nil:
+			return err
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("refusing to write through a symlink: %s", filepath.Join(dir, sub))
+		}
+	}
+	tmp := filepath.Join(filepath.Dir(rel), fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileMode)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+			_ = root.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return root.Rename(tmp, rel)
+}
+
+// refuseLinks returns an error when dir or a folder between it and the
+// store's root is a symlink: .soundcheck/runs linked elsewhere would send
+// every run there. The .soundcheck folder itself may be a link (kept on
+// another disk, say): the user made that choice for the whole store. A
+// dir outside any .soundcheck folder (a test's temp folder) has only
+// itself checked. Folders that don't exist yet end the walk, as nothing
+// below them can be a link.
+func refuseLinks(dir string) error {
+	dir = filepath.Clean(dir)
+	chain := []string{dir}
+	for p := dir; ; {
+		up := filepath.Dir(p)
+		if up == p {
+			// No .soundcheck above: check dir alone.
+			chain = chain[:1]
+			break
+		}
+		if filepath.Base(up) == config.Dir {
+			break
+		}
+		chain = append(chain, up)
+		p = up
+	}
+	for i := len(chain) - 1; i >= 0; i-- {
+		fi, err := os.Lstat(chain[i])
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			return err
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("refusing to write through a symlink: %s", chain[i])
+		}
+	}
+	return nil
 }
 
 // Contained joins dir and rel, a slash-separated path from a run or
@@ -270,7 +381,7 @@ func (s Store) Promote(dir, name string) (string, error) {
 	}
 	defer unlock()
 	snapshots := filepath.Join(s.Root, "snapshots")
-	if err := os.MkdirAll(snapshots, 0o750); err != nil {
+	if err := os.MkdirAll(snapshots, dirMode); err != nil {
 		return "", err
 	}
 	if err := caseClash(snapshots, name); err != nil {

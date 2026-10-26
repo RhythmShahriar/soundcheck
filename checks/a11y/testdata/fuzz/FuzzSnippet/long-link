@@ -1,0 +1,2 @@
+go test fuzz v1
+string("<a class=\"button\" href=\"/account/confirm/Zx81kQpL0aTnB4vRu7cWmE2sZx81kQpL0aTnB4vRu7cWmE2sZx81kQpL0aTnB4vRu7cWmE2s?email=ana@example.org\">Confirm</a>")

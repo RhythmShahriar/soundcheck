@@ -1,0 +1,4 @@
+go test fuzz v1
+string("{\"violations\":[{\"id\":\"color-contrast\",\"impact\":\"serious\",\"total\":30,\"nodes\":[{\"path\":[[{\"tag\":\"html\"},{\"tag\":\"body\"},{\"tag\":\"p\"}]],\"html\":\"<p data-email=\\\"ana@example.org\\\">\",\"failureSummary\":\"Fix any of the following:\\n  Element has insufficient color contrast\"}]}]}")
+uint8(20)
+uint8(2)

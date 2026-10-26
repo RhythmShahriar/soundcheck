@@ -5,6 +5,7 @@ package compare
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -20,7 +21,13 @@ import (
 // re-visited one: where it reproduced it keeps its class; the pages
 // where it didn't become a separate UNSTABLE change. Pages that weren't
 // re-visited, or whose second visit was canceled or failed to load, say
-// nothing and keep the change.
+// nothing and keep the change. A second visit whose audit of the
+// change's module didn't finish (model.Audit) can't confirm it either:
+// the change is UNSTABLE there, never confirmed by an audit that
+// stopped halfway. A keyboard walk capped on the second visit counts
+// as finished but only confirms the issues it finds again: the others
+// are UNSTABLE too. (Issues uses the module's Unjudged so that such a
+// walk never makes a change FIXED.)
 func Confirm(c *model.Comparison, before, again *model.Run) {
 	if again == nil || len(again.Pages) == 0 {
 		return
@@ -86,6 +93,10 @@ func reproduced(key, page string, before, again *model.Run) bool {
 	ap := again.Page(page)
 	if ap == nil || ap.Canceled() || (before != nil && before.Page(page) == nil) {
 		return true
+	}
+	mod, _, _ := strings.Cut(key, "/")
+	if a, ok := ap.Audits[mod]; ok && !a.Finished() {
+		return false
 	}
 	if slices.ContainsFunc(ap.Issues, func(i model.Issue) bool { return issueKeyOf(i) == key }) {
 		return true

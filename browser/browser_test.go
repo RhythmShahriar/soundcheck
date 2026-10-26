@@ -9,8 +9,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/go-rod/rod/lib/proto"
 )
 
 // needChrome skips tests that launch a real browser where none is
@@ -38,6 +41,38 @@ func TestLaunchLogsTheVersion(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(logs, "\n"), "WARNING") {
 		t.Errorf("warned with the sandbox on: %q", logs)
+	}
+}
+
+// Switches reach Chrome's command line, with and without a value.
+func TestLaunchSetsSwitches(t *testing.T) {
+	needChrome(t)
+	args := func(o Options) []string {
+		t.Helper()
+		o.NoDownload = true
+		b, err := Launch(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer b.Close()
+		res, err := proto.BrowserGetBrowserCommandLine{}.Call(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Arguments
+	}
+	want := []string{"--proxy-bypass-list=<-loopback>;127.0.0.1/32", "--no-pings"}
+	got := args(Options{Switches: map[string]string{"proxy-bypass-list": "<-loopback>;127.0.0.1/32", "no-pings": ""}})
+	for _, w := range want {
+		if !slices.Contains(got, w) {
+			t.Errorf("%s isn't on the command line %q", w, got)
+		}
+	}
+	got = args(Options{})
+	for _, w := range want {
+		if slices.Contains(got, w) {
+			t.Errorf("%s is on the command line without the switch", w)
+		}
 	}
 }
 

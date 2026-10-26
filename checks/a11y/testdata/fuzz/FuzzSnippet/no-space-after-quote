@@ -1,0 +1,2 @@
+go test fuzz v1
+string("<input id=\"a\"value=\"typed\"><a id=\"b\"href=\"/reset?token=9f8e7d\">")

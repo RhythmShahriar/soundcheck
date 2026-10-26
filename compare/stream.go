@@ -5,6 +5,7 @@ package compare
 
 import (
 	"context"
+	"slices"
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -78,7 +79,8 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 		return nil, err
 	}
 
-	d := issueDiff{groups: map[string]*issueGroup{}}
+	ran, listed := ranInBoth(cc.Before, cc.After), func(m string) bool { return slices.Contains(cc.After.Options.Modules, m) }
+	d := newIssueDiff(rulesOf(cc.Before, cc.After, ran))
 	diffed := map[string]bool{}
 	for i := range after.Len() {
 		if after.Canceled(i) {
@@ -99,15 +101,15 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 		}
 		if !diffed[path] {
 			diffed[path] = true
-			bi, err := issuesOf(before, bs, b)
+			bi, baud, err := issuesOf(before, bs, b)
 			if err != nil {
 				return nil, err
 			}
-			ai, err := issuesOf(after, as, a)
+			ai, aaud, err := issuesOf(after, as, a)
 			if err != nil {
 				return nil, err
 			}
-			d.page(path, bi, ai)
+			d.page(path, bi, ai, aaud, gaps(path, baud, aaud, ran, listed), d.guard(bi, baud, aaud))
 		}
 		for _, s := range sinks {
 			if s.s == nil {
@@ -122,6 +124,7 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 	}
 	d.site(cc.Before.Issues, cc.After.Issues)
 	out.Changes = compared(d.changes(), cc, modules)
+	aside(out, compared(d.ignoredChanges(), cc, modules), d.sortedNotes())
 	for _, s := range sinks {
 		if s.s != nil {
 			safe(s.name, "Changes", warn, func() { out.Changes = append(out.Changes, s.s.Changes()...) })
@@ -238,22 +241,24 @@ func live(src PageSource, path string) []int {
 	return at
 }
 
-// issuesOf returns the issues of the pages at positions at, of which the
-// first is already read as first. Issues diffs every page with a path
-// when it's there twice; nearly always it's there once.
-func issuesOf(src PageSource, at []int, first *model.Page) ([]model.Issue, error) {
+// issuesOf returns the issues and audits of the pages at positions at,
+// of which the first is already read as first. Issues diffs every page
+// with a path when it's there twice; nearly always it's there once.
+func issuesOf(src PageSource, at []int, first *model.Page) ([]model.Issue, map[string]model.Audit, error) {
 	if len(at) == 1 {
-		return first.Issues, nil
+		return first.Issues, first.Audits, nil
 	}
 	issues := append([]model.Issue(nil), first.Issues...)
+	audits := mergeAudits(nil, first.Audits)
 	for _, i := range at[1:] {
 		p, err := src.Page(i)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		issues = append(issues, p.Issues...)
+		audits = mergeAudits(audits, p.Audits)
 	}
-	return issues, nil
+	return issues, audits, nil
 }
 
 // InMemory is the PageSource of pages already in memory.

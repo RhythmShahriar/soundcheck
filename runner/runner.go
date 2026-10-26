@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -81,6 +82,14 @@ type Options struct {
 	// silently move somewhere the user didn't name.
 	FollowHost bool
 	Hooks      Hooks
+	// WCAG is the WCAG version the accessibility checks use (2.0, 2.1 or
+	// 2.2), recorded in the run's options for the a11y module and for a
+	// comparison. Empty records none, which reads as 2.0.
+	WCAG string
+	// EAA records that the run was made with --eaa.
+	EAA bool
+	// Keyboard records the keyboard walk's limits, when it runs.
+	Keyboard *model.KeyboardOptions
 
 	// Done resumes an interrupted run: these pages were finished before
 	// and are kept as they are, not visited again. Their links are added
@@ -93,6 +102,11 @@ type Options struct {
 
 	revisit bool           // set by Revisit: no site-wide checks
 	driver  capture.Driver // set by Run for an engine other than Chrome
+	// noChrome names the modules Run left out because they need Chrome
+	// (check.ChromeOnly), for the pages' Audits.
+	noChrome []string
+	// scope is the browser's network scope, set by Run.
+	scope *capture.Scope
 }
 
 // Hooks report progress. Calls are serialized.
@@ -125,7 +139,8 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := httpClient(opts, target)
+	addrs := targetAddrs(ctx, target)
+	client := httpClient(opts, target, addrs)
 	var mu sync.Mutex // serializes hooks
 	emit := func(fn func()) {
 		mu.Lock()
@@ -145,8 +160,12 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		return nil, err
 	}
 	// With FollowHost the start page may be on another site, which is
-	// now the one the headers belong to.
-	client = httpClient(opts, startURL)
+	// now the one the headers belong to and whose networks the run may
+	// reach.
+	if !strings.EqualFold(startURL.Hostname(), target.Hostname()) {
+		addrs = targetAddrs(ctx, startURL)
+	}
+	client = httpClient(opts, startURL, addrs)
 	// Modules get the start page without its query: production URLs
 	// (config) and flows match and resolve against scheme, host and path.
 	base := &url.URL{Scheme: startURL.Scheme, Host: startURL.Host, Path: startURL.Path, RawPath: startURL.RawPath}
@@ -154,7 +173,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: startURL.String(),
 		Name: opts.Name, Started: start.UTC(),
 		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
-			Limit: cfg.Pages.Limit},
+			Limit: cfg.Pages.Limit, WCAG: opts.WCAG, EAA: opts.EAA, Keyboard: opts.Keyboard},
 	}
 
 	// Pages: the given paths, or discovered from sitemaps and links.
@@ -214,7 +233,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Ctx:    ctx,
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
+		TargetPublic: capture.Public(addrs),
 	}
+	opts.scope = &capture.Scope{Site: base, Target: addrs, Allow: cfg.Trust.AllowHosts, Warn: cc.Warn}
 	for _, note := range capture.HeaderNotes(opts.Headers) {
 		cc.Warn(note)
 	}
@@ -244,6 +265,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		opts.driver = d
 		var skippedModules []string
 		opts.Modules, skippedModules = chromeFree(opts.Modules, engine, cc.Warn)
+		opts.noChrome = skippedModules
 		// As with echo below: a comparison mustn't think they ran.
 		run.Options.Modules = slices.DeleteFunc(slices.Clone(run.Options.Modules), func(name string) bool {
 			return slices.Contains(skippedModules, name)
@@ -531,6 +553,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	copts := capture.Options{
 		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: twice,
 		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base, Engine: cmpEngine(opts.Engine),
+		Scope: opts.scope,
 	}
 	if shots {
 		copts.Save = cc.Save
@@ -611,6 +634,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	if ctx.Err() != nil {
 		return fail(ctx.Err())
 	}
+	skippedAudits(p, opts.noChrome)
 	for _, m := range opts.Modules {
 		if c, ok := m.(check.PageChecker); ok {
 			check.Safe(m.Name(), "CheckPage", cc.Warn, func() { c.CheckPage(cc, p) })
@@ -772,12 +796,16 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // httpClient is the client for requests outside the browser; it adds
-// the run's headers to requests to site only.
-func httpClient(opts Options, site *url.URL) *http.Client {
+// the run's headers to requests to site only and stays on the networks
+// of site's addresses (see guard).
+func httpClient(opts Options, site *url.URL, addrs []netip.Addr) *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	g := newGuard(site, addrs)
+	tr.Proxy = g.proxy(http.ProxyFromEnvironment)
 	if opts.Proxy != nil {
-		tr.Proxy = http.ProxyURL(opts.Proxy)
+		tr.Proxy = g.proxy(http.ProxyURL(opts.Proxy))
 	}
+	tr.DialContext = g.dial
 	if opts.Insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for --insecure
 	}
@@ -838,6 +866,18 @@ func chromeFree(modules []check.Module, engine capture.Engine, warn func(string)
 		kept = append(kept, m)
 	}
 	return kept, skipped
+}
+
+// skippedAudits records on p that the modules named in noChrome didn't
+// audit it, so a comparison doesn't take their missing issues for fixed
+// ones and the statement lists the page as not checked.
+func skippedAudits(p *model.Page, noChrome []string) {
+	for _, name := range noChrome {
+		if p.Audits == nil {
+			p.Audits = map[string]model.Audit{}
+		}
+		p.Audits[name] = model.Audit{Status: model.AuditSkipped, Reason: "needs Chrome"}
+	}
 }
 
 // tryLogin logs in within a throwaway private session.

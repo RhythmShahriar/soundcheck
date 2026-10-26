@@ -12,11 +12,20 @@ func init() { check.Register(Module{}) }
 
 // Checks lists the checks the module reports. Every axe-core rule that
 // fails is reported as a11y/<rule id>, so the list names the pattern
-// next to the most common one.
+// next to the most common one. The module's own checks follow, each
+// with the WCAG criterion it tests. Which rules run follows the WCAG version
+// (a11y.wcag or --wcag).
 func (Module) Checks() []check.CheckInfo {
 	return []check.CheckInfo{
 		{ID: "a11y/label", Level: model.Warning, Title: "Form field without a label", Doc: "A field has no label for screen readers."},
 		{ID: "a11y/<axe rule id>", Level: model.Warning, Title: "Every axe-core rule that fails, e.g. a11y/color-contrast (a notice when axe rates it minor or moderate)",
-			Doc: "The rule ids are axe-core's (https://dequeuniversity.com/rules/axe/); ignore: rules in the config name them as a11y/<rule id>."},
+			Doc: "The A and AA rules of the WCAG version the run uses (2.1 unless a11y.wcag or --wcag says 2.0 or 2.2), each issue naming the WCAG criteria and EN 301 549 clauses it fails. The rule ids are axe-core's (https://dequeuniversity.com/rules/axe/); ignore: rules in the config name them as a11y/<rule id>."},
+		{ID: "a11y/placeholder-label", Level: model.Warning, Title: "Form field is labelled only by its placeholder (WCAG 3.3.2)", //nolint:misspell // British English, like the rest of the copy
+			Doc: "A field's only name is its placeholder, which disappears when someone types. Search boxes with a search button are left out. Add a visible <label for> or aria-labelledby that points at visible text."},
+		{ID: "a11y/reflow", Level: model.Warning, Title: "Page scrolls sideways at 320 px wide (WCAG 1.4.10)",
+			Doc: "At 320 CSS px wide (1280 px zoomed to 400%) the page needs scrolling in two directions. Tables, code, media and [data-soundcheck-2d] are exempt. Runs for WCAG 2.1 and 2.2."},
+		// Advisory: a notice that names no WCAG criterion.
+		{ID: "a11y/overlay", Level: "advisory", Title: "Accessibility overlay widget found (no WCAG criterion)",
+			Doc: "The page loads an overlay widget (accessiBe, UserWay, EqualWeb, AudioEye, Enable, Access Ally or One Click Accessibility). A widget doesn't make a site accessible; it's reported as a notice."},
 	}
 }

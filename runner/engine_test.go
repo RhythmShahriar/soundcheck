@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/capture"
 	"github.com/RhythmShahriar/soundcheck/capture/webdriver"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/checks/a11y"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -152,11 +154,11 @@ func TestChromeOnlyModulesSkipOnOtherEngines(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfg := config.Default()
-	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs = []string{"health", "mutates", "tabmod"}, []string{"desktop"}, 0, 1
+	cfg.Modules, cfg.Viewports, cfg.Rate, cfg.Tabs = []string{"health", "a11y", "mutates", "tabmod"}, []string{"desktop"}, 0, 1
 	rec := &recorder{}
 	tm := &tabMod{rec: rec}
 	run, err := Run(context.Background(), Options{Config: cfg, Target: srv.URL, Paths: []string{"/"}, Dir: t.TempDir(),
-		Version: "test", Engine: capture.Firefox, Modules: []check.Module{liveMod{"mutates", check.PhaseMutate, rec}, tm},
+		Version: "test", Engine: capture.Firefox, Modules: []check.Module{a11y.Module{}, liveMod{"mutates", check.PhaseMutate, rec}, tm},
 		Login: func(*url.URL) func(context.Context, *rod.Browser) error {
 			return func(context.Context, *rod.Browser) error { t.Error("logged in"); return nil }
 		}})
@@ -186,6 +188,12 @@ func TestChromeOnlyModulesSkipOnOtherEngines(t *testing.T) {
 			t.Errorf("no warning %q in %q", w, run.Warnings)
 		}
 	}
+	// The page says a11y didn't audit it, so it isn't taken for a page
+	// without accessibility problems.
+	skipped := model.Audit{Status: model.AuditSkipped, Reason: "needs Chrome"}
+	if a := run.Pages[0].Audits; !reflect.DeepEqual(a, map[string]model.Audit{"a11y": skipped, "mutates": skipped}) {
+		t.Errorf("audits = %+v", a)
+	}
 	if slices.Contains(run.Options.Modules, "mutates") || !slices.Contains(run.Options.Modules, "tabmod") || run.Options.LoggedIn ||
 		run.Options.Engine != "firefox" {
 		t.Errorf("run options: %+v", run.Options)
@@ -211,5 +219,23 @@ func TestChromeFree(t *testing.T) {
 	}
 	if _, err := launchDriver(context.Background(), "lynx", browser.Options{}); err == nil {
 		t.Error("launched an unknown engine")
+	}
+}
+
+// A page records the modules left out for needing Chrome as skipped;
+// a Chrome run records nothing for them.
+func TestSkippedAudits(t *testing.T) {
+	p := &model.Page{Path: "/"}
+	skippedAudits(p, nil)
+	if p.Audits != nil {
+		t.Errorf("audits without skipped modules = %+v", p.Audits)
+	}
+	p.Audits = map[string]model.Audit{"seo": {Status: model.AuditOK}}
+	skippedAudits(p, []string{"a11y", "keyboard"})
+	want := map[string]model.Audit{"seo": {Status: model.AuditOK},
+		"a11y":     {Status: model.AuditSkipped, Reason: "needs Chrome"},
+		"keyboard": {Status: model.AuditSkipped, Reason: "needs Chrome"}}
+	if !reflect.DeepEqual(p.Audits, want) {
+		t.Errorf("audits = %+v", p.Audits)
 	}
 }
