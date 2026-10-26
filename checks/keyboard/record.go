@@ -587,8 +587,8 @@ func (w *walker) navigations(ctx context.Context) error {
 		Form    bool    `json:"form"`
 		What    string  `json:"what"`
 		Stopped bool    `json:"stopped"`
-		At      float64 `json:"at"` // performance.now() when it started
-		El      int     `json:"el"` // the forward stop it came from, by probe; -1 when unknown
+		At      float64 `json:"at"`    // performance.now() when it started
+		El      int     `json:"el"`    // the forward stop it came from, by probe; -1 when unknown
 		Focus   bool    `json:"focus"` // it started in a focus handler
 	}
 	if err := json.Unmarshal([]byte(raw), &log); err != nil {
@@ -624,11 +624,9 @@ func (w *walker) navigations(ctx context.Context) error {
 			kind = EffectForm
 			g.hold(n.What)
 		}
-		press := -1
+		press := g.pressAt(n.At)
 		if n.El >= 0 && n.El < len(w.probed) {
 			press = w.probed[n.El]
-		} else {
-			press = g.pressAt(n.At)
 		}
 		g.effectOf(press, kind)
 		if n.Focus && press >= 0 {

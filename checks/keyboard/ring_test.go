@@ -211,9 +211,9 @@ func TestRingMarginJS(t *testing.T) {
 	}
 }
 
-// offsetSkipPage has the common skip link that sits above the page, its
-// lower edge a few pixels from the top, and moves into view on focus, over a dark header, with a second link that
-// shows no ring at all.
+// offsetSkipPage has the common skip link that sits above the page (its
+// lower edge a few pixels from the top) and moves into view on focus
+// over a dark header. A second link shows no ring at all.
 const offsetSkipPage = `<!doctype html><html lang="en"><head><title>Skip</title><style>
 body { background: #fff; margin: 0; font: 16px sans-serif; }
 header { background: #2b211b; padding: 18px 32px; }
