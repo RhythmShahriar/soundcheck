@@ -60,6 +60,12 @@ const (
 	MaxDepth   = 20
 )
 
+// MaxExpansion is how many values aliases may add to a config file once
+// expanded. Few aliases can still expand into billions of values when
+// each refers to a list of aliases (ten levels of ten), so the count of
+// aliases alone isn't enough.
+const MaxExpansion = 10000
+
 // checkShape counts the aliases and the nesting of a parsed document
 // before anything decodes it. The parsed tree holds each alias once, as
 // a pointer, so counting is cheap; only decoding expands them.
@@ -83,7 +89,56 @@ func checkShape(doc *yaml.Node) error {
 		}
 		return nil
 	}
-	return walk(doc, 0)
+	if err := walk(doc, 0); err != nil {
+		return err
+	}
+	return checkExpansion(doc)
+}
+
+// checkExpansion counts the values the document holds once its aliases
+// are expanded, without expanding them: each node's size is computed once
+// and an alias adds the size of its target. Counts stop just past the
+// limit, so a file that would expand into billions of values costs
+// little. Only what aliases add counts: a large file without them is
+// bounded by MaxSize.
+func checkExpansion(doc *yaml.Node) error {
+	plain, firstAlias := 0, 0
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		plain++
+		if n.Kind == yaml.AliasNode && firstAlias == 0 {
+			firstAlias = n.Line
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(doc)
+	limit := plain + MaxExpansion
+	size := map[*yaml.Node]int{}
+	var count func(n *yaml.Node) int
+	count = func(n *yaml.Node) int {
+		if v, ok := size[n]; ok {
+			return v
+		}
+		size[n] = limit + 1 // an alias inside its own anchor is too many
+		total := 1
+		if n.Kind == yaml.AliasNode && n.Alias != nil {
+			total += count(n.Alias)
+		}
+		for _, c := range n.Content {
+			if total > limit {
+				break
+			}
+			total += count(c)
+		}
+		size[n] = min(total, limit+1)
+		return size[n]
+	}
+	if count(doc) > limit {
+		return &SettingError{Line: firstAlias, Msg: "config.yaml uses too many YAML aliases"}
+	}
+	return nil
 }
 
 // checkKeys walks a mapping alongside the struct it decodes into and

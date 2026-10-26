@@ -16,7 +16,10 @@ import (
 // laughs is a "billion laughs" document: each level holds ten aliases of
 // the one before, so twelve levels (120 aliases) expand to 10^13
 // strings. key puts it under a block key.
-func laughs(key string) string {
+func laughs(key string) string { return laughsOf(key, 12) }
+
+// laughsOf is laughs with the given number of levels.
+func laughsOf(key string, levels int) string {
 	var b strings.Builder
 	if key != "" {
 		b.WriteString(key + ":\n")
@@ -26,7 +29,7 @@ func laughs(key string) string {
 		pad = "  "
 	}
 	fmt.Fprintf(&b, "%sl0: &l0 [lol, lol, lol, lol, lol, lol, lol, lol, lol, lol]\n", pad)
-	for i := 1; i <= 12; i++ {
+	for i := 1; i <= levels; i++ {
 		refs := strings.TrimSuffix(strings.Repeat(fmt.Sprintf("*l%d, ", i-1), 10), ", ")
 		fmt.Fprintf(&b, "%sl%d: &l%d [%s]\n", pad, i, i, refs)
 	}
@@ -38,7 +41,10 @@ func laughs(key string) string {
 // module.
 func TestBillionLaughs(t *testing.T) {
 	RegisterBlock("laughs")
-	for _, body := range []string{laughs(""), laughs("statement"), laughs("laughs")} {
+	// Nine levels hold 90 aliases, under MaxAliases, yet expand to 10^10
+	// strings: the expansion bound refuses them with the same message.
+	bodies := []string{laughs(""), laughs("statement"), laughs("laughs"), laughsOf("laughs", 9), laughsOf("", 9)}
+	for _, body := range bodies {
 		start := time.Now()
 		_, err := Load(write(t, body))
 		if took := time.Since(start); took > 100*time.Millisecond {
@@ -47,6 +53,10 @@ func TestBillionLaughs(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "config.yaml uses too many YAML aliases") {
 			t.Errorf("%.40q: %v", body, err)
 		}
+	}
+	// Two levels (20 aliases, 1,000 strings) stay under the bound.
+	if _, err := Load(write(t, laughsOf("laughs", 2))); err != nil {
+		t.Errorf("two levels: %v", err)
 	}
 	// A few aliases, as a hand-written file might use, still load.
 	ok := "pages:\n  include: &shop [/shop/*]\n  extra: [/checkout/]\nignore:\n  - check: visual/page\n    pages: *shop\n"
