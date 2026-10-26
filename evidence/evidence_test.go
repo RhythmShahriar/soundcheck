@@ -396,7 +396,7 @@ func FuzzEvidence(f *testing.F) {
 }
 
 // SigningKey shows who signed: a pack re-signed with another key still
-// verifies, but its key differs from the owner's.
+// verifies while its key differs from the owner's.
 func TestSigningKey(t *testing.T) {
 	dir, run := saveRun(t, t.TempDir(), "runs", "r1", time.Unix(1000, 0), true, target)
 	if err := Write(dir, run, nil); err != nil {

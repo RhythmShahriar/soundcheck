@@ -259,7 +259,7 @@ func TestSummarizeNothingRan(t *testing.T) {
 		t.Errorf("walked without an audit: 2.1.2 not counted: %+v", s.Criteria)
 	}
 
-	// No audits at all: a11y didn't run either, and interact ran on
+	// No audits at all: a11y didn't run either while interact ran on
 	// the one page.
 	bare := []model.Page{{Path: "/"}}
 	s = Summarize(eaaRun(), each(bare), nil, nil)
