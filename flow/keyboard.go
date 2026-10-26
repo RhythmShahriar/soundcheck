@@ -48,15 +48,19 @@ type keys struct {
 	// errors once the step is done. Only the flow's own goroutine uses it.
 	form     *errorWatch
 	mu       sync.Mutex
-	requests int   // requests the page made
-	armed    bool  // this step's held writes end the flow
-	held     *Held // the first write held while armed
-	trace    []string
+	requests int // requests the page made
+	// armed is set from the step's operating key press on: a write
+	// held then is the step's and ends the flow. One held while Tab moves
+	// focus, such as an autosave on focusout, is held without ending it.
+	armed bool
+	held  *Held // the first write held while armed
+	trace []string
 }
 
 // keyboard starts a key flow on tab: every request is counted, so a key
 // press that sends one counts as doing something. With dry every
-// request but GET and HEAD is held.
+// request but GET and HEAD is held. Only tab's own requests are seen:
+// a popup it opens and WebSocket messages are not (see the package doc).
 func (r *runner) keyboard(tab *rod.Page, dry bool) (remove func(), err error) {
 	k := &keys{dry: dry}
 	r.keys = k
@@ -86,11 +90,18 @@ func orSlash(p string) string {
 	return p
 }
 
-// begin starts a step; armed says it's one whose held write ends the
-// flow.
-func (k *keys) begin(armed bool) {
+// begin starts a step: nothing it holds ends the flow until arm.
+func (k *keys) begin() {
 	k.mu.Lock()
-	k.armed, k.held, k.form = armed, nil, nil
+	k.armed, k.held, k.form = false, nil, nil
+	k.mu.Unlock()
+}
+
+// arm is called just before the key press that operates a step's
+// control: a write held from then on is the step's.
+func (k *keys) arm() {
+	k.mu.Lock()
+	k.armed = true
 	k.mu.Unlock()
 }
 
@@ -149,6 +160,9 @@ func (r *runner) keyStep(n int, s Step) error {
 					return err
 				}
 			}
+		}
+		if s.Press.activates() {
+			r.keys.arm()
 		}
 		if err := r.press(*s.Press); err != nil {
 			return err
@@ -344,6 +358,7 @@ func (r *runner) operate(n int, kind string, t Target, el, active *rod.Element, 
 		}
 	}
 	did := r.watchEffect()
+	r.keys.arm()
 	if err := focus.Press(r.ctx, r.page, key); err != nil {
 		return fmt.Errorf("couldn't press %s: %w", key, err)
 	}
