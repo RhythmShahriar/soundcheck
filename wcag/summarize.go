@@ -54,6 +54,10 @@ func selectorOf(i model.Issue) string {
 	return ""
 }
 
+// auditing are the modules that record a Page.Audits entry for each page
+// they test. Summarize counts one as run only when an audit finished.
+var auditing = []string{"a11y", "keyboard"}
+
 // moduleOf returns the module a test of TestedBy belongs to: a11y for
 // the axe rules, else the part of the check id before the slash.
 func moduleOf(test string) string {
@@ -129,10 +133,13 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 	}
 
 	// A module that records audits ran when one page's audit finished;
-	// one that doesn't (interact) ran when the run lists it.
-	audited, finished := map[string]bool{}, map[string]bool{}
+	// one that doesn't (interact) ran when the run lists it and checked
+	// at least one page.
+	finished := map[string]bool{}
+	checked := 0
 	onPage := map[string]bool{}
 	pages(func(p *model.Page) bool {
+		checked++
 		clear(onPage)
 		for _, i := range p.Issues {
 			for _, c := range add(i) {
@@ -150,7 +157,6 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		}
 		for _, m := range slices.Sorted(maps.Keys(p.Audits)) {
 			a := p.Audits[m]
-			audited[m] = true
 			if a.Finished() {
 				finished[m] = true
 				continue
@@ -168,10 +174,20 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 	})
 
 	ran := func(m string) bool {
-		if len(run.Options.Modules) > 0 && !slices.Contains(run.Options.Modules, m) {
+		switch {
+		case len(run.Options.Modules) > 0 && !slices.Contains(run.Options.Modules, m):
+			return false
+		case finished[m]:
+			return true
+		case m == "keyboard":
+			// A walk counts even if the keyboard lane wrote no audit.
+			return s.Keyboard.PagesWalked > 0
+		case slices.Contains(auditing, m):
+			// Listed but no page's audit finished, or none was
+			// recorded: its tests didn't run.
 			return false
 		}
-		return !audited[m] || finished[m]
+		return checked > 0
 	}
 	for _, c := range t.criteria {
 		if tl := tallies[c.ID]; tl != nil && len(tl.keys) > 0 {

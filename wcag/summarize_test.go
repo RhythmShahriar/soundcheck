@@ -234,3 +234,43 @@ func TestSummarizeMemory(t *testing.T) {
 		t.Errorf("heap grew %d MB over %d pages", grew>>20, n)
 	}
 }
+
+// A module the run lists that tested nothing doesn't make its criteria
+// "no failures found": keyboard listed but never walked, or a run that
+// checked no page at all.
+func TestSummarizeNothingRan(t *testing.T) {
+	a11yOnly := []model.Page{{Path: "/", Audits: map[string]model.Audit{"a11y": {Status: model.AuditOK}}}}
+	s := Summarize(eaaRun(), each(a11yOnly), nil, nil)
+	if s.Keyboard.PagesWalked != 0 {
+		t.Fatalf("walked %d", s.Keyboard.PagesWalked)
+	}
+	for _, id := range []string{"2.1.2", "2.4.3", "2.4.7", "3.2.1", "3.3.1"} {
+		if !slices.Contains(s.Criteria.NotTested, id) {
+			t.Errorf("keyboard never walked: %s isn't not tested", id)
+		}
+	}
+	if !slices.Contains(s.Criteria.NoFailuresFound, "2.1.1") {
+		t.Errorf("2.1.1 has axe rules that ran: %+v", s.Criteria)
+	}
+
+	// A walk with no audit recorded still counts as the keyboard run.
+	walked := []model.Page{{Path: "/", Audits: map[string]model.Audit{"a11y": {Status: model.AuditOK}}, Keyboard: &model.KeyboardSummary{Stops: 3}}}
+	if s := Summarize(eaaRun(), each(walked), nil, nil); !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
+		t.Errorf("walked without an audit: 2.1.2 not counted: %+v", s.Criteria)
+	}
+
+	// No audits at all: a11y didn't run either, and interact ran on
+	// the one page.
+	bare := []model.Page{{Path: "/"}}
+	s = Summarize(eaaRun(), each(bare), nil, nil)
+	for _, id := range []string{"1.1.1", "1.4.3", "2.1.2"} {
+		if !slices.Contains(s.Criteria.NotTested, id) {
+			t.Errorf("no audits: %s isn't not tested", id)
+		}
+	}
+
+	s = Summarize(eaaRun(), each(nil), nil, nil)
+	if len(s.Criteria.NoFailuresFound) != 0 || len(s.Criteria.Failed) != 0 || len(s.Criteria.NotTested) != 50 {
+		t.Errorf("zero pages: %d failed, %d no failures, %d not tested", len(s.Criteria.Failed), len(s.Criteria.NoFailuresFound), len(s.Criteria.NotTested))
+	}
+}
