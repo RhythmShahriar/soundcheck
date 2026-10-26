@@ -274,3 +274,37 @@ func TestReaderAcrossNavigation(t *testing.T) {
 		t.Errorf("blurred: %+v %v", s, err)
 	}
 }
+
+// Nodes returns the elements an expression finds, in its order, from
+// the isolated world (the page's own querySelectorAll lies here);
+// Name reads a node's label, never its value.
+func TestNodesAndName(t *testing.T) {
+	srv := serve(t, html{"/": `<!doctype html><html lang="en"><body>
+<button id="a">First</button><input id="b" aria-label="Email" value="someone@example.test"><button id="c">Third</button>
+<script>Document.prototype.querySelectorAll = () => [];</script>
+</body></html>`})
+	tab := tabAt(t, srv.URL+"/")
+	ctx, cancel := context.WithTimeout(context.Background(), testenv.Timeout(20*time.Second))
+	defer cancel()
+	r := NewReader(tab)
+	ids, err := r.Nodes(ctx, `[...document.querySelectorAll('button, input')].reverse()`)
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("nodes %v, %v", ids, err)
+	}
+	want := []string{"Third", "Email", "First"}
+	for i, id := range ids {
+		role, name, n := r.Name(ctx, id)
+		if name != want[i] || n != len(want[i]) || role == "" {
+			t.Errorf("node %d: role %q name %q (%d), want %q", i, role, name, n, want[i])
+		}
+	}
+	if ids, err := r.Nodes(ctx, `[]`); err != nil || len(ids) != 0 {
+		t.Errorf("empty: %v, %v", ids, err)
+	}
+	if ids, err := r.Nodes(ctx, `[1, 'x', document]`); err != nil || len(ids) != 0 {
+		t.Errorf("no elements: %v, %v", ids, err)
+	}
+	if _, err := r.Nodes(ctx, `(() => { throw new Error('x'); })()`); err == nil {
+		t.Error("a throwing expression gave no error")
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -356,6 +357,68 @@ func (r *Reader) CallOn(ctx context.Context, fn string, nodes ...int) (string, e
 		return nil
 	})
 	return out, err
+}
+
+// MaxNodes caps the elements Nodes returns.
+const MaxNodes = 2000
+
+// Nodes runs expr, a JavaScript expression that gives an array of
+// elements (or a promise of one), in the reader's isolated world and
+// returns their DOM nodes in the array's order, at most MaxNodes. A
+// probe finds the elements a walk acts on this way: the page's own
+// scripts never see the query; the nodes go to CallOn and the
+// protocol's DOM calls as they are.
+func (r *Reader) Nodes(ctx context.Context, expr string) ([]int, error) {
+	p := r.page.Context(ctx)
+	var out []int
+	err := r.inWorld(ctx, func(world proto.RuntimeExecutionContextID) error {
+		out = out[:0]
+		res, err := proto.RuntimeEvaluate{Expression: expr, ContextID: world, AwaitPromise: true}.Call(p)
+		if err != nil {
+			return err
+		}
+		if res.ExceptionDetails != nil {
+			return errors.New(res.ExceptionDetails.Text)
+		}
+		if res.Result == nil || res.Result.ObjectID == "" {
+			return nil
+		}
+		arr := res.Result.ObjectID
+		defer func() { _ = proto.RuntimeReleaseObject{ObjectID: arr}.Call(p) }()
+		props, err := proto.RuntimeGetProperties{ObjectID: arr, OwnProperties: true}.Call(p)
+		if err != nil {
+			return err
+		}
+		// Properties come back in no promised order: they are put in
+		// the array's order by index.
+		byIndex := map[int]int{}
+		for _, prop := range props.Result {
+			i, err := strconv.Atoi(prop.Name)
+			if err != nil || i < 0 || i >= MaxNodes || prop.Value == nil || prop.Value.ObjectID == "" {
+				continue
+			}
+			node, err := proto.DOMDescribeNode{ObjectID: prop.Value.ObjectID}.Call(p)
+			_ = proto.RuntimeReleaseObject{ObjectID: prop.Value.ObjectID}.Call(p)
+			if err != nil || node.Node.NodeType != 1 {
+				continue
+			}
+			byIndex[i] = int(node.Node.BackendNodeID)
+		}
+		for i := range MaxNodes {
+			if id, ok := byIndex[i]; ok {
+				out = append(out, id)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+// Name returns the role and redacted accessible name of a node from
+// Chrome's accessibility tree, as a Stop has them: never the element's
+// value or text. nameLen counts the runes of the whole name.
+func (r *Reader) Name(ctx context.Context, node int) (role, name string, nameLen int) {
+	return axName(r.page.Context(ctx), proto.DOMBackendNodeID(node))
 }
 
 // inWorld calls f with the reader's isolated world, making one first if
