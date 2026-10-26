@@ -19,7 +19,8 @@ import (
 // versioned rhythm-soundcheck/v1 schema (model.Schemas describes both).
 // Lists are [] when empty, every change has an ID and a summary counts
 // what the terminal shows; a run also gets its issues grouped across
-// pages. The result itself isn't changed.
+// pages. An --eaa result also gets its accessibility summary as eaa,
+// with the evidence note always in it. The result itself isn't changed.
 func JSON(w io.Writer, r Result) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -34,9 +35,11 @@ func JSON(w io.Writer, r Result) error {
 		c.Changes = slices.Clone(c.Changes)
 		c.Complete()
 		c.Summary.Failed = failed
+		c.EAA = eaaJSON(r)
 		return enc.Encode(&c)
 	}
 	run := *r.Run
+	run.EAA = eaaJSON(r)
 	run.Complete()
 	issues := Issues(&run)
 	counts := Counts(issues)
@@ -57,6 +60,33 @@ func JSON(w io.Writer, r Result) error {
 		run.Groups = append(run.Groups, model.Group{Key: i.Key, Check: i.Check, Level: i.Level, Title: i.Title, Pages: i.Pages})
 	}
 	return enc.Encode(&run)
+}
+
+// eaaJSON is the eaa block of r's JSON: a copy of its accessibility
+// summary that always carries model.EvidenceNote, so a tool that shows
+// the counts downstream has the sentence too. It is nil without --eaa.
+func eaaJSON(r Result) *model.EAASummary {
+	e := eaaOf(r)
+	if e == nil {
+		return nil
+	}
+	out := *e
+	out.EvidenceNote = model.EvidenceNote
+	// Lists are [] when empty, as everywhere in the JSON.
+	if out.Criteria.Failed == nil {
+		out.Criteria.Failed = []model.CriterionCount{}
+	}
+	out.Criteria.NoFailuresFound = nonNil(out.Criteria.NoFailuresFound)
+	out.Criteria.NotTested = nonNil(out.Criteria.NotTested)
+	return &out
+}
+
+// nonNil is ss, or an empty list for nil.
+func nonNil(ss []string) []string {
+	if ss == nil {
+		return []string{}
+	}
+	return ss
 }
 
 // Markdown writes a report for pull requests, issues and CI summaries.
