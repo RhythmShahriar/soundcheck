@@ -375,6 +375,26 @@ const maxSnippet = 160
 func snippet(html string) string {
 	html = strings.ToValidUTF8(html, "\uFFFD")
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
+	// Each step can make text another step matches again: the kit's
+	// redaction can leave "key=" in front of a quote that now reads as a
+	// value, and cutting a long tag can open a quote. So the steps run
+	// until the text stops changing. Every pass only masks or shortens,
+	// which settles in a few; maxPasses is a backstop.
+	for range maxPasses {
+		next := mask(html)
+		if next == html {
+			break
+		}
+		html = next
+	}
+	return html
+}
+
+// maxPasses bounds how often snippet masks its own result.
+const maxPasses = 8
+
+// mask is one pass of snippet's masking and shortening.
+func mask(html string) string {
 	html = attrs(filled, html, func(name, value string) string {
 		if attrText(value) == "" {
 			return name + value
@@ -404,13 +424,13 @@ func snippet(html string) string {
 
 // attrs replaces each attribute re matches in html (group 1 its name and
 // "=", group 2 its value) with what with returns. A match counts only
-// where an attribute can start: after white space, "/" or a quote, or at
-// the very start of what axe sent. The
-// character before isn't part of the match, so the closing quote of one
+// where an attribute can start: after the tag name, behind white space,
+// "/" or a quote, or at the very start of what axe sent. The character
+// before isn't part of the match, so the closing quote of one
 // value can start the next attribute (id="a"value="b").
 func attrs(re *regexp.Regexp, html string, with func(name, value string) string) string {
 	var b strings.Builder
-	last, from := 0, 0
+	last, from := 0, tagName(html)
 	for from < len(html) {
 		m := re.FindStringSubmatchIndex(html[from:])
 		if m == nil {
@@ -429,6 +449,20 @@ func attrs(re *regexp.Regexp, html string, with func(name, value string) string)
 	}
 	b.WriteString(html[last:])
 	return b.String()
+}
+
+// tagName is where the name of the tag html opens with ends. The HTML
+// tokenizer reads everything up to white space, "/" or ">" as the name,
+// quotes and "=" included, so no attribute starts inside it. HTML that
+// doesn't open with a tag has no name to skip.
+func tagName(html string) int {
+	if len(html) < 2 || html[0] != '<' {
+		return 0
+	}
+	if i := strings.IndexAny(html[1:], " \t\n\f\r/>"); i >= 0 {
+		return i + 1
+	}
+	return len(html)
 }
 
 // attrText is an attribute value as attrValue matched it, without its

@@ -476,6 +476,12 @@ func TestSnippetMasksLikeTheTokenizer(t *testing.T) {
 		`<a href="/r?t=9f8e7d`:                       `<a href="/r?***"`,
 		`<a title='say "hi"' href=/a?b=1>`:           `<a title='say "hi"' href="/a?***">`,
 		`<input aria-valuenow="5" xvalue="visible">`: `<input aria-valuenow="5" xvalue="visible">`,
+		// The tokenizer reads a quote and "=" in the tag name as part of
+		// the name, so the first attribute is vAlue.
+		`<A"dAtA-=" vAlue="0000`: `<A"dAtA-=" vAlue="***"`,
+		// The kit's redaction leaves text that reads as a value again; the
+		// result is masked until it stops changing.
+		`Akey=a"000000000`: snippet(snippet(`Akey=a"000000000`)),
 	} {
 		if got := snippet(in); got != want {
 			t.Errorf("snippet(%s) = %s, want %s", in, got, want)

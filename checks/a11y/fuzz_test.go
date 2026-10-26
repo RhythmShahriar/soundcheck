@@ -90,6 +90,9 @@ func FuzzSnippet(f *testing.F) {
 		`<input data-a= value="spaced" data-x@y="odd-name">`,
 		`<button title="value=fake">` + strings.Repeat("long text ", 30) + `</button>`,
 		"<input value=\"a\nb\" \xff>",
+		`<input type="email" value="ana@example.com" data-user-id="4471" disabled="">`,
+		`<a class="reset" href="/reset?token=9f8e7d6c5b4a&amp;email=ana%40example.com">Reset</a>`,
+		`<input title="say &quot;hi&quot;" value="typed`,
 	} {
 		f.Add(s)
 	}
@@ -105,12 +108,37 @@ func FuzzSnippet(f *testing.F) {
 			t.Fatalf("snippet(%q) = %q, then %q", in, out, again)
 		}
 		seen := strings.TrimSpace(spaces.ReplaceAllString(strings.ToValidUTF8(in, "�"), " "))
+		if !serialized(seen) {
+			return
+		}
 		for _, s := range hidden(seen) {
 			if strings.Count(seen, s) == 1 && strings.Contains(out, s) {
 				t.Fatalf("snippet(%q) = %q shows %q", in, out, s)
 			}
 		}
 	})
+}
+
+// serialized reports whether a browser could have written html as an
+// element's outerHTML, maybe cut short as axe does with a long one: html
+// is the start of what the HTML tokenizer reads from it written out
+// again, with every attribute value in double quotes and its quotes
+// escaped. Text the tokenizer reads another way than a serializer writes
+// it (an unquoted value after a bare "name=", a quote in a tag name
+// further on) never comes from axe, so the leak check skips it; the
+// other properties hold for any text.
+func serialized(in string) bool {
+	for _, end := range []string{"", ">", `">`} {
+		var b strings.Builder
+		z := html.NewTokenizer(strings.NewReader(in + end))
+		for z.Next() != html.ErrorToken {
+			b.WriteString(z.Token().String())
+		}
+		if strings.HasPrefix(spaces.ReplaceAllString(b.String(), " "), in) {
+			return true
+		}
+	}
+	return false
 }
 
 // hidden lists the texts snippet must hide in html as the HTML
@@ -123,12 +151,22 @@ func hidden(in string) []string {
 	var out []string
 	for _, end := range []string{"", ">", `">`, `'>`} {
 		z := html.NewTokenizer(strings.NewReader(in + end))
+		later := false // a token was read before this one
 		for {
 			tt := z.Next()
 			if tt == html.ErrorToken {
 				break
 			}
+			first := !later
+			later = true
 			if tt != html.StartTagToken && tt != html.SelfClosingTagToken {
+				continue
+			}
+			// outerHTML never makes a tag name with a quote or "=".
+			// snippet reads the name of the tag axe's HTML opens with like
+			// the tokenizer; one further on, made up by the fuzzer, it may
+			// not.
+			if name, _ := z.TagName(); !first && strings.ContainsAny(string(name), `"'=`) {
 				continue
 			}
 			for {
