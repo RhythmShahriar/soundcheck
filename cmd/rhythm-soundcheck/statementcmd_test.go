@@ -151,6 +151,25 @@ func TestStatementCommand(t *testing.T) {
 		}
 	}
 
+	// A run folder whose eaa/ links elsewhere is refused before any -o
+	// file is written: written.json would land at the link's target.
+	linked := filepath.Join(eaaRun, eaaDir)
+	if err := os.Rename(linked, "elsewhere"); err != nil {
+		t.Fatal(err)
+	}
+	if abs, _ := filepath.Abs("elsewhere"); os.Symlink(abs, linked) == nil {
+		code, _, errOut := runCLI(t, "statement", eaaRun, "-o", "linked.md")
+		if want := "rhythm-soundcheck: " + linked + " is a symbolic link; not writing the EAA files through it\n"; code != exitError || slashes(errOut) != slashes(want) {
+			t.Errorf("linked eaa/: exit %d %q\nwant %q", code, errOut, want)
+		}
+		if _, err := os.Stat("linked.md"); err == nil {
+			t.Error("linked eaa/: wrote linked.md")
+		}
+		if err := os.Remove(linked); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// A run without --eaa results.
 	code, _, errOut = runCLI(t, "statement", plain)
 	if want := "rhythm-soundcheck: " + plain + " has no --eaa results; run rhythm-soundcheck snapshot <url> --eaa first\n"; code != exitError || slashes(errOut) != slashes(want) {

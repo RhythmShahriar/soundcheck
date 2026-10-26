@@ -386,6 +386,11 @@ func writeStatement(d *statement.Draft, dir string, outs []statementOut, force b
 		if o.path == "-" {
 			continue
 		}
+		// written.json goes into eaa/: refuse a linked one before any
+		// file is written, not after.
+		if err := eaaFolder(dir); err != nil {
+			return err
+		}
 		if err := writable(o.path, dir, force); err != nil {
 			return err
 		}
@@ -486,6 +491,9 @@ func readWritten(dir string) written {
 
 // recordWritten adds path's SHA-256 to written.json of the run in dir.
 func recordWritten(dir, path string, data []byte) error {
+	if err := eaaFolder(dir); err != nil {
+		return err
+	}
 	w := readWritten(dir)
 	w[absPath(path)] = sha(data)
 	out, err := json.MarshalIndent(w, "", "  ")

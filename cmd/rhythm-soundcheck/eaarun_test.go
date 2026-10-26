@@ -421,3 +421,31 @@ func TestWritePrivateReplacesSymlink(t *testing.T) {
 		t.Errorf("the link is still there: %v", err)
 	}
 }
+
+// eaaFolder refuses a run folder whose eaa/ links elsewhere and lets a
+// real folder or a missing one through.
+func TestEAAFolderRefusesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	if err := eaaFolder(dir); err != nil {
+		t.Errorf("no eaa folder: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, eaaDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := eaaFolder(dir); err != nil {
+		t.Errorf("a real eaa folder: %v", err)
+	}
+	run, elsewhere := t.TempDir(), t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(run, eaaDir)); err != nil {
+		t.Skip("no symlinks here: ", err)
+	}
+	if err := eaaFolder(run); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("a linked eaa folder: %v", err)
+	}
+	if err := recordWritten(run, filepath.Join(run, "statement.md"), []byte("x")); err == nil {
+		t.Error("recordWritten wrote through the link")
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("wrote into the link's target: %v", entries)
+	}
+}
