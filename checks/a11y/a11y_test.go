@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -16,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/ysmood/gson"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -388,7 +388,13 @@ func TestNamedBy(t *testing.T) {
 	src := func(typ proto.AccessibilityAXValueSourceType, attr, v string) *proto.AccessibilityAXValueSource {
 		s := &proto.AccessibilityAXValueSource{Type: typ, Attribute: attr}
 		if v != "-" {
-			s.Value = &proto.AccessibilityAXValue{Value: gson.New(v)}
+			// The value is set the way CDP sends it, which keeps the test
+			// off rod's JSON package.
+			raw, _ := json.Marshal(map[string]string{"type": "string", "value": v})
+			s.Value = &proto.AccessibilityAXValue{}
+			if err := json.Unmarshal(raw, s.Value); err != nil {
+				t.Fatal(err)
+			}
 		}
 		return s
 	}
