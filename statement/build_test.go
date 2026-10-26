@@ -289,6 +289,24 @@ func TestCleanPath(t *testing.T) {
 	}
 }
 
+// A two-character hide string, such as a short login name, is masked
+// where it stands alone and left inside longer words.
+func TestHideShort(t *testing.T) {
+	for in, want := range map[string]string{
+		"/users/bo/":         "/users/" + masked + "/",
+		"/users/BO/bo/":      "/users/" + masked + "/" + masked + "/",
+		"signed in as bo.":   "signed in as " + masked + ".",
+		"bo":                 masked,
+		"/books/robot/":      "/books/robot/",
+		"bob logged in":      "bob logged in",
+		"a link has no name": "a link has no name",
+	} {
+		if got := hideAll(in, []string{"bo", "a"}); got != want {
+			t.Errorf("hideAll(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestCleanText(t *testing.T) {
 	got := cleanText("GET http://host.test:8080/a?sid=1&x=2 failed; see https://x.example/b#frag", []string{"host.test"})
 	if want := "GET http://" + masked + ":8080/a failed; see https://x.example/b"; got != want {

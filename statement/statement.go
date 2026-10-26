@@ -43,11 +43,15 @@ var (
 
 // Input is what a draft is made from.
 type Input struct {
-	Run      *model.Run
-	Pages    func(func(*model.Page) bool) // the run's pages, which may come from disk one by one; nil is Run.Pages
-	Site     []model.Issue                // the run's site-level issues; nil is Run.Issues
-	Ignored  []model.Change               // changes ignore rules and accepts left out: listed with their reasons
-	Summary  model.EAASummary             // wcag.Summarize of the run
+	Run *model.Run
+	// Pages streams the run's pages, which may come from disk one by
+	// one; nil is Run.Pages. Build calls it again after the caller's
+	// wcag.Summarize, so it must start over on every call (store.Pages
+	// does): a single-use iterator gives a draft with no pages.
+	Pages    func(func(*model.Page) bool)
+	Site     []model.Issue    // the run's site-level issues; nil is Run.Issues
+	Ignored  []model.Change   // changes ignore rules and accepts left out: listed with their reasons
+	Summary  model.EAASummary // wcag.Summarize of the run
 	Owner    Owner
 	Version  string    // Soundcheck's version
 	Layout   string    // LayoutModel (the default) or LayoutService
@@ -55,7 +59,9 @@ type Input struct {
 	Insecure bool      // the run didn't verify TLS certificates (-k)
 	// Hide lists text that must never reach the draft, such as the login
 	// account and a staging host name. The run's own host is always
-	// hidden: the draft names the site by Owner.Website.
+	// hidden: the draft names the site by Owner.Website. A two-character
+	// string is masked only as a whole word or path segment and a single
+	// character not at all.
 	Hide []string
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
 )
@@ -58,13 +59,25 @@ func cleanText(s string, hide []string) string {
 	return hideAll(urlQuery.ReplaceAllString(secrets.Redact(s), "$1"), hide)
 }
 
-// hideAll masks every hide string in s, ignoring case.
+// hideAll masks every hide string in s, ignoring case. A string of
+// two characters, such as a short login name, is masked only where it
+// stands alone as a word or path segment: inside longer words it can't
+// be told from ordinary text. A single character is never masked.
 func hideAll(s string, hide []string) string {
 	for _, h := range hide {
-		if len(h) < 3 { // too short to tell from ordinary text
+		switch n := utf8.RuneCountInString(h); {
+		case n < 2:
 			continue
+		case n < 3:
+			re := regexp.MustCompile(`(?i)(^|[^\p{L}\p{N}_])` + regexp.QuoteMeta(h) + `($|[^\p{L}\p{N}_])`)
+			// Twice, since a match takes the separator the next one
+			// would start with ("bo/bo").
+			for range 2 {
+				s = re.ReplaceAllString(s, "${1}"+strings.ReplaceAll(masked, "$", "$$")+"${2}")
+			}
+		default:
+			s = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(h)).ReplaceAllLiteralString(s, masked)
 		}
-		s = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(h)).ReplaceAllLiteralString(s, masked)
 	}
 	return s
 }
