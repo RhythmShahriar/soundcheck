@@ -127,6 +127,43 @@ const widgetPrelude = `
   };
   const tabbable = root => Array.from(root.querySelectorAll('a[href], area[href], button, input, select, textarea, iframe, summary, [tabindex], [contenteditable="true"], [contenteditable=""]'))
     .filter(n => n.tabIndex >= 0 && !n.disabled && !(n.localName === 'input' && n.type === 'hidden') && visible(n) && !n.closest('[inert]'));
+  // dialogFor finds the dialog a plain button opens with a script of
+  // its own (showModal() in a click handler), which no attribute ties
+  // to it: a closed dialog nothing else claims whose id the button's id
+  // or onclick names (times-open opens #times), whose label the
+  // button's name holds (Show delivery times opens "Delivery times") or
+  // that comes right after the button or its parent. A guess that is
+  // wrong only costs a press: a dialog that doesn't open is never an
+  // issue.
+  let closedDialogs = null;
+  const dialogFor = el => {
+    if (el.localName !== 'button' && el.getAttribute('role') !== 'button') return null;
+    if (el.closest('dialog, [role="dialog"], [role="alertdialog"]')) return null;
+    const d = el.ownerDocument;
+    if (!closedDialogs) {
+      const claimed = new Set();
+      for (const t of d.querySelectorAll('[aria-controls], [data-target], [data-bs-target]')) {
+        const x = byID(d, t.getAttribute('aria-controls')) || dataTarget(t);
+        if (x) claimed.add(x);
+      }
+      closedDialogs = Array.from(d.querySelectorAll('dialog, [role="dialog"], [role="alertdialog"]')).filter(x => !claimed.has(x) && !visible(x));
+    }
+    if (!closedDialogs.length) return null;
+    const norm = s => (s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const label = x => norm(x.getAttribute('aria-label') || (x.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => { const t = id && d.getElementById(id); return t ? t.textContent : ''; }).join(' '));
+    const name = ' ' + norm([el.textContent, el.getAttribute('aria-label')].filter(Boolean).join(' ')) + ' ';
+    const click = el.getAttribute('onclick') || '';
+    const next = x => x === el.nextElementSibling || (!!el.parentElement && x === el.parentElement.nextElementSibling);
+    return closedDialogs.find(x => {
+      if (x.id) {
+        const id = x.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (el.id !== x.id && new RegExp('(^|[-_])' + id + '([-_]|$)').test(el.id)) return true;
+        if (click.includes(x.id)) return true;
+      }
+      const l = label(x);
+      return (l !== '' && name.includes(' ' + l + ' ')) || next(x);
+    }) || null;
+  };
   const widgetOf = el => {
     const tag = el.localName, role = el.getAttribute('role') || '';
     if (/^(input|textarea|select|option)$/.test(tag) || /^(combobox|tab|option|switch|checkbox|radio)$/.test(role) || el.isContentEditable) return null;
@@ -154,6 +191,10 @@ const widgetPrelude = `
       return {kind: 'disclosure', target, sub: null, li: null};
     }
     if (target && el.hasAttribute('aria-controls') && !visible(target)) return {kind: 'disclosure', target, sub: null, li: null};
+    if (!target && !pop && !el.hasAttribute('aria-expanded')) {
+      const g = dialogFor(el);
+      if (g) return {kind: 'dialog', target: g, sub: null, li: null};
+    }
     return null;
   };
 `

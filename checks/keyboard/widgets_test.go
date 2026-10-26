@@ -85,6 +85,27 @@ nav ul ul { display: none; } nav li:hover > ul { display: block; }
 <script>
 document.getElementById('open').addEventListener('click', () => document.getElementById('d').showModal());
 </script>`), `document.getElementById('open').click(); const o = document.getElementById('d').open; document.getElementById('d').close(); o`},
+	// A plain button opens a native dialog with showModal(), tied to it
+	// by nothing but its id; closing it removes the dialog.
+	"/plain-lost": {widgetPage(`<p><button type="button" id="hours-open">Opening hours</button></p>
+<dialog id="hours"><p>Every day, 7am to 3pm.</p><button type="button" id="hours-close">Close</button></dialog>
+<script>
+const d = document.getElementById('hours');
+document.getElementById('hours-open').addEventListener('click', () => { if (d.isConnected) d.showModal(); });
+function shut(e) { if (e) e.preventDefault(); d.remove(); }
+document.getElementById('hours-close').addEventListener('click', () => shut());
+d.addEventListener('cancel', shut);
+</script>`), `document.getElementById('hours-open').click(); document.getElementById('hours').open`},
+	// The same plain button done right: the dialog closes and focus
+	// returns to the button. The second button opens nothing.
+	"/plain-native": {widgetPage(`<p><button type="button" id="times-open">Show delivery times</button> <button type="button" id="print">Print</button></p>
+<dialog id="times" aria-labelledby="times-title"><h2 id="times-title">Delivery times</h2><button type="button" id="times-close">Close</button></dialog>
+<script>
+const d = document.getElementById('times'), open = document.getElementById('times-open');
+open.addEventListener('click', () => d.showModal());
+document.getElementById('times-close').addEventListener('click', () => d.close());
+d.addEventListener('close', () => open.focus());
+</script>`), `document.getElementById('times-open').click(); const o = document.getElementById('times').open; document.getElementById('times').close(); o`},
 	// A custom modal done right: focus in, kept in, Escape, focus back.
 	"/custom-modal": {widgetPage(`<button id="open" aria-controls="d" aria-haspopup="dialog">Share</button>
 <div id="d" role="dialog" aria-modal="true" hidden><button id="a">Copy link</button><button id="b">Email</button></div>
@@ -139,6 +160,8 @@ func TestWidgets(t *testing.T) {
 		"/dialog-leak":    {ids.DialogFocus + `|#open|The dialog opened by "Filters" let Tab reach #after behind it.`},
 		"/escape":         {ids.Escape + `|#open|The dialog opened by "Cookie settings" is still visible 500 ms after Escape.`},
 		"/menu-hover":     {ids.Menu + `|#shop|The submenu of "Shop" doesn't open with Tab.`},
+		"/plain-lost":     {ids.FocusLost + `|#hours-open|After Escape on "Opening hours" focus went to a removed element.`},
+		"/plain-native":   nil,
 		"/native":         nil,
 		"/custom-modal":   nil,
 		"/nonmodal":       nil,
@@ -173,6 +196,14 @@ func TestWidgets(t *testing.T) {
 			}
 			if p.Keyboard == nil || p.Keyboard.Widgets == 0 || len(p.Keyboard.WidgetKinds) == 0 {
 				t.Errorf("summary %+v", p.Keyboard)
+			}
+			if strings.HasPrefix(path, "/plain-") {
+				// The dialog a plain button opens is found and tested.
+				data, _ := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+				tr, _ := DecodeTrace(data)
+				if !slices.ContainsFunc(tr.Widgets, func(r WidgetResult) bool { return r.Kind == WidgetDialog && r.Opened && r.Closed != "" }) {
+					t.Errorf("no dialog opened and closed: %+v", tr.Widgets)
+				}
 			}
 		})
 	}

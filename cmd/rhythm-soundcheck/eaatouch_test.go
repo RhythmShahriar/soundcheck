@@ -47,7 +47,9 @@ func TestPickerEAA(t *testing.T) {
 const pendingKeyboard = false
 
 // demo --eaa plants a keyboard trap and lost focus next to the usual
-// breaks and shows the trap as BROKE.
+// breaks and shows the trap as BROKE and the lost focus as NEW. The
+// opening hours dialog's plain button opens it with showModal(), so
+// this also proves the walk finds such a dialog.
 func TestDemoEAA(t *testing.T) {
 	needBrowser(t)
 	if testing.Short() {
@@ -75,6 +77,11 @@ func TestDemoEAA(t *testing.T) {
 		t.Log("pending: keyboard (no BROKE trap yet)")
 	default:
 		t.Errorf("no BROKE trap in:\n%s", out)
+	}
+	for _, want := range []string{"[NEW] Focus is lost after closing - /about/\n", "  After Escape on \"Opening hours\" focus went to a removed element.\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q in:\n%s", want, out)
+		}
 	}
 	if _, err := os.Stat(".soundcheck"); !os.IsNotExist(err) {
 		t.Errorf("the demo wrote to the project's .soundcheck: %v", err)
