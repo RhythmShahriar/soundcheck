@@ -36,14 +36,7 @@ func TestStubs(t *testing.T) {
 		t.Error("Build of nothing succeeded")
 	}
 	var b bytes.Buffer
-	for _, write := range []func(*bytes.Buffer, *Draft) error{
-		func(b *bytes.Buffer, d *Draft) error { return Markdown(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return HTML(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return JSON(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return EARL(b, d) },
-	} {
-		if err := write(&b, &Draft{}); !errors.Is(err, ErrNotBuilt) {
-			t.Errorf("writer = %v", err)
-		}
+	if err := EARL(&b, &Draft{}); !errors.Is(err, ErrNotBuilt) {
+		t.Errorf("EARL = %v", err)
 	}
 }

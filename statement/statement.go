@@ -200,14 +200,5 @@ type Ignored struct {
 	Reason   string
 }
 
-// Markdown writes d as Markdown.
-func Markdown(w io.Writer, d *Draft) error { return ErrNotBuilt }
-
-// HTML writes d as a standalone HTML page.
-func HTML(w io.Writer, d *Draft) error { return ErrNotBuilt }
-
-// JSON writes d as JSON.
-func JSON(w io.Writer, d *Draft) error { return ErrNotBuilt }
-
 // EARL writes d as JSON-LD that the W3C WCAG-EM Report Tool imports.
 func EARL(w io.Writer, d *Draft) error { return ErrNotBuilt }
