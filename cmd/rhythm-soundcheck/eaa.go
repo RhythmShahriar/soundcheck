@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -268,4 +269,24 @@ func addedByEAA(changes []settingChange, before, after []string) []settingChange
 		return changes
 	}
 	return append(changes, settingChange{name: "modules", before: before, after: slices.Clone(after), from: "--eaa"})
+}
+
+// tipEAAFile marks a project that has seen the --eaa tip, in the store.
+const tipEAAFile = ".tip-eaa"
+
+// eaaTip suggests --eaa once per project, after a check that ran the
+// a11y module without it. It stays out of -q, machine output (--json,
+// --md and --junit go to stdout without the live view) and CI, where
+// nobody reads a tip twice.
+func (s *session) eaaTip() string {
+	if !s.checked || !s.live || s.o.quiet || s.cfg.EAA || !s.cfg.Has("a11y") || os.Getenv("CI") != "" {
+		return ""
+	}
+	// O_EXCL makes the marker the test: whoever creates it shows the tip.
+	f, err := os.OpenFile(filepath.Join(s.st.Root, tipEAAFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a marker in the project's store
+	if err != nil {
+		return ""
+	}
+	_ = f.Close()
+	return "tip: --eaa adds a keyboard walkthrough and an accessibility-statement draft"
 }

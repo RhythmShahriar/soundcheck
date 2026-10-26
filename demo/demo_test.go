@@ -31,6 +31,45 @@ func get(t *testing.T, broken bool, method, path string) (int, string, string) {
 	return w.Code, w.Header().Get("Location"), w.Body.String()
 }
 
+// getKeys is get with keyboard breaks on.
+func getKeys(t *testing.T, broken bool, path string) string {
+	t.Helper()
+	var s Site
+	s.SetBroken(broken)
+	s.SetKeyboard(true)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("%s: %d", path, w.Code)
+	}
+	return w.Body.String()
+}
+
+// The keyboard breaks: the trap and the lost focus are in the broken
+// state with keyboard breaks on (positive), not in the working state
+// nor without keyboard breaks (negative). The markup is the same in both
+// states, so only the keyboard checks see a difference.
+func TestKeyboardBreaks(t *testing.T) {
+	trap, lost := "e.preventDefault(); } });", "dlg.remove();"
+	if b := getKeys(t, true, "/"); !strings.Contains(b, trap) || !strings.Contains(b, `id="news"`) {
+		t.Errorf("broken /: no trap\n%s", b)
+	}
+	if b := getKeys(t, false, "/"); strings.Contains(b, trap) || !strings.Contains(b, `id="news"`) {
+		t.Errorf("working /: trap or no field\n%s", b)
+	}
+	if b := getKeys(t, true, "/about/"); !strings.Contains(b, lost) || strings.Contains(b, "dlg.close();") {
+		t.Errorf("broken /about/: focus not lost\n%s", b)
+	}
+	if b := getKeys(t, false, "/about/"); strings.Contains(b, lost) || !strings.Contains(b, "dlg.close();") || !strings.Contains(b, "<dialog") {
+		t.Errorf("working /about/:\n%s", b)
+	}
+	for _, path := range []string{"/", "/about/"} {
+		if _, _, b := get(t, true, "GET", path); strings.Contains(b, `id="news"`) || strings.Contains(b, "<dialog") {
+			t.Errorf("%s without keyboard breaks has them:\n%s", path, b)
+		}
+	}
+}
+
 // Each planted break: present in the broken state (positive), absent in
 // the working one (negative).
 func TestBreaks(t *testing.T) {
@@ -125,7 +164,10 @@ func TestStart(t *testing.T) {
 }
 
 func TestDescribe(t *testing.T) {
-	got := Describe()
+	if got := Describe(true); !strings.HasPrefix(got, Describe(false)[:20]) || !strings.HasSuffix(got, ", "+KeyboardBreaks[0]+" and "+KeyboardBreaks[1]) {
+		t.Errorf("Describe(true) = %q", got)
+	}
+	got := Describe(false)
 	if !strings.HasPrefix(got, Breaks[0]+", ") || !strings.HasSuffix(got, " and "+Breaks[len(Breaks)-1]) || strings.Contains(got, ", and") { // style:ignore: checks there is no comma before "and"
 		t.Errorf("Describe() = %q", got)
 	}

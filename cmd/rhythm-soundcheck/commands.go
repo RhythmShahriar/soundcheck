@@ -437,6 +437,9 @@ func (s *session) finish(res report.Result, next string) int {
 	if open != "" && !s.noReportHint {
 		hint = "full report: " + rel(open)
 	}
+	if s.noReportHint {
+		draft = "" // the demo removes the folder the draft is in
+	}
 	if s.live {
 		s.view.Summary(res, hint, draft, next)
 	}
@@ -446,6 +449,9 @@ func (s *session) finish(res report.Result, next string) int {
 		}
 	}
 	if tip := s.failOnTip(res); tip != "" {
+		fmt.Fprintln(s.stderr, faint.Render(tip))
+	}
+	if tip := s.eaaTip(); tip != "" {
 		fmt.Fprintln(s.stderr, faint.Render(tip))
 	}
 	if s.o.open && open != "" {
@@ -1208,9 +1214,17 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// errSymlink refuses a report path that is a symbolic link: the report
+// would land wherever the link points.
+var errSymlink = errors.New("refusing to write through a symlink")
+
 // writeFile writes a report atomically enough for CI: the file only
-// appears once complete.
+// appears once complete. A symlink at path is refused, never followed
+// or replaced.
 func writeFile(path string, write func(io.Writer) error) error {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return errSymlink
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
@@ -1226,7 +1240,10 @@ func writeFile(path string, write func(io.Writer) error) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil { //nolint:gosec // a report meant to be read, attached and served
+	// Reports hold what the pages showed, so only their owner reads them
+	// (0600), like the rest of a run folder; CI uploads still work, as
+	// the job runs as that owner.
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
