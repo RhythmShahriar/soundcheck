@@ -108,10 +108,23 @@ const selectorOf = e => {
   }
   return parts.join(' > ');
 };
+// A field's value is what someone typed or the site filled in (an email,
+// a name), so it never names the field: only a button's value is its
+// caption. A label's text leaves out the fields inside it for the same
+// reason.
+const textOf = l => { const c = l.cloneNode(true); c.querySelectorAll('input,select,textarea').forEach(f => f.remove()); return clean(c.textContent); };
 const labelOf = e => {
-  let l = clean(e.getAttribute('aria-label')) || clean(e.innerText) || clean(e.value) || clean(e.title) || clean(e.getAttribute('alt'));
-  if (!l) { const i = e.querySelector('img[alt],svg title'); if (i) l = clean(i.alt || i.textContent); }
-  if (!l && e.labels && e.labels.length) l = clean(e.labels[0].innerText);
+  const tag = e.localName, type = (e.getAttribute('type') || '').toLowerCase();
+  const button = tag === 'button' || (tag === 'input' && ['button', 'submit', 'reset'].includes(type));
+  const field = !button && ['input', 'select', 'textarea'].includes(tag);
+  let l = clean(e.getAttribute('aria-label'));
+  if (!l && field && e.getAttribute('aria-labelledby'))
+    l = clean(e.getAttribute('aria-labelledby').split(/\s+/).map(id => { const t = document.getElementById(id); return t ? t.textContent : ''; }).join(' '));
+  if (!l && !field) l = clean(e.innerText);
+  if (!l && button) l = clean(e.value);
+  if (!l) l = clean(e.title) || clean(e.getAttribute('alt'));
+  if (!l && !field) { const i = e.querySelector('img[alt],svg title'); if (i) l = clean(i.alt || i.textContent); }
+  if (!l && e.labels && e.labels.length) l = textOf(e.labels[0]);
   if (!l) l = clean(e.getAttribute('placeholder')) || clean(e.getAttribute('name'));
   return l.slice(0, 60);
 };
