@@ -1062,7 +1062,7 @@ scenarios:
     module: a11y
     args: [--eaa]
     all: true
-    toggle: "the page grows to 20,000 elements (php/a11y/big.php)"
+    toggle: "the page grows to 60,000 elements (php/a11y/big.php)"
     expect:
       - {exit: 3}
       - {warning: not checked}

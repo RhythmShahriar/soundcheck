@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 // Scenario s74: a page too big to audit. Good: a short price table.
-// Broken: an import fills the page with 20,000 elements, enough that
+// Broken: an import fills the page with 60,000 elements, enough that
 // axe-core runs out of time. Soundcheck must say the page was not
 // checked (a "not checked" warning, exit 3 under --eaa) and keep the
 // snapshot's issues rather than count them as fixed.
@@ -27,10 +27,10 @@ page_start(
 <?php if ( $broken ) : ?>
 	<div class="grid" id="grid">
 	<?php
-	for ( $row = 0; $row < 1000; $row++ ) {
+	for ( $row = 0; $row < 3000; $row++ ) {
 		echo '<p>';
 		for ( $i = 0; $i < 19; $i++ ) {
-			echo '<span>', 1000 * $row + $i, '</span> ';
+			echo '<span>', 20 * $row + $i, '</span> ';
 		}
 		echo "</p>\n";
 	}
@@ -42,7 +42,7 @@ testbed_selftest(
 	sprintf(
 		<<<'JS'
 	var n = document.getElementsByTagName('*').length;
-	return (n >= 20000) === %s ? true : n + ' elements';
+	return (n >= 60000) === %s ? true : n + ' elements';
 JS,
 		$broken ? 'true' : 'false'
 	)

@@ -150,7 +150,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s71 | `:18810/a11y/autonav.php` | a select loads another view when it gets focus | NEW keyboard/context-change |
 | s72 | `:18810/a11y/offcanvas.php` | the closed off-canvas menu's links stay tabbable | NEW keyboard/focus-invisible |
 | s73 | `/s73-overlay/` | an overlay plugin's script tag (a local stub) on every page | NEW a11y/overlay |
-| s74 | `:18810/a11y/big.php` | the page grows to 20,000 elements | exit 3 and a "not checked" warning; nothing FIXED |
+| s74 | `:18810/a11y/big.php` | the page grows to 60,000 elements | exit 3 and a "not checked" warning; nothing FIXED |
 | s75 | `:18810/a11y/noescape.php` | a dialog ignores Escape | NEW keyboard/escape; no trap |
 | s76 | `:18810/a11y/reload-trap.php` | a focus handler reloads the page | keyboard/trap or the capped warning, compare within 90 s (the 60 s walk cap plus 10% plus startup) |
 | s77 | `:18810/a11y/dialog.php` | hard good: a native `<dialog>` with `showModal()` | nothing at or above NEW |
