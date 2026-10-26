@@ -32,7 +32,8 @@ linters:
         - fmt.Fprintln
     misspell:
       locale: US
-      ignore-rules: [authorised] # user-facing copy uses British English
+      # user-facing copy uses British English
+      ignore-rules: [authorised, labelled, recognises, pseudonymised, anonymised]
   exclusions:
     rules:
       - path: _test\.go

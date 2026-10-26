@@ -342,9 +342,10 @@ const (
 type Audit struct {
 	Status string   `json:"status"`           // one of the Audit* statuses
 	Reason string   `json:"reason,omitempty"` // why it didn't finish, or what capped it
-	Frames []string `json:"frames,omitempty"` // frames audited besides the page, by host
-	// CappedRules counts, by rule, the elements found beyond the ones
-	// kept, for rules that hit the per-rule limit on this page.
+	Frames []string `json:"frames,omitempty"` // frames that were not audited (other origins, or ones that failed), by host
+	// CappedRules gives, by rule, the total number of elements found for
+	// the rules that hit the per-rule limit on this page (more than the
+	// issues kept).
 	CappedRules map[string]int `json:"capped_rules,omitempty"`
 }
 
@@ -360,7 +361,7 @@ type KeyboardSummary struct {
 	Capped   bool     `json:"capped,omitempty"`    // the walk stopped at max_tabs
 	SkipLink string   `json:"skip_link,omitempty"` // the skip link's selector, when there is one
 	Widgets  int      `json:"widgets,omitempty"`   // menus, dialogs and disclosures tested
-	Frames   []string `json:"frames,omitempty"`    // cross-origin frames walked, by host
+	Frames   []string `json:"frames,omitempty"`    // cross-origin frames reached, "<host>: <n> stops, trap yes|no"
 	Evidence string   `json:"evidence,omitempty"`  // the trace file, relative to the run's folder
 	// Crops maps an issue key to a picture of the element, relative to
 	// the run's folder.
