@@ -85,13 +85,19 @@ func writeBoard(path string, b Board, eaaOnly bool) error {
 }
 
 // replaceSection puts section in place of the EAA section in md, or at
-// its end when it has none.
+// its end when it has none. A begin marker without an end marker (a
+// hand edit cut the section short) takes everything after it, so no
+// second begin marker is left behind.
 func replaceSection(md, section string) string {
-	i, j := strings.Index(md, eaaBegin), strings.Index(md, eaaEnd)
-	if i < 0 || j < i {
+	i := strings.Index(md, eaaBegin)
+	if i < 0 {
 		return strings.TrimRight(md, "\n") + "\n\n" + section
 	}
-	rest := strings.TrimLeft(md[j+len(eaaEnd):], "\n")
+	j := strings.Index(md[i:], eaaEnd)
+	if j < 0 {
+		return md[:i] + section
+	}
+	rest := strings.TrimLeft(md[i+j+len(eaaEnd):], "\n")
 	if rest != "" {
 		rest = "\n" + rest
 	}
@@ -197,8 +203,12 @@ func eaaSection(b Board) string {
 	case len(outcomes) == 0:
 		w("The EAA scenarios weren't run.\n\n")
 	default:
-		w("**Caught %d of %d broken scenarios.** %d more wait for a detector that isn't merged yet (%d of them caught already). ",
-			t.caught, t.broken, t.pending, t.pendingCaught)
+		wait := "wait"
+		if t.pending == 1 {
+			wait = "waits"
+		}
+		w("**Caught %d of %d broken scenarios.** %d more %s for a detector that isn't merged yet (%d of them caught already). ",
+			t.caught, t.broken, t.pending, wait, t.pendingCaught)
 		w("**False alarms: %d of %d good scenarios", t.goodAlarms, t.good)
 		if len(rounds) > 0 {
 			w(", %d** in %d `--eaa` compares of unchanged sites.", falseAlarmCount(rounds), 2*len(rounds))

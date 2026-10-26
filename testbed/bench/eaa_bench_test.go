@@ -185,6 +185,15 @@ func TestWriteBoard(t *testing.T) {
 	if got := replaceSection("a\n"+eaaBegin+"\nold\n"+eaaEnd+"\n\nafter\n", eaaBegin+"\nnew\n"+eaaEnd+"\n"); got != "a\n"+eaaBegin+"\nnew\n"+eaaEnd+"\n\nafter\n" {
 		t.Errorf("replaceSection keeps what follows: %q", got)
 	}
+	if got := replaceSection("a\n"+eaaBegin+"\nold, cut short\n", eaaBegin+"\nnew\n"+eaaEnd+"\n"); got != "a\n"+eaaBegin+"\nnew\n"+eaaEnd+"\n" {
+		t.Errorf("replaceSection with no end marker: %q", got)
+	}
+	if got := replaceSection("a\n"+eaaEnd+"\n"+eaaBegin+"\nold\n"+eaaEnd+"\nafter\n", "new\n"); got != "a\n"+eaaEnd+"\nnew\n\nafter\n" {
+		t.Errorf("replaceSection with a stray end marker before the section: %q", got)
+	}
+	if got := replaceSection("a\n", "new\n"); got != "a\n\nnew\n" {
+		t.Errorf("replaceSection with no section: %q", got)
+	}
 	// A full run rewrites the whole file.
 	if err := writeBoard(path, b, false); err != nil {
 		t.Fatal(err)

@@ -7,7 +7,7 @@ The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench
 >
 > The testbed is written by the same people as the tool. It shows each detector works on a known case, not how much of a real site's accessibility it covers. Deque reports axe-based tests found 57% of issues by count in its own audits; that is a vendor figure counting issues, not success criteria.
 
-**Caught 1 of 2 broken scenarios.** 1 more wait for a detector that isn't merged yet (1 of them caught already). **False alarms: 0 of 0 good scenarios, 1** in 12 `--eaa` compares of unchanged sites. Good scenarios still pending: 1 of 2 with a false alarm. Target (PRD 16.3): every broken scenario caught, none pending, no false alarm.
+**Caught 1 of 2 broken scenarios.** 1 more waits for a detector that isn't merged yet (1 of them caught already). **False alarms: 0 of 0 good scenarios, 1** in 12 `--eaa` compares of unchanged sites. Good scenarios still pending: 1 of 2 with a false alarm. Target (PRD 16.3): every broken scenario caught, none pending, no false alarm.
 
 Run on 2026-10-26 with rhythm-soundcheck 1.3.0 (OS/ARCH).
 
