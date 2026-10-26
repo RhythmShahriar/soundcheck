@@ -118,3 +118,50 @@ func TestSaverRefusesSymlinks(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// A link higher up, .soundcheck/runs pointing elsewhere, is refused too:
+// by NewDir before it makes a folder there and by a save into a run
+// folder below it. The .soundcheck folder itself may be a link.
+func TestStoreRefusesLinkedKindFolders(t *testing.T) {
+	base := t.TempDir()
+	s := Store{Root: filepath.Join(base, ".soundcheck")}
+	if err := os.MkdirAll(s.Root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	runs := filepath.Join(s.Root, "runs")
+	if err := os.Symlink(outside, runs); err != nil {
+		t.Fatal(err)
+	}
+	want := "refusing to write through a symlink: " + runs
+	if _, err := s.NewDir("runs", "x"); err == nil || err.Error() != want {
+		t.Errorf("NewDir: %v, want %q", err, want)
+	}
+	// A run folder made before the link was planted (or by hand).
+	if err := os.Mkdir(filepath.Join(outside, "y"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Saver(filepath.Join(runs, "y"))("shots/a.png", []byte("payload")); err == nil || err.Error() != want {
+		t.Errorf("save: %v, want %q", err, want)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 1 {
+		t.Errorf("files outside: %v", entries)
+	}
+
+	// A linked .soundcheck is the user's choice and works.
+	elsewhere := t.TempDir()
+	linkedRoot := filepath.Join(t.TempDir(), ".soundcheck")
+	if err := os.Symlink(elsewhere, linkedRoot); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := Store{Root: linkedRoot}.NewDir("runs", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Saver(dir)("shots/a.png", []byte("ok")); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(elsewhere, "runs", "x", "shots", "a.png")); err != nil {
+		t.Error(err)
+	}
+}

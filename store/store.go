@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -68,6 +69,11 @@ func (s Store) NewDir(kind, name string) (string, error) {
 	}
 	_, statErr := os.Stat(parent)
 	if err := os.MkdirAll(parent, dirMode); err != nil {
+		return "", err
+	}
+	// A linked runs/ or snapshots/ would put every new folder, and so
+	// every write into it, wherever the link points.
+	if err := refuseLinks(parent); err != nil {
 		return "", err
 	}
 	if kind == Incoming {
@@ -130,19 +136,16 @@ func Saver(dir string) func(name string, data []byte) error {
 // symlink: a run folder someone else made, or a link planted in
 // .soundcheck/ (runs/x/keyboard pointing at ~/.ssh), must not turn a
 // screenshot into a write anywhere on the machine. The folders are
-// checked one by one and the write goes through an os.Root of dir, so a
-// link swapped in between can't lead out of it either.
+// checked one by one, from just below .soundcheck/ down to the file (see
+// refuseLinks), and the write goes through an os.Root of dir, so a link
+// swapped in between can't lead out of it either.
 func writeIn(dir, rel string, data []byte) (err error) {
 	rel = filepath.Clean(filepath.FromSlash(rel))
-	switch fi, err := os.Lstat(dir); {
-	case errors.Is(err, fs.ErrNotExist):
-		if err := os.MkdirAll(dir, dirMode); err != nil {
-			return err
-		}
-	case err != nil:
+	if err := refuseLinks(dir); err != nil {
 		return err
-	case fi.Mode()&fs.ModeSymlink != 0:
-		return fmt.Errorf("refusing to write through a symlink: %s", dir)
+	}
+	if err := os.MkdirAll(dir, dirMode); err != nil {
+		return err
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -187,6 +190,43 @@ func writeIn(dir, rel string, data []byte) (err error) {
 		return err
 	}
 	return root.Rename(tmp, rel)
+}
+
+// refuseLinks returns an error when dir or a folder between it and the
+// store's root is a symlink: .soundcheck/runs linked elsewhere would send
+// every run there. The .soundcheck folder itself may be a link (kept on
+// another disk, say): the user made that choice for the whole store. A
+// dir outside any .soundcheck folder (a test's temp folder) has only
+// itself checked. Folders that don't exist yet end the walk, as nothing
+// below them can be a link.
+func refuseLinks(dir string) error {
+	dir = filepath.Clean(dir)
+	chain := []string{dir}
+	for p := dir; ; {
+		up := filepath.Dir(p)
+		if up == p {
+			// No .soundcheck above: check dir alone.
+			chain = chain[:1]
+			break
+		}
+		if filepath.Base(up) == config.Dir {
+			break
+		}
+		chain = append(chain, up)
+		p = up
+	}
+	for i := len(chain) - 1; i >= 0; i-- {
+		fi, err := os.Lstat(chain[i])
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			return err
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("refusing to write through a symlink: %s", chain[i])
+		}
+	}
+	return nil
 }
 
 // Contained joins dir and rel, a slash-separated path from a run or
