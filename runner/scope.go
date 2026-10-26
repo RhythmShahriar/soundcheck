@@ -34,27 +34,45 @@ func targetAddrs(ctx context.Context, u *url.URL) []netip.Addr {
 	return lookup(ctx, u.Hostname())
 }
 
+// browserProxied reports whether the browser reaches site through a
+// proxy: the one given to it, or one from the environment (Chrome on
+// Linux reads http_proxy and https_proxy when no desktop settings say
+// otherwise).
+func browserProxied(proxy string, site *url.URL) bool {
+	if proxy != "" {
+		return true
+	}
+	p, err := http.ProxyFromEnvironment(&http.Request{URL: site})
+	return err == nil && p != nil
+}
+
 // guard keeps the run's own requests (the target's first fetch,
 // robots.txt, sitemaps, the modules' checks) on the target's networks,
 // as capture.Scope keeps the browser's: kit httpx's rule, a loopback,
 // link-local or private address only for a target of the same kind,
 // applied to the addresses the target resolved to at the start of the
 // run. So a public site's sitemap can't send the run to the cloud's
-// metadata service or the runner's own network. The target itself and a
-// proxy are dialed as they are.
+// metadata service or the runner's own network. The target's own name
+// is held to the same rule, so one rebound to the metadata service after
+// the start of the run is refused too. A target given by its address
+// and a proxy are dialed as they are.
 type guard struct {
 	addrs   []netip.Addr
-	exempt  map[string]bool // host:port of the target
+	exempt  map[string]bool // host:port of a target given by its address
 	proxies sync.Map        // host:port of a proxy in use
 }
 
 func newGuard(site *url.URL, addrs []netip.Addr) *guard {
 	g := &guard{addrs: addrs, exempt: map[string]bool{}}
 	host := site.Hostname()
+	if _, err := netip.ParseAddr(host); err != nil {
+		// A name: its answers are checked like any other's.
+		return g
+	}
 	if p := site.Port(); p != "" {
 		g.exempt[net.JoinHostPort(host, p)] = true
 	} else {
-		// A bare hostname is tried on https and then on http.
+		// Without a port it is tried on https and then on http.
 		g.exempt[net.JoinHostPort(host, "443")] = true
 		g.exempt[net.JoinHostPort(host, "80")] = true
 	}
