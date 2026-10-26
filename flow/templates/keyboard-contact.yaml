@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# A Soundcheck key flow: a journey played by keyboard only (Tab, Enter,
+# Space and the arrow keys), never by mouse, on every run with --level
+# flows. A step Tab can't reach, or a key that does nothing, is reported
+# as keyboard/flow; form errors not tied to their fields as
+# keyboard/error-not-linked.
+#
+# keyboard: true runs dry: the flow stops at the first step that would
+# send something to the site (here the submit), so no message is sent.
+# keyboard: send sends it for real, only on a loopback or private
+# address or with --staging, never on a URL listed under production.
+#
+# The selectors fit most contact forms (Contact Form 7, WPForms and
+# others); point them at your form's fields when they don't.
+name: Contact form by keyboard
+start: /contact/
+keyboard: true
+steps:
+  - fill: {selector: "form:has(textarea) input[autocomplete=name], form:has(textarea) input[name*=name]", value: "${fake:name}"}
+  - fill: {selector: "form:has(textarea) input[type=email]", value: "${fake:email}"}
+  - fill: {selector: "form:has(textarea) textarea", value: "${fake:message}"}
+  - submit: "form:has(textarea)"
+  - expect: {text: Thank you}

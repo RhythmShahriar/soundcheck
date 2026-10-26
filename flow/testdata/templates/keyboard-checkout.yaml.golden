@@ -1,0 +1,31 @@
+# A Soundcheck key flow: a journey played by keyboard only (Tab, Enter,
+# Space and the arrow keys), never by mouse, on every run with --level
+# flows. A step Tab can't reach, or a key that does nothing, is reported
+# as keyboard/flow; form errors not tied to their fields as
+# keyboard/error-not-linked.
+#
+# keyboard: true runs dry: the flow stops at the first step that would
+# send something to the site (here Place order), so no order is placed.
+# keyboard: send places it for real, only on a loopback or private
+# address or with --staging, never on a URL listed under production.
+#
+# WooCommerce checkout: put a product in the cart first (a goto to
+# /?add-to-cart=<product id> works). Drop the terms step when the shop
+# has no terms checkbox.
+name: Checkout by keyboard
+start: /checkout/
+keyboard: true
+steps:
+  - fill: {selector: "#billing_first_name", value: "${fake:first_name}"}
+  - fill: {selector: "#billing_last_name", value: "${fake:last_name}"}
+  - fill: {selector: "#billing_address_1", value: "${fake:address}"}
+  - fill: {selector: "#billing_city", value: "${fake:city}"}
+  - fill: {selector: "#billing_postcode", value: "${fake:postcode}"}
+  - fill: {selector: "#billing_phone", value: "${fake:phone}"}
+  - fill: {selector: "#billing_email", value: "${fake:email}"}
+  # Space ticks the box. Place order is then reached by Tab like every
+  # other control (the terms link in the label sits in between).
+  - check: "#terms"
+  - expect: {focus: "#terms"}
+  - click: "#place_order"
+  - expect: {text: Thank you}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"time"
 
 	echomodel "github.com/RhythmShahriar/echo/model"
@@ -47,6 +48,21 @@ func (m *Module) CheckSite(ctx context.Context, cc *check.Context) {
 	}
 	if len(flows) == 0 {
 		cc.Warn("interactions.levels includes flows; " + cc.Config.Flows + " has none (run `flows init` for an example)")
+		return
+	}
+	// Key flows (keyboard: true or send) run once, from the keyboard
+	// module (checks/keyflows), so they aren't played here by mouse too.
+	// Without that module they would be dropped silently, so say so.
+	n := len(flows)
+	flows = slices.DeleteFunc(flows, func(f flow.Flow) bool { return f.Keyboard != "" })
+	if keys := n - len(flows); keys > 0 && !cc.Config.Has("keyboard") {
+		what := fmt.Sprintf("%d key flows need", keys)
+		if keys == 1 {
+			what = "1 key flow needs"
+		}
+		cc.Warn("keyboard: " + what + " the keyboard module (--eaa or +keyboard); not run")
+	}
+	if len(flows) == 0 {
 		return
 	}
 	if cc.NewSession == nil {

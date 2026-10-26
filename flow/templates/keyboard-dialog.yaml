@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# A Soundcheck key flow: a journey played by keyboard only (Tab, Enter,
+# Space and the arrow keys), never by mouse, on every run with --level
+# flows. A step Tab can't reach, or a key that does nothing, is reported
+# as keyboard/flow.
+#
+# keyboard: true holds anything the flow would send to the site;
+# keyboard: send lets it through, only on a loopback or private address
+# or with --staging. Opening a dialog sends nothing, so either works.
+#
+# A dialog should take focus when it opens, keep it while open and give
+# it back to its trigger when Escape closes it. Point on: and the last
+# expect at your dialog's button when it has no aria-haspopup.
+name: Dialog by keyboard
+start: /
+keyboard: true
+steps:
+  # Tab to the first dialog trigger, then Enter.
+  - press: {key: Enter, on: "[aria-haspopup=dialog]"}
+  - expect: {focus_within: "[role=dialog], dialog[open]"}
+  - press: Escape
+  - expect: {focus_within: "[role=dialog], dialog[open]", absent: true}
+  - expect: {focus: "[aria-haspopup=dialog]"}
