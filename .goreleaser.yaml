@@ -42,13 +42,29 @@ archives:
         dst: THIRD_PARTY/axe-core
         strip_parent: true
 
+# An SPDX SBOM per archive, written by syft (the release workflow puts it
+# on PATH) and attested with the archives. syft finds the Go modules in
+# the binary but not the axe-core it embeds as JavaScript, so that one
+# is the committed CycloneDX SBOM sboms/axe-core.cdx.json (kept in step by
+# scripts/update-axe.sh). It goes onto the release and into checksums.txt,
+# which the release signs and attests.
+sboms:
+  - artifacts: archive
+    documents: ["{{ .ArtifactName }}.sbom.json"]
+    cmd: syft
+    args: ["$artifact", "--output", "spdx-json=$document"]
+
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: sboms/axe-core.cdx.json
 
 # A tag like v0.4.0-rc1 is published as a prerelease, which GitHub never
 # reports as "latest", so rhythm update and the installers don't offer it.
 release:
   prerelease: auto
+  extra_files:
+    - glob: sboms/axe-core.cdx.json
 
 # Keyless Sigstore signature over checksums.txt. The release workflow is
 # called at master, the only identity rhythm update accepts. Verify with
