@@ -372,8 +372,8 @@ func interruptedRun(dir string, run *model.Run, pages func(func(*model.Page) boo
 	if err == nil && json.Unmarshal(data, &pr) == nil {
 		total = max(total, pr.Pages)
 	}
-	return fmt.Errorf("%s was interrupted after %d of %d pages; a statement from part of the site would leave problems out. Run it again",
-		rel(dir), done, total)
+	return fmt.Errorf("%s was interrupted after %d of %s; a statement from part of the site would leave problems out. Run it again",
+		rel(dir), done, plural(total, "page"))
 }
 
 // writeStatement renders d to each output. A file the owner edited since

@@ -234,6 +234,11 @@ func TestStatementRefusals(t *testing.T) {
 	if code, _, errOut := runCLI(t, "statement"); code != exitError || !strings.Contains(errOut, "has no --eaa results") {
 		t.Errorf("ErrNoEAAData: exit %d %q", code, errOut)
 	}
+	buildStatement = func(statement.Input) (*statement.Draft, error) { return nil, statement.ErrInterrupted }
+	if code, _, errOut := runCLI(t, "statement"); code != exitError ||
+		!strings.Contains(errOut, " was interrupted after 1 of 1 page; a statement from part of the site would leave problems out. Run it again\n") {
+		t.Errorf("ErrInterrupted: exit %d %q", code, errOut)
+	}
 	buildStatement = func(statement.Input) (*statement.Draft, error) { return nil, errors.New("boom") }
 	if code, _, _ := runCLI(t, "statement"); code != exitError {
 		t.Errorf("another error: exit %d", code)
