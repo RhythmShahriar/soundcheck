@@ -97,6 +97,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdRules(args[1:], stdout, stderr)
 	case "statement":
 		return cmdStatement(args[1:], stdout, stderr)
+	case "evidence":
+		return cmdEvidence(args[1:], stdout, stderr)
 	}
 	// `rhythm soundcheck staging.example.com --against example.com`
 	if len(args) > 1 || looksLikeTarget(args[0]) {
