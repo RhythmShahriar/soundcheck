@@ -595,7 +595,7 @@ func cmdSnapshot(s *session) int {
 		engine = ""
 	}
 	if err := store.SaveResumeOptions(dir, model.Options{Viewports: s.cfg.Viewports, Levels: s.cfg.Interactions.Levels,
-		Modules: s.cfg.Modules, Engine: engine}); err != nil {
+		Modules: s.cfg.Modules, Engine: engine, EAA: s.cfg.EAA, WCAG: s.wcag}); err != nil {
 		s.discard(dir)
 		return s.fail(err)
 	}
@@ -678,11 +678,25 @@ func (s *session) resumeSettings(name, dir string) error {
 	if c := inheritEngine(&s.engine, *prev, s.chosen); c != nil {
 		changes = append(changes, *c)
 	}
+	// A snapshot's pages are audited one way: half its pages without the
+	// a11y and keyboard audits, or by other WCAG rules, is no evidence.
+	if before, after := eaaSetting(prev.EAA, prev.WCAG), eaaSetting(s.cfg.EAA, s.wcag); before != after {
+		changes = append(changes, settingChange{name: "eaa", before: []string{before}, after: []string{after}})
+	}
 	if len(changes) > 0 {
 		return cli.Usagef("--resume: snapshot %q stopped with other settings (%s); carry on with the same ones, or leave out --resume to start afresh",
 			name, joinChanges(changes))
 	}
 	return nil
+}
+
+// eaaSetting words EAA mode for a --resume refusal: "off", or "on" with
+// its WCAG version.
+func eaaSetting(eaa bool, wcag string) string {
+	if !eaa {
+		return "off"
+	}
+	return "on (WCAG " + cmpOr(wcag, "2.0") + ")"
 }
 
 // resumed is what snapshot --resume carries: the pages the stopped

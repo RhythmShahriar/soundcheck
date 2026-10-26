@@ -93,3 +93,37 @@ func TestResumeRefusesOtherSettings(t *testing.T) {
 		})
 	}
 }
+
+// --resume keeps a snapshot's EAA mode and WCAG version: its pages are
+// audited one way or the run is refused.
+func TestResumeKeepsEAAMode(t *testing.T) {
+	eaaWith := model.Options{Viewports: []string{"desktop"}, Levels: []string{"inspect", "click"},
+		Modules: []string{"health", "a11y", "keyboard"}, EAA: true, WCAG: "2.1"}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string // "" when it may resume
+	}{
+		{"same", []string{"--eaa"}, ""},
+		{"eaa left out", []string{"--modules", "health,a11y,keyboard"}, "eaa on (WCAG 2.1) -> off"},
+		{"other version", []string{"--eaa", "--wcag", "2.2"}, "eaa on (WCAG 2.1) -> on (WCAG 2.2)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeConfig(t, "")
+			dir := stopped(t, eaaWith)
+			p, err := parse(append([]string{"snapshot", "127.0.0.1:22200", "--name", "r1", "--resume"}, tc.args...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := &session{plan: p, st: store.Store{Root: ".soundcheck"}}
+			err = s.resumeSettings("r1", dir)
+			switch {
+			case tc.want == "" && err != nil:
+				t.Errorf("refused: %v", err)
+			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+				t.Errorf("err %v, want one naming %q", err, tc.want)
+			}
+		})
+	}
+}
