@@ -313,6 +313,7 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 	}
 	if sc.Outcome == "" {
 		cmp := append([]string{"compare", "--against-snapshot", "good", "--json", "-o", "compare.json", "--config", cfgPath}, args...)
+		cmp = append(cmp, s.CompareArgs...)
 		sc = compareScenario(ctx, o, s, wd, bin, cmp)
 		sc = withHarnesses(sc, h.check(ctx, o, dir, s, wd, bin, cfgPath))
 	}

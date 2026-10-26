@@ -357,7 +357,7 @@ func TestPending(t *testing.T) {
 }
 
 func TestPickEAA(t *testing.T) {
-	m := &Manifest{Scenarios: []Scenario{{ID: "s01"}, {ID: "s49", Args: []string{"--eaa", "--fail-on", "broke"}}, {ID: "s89", Args: []string{"--eaa"}}}}
+	m := &Manifest{Scenarios: []Scenario{{ID: "s01"}, {ID: "s49", Args: []string{"--eaa"}, CompareArgs: []string{"--fail-on", "broke"}}, {ID: "s89", Args: []string{"--eaa"}}}}
 	got, err := m.Pick([]string{"eaa", "s89", "s01"})
 	if err != nil {
 		t.Fatal(err)

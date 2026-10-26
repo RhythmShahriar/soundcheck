@@ -144,7 +144,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s65 | `:18810/a11y/consent.php` | the cookie banner grabs focus and keeps it | BROKE keyboard/trap |
 | s66 | `:18810/a11y/zoom.php` | `user-scalable=no, maximum-scale=1` | NEW a11y/meta-viewport |
 | s67 | `:18810/a11y/widget.php` | a web component's shadow root drops its label | NEW a11y/label with ` >>> ` in the source |
-| s68 | `/my-account/` (login) | the phone field loses its label; the form shows runtime canaries | NEW a11y/label; no canary in any file (harness canaries) |
+| s68 | `/my-account/` (login) | the phone field loses its label; the form shows runtime canaries; key flow `flows/keyboard-account.yaml` (`login: true`) | NEW a11y/label; no canary in any file (harness canaries). Soundcheck visits pages anonymously, so the label waits for --eaa to audit logged-in pages |
 | s69 | `:18810/a11y/promo.php` | a fixed 600 px promo bar | NEW a11y/reflow |
 | s70 | `/checkout/` | key flow `flows/keyboard-checkout.yaml` (`--level flows`): Place order only by mouse | BROKE keyboard/flow; no order placed (harness orders) |
 | s71 | `:18810/a11y/autonav.php` | a select loads another view when it gets focus | NEW keyboard/context-change |
@@ -192,7 +192,7 @@ The fixes: a skip link to `#main` before the header and `id="main"` on `<main>` 
 
 **Frames and overlays.** s84's same-origin frame is `a11y/frame.php/map` and its cross-origin one is `a11y/frame.php/pay` from the frame port: another host name (127.0.0.1 for localhost) on another port. s73's overlay script is a stub at the overlay plugin's real path (`wp/plugins/pojo-accessibility/assets/js/app.js`), so nothing is fetched from another host.
 
-**Key flows and the old snapshot.** s64 and s70 copy `flows/keyboard-contact.yaml` and `flows/keyboard-checkout.yaml` (Soundcheck's key flow templates with the testbed's selectors) into the run's `.soundcheck/flows/`. s87 compares against `fixtures/s87-snapshot`, a snapshot Rhythm Soundcheck 1.2.2 took of `a11y/legacy.php` (no `options.wcag`, no `options.a11y`), copied in as the snapshot `good` with its address moved to wherever the site runs.
+**Key flows and the old snapshot.** s64 and s70 copy `flows/keyboard-contact.yaml` and `flows/keyboard-checkout.yaml` (Soundcheck's key flow templates with the testbed's selectors) into the run's `.soundcheck/flows/`; s68 copies `flows/keyboard-account.yaml`, which logs in, so the canaries reach the walk's trace. s87 compares against `fixtures/s87-snapshot`, a snapshot Rhythm Soundcheck 1.2.2 took of `a11y/legacy.php` (no `options.wcag`, no `options.a11y`), copied in as the snapshot `good` with its address moved to wherever the site runs.
 
 ### Mail through Echo (s33)
 

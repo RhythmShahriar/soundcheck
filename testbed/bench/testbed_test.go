@@ -587,6 +587,10 @@ func checkEAAScenarios(t *testing.T, dir string, m *Manifest) {
 		if s.Fixture != "" {
 			checkFixture(t, id, filepath.Join(dir, s.Fixture))
 		}
+		// snapshot refuses a comparison's --fail-on (broke, new, changed).
+		if i := slices.Index(s.Args, "--fail-on"); i >= 0 && i+1 < len(s.Args) && !slices.Contains([]string{"error", "warning", "notice"}, s.Args[i+1]) {
+			t.Errorf("%s: --fail-on %s is for compare only; put it in compare_args", id, s.Args[i+1])
+		}
 	}
 	for id := range eaa {
 		t.Errorf("%s: runs with --eaa outside s49 to s89", id)

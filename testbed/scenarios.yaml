@@ -20,6 +20,8 @@
 #             with `check` and whose title contains `title` (case-insensitive)
 #   tools     third-party tools in the benchmark that could catch it
 #   args      extra rhythm-soundcheck flags for both runs, e.g. [--timeout, 6s]
+#   compare_args  extra flags for compare only, e.g. [--fail-on, broke],
+#             which snapshot refuses
 #   modules   run exactly these modules (--modules), e.g. to add seo or a11y
 #   limit     page limit (default 20)
 #   timeout   time limit for each command when the bench's -timeout (5m)
@@ -705,7 +707,8 @@ scenarios:
     path: /checkout/
     include: ["/checkout*"]
     module: keyboard
-    args: [--eaa, --fail-on, broke]
+    args: [--eaa]
+    compare_args: [--fail-on, broke]
     harness: orders
     all: true
     toggle: "the coupon field's script cancels Tab and Shift+Tab (wp/plugins/testbed-shop)"
@@ -969,13 +972,17 @@ scenarios:
     include: ["/my-account*"]
     module: a11y
     login: true
-    args: [--eaa]
+    args: [--eaa, --level, flows]
+    # Soundcheck visits pages anonymously; only flows run logged in. The
+    # key flow puts the canaries in front of the keyboard walk's trace.
+    flows: [flows/keyboard-account.yaml]
     harness: canaries
     toggle: "the phone field loses its label; the form is filled with the benchmark's runtime canaries (wp/plugins/testbed-shop)"
     expect:
       - {class: new, check: a11y/label, source: "acc_phone"}
     tools: []
     pending: axe
+    note: "Soundcheck audits pages anonymously and logs in only for the leak test and flows, so /my-account/ shows its login prompt to the a11y module; the label can only be caught once --eaa audits logged-in pages (axe lane, lead's call). The canary sweep already covers the logged-in key flow."
 
   - id: s69
     name: Promo bar too wide to reflow (plain PHP)

@@ -55,9 +55,12 @@ type Scenario struct {
 	Forbid  []Expect `yaml:"forbid"`
 	Tools   []string `yaml:"tools"`
 
-	Args    []string `yaml:"args"`    // extra flags for snapshot and compare
-	Modules []string `yaml:"modules"` // --modules, when set
-	Limit   int      `yaml:"limit"`   // page limit (default 20)
+	Args []string `yaml:"args"` // extra flags for snapshot and compare
+	// CompareArgs are extra flags for compare only, such as
+	// --fail-on broke, which snapshot refuses.
+	CompareArgs []string `yaml:"compare_args"`
+	Modules     []string `yaml:"modules"` // --modules, when set
+	Limit       int      `yaml:"limit"`   // page limit (default 20)
 	// PerGroup is pages.per_group: how many pages of one URL pattern
 	// are checked (-1 for all).
 	PerGroup int       `yaml:"per_group"`
