@@ -140,6 +140,47 @@ func TestRunNeedsLevelFlows(t *testing.T) {
 	}
 }
 
+// A flow file that can't be read is interact's to report. When
+// interact won't play flows, Run notes it so a broken key flow isn't
+// dropped without a word; when interact will, Run stays quiet.
+func TestRunNotesBrokenFlowFiles(t *testing.T) {
+	const note = "keyboard: flow file broken.yaml can't be read"
+	for _, tc := range []struct {
+		name    string
+		modules []string
+		levels  []string
+		want    bool
+	}{
+		{"interact off", []string{"keyboard"}, []string{"flows"}, true},
+		{"below --level flows", []string{"interact", "keyboard"}, []string{"click"}, true},
+		{"interact reports it", []string{"interact", "keyboard"}, []string{"flows"}, false},
+	} {
+		cc := fakeContext(t, map[string]string{"broken.yaml": "name: x\nkeyboard: yes\nsteps: [{wait: 1}]\n", "b.yaml": dryFlow})
+		cc.Config.Modules = tc.modules
+		cc.Config.Interactions.Levels = tc.levels
+		fake(t, func(flow.Flow, flow.Options) (flow.Result, string) { return flow.Result{}, "" })
+		Run(context.Background(), cc, model.KeyboardOptions{MaxTabs: 150})
+		got := slices.ContainsFunc(cc.Run.Warnings, func(w string) bool { return strings.HasPrefix(w, note) })
+		if got != tc.want {
+			t.Errorf("%s: note %v, want %v; warnings %q", tc.name, got, tc.want, cc.Run.Warnings)
+		}
+		if cc.Run.KeyFlows == nil || len(cc.Run.KeyFlows.Skipped)+cc.Run.KeyFlows.Run != 1 {
+			t.Errorf("%s: the readable key flow went missing: %+v", tc.name, cc.Run.KeyFlows)
+		}
+	}
+	// A flows folder that can't be read at all is noted too.
+	cc := fakeContext(t, nil)
+	cc.Config.Flows = filepath.Join(cc.Config.Flows, "not-a-folder")
+	if err := os.WriteFile(cc.Config.Flows, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cc.Config.Modules = []string{"keyboard"}
+	Run(context.Background(), cc, model.KeyboardOptions{MaxTabs: 150})
+	if len(cc.Run.Warnings) != 1 || !strings.HasPrefix(cc.Run.Warnings[0], "keyboard: flows folder ") || cc.Run.KeyFlows != nil {
+		t.Errorf("unreadable folder: warnings %q, KeyFlows %+v", cc.Run.Warnings, cc.Run.KeyFlows)
+	}
+}
+
 // keyboard: send sends only off public addresses, or with --staging. A
 // public target without --staging runs it dry with a note. On a URL
 // listed under production the flow runner's refusal applies, so it gets

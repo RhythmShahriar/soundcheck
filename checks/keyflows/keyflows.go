@@ -18,6 +18,7 @@ package keyflows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -58,8 +59,13 @@ func Run(ctx context.Context, cc *check.Context, o model.KeyboardOptions) {
 		return
 	}
 	// A flow file that can't be read is interact's to report
-	// (interact/flow-file), so it isn't reported twice.
-	all, _ := flow.Load(cc.Config.Flows)
+	// (interact/flow-file), so it isn't reported twice. When interact
+	// won't play flows on this run, nobody else says so: a broken key
+	// flow would vanish without a word, so it gets a note here.
+	all, err := flow.Load(cc.Config.Flows)
+	if err != nil && (!cc.Config.Has("interact") || !cc.Config.Level("flows")) {
+		noteLoadError(cc, err)
+	}
 	var keyed []flow.Flow
 	for _, f := range all {
 		if f.Keyboard != "" {
@@ -107,6 +113,35 @@ func Run(ctx context.Context, cc *check.Context, o model.KeyboardOptions) {
 		}
 		kf.Run++
 		report(cc, f, res)
+	}
+}
+
+// noteLoadError notes each flow file in err that can't be read, or the
+// flows folder when err isn't about one file. A broken file may hold a
+// key flow; which one can't be told, so it's a note and not a Skipped
+// entry.
+func noteLoadError(cc *check.Context, err error) {
+	var files []*flow.FileError
+	var walk func(error)
+	walk = func(e error) {
+		if j, ok := e.(interface{ Unwrap() []error }); ok { //nolint:errorlint // walking a joined error
+			for _, e := range j.Unwrap() {
+				walk(e)
+			}
+			return
+		}
+		var fe *flow.FileError
+		if errors.As(e, &fe) {
+			files = append(files, fe)
+		}
+	}
+	walk(err)
+	if len(files) == 0 {
+		cc.Warn(fmt.Sprintf("keyboard: flows folder %s can't be read (%v); key flows not run", cc.Config.Flows, err))
+		return
+	}
+	for _, fe := range files {
+		cc.Warn(fmt.Sprintf("keyboard: flow file %s can't be read (%v); a key flow in it is not run", filepath.Base(fe.File), fe.Err))
 	}
 }
 

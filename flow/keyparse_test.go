@@ -109,11 +109,19 @@ func FuzzParse(f *testing.F) {
 	for _, b := range KeyboardTemplates() {
 		f.Add(b)
 	}
-	if files, err := filepath.Glob(filepath.Join("testdata", "*.yaml")); err == nil {
+	// The template goldens keep the comment header the embedded
+	// templates lose, so they seed comments and blank lines too.
+	for _, pattern := range []string{"*.yaml", filepath.Join("templates", "*.golden")} {
+		files, err := filepath.Glob(filepath.Join("testdata", pattern))
+		if err != nil {
+			f.Fatal(err)
+		}
 		for _, p := range files {
-			if b, err := os.ReadFile(p); err == nil { //nolint:gosec // the package's own testdata
-				f.Add(b)
+			b, err := os.ReadFile(p) //nolint:gosec // the package's own testdata
+			if err != nil {
+				f.Fatal(err)
 			}
+			f.Add(b)
 		}
 	}
 	for _, s := range []string{

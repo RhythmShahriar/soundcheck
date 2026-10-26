@@ -54,7 +54,14 @@ type keys struct {
 	// focus, such as an autosave on focusout, is held without ending it.
 	armed bool
 	held  *Held // the first write held while armed
-	trace []string
+	// offHost is the first write to another host held while armed, as
+	// "POST to pay.example.com". It doesn't end the flow; a later
+	// step that fails may fail because of it (see note).
+	offHost string
+	trace   []string
+	// note says what the dry run held off the site, for the failures
+	// of the steps after it. Only the flow's own goroutine uses it.
+	note string
 }
 
 // keyboard starts a key flow on tab: every request is counted, so a key
@@ -75,8 +82,13 @@ func (r *runner) keyboard(tab *rod.Page, dry bool) (remove func(), err error) {
 		// A beacon or a write to another host, such as analytics, is held
 		// without ending the flow: only the site's own writes count as the
 		// step's.
-		if !k.armed || k.held != nil || req.URL == nil || req.Type == proto.NetworkResourceTypePing ||
-			(r.o.Base != nil && config.HostKey(req.URL) != config.HostKey(r.o.Base)) {
+		if !k.armed || k.held != nil || req.URL == nil || req.Type == proto.NetworkResourceTypePing {
+			return
+		}
+		if r.o.Base != nil && config.HostKey(req.URL) != config.HostKey(r.o.Base) {
+			if k.offHost == "" {
+				k.offHost = req.Method + " to " + req.URL.Host
+			}
 			return
 		}
 		k.held = &Held{Method: req.Method, Path: orSlash(req.URL.Path)}
@@ -105,13 +117,33 @@ func (k *keys) arm() {
 	k.mu.Unlock()
 }
 
-// end finishes a step and returns what it would have sent, if anything.
-func (k *keys) end() *Held {
+// end finishes step n and returns what it would have sent, if
+// anything. A write to another host it held becomes the flow's note.
+func (k *keys) end(n int) *Held {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	h := k.held
-	k.armed, k.held = false, nil
+	if k.offHost != "" && k.note == "" {
+		k.note = fmt.Sprintf("the dry run held a %s at step %d", k.offHost, n)
+	}
+	k.armed, k.held, k.offHost = false, nil, ""
 	return h
+}
+
+// noted adds the flow's note to err, the failure of a step: an
+// expectation that fails after a payment gateway's write was held fails
+// because of the hold, not the site.
+func (k *keys) noted(err error) error {
+	if err == nil || k.note == "" {
+		return err
+	}
+	var kf *KeyFailure
+	if errors.As(err, &kf) {
+		c := *kf
+		c.Reason += " (" + k.note + ")"
+		return &c
+	}
+	return fmt.Errorf("%w (%s)", err, k.note)
 }
 
 func (k *keys) count() int {
@@ -428,22 +460,39 @@ func (r *runner) operate(n int, kind string, t Target, el, active *rod.Element, 
 const effectJS = `(name) => {
   const st = {hit: false};
   const hit = () => { st.hit = true; };
-  st.o = new MutationObserver(hit);
-  st.o.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
-  for (const e of ['input', 'change', 'submit', 'hashchange', 'popstate', 'toggle']) document.addEventListener(e, hit, true);
+  const events = ['input', 'change', 'submit', 'hashchange', 'popstate', 'toggle'];
+  const o = new MutationObserver(hit);
+  o.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
+  for (const e of events) document.addEventListener(e, hit, true);
+  st.stop = () => {
+    o.disconnect();
+    for (const e of events) document.removeEventListener(e, hit, true);
+    delete window[name];
+  };
   window[name] = st;
 }`
 
+// unwatchJS stops what effectJS started, so a long key flow doesn't
+// pile up observers and listeners, one set per operated step.
+const unwatchJS = `n => { if (window[n]) window[n].stop(); }`
+
 // watchEffect starts watching what the next key press does. The
 // function it returns waits up to effectWait and reports whether the
-// page changed, navigated, moved focus or sent a request.
+// page changed, navigated, moved focus or sent a request, then stops
+// watching.
 func (r *runner) watchEffect() func() bool {
 	name := "__soundcheckKey" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	reqs := r.keys.count()
 	before, _ := r.page.Timeout(3 * time.Second).Info()
-	stop, _ := focus.Active(r.ctx, r.page)
+	// When focus couldn't be read before the press, a move can't be
+	// told: any focus read after it would differ from the zero Stop and
+	// count a key that did nothing as working.
+	stop, stopErr := focus.Active(r.ctx, r.page)
 	_, _ = r.page.Timeout(3*time.Second).Eval(effectJS, name)
 	return func() bool {
+		// After a navigation the old window is gone and so is what
+		// effectJS added: the error is expected and ignored.
+		defer func() { _, _ = r.page.Timeout(500*time.Millisecond).Eval(unwatchJS, name) }()
 		deadline := time.Now().Add(effectWait)
 		for {
 			if r.keys.count() != reqs {
@@ -458,7 +507,7 @@ func (r *runner) watchEffect() func() bool {
 			if info, err := r.page.Timeout(time.Second).Info(); err == nil && before != nil && info.URL != before.URL {
 				return true
 			}
-			if now, err := focus.Active(r.ctx, r.page); err == nil && now.BackendNodeID != stop.BackendNodeID {
+			if now, err := focus.Active(r.ctx, r.page); stopErr == nil && err == nil && now.BackendNodeID != stop.BackendNodeID {
 				return true
 			}
 			if time.Now().After(deadline) || r.ctx.Err() != nil {
