@@ -9,9 +9,10 @@
 // receipt" opens a window. Each request that reaches the server adds
 // one to <state>/sidefx.txt. A keyboard walk presses Tab and nothing
 // else here. It holds requests while it presses keys, so the counter
-// must stay where it was and no file may be downloaded. The links carry
-// rel="nofollow" so the page discovery doesn't follow them either. The
-// page is the same in both states.
+// must stay where it was and no file may be downloaded. Page discovery
+// ignores rel="nofollow"; what keeps it off these links is s88's include
+// pattern, which is this page's exact path. The page is the same in both
+// states.
 
 require __DIR__ . '/../layout.php';
 $action = trim( (string) ( $_SERVER['PATH_INFO'] ?? '' ), '/' );

@@ -41,7 +41,8 @@ If your `php.ini` hides errors (`display_errors = Off`), add `-d display_errors=
 ```sh
 TESTBED_STATE=/tmp/s php -S 127.0.0.1:18812 -t testbed/php
 ```
- WordPress reads `TESTBED_STATE` too (default `wp-content/testbed-state`), for a WordPress you run yourself with the testbed's plugins.
+
+WordPress reads `TESTBED_STATE` too (default `wp-content/testbed-state`), for a WordPress you run yourself with the testbed's plugins.
 
 ## Make targets
 
@@ -124,7 +125,6 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s46 | `/s46-widgets/` | an Elementor add-on is gone: "Widget ... not found" (caught by a YAML rule) | BROKE health (the rule's level is error) |
 | s47 | `/contact/` | ten plugin updates, one of which (testbed-update-07 1.1) breaks the contact page; `wp-update --bisect --rollback` | culprit testbed-update-07 in at most 4 compares |
 | s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares |
-
 | s49 | `/checkout/` | the coupon field's script cancels Tab and Shift+Tab | BROKE keyboard/trap and exit 1 with `--fail-on broke`; not the newsletter dialog |
 | s50 | `/checkout/` | name, email and address lose their `<label for>` | NEW a11y/label on 3 fields; nothing BROKE |
 | s51 | `/s51-newsletter/` | the dialog's close button removes itself, focus falls to the page | NEW keyboard/focus-lost; no trap |
@@ -186,7 +186,7 @@ The fixes: a skip link to `#main` before the header and `id="main"` on `<main>` 
 
 **Pages.** The plain-PHP ones live in `php/a11y/` and run under `php -S` too. Each uses the shared `layout.php` frame, finds elements with `document.getElementById` (never id globals: an id such as `open` names `window.open`) and tests its own behaviour once on load. `<body data-ok="1">` says it did what its state says, `"0"` with `data-why` says it didn't. The WordPress ones are in the theme (`wp/themes/testbed/inc/eaa.php`, `header.php`, `js/dialog.js`), the shop (`testbed-shop`: the checkout and `[testbed_account]` on `/my-account/`) and the contact form (`testbed-forms`, `validate="1"`). `TestPreflight` (`bench/preflight.go`) switches each scenario good and broken and checks the page: the self-test of every `a11y/` page and one reading per WordPress scenario.
 
-**Side effects.** The shop counts orders in `state/orders.txt`; `a11y/sidefx.php` and `a11y/ws.php` count every request that reaches an add-to-cart link, the logout link (`/a11y/sidefx.php/logout`), the download, the popup or the WebSocket in `state/sidefx.txt`. The orders harness fails a scenario that changed either.
+**Side effects.** The shop counts orders in `state/orders.txt`; `a11y/sidefx.php` and `a11y/ws.php` count every request that reaches an add-to-cart link, the logout link (`/a11y/sidefx.php/logout`), the download, the popup or the WebSocket in `state/sidefx.txt`. The orders harness fails a scenario that changed either. s88's include pattern is the page's exact path, so page discovery never opens the side-effect links (Soundcheck's discovery ignores `rel="nofollow"`); only the keyboard walk could reach them.
 
 **Canaries.** s68's account form and s84's cross-origin payment frame show the values in `state/canaries` (`email=…`, `phone=…`, `token=…`, one per line) in field values, `data-*` and `aria-label` attributes and a link's query string. The benchmark makes them at run time; none is ever committed. A canary in any file Soundcheck wrote is a leak.
 
