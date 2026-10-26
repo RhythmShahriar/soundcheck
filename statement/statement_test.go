@@ -4,7 +4,6 @@
 package statement
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,19 +30,8 @@ func TestBlockRegistered(t *testing.T) {
 	}
 }
 
-func TestStubs(t *testing.T) {
-	if _, err := Build(Input{}); err == nil {
-		t.Error("Build of nothing succeeded")
-	}
-	var b bytes.Buffer
-	for _, write := range []func(*bytes.Buffer, *Draft) error{
-		func(b *bytes.Buffer, d *Draft) error { return Markdown(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return HTML(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return JSON(b, d) },
-		func(b *bytes.Buffer, d *Draft) error { return EARL(b, d) },
-	} {
-		if err := write(&b, &Draft{}); !errors.Is(err, ErrNotBuilt) {
-			t.Errorf("writer = %v", err)
-		}
+func TestBuildOfNothing(t *testing.T) {
+	if _, err := Build(Input{}); !errors.Is(err, ErrMissingOwner) {
+		t.Errorf("Build of nothing = %v", err)
 	}
 }

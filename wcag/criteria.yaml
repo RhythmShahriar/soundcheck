@@ -1,0 +1,484 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Every WCAG 2.0, 2.1 and 2.2 success criterion at levels A and AA, with
+# its EN 301 549 clause and how Soundcheck tests it. WCAG 2.1 has 50 and
+# 2.2 has 55: 2.2 drops 4.1.1 and adds 2.4.11, 2.5.7, 2.5.8, 3.2.6,
+# 3.3.7 and 3.3.8.
+#
+#   id, title       as WCAG numbers and names them
+#   slug            the criterion's anchor in the WCAG recommendation and
+#                   its test id in WCAG-EM reports (wcag21:<slug>)
+#   level           A or AA
+#   principle       Perceivable, Operable, Understandable or Robust
+#   since           the WCAG version that added it; removed: the one
+#                   that dropped it
+#   en              the EN 301 549 clause: 9 plus the WCAG number
+#   coverage        partly: some of Soundcheck's tests can find failures
+#                   of it, never all of them; none: a person must check it
+#   tested_by       Soundcheck's own checks that test it. The axe rules
+#                   that test it come from axe_rules.gen.go, by the
+#                   criteria their tags name, so they aren't listed here
+#   note            a fixed result the statement prints instead
+
+- id: "1.1.1"
+  title: "Non-text Content"
+  slug: non-text-content
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.1.1"
+  coverage: partly
+- id: "1.2.1"
+  title: "Audio-only and Video-only (Prerecorded)"
+  slug: audio-only-and-video-only-prerecorded
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.2.1"
+  coverage: partly
+- id: "1.2.2"
+  title: "Captions (Prerecorded)"
+  slug: captions-prerecorded
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.2.2"
+  coverage: partly
+- id: "1.2.3"
+  title: "Audio Description or Media Alternative (Prerecorded)"
+  slug: audio-description-or-media-alternative-prerecorded
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.2.3"
+  coverage: none
+- id: "1.2.4"
+  title: "Captions (Live)"
+  slug: captions-live
+  level: AA
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.2.4"
+  coverage: none
+- id: "1.2.5"
+  title: "Audio Description (Prerecorded)"
+  slug: audio-description-prerecorded
+  level: AA
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.2.5"
+  coverage: none
+- id: "1.3.1"
+  title: "Info and Relationships"
+  slug: info-and-relationships
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.3.1"
+  coverage: partly
+- id: "1.3.2"
+  title: "Meaningful Sequence"
+  slug: meaningful-sequence
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.3.2"
+  coverage: none
+- id: "1.3.3"
+  title: "Sensory Characteristics"
+  slug: sensory-characteristics
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.3.3"
+  coverage: none
+- id: "1.3.4"
+  title: "Orientation"
+  slug: orientation
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.3.4"
+  coverage: none
+- id: "1.3.5"
+  title: "Identify Input Purpose"
+  slug: identify-input-purpose
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.3.5"
+  coverage: partly
+- id: "1.4.1"
+  title: "Use of Color"
+  slug: use-of-color
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.4.1"
+  coverage: partly
+- id: "1.4.2"
+  title: "Audio Control"
+  slug: audio-control
+  level: A
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.4.2"
+  coverage: partly
+- id: "1.4.3"
+  title: "Contrast (Minimum)"
+  slug: contrast-minimum
+  level: AA
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.4.3"
+  coverage: partly
+- id: "1.4.4"
+  title: "Resize Text"
+  slug: resize-text
+  level: AA
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.4.4"
+  coverage: partly
+- id: "1.4.5"
+  title: "Images of Text"
+  slug: images-of-text
+  level: AA
+  principle: Perceivable
+  since: "2.0"
+  en: "9.1.4.5"
+  coverage: none
+- id: "1.4.10"
+  title: "Reflow"
+  slug: reflow
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.4.10"
+  coverage: partly
+  tested_by: [a11y/reflow]
+- id: "1.4.11"
+  title: "Non-text Contrast"
+  slug: non-text-contrast
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.4.11"
+  coverage: none
+- id: "1.4.12"
+  title: "Text Spacing"
+  slug: text-spacing
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.4.12"
+  coverage: partly
+- id: "1.4.13"
+  title: "Content on Hover or Focus"
+  slug: content-on-hover-or-focus
+  level: AA
+  principle: Perceivable
+  since: "2.1"
+  en: "9.1.4.13"
+  coverage: none
+- id: "2.1.1"
+  title: "Keyboard"
+  slug: keyboard
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.1.1"
+  coverage: partly
+  tested_by: [keyboard/not-reachable, keyboard/not-operable, keyboard/menu, keyboard/flow]
+- id: "2.1.2"
+  title: "No Keyboard Trap"
+  slug: no-keyboard-trap
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.1.2"
+  coverage: partly
+  tested_by: [keyboard/trap]
+- id: "2.1.4"
+  title: "Character Key Shortcuts"
+  slug: character-key-shortcuts
+  level: A
+  principle: Operable
+  since: "2.1"
+  en: "9.2.1.4"
+  coverage: none
+- id: "2.2.1"
+  title: "Timing Adjustable"
+  slug: timing-adjustable
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.2.1"
+  coverage: partly
+- id: "2.2.2"
+  title: "Pause, Stop, Hide"
+  slug: pause-stop-hide
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.2.2"
+  coverage: partly
+- id: "2.3.1"
+  title: "Three Flashes or Below Threshold"
+  slug: three-flashes-or-below-threshold
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.3.1"
+  coverage: none
+- id: "2.4.1"
+  title: "Bypass Blocks"
+  slug: bypass-blocks
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.1"
+  coverage: partly
+  tested_by: [keyboard/skip-link-broken]
+- id: "2.4.2"
+  title: "Page Titled"
+  slug: page-titled
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.2"
+  coverage: partly
+- id: "2.4.3"
+  title: "Focus Order"
+  slug: focus-order
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.3"
+  coverage: partly
+  tested_by: [keyboard/focus-lost, keyboard/dialog-focus]
+- id: "2.4.4"
+  title: "Link Purpose (In Context)"
+  slug: link-purpose-in-context
+  level: A
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.4"
+  coverage: partly
+- id: "2.4.5"
+  title: "Multiple Ways"
+  slug: multiple-ways
+  level: AA
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.5"
+  coverage: none
+- id: "2.4.6"
+  title: "Headings and Labels"
+  slug: headings-and-labels
+  level: AA
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.6"
+  coverage: none
+- id: "2.4.7"
+  title: "Focus Visible"
+  slug: focus-visible
+  level: AA
+  principle: Operable
+  since: "2.0"
+  en: "9.2.4.7"
+  coverage: partly
+  tested_by: [keyboard/no-focus-ring, keyboard/focus-invisible]
+- id: "2.4.11"
+  title: "Focus Not Obscured (Minimum)"
+  slug: focus-not-obscured-minimum
+  level: AA
+  principle: Operable
+  since: "2.2"
+  en: "9.2.4.11"
+  coverage: partly
+  tested_by: [keyboard/focus-obscured]
+- id: "2.5.1"
+  title: "Pointer Gestures"
+  slug: pointer-gestures
+  level: A
+  principle: Operable
+  since: "2.1"
+  en: "9.2.5.1"
+  coverage: none
+- id: "2.5.2"
+  title: "Pointer Cancellation"
+  slug: pointer-cancellation
+  level: A
+  principle: Operable
+  since: "2.1"
+  en: "9.2.5.2"
+  coverage: none
+- id: "2.5.3"
+  title: "Label in Name"
+  slug: label-in-name
+  level: A
+  principle: Operable
+  since: "2.1"
+  en: "9.2.5.3"
+  coverage: partly
+- id: "2.5.4"
+  title: "Motion Actuation"
+  slug: motion-actuation
+  level: A
+  principle: Operable
+  since: "2.1"
+  en: "9.2.5.4"
+  coverage: none
+- id: "2.5.7"
+  title: "Dragging Movements"
+  slug: dragging-movements
+  level: AA
+  principle: Operable
+  since: "2.2"
+  en: "9.2.5.7"
+  coverage: none
+- id: "2.5.8"
+  title: "Target Size (Minimum)"
+  slug: target-size-minimum
+  level: AA
+  principle: Operable
+  since: "2.2"
+  en: "9.2.5.8"
+  coverage: partly
+- id: "3.1.1"
+  title: "Language of Page"
+  slug: language-of-page
+  level: A
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.1.1"
+  coverage: partly
+- id: "3.1.2"
+  title: "Language of Parts"
+  slug: language-of-parts
+  level: AA
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.1.2"
+  coverage: partly
+- id: "3.2.1"
+  title: "On Focus"
+  slug: on-focus
+  level: A
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.2.1"
+  coverage: partly
+  tested_by: [keyboard/context-change]
+- id: "3.2.2"
+  title: "On Input"
+  slug: on-input
+  level: A
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.2.2"
+  coverage: none
+- id: "3.2.3"
+  title: "Consistent Navigation"
+  slug: consistent-navigation
+  level: AA
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.2.3"
+  coverage: none
+- id: "3.2.4"
+  title: "Consistent Identification"
+  slug: consistent-identification
+  level: AA
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.2.4"
+  coverage: none
+- id: "3.2.6"
+  title: "Consistent Help"
+  slug: consistent-help
+  level: A
+  principle: Understandable
+  since: "2.2"
+  en: "9.3.2.6"
+  coverage: none
+- id: "3.3.1"
+  title: "Error Identification"
+  slug: error-identification
+  level: A
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.3.1"
+  coverage: partly
+  tested_by: [keyboard/error-not-linked]
+- id: "3.3.2"
+  title: "Labels or Instructions"
+  slug: labels-or-instructions
+  level: A
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.3.2"
+  coverage: partly
+  tested_by: [a11y/placeholder-label, interact/unlabeled]
+- id: "3.3.3"
+  title: "Error Suggestion"
+  slug: error-suggestion
+  level: AA
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.3.3"
+  coverage: none
+- id: "3.3.4"
+  title: "Error Prevention (Legal, Financial, Data)"
+  slug: error-prevention-legal-financial-data
+  level: AA
+  principle: Understandable
+  since: "2.0"
+  en: "9.3.3.4"
+  coverage: none
+- id: "3.3.7"
+  title: "Redundant Entry"
+  slug: redundant-entry
+  level: A
+  principle: Understandable
+  since: "2.2"
+  en: "9.3.3.7"
+  coverage: none
+- id: "3.3.8"
+  title: "Accessible Authentication (Minimum)"
+  slug: accessible-authentication-minimum
+  level: AA
+  principle: Understandable
+  since: "2.2"
+  en: "9.3.3.8"
+  coverage: none
+- id: "4.1.1"
+  title: "Parsing"
+  slug: parsing
+  level: A
+  principle: Robust
+  since: "2.0"
+  removed: "2.2"
+  en: "9.4.1.1"
+  coverage: none
+  note: "not tested: W3C now treats it as always met for HTML; the owner decides how to state it"
+- id: "4.1.2"
+  title: "Name, Role, Value"
+  slug: name-role-value
+  level: A
+  principle: Robust
+  since: "2.0"
+  en: "9.4.1.2"
+  coverage: partly
+  tested_by: [interact/unlabeled]
+- id: "4.1.3"
+  title: "Status Messages"
+  slug: status-messages
+  level: AA
+  principle: Robust
+  since: "2.1"
+  en: "9.4.1.3"
+  coverage: none

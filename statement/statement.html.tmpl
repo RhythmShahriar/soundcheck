@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{.Title}}</title>
+<style>
+:root { color-scheme: light dark; --fg: #1b1b1b; --bg: #fff; --muted: #555; --line: #c8c8c8; --note: #fff6d5; --mark: #ffe08a; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e8e8e8; --bg: #161616; --muted: #b0b0b0; --line: #444; --note: #3a3110; --mark: #6b5310; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 60rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { font-size: 1.8rem; line-height: 1.25; margin: 1.5rem 0 1rem; }
+h2 { font-size: 1.35rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .2rem; }
+h3 { font-size: 1.1rem; margin: 1.5rem 0 .4rem; }
+p, li { overflow-wrap: anywhere; }
+.banner { border: 2px solid currentColor; background: var(--note); padding: .25rem 1rem; border-radius: 4px; }
+.todo { background: var(--mark); color: inherit; padding: 0 .15em; }
+.table { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { border: 1px solid var(--line); padding: .35rem .5rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { background: var(--note); }
+@media print {
+  :root { --fg: #000; --bg: #fff; --note: #f2f2f2; --mark: #e6e6e6; --line: #999; }
+  main { max-width: none; padding: 0; }
+  h2, h3 { break-after: avoid; }
+  tr { break-inside: avoid; }
+  .table { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<main>
+<aside class="banner" aria-label="Draft notice">
+{{range .Banner}}<p>{{template "line" .}}</p>
+{{end}}</aside>
+<h1>{{.Title}}</h1>
+{{range .Blocks}}{{if eq .Kind "h2"}}<h2>{{template "line" index .Lines 0}}</h2>
+{{else if eq .Kind "h3"}}<h3>{{template "line" index .Lines 0}}</h3>
+{{else if eq .Kind "p"}}<p>{{template "line" index .Lines 0}}</p>
+{{else if eq .Kind "ul"}}<ul>
+{{range .Lines}}<li>{{template "line" .}}</li>
+{{end}}</ul>
+{{else if eq .Kind "table"}}<div class="table"><table>
+<thead><tr>{{range .Head}}<th scope="col">{{.}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Rows}}<tr>{{range $i, $c := .}}{{if eq $i 0}}<th scope="row">{{template "line" $c}}</th>{{else}}<td>{{template "line" $c}}</td>{{end}}{{end}}</tr>
+{{end}}</tbody>
+</table></div>
+{{end}}{{end}}</main>
+</body>
+</html>
+{{define "line"}}{{range .}}{{if eq .Kind "strong"}}<strong>{{.Text}}</strong>{{else if eq .Kind "todo"}}<mark class="todo">[TO DO: {{.Text}}]</mark>{{else}}{{.Text}}{{end}}{{end}}{{end}}
