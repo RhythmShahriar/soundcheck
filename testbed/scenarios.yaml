@@ -698,8 +698,8 @@ scenarios:
 
   # EAA mode (Soundcheck 1.3, --eaa): accessibility and keyboard
   # scenarios from PRD 16.1. Broken ones first (s49 to s76), then the
-  # good and hard-good ones (s77 to s89) that must stay quiet. Each waits
-  # for the 1.3 build lane that ships its detector (pending: <lane>).
+  # good and hard-good ones (s77 to s89) that must stay quiet. s68 waits
+  # for a decision on auditing logged-in pages (pending: axe).
 
   - id: s49
     name: Keyboard trap in the checkout's coupon field
@@ -719,7 +719,6 @@ scenarios:
     forbid:
       - {check: keyboard/trap, source: "#news"}
     tools: []
-    pending: keyboard
 
   - id: s50
     name: Checkout fields lose their labels
@@ -735,7 +734,6 @@ scenarios:
     forbid:
       - {class: broke}
     tools: []
-    pending: axe
     # The bench doesn't parse the draft's rows: the one-count rule is the
     # statement lane's unit test (changes-testbed.md follow-ups).
     note: "the statement must count each field once although interact/unlabeled and a11y/label both name it (statement lane test; the bench checks wording only)"
@@ -753,7 +751,6 @@ scenarios:
     forbid:
       - {check: keyboard/trap}
     tools: []
-    pending: keyboard
 
   - id: s52
     name: Modal dialog stops containing focus
@@ -766,7 +763,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/dialog-focus}
     tools: []
-    pending: keyboard
 
   - id: s53
     name: Dialog opens without taking focus (plain PHP)
@@ -779,7 +775,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/dialog-focus}
     tools: []
-    pending: keyboard
 
   - id: s54
     name: Theme removes every focus outline
@@ -792,7 +787,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/no-focus-ring}
     tools: []
-    pending: keyboard
 
   - id: s55
     name: Skip link points nowhere
@@ -805,7 +799,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/skip-link-broken}
     tools: []
-    pending: keyboard
 
   - id: s56
     name: Menu toggle becomes a div
@@ -818,7 +811,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/not-reachable}
     tools: []
-    pending: keyboard
 
   - id: s57
     name: Custom button ignores Enter and Space (plain PHP)
@@ -831,7 +823,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/not-operable}
     tools: []
-    pending: keyboard
 
   - id: s58
     name: Submenu opens on hover only
@@ -844,7 +835,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/menu}
     tools: []
-    pending: keyboard
 
   - id: s59
     name: Invalid autocomplete tokens in the checkout
@@ -857,7 +847,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/autocomplete-valid}
     tools: []
-    pending: axe
 
   - id: s60
     name: Checkout labels replaced by placeholders
@@ -873,7 +862,6 @@ scenarios:
     forbid:
       - {check: a11y/label}
     tools: []
-    pending: axe
 
   - id: s61
     name: Place order text too light to read
@@ -886,7 +874,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/color-contrast, source: "#place_order"}
     tools: []
-    pending: axe
 
   - id: s62
     name: Pages lose their lang attribute
@@ -899,7 +886,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/html-has-lang}
     tools: []
-    pending: axe
 
   - id: s63
     name: Gallery images lose their alt text
@@ -912,7 +898,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/image-alt}
     tools: []
-    pending: axe
 
   - id: s64
     name: Contact form errors shown by colour only (key flow)
@@ -926,7 +911,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/error-not-linked}
     tools: []
-    pending: flows
 
   - id: s65
     name: Cookie banner traps the keyboard (plain PHP)
@@ -939,7 +923,6 @@ scenarios:
     expect:
       - {class: broke, check: keyboard/trap}
     tools: []
-    pending: keyboard
 
   - id: s66
     name: Zoom switched off (plain PHP)
@@ -952,7 +935,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/meta-viewport}
     tools: []
-    pending: axe
 
   - id: s67
     name: Web component loses its label in a shadow root (plain PHP)
@@ -965,7 +947,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/label, source: " >>> "}
     tools: []
-    pending: axe
 
   - id: s68
     name: Account form drops a label; prefilled with canaries (login)
@@ -997,7 +978,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/reflow}
     tools: []
-    pending: axe
 
   - id: s70
     name: Place order reachable only by mouse (key flow)
@@ -1012,7 +992,6 @@ scenarios:
     expect:
       - {class: broke, check: keyboard/flow}
     tools: []
-    pending: flows
 
   - id: s71
     name: Select navigates when it gets focus (plain PHP)
@@ -1025,7 +1004,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/context-change}
     tools: []
-    pending: keyboard
 
   - id: s72
     name: Closed off-canvas menu stays tabbable (plain PHP)
@@ -1038,7 +1016,6 @@ scenarios:
     expect:
       - {class: new, check: keyboard/focus-invisible}
     tools: []
-    pending: keyboard
 
   - id: s73
     name: Accessibility overlay script added
@@ -1052,7 +1029,6 @@ scenarios:
     expect:
       - {class: new, check: a11y/overlay}
     tools: []
-    pending: axe
 
   - id: s74
     name: Page too big for axe to finish (plain PHP)
@@ -1070,7 +1046,6 @@ scenarios:
     forbid:
       - {class: fixed}
     tools: []
-    pending: axe
 
   - id: s75
     name: Dialog ignores Escape (plain PHP)
@@ -1085,7 +1060,6 @@ scenarios:
     forbid:
       - {check: keyboard/trap}
     tools: []
-    pending: keyboard
 
   - id: s76
     name: Focus handler reloads the page (plain PHP)
@@ -1103,7 +1077,6 @@ scenarios:
       - {check: keyboard/trap}
       - {warning: "keyboard: /a11y/reload-trap.php:"}
     tools: []
-    pending: keyboard
 
   - id: s77
     name: Native dialog with showModal() (hard good, plain PHP)
@@ -1120,7 +1093,6 @@ scenarios:
       - {check: keyboard/focus-lost}
       - {check: keyboard/dialog-focus}
     tools: []
-    pending: keyboard
 
   - id: s78
     name: Custom modal done right (hard good, plain PHP)
@@ -1137,7 +1109,6 @@ scenarios:
       - {check: keyboard/focus-lost}
       - {check: keyboard/dialog-focus}
     tools: []
-    pending: keyboard
 
   - id: s79
     name: Focus shown without an outline (hard good, plain PHP)
@@ -1152,7 +1123,6 @@ scenarios:
     forbid:
       - {check: keyboard/no-focus-ring}
     tools: []
-    pending: keyboard
 
   - id: s80
     name: Visually hidden skip link that shows on focus (hard good)
@@ -1169,7 +1139,6 @@ scenarios:
       - {check: keyboard/focus-invisible}
       - {check: keyboard/no-focus-ring}
     tools: []
-    pending: keyboard
 
   - id: s81
     name: Page that changes on every load (hard good, plain PHP)
@@ -1184,7 +1153,6 @@ scenarios:
     forbid:
       - {class: new}
     tools: []
-    pending: keyboard
 
   - id: s82
     name: 300 old contrast problems, nothing changes (hard good, plain PHP)
@@ -1202,7 +1170,6 @@ scenarios:
       - {class: new}
       - {class: fixed}
     tools: []
-    pending: axe
 
   - id: s83
     name: One of 300 old contrast problems fixed (plain PHP)
@@ -1219,7 +1186,6 @@ scenarios:
     forbid:
       - {class: new}
     tools: []
-    pending: axe
 
   - id: s84
     name: Frames from the same and another origin (hard good, plain PHP)
@@ -1236,7 +1202,6 @@ scenarios:
     forbid:
       - {class: new}
     tools: []
-    pending: statement
 
   - id: s85
     name: Checkout on a busy machine (hard good)
@@ -1253,7 +1218,6 @@ scenarios:
       - {class: new}
       - {check: keyboard/trap}
     tools: []
-    pending: keyboard
 
   - id: s86
     name: Checkout answers 500 under --eaa
@@ -1268,7 +1232,6 @@ scenarios:
     expect:
       - {class: broke, check: health/}
     tools: []
-    pending: statement
     note: "the statement must list /checkout/ as not audited and never claim it was (statement lane, harness statement)"
 
   - id: s87
@@ -1290,7 +1253,6 @@ scenarios:
     forbid:
       - {class: new, check: a11y/autocomplete-valid}
     tools: []
-    pending: cli
 
   - id: s88
     name: Page with side effects on GET and on focus (hard good, plain PHP)
@@ -1307,7 +1269,6 @@ scenarios:
     forbid:
       - {class: new}
     tools: []
-    pending: keyboard
 
   - id: s89
     name: A fully accessible small site (plain PHP)
@@ -1326,4 +1287,3 @@ scenarios:
       - {check: a11y/}
       - {check: keyboard/}
     tools: []
-    pending: statement
