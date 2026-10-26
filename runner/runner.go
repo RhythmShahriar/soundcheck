@@ -235,7 +235,8 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
 		TargetPublic: capture.Public(addrs),
 	}
-	opts.scope = &capture.Scope{Site: base, Target: addrs, Allow: cfg.Trust.AllowHosts, Warn: cc.Warn}
+	opts.scope = &capture.Scope{Site: base, Target: addrs, Allow: cfg.Trust.AllowHosts, Warn: cc.Warn,
+		Proxied: browserProxied(opts.Browser.Proxy, base)}
 	for _, note := range capture.HeaderNotes(opts.Headers) {
 		cc.Warn(note)
 	}

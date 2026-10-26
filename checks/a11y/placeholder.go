@@ -20,6 +20,26 @@ import (
 // Each costs a call for its accessible name.
 const maxFields = maxElements + 1
 
+// maxCounted bounds the fields fieldsJS goes on to count past maxFields,
+// so that the total a capped page reports is the page's, not the cap.
+// A form that big is counted "at least".
+const maxCounted = 5000
+
+// beyond counts the fields named only by their placeholder past the
+// ones fields looked at, by the script's own name check: their names
+// aren't read from the accessibility tree. AtLeast is set when the count
+// stopped at maxCounted.
+type beyond struct {
+	N       int  `json:"n"`
+	AtLeast bool `json:"atLeast"`
+}
+
+// add adds the count of another document.
+func (b *beyond) add(o beyond) {
+	b.N += o.N
+	b.AtLeast = b.AtLeast || o.AtLeast
+}
+
 // field is a form field with a placeholder that fieldsJS found, with its
 // own name as the script worked it out. The browser's accessibility
 // tree has the last word on the name (see named).
@@ -40,7 +60,12 @@ const fieldsGlobal = "__soundcheckFields"
 // selects. Search boxes are left out: a search field in [role=search]
 // or a form whose only text field it is, sent with a visible button
 // that says what it does, is understood without a label.
-var fieldsJS = strings.NewReplacer("MAX_FIELDS", fmt.Sprint(maxFields), "GLOBAL", fieldsGlobal).Replace(`() => {
+//
+// It sends {found, beyond}: found holds the fields looked at (at most
+// maxFields); beyond counts the ones past them that its own name check
+// calls unnamed.
+var fieldsJS = strings.NewReplacer("MAX_FIELDS", fmt.Sprint(maxFields), "MAX_COUNTED", fmt.Sprint(maxCounted),
+	"GLOBAL", fieldsGlobal).Replace(`() => {
   ` + pathJS + `
   const skip = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'radio']);
   const shown = el => {
@@ -74,17 +99,23 @@ var fieldsJS = strings.NewReplacer("MAX_FIELDS", fmt.Sprint(maxFields), "GLOBAL"
     return Array.from(form.querySelectorAll('button, input[type="submit"], input[type="image"], [role="button"]'))
       .some(b => shown(b) && buttonText(b) !== '');
   };
-  const found = [], els = [];
+  const found = [], els = [], beyond = {n: 0, atLeast: false};
+  let counted = 0;
   for (const el of document.querySelectorAll('input, textarea, select')) {
-    if (found.length >= MAX_FIELDS) break;
     if (!takesText(el)) continue;
     const ph = words(el.getAttribute('placeholder'));
-    if (!ph || !shown(el) || searchLike(el)) continue;
+    if (!ph) continue;
+    if (found.length >= MAX_FIELDS) {
+      if (++counted > MAX_COUNTED) { beyond.atLeast = true; break; }
+      if (shown(el) && !searchLike(el) && !named(el)) beyond.n++;
+      continue;
+    }
+    if (!shown(el) || searchLike(el)) continue;
     els.push(el);
     found.push({path: path(el), placeholder: ph.slice(0, 200), named: named(el)});
   }
   globalThis.GLOBAL = els;
-  return JSON.stringify(found);
+  return JSON.stringify({found, beyond});
 }`)
 
 // axGroup is the object group of the elements fields resolves, released
@@ -92,17 +123,22 @@ var fieldsJS = strings.NewReplacer("MAX_FIELDS", fmt.Sprint(maxFields), "GLOBAL"
 const axGroup = "soundcheck-a11y-fields"
 
 // fields finds the fields of the document whose isolated world is world
-// that have a placeholder and no other name. prefix is the document's
-// frame path, as in auditFrame.
-func fields(page *rod.Page, world proto.RuntimeExecutionContextID, prefix [][]Elem) ([]field, error) {
+// that have a placeholder and no other name. It also counts the ones
+// past maxFields (see beyond). prefix is the document's frame path, as in
+// auditFrame.
+func fields(page *rod.Page, world proto.RuntimeExecutionContextID, prefix [][]Elem) ([]field, beyond, error) {
 	raw, err := eval(page, world, "("+fieldsJS+")()", false)
 	if err != nil {
-		return nil, err
+		return nil, beyond{}, err
 	}
-	var found []field
-	if err := json.Unmarshal([]byte(raw), &found); err != nil {
-		return nil, fmt.Errorf("the placeholder check's result: %w", err)
+	var res struct {
+		Found  []field `json:"found"`
+		Beyond beyond  `json:"beyond"`
 	}
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		return nil, beyond{}, fmt.Errorf("the placeholder check's result: %w", err)
+	}
+	found := res.Found
 	defer func() {
 		_ = proto.RuntimeReleaseObjectGroup{ObjectGroup: axGroup}.Call(page)
 		_, _ = eval(page, world, "delete globalThis."+fieldsGlobal, false)
@@ -110,7 +146,7 @@ func fields(page *rod.Page, world proto.RuntimeExecutionContextID, prefix [][]El
 	var out []field
 	for n, f := range found {
 		if page.GetContext().Err() != nil {
-			return nil, page.GetContext().Err()
+			return nil, beyond{}, page.GetContext().Err()
 		}
 		if ok, err := named(page, world, n); err == nil {
 			f.Named = ok
@@ -123,7 +159,7 @@ func fields(page *rod.Page, world proto.RuntimeExecutionContextID, prefix [][]El
 		}
 		out = append(out, f)
 	}
-	return out, nil
+	return out, res.Beyond, nil
 }
 
 // named reads whether the n-th field fieldsJS found has an accessible
@@ -176,10 +212,11 @@ func namedBy(sources []*proto.AccessibilityAXValueSource) bool {
 // accepts a placeholder as a label, so it never reports one: the
 // placeholder disappears as soon as someone types, which leaves them
 // guessing what the field was for. A field axe already reported as
-// a11y/label on the page is left out: one problem, one issue. capped is
-// the number of fields found when it's more than keep, for the page's
-// Audit.CappedRules, else 0.
-func placeholderIssues(found []field, have []model.Issue, keep int) (out []model.Issue, capped int) {
+// a11y/label on the page is left out: one problem, one issue. more are
+// the fields past the ones looked at, which count toward the total but
+// aren't reported. capped is the total when it's more than keep, for
+// the page's Audit.CappedRules, else 0.
+func placeholderIssues(found []field, more beyond, have []model.Issue, keep int) (out []model.Issue, capped int) {
 	hasLabel := map[string]bool{}
 	for _, i := range have {
 		if i.Check == "a11y/label" {
@@ -201,15 +238,19 @@ func placeholderIssues(found []field, have []model.Issue, keep int) (out []model
 		i.Identify()
 		all = append(all, i)
 	}
-	if len(all) > keep {
-		total := len(all)
-		all = all[:keep]
-		for n := range all {
-			all[n].Detail += fmt.Sprintf("\nThe first %d of %d fields named only by their placeholder on the page are reported.", keep, total)
-		}
-		return all, total
+	total := len(all) + more.N
+	if total <= keep {
+		return all, 0
 	}
-	return all, 0
+	all = all[:min(keep, len(all))]
+	of := fmt.Sprint(total)
+	if more.AtLeast {
+		of = "at least " + of
+	}
+	for n := range all {
+		all[n].Detail += fmt.Sprintf("\nThe first %d of %s fields named only by their placeholder on the page are reported.", len(all), of)
+	}
+	return all, total
 }
 
 // shortText is site text for a Detail: on one line, credentials the kit

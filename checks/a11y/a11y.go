@@ -112,7 +112,7 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 		}
 	}
 	found := issues(rep.Violations, s.MaxElements, version)
-	placeholder, capped := placeholderIssues(rep.Fields, found, s.MaxElements)
+	placeholder, capped := placeholderIssues(rep.Fields, rep.Beyond, found, s.MaxElements)
 	if capped > 0 {
 		if a.CappedRules == nil {
 			a.CappedRules = map[string]int{}
@@ -236,7 +236,7 @@ func issues(found []result, keep int, version string) []model.Issue {
 			}
 			seen[check+"|"+sel] = true
 			kept[check]++
-			detail := clean(el.Summary)
+			detail := summary(el.Summary)
 			if h := snippet(el.HTML); h != "" {
 				detail = strings.TrimSpace(h + "\n" + detail)
 			}
@@ -346,6 +346,22 @@ func clean(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// summary is axe's failure summary for a Detail, cleaned up. Some rules
+// quote the element's attributes or text in it (an invalid ARIA value,
+// a contrast check's text), so it is masked the way a snippet is,
+// without being cut short.
+func summary(s string) string {
+	s = clean(strings.ToValidUTF8(s, "\uFFFD"))
+	for range maxPasses {
+		next := maskAttrs(s)
+		if next == s {
+			break
+		}
+		s = next
+	}
+	return s
+}
+
 // The attribute patterns follow the HTML tokenizer: an attribute name
 // starts after white space, a "/" or the closing quote of the attribute
 // before it (see attrs). A quoted value runs to its closing quote or, in
@@ -395,6 +411,17 @@ const maxPasses = 8
 
 // mask is one pass of snippet's masking and shortening.
 func mask(html string) string {
+	html = maskAttrs(html)
+	if r := []rune(html); len(r) > maxSnippet {
+		html = string(r[:maxSnippet-1]) + "…"
+	}
+	return html
+}
+
+// maskAttrs is one pass of masking: the values of attributes that can
+// hold what a visitor typed, the queries and opaque parts of links and
+// the credentials the kit knows.
+func maskAttrs(html string) string {
 	html = attrs(filled, html, func(name, value string) string {
 		if attrText(value) == "" {
 			return name + value
@@ -415,11 +442,7 @@ func mask(html string) string {
 		}
 		return name + v
 	})
-	html = secrets.Redact(html)
-	if r := []rune(html); len(r) > maxSnippet {
-		html = string(r[:maxSnippet-1]) + "…"
-	}
-	return html
+	return secrets.Redact(html)
 }
 
 // attrs replaces each attribute re matches in html (group 1 its name and

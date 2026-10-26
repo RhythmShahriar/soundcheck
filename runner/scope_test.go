@@ -70,22 +70,27 @@ func listen(t *testing.T, port int, h http.HandlerFunc) *counter {
 // metadataAddr is the cloud metadata service's address.
 const metadataAddr = "169.254.169.254"
 
-// trapMetadata sends the run's client's connections to the metadata
-// address to a local counter (on port) once the guard's check let them
-// through, so a guard that regressed never reaches the real service.
+// trapMetadata sends the run's client's connections to any host but
+// loopback to a local counter (on port) once the guard's check let them
+// through, so a guard that regressed never reaches the real network.
+// The metadata service's are counted for the test to judge; any other
+// one fails the test on the spot.
 func trapMetadata(t *testing.T, port int) *counter {
 	t.Helper()
 	trap := listen(t, port, nil)
 	old := dialWith
 	dialWith = func(ctx context.Context, d *net.Dialer, network, addr string) (net.Conn, error) {
 		host, _, err := net.SplitHostPort(addr)
-		if err != nil || host != metadataAddr {
+		if err == nil && (host == "127.0.0.1" || host == "::1" || host == "localhost") {
 			return old(ctx, d, network, addr)
 		}
 		if d.ControlContext != nil {
 			if err := d.ControlContext(ctx, network, addr, nil); err != nil {
 				return nil, err
 			}
+		}
+		if host != metadataAddr {
+			t.Errorf("the client dialed %s, which isn't loopback", addr)
 		}
 		var to net.Dialer
 		return to.DialContext(ctx, network, strings.TrimPrefix(trap.url, "http://"))
@@ -152,6 +157,67 @@ func TestGuardKeepsTheClientInScope(t *testing.T) {
 	}
 	if n := trap.n.Load(); n != 0 {
 		t.Errorf("the metadata address got %d requests", n)
+	}
+}
+
+// The target's own name rebound to the metadata service or another
+// private address after the run's lookup (DNS rebinding) is refused
+// before anything is sent. A target given by its address is dialed as
+// it is.
+func TestGuardCatchesTheTargetRebound(t *testing.T) {
+	trap := trapMetadata(t, 37017)
+	var answer atomic.Value // what shop.example.com resolves to now
+	old := dialWith
+	dialWith = func(ctx context.Context, d *net.Dialer, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil || host != "shop.example.com" {
+			return old(ctx, d, network, addr)
+		}
+		// Stand in for the resolver: the guard's check sees the address
+		// the name answers with now.
+		return old(ctx, d, network, net.JoinHostPort(answer.Load().(string), port))
+	}
+	t.Cleanup(func() { dialWith = old })
+	site, _ := url.Parse("http://shop.example.com/")
+	c := httpClient(Options{}, site, []netip.Addr{publicAddr})
+	for _, to := range []string{metadataAddr, "10.0.0.7"} {
+		answer.Store(to)
+		resp, err := c.Get("http://shop.example.com/latest/meta-data/")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		if !errors.Is(err, httpx.ErrPrivate) {
+			t.Errorf("the target's name rebound to %s: %v", to, err)
+		}
+	}
+	if n := trap.n.Load(); n != 0 {
+		t.Errorf("the metadata address got %d requests", n)
+	}
+
+	// A local target by name keeps its own network.
+	srv := listen(t, 37018, nil)
+	answer.Store("127.0.0.1")
+	local, _ := url.Parse("http://shop.example.com:37018/")
+	resp, err := httpClient(Options{}, local, loopback).Get("http://shop.example.com:37018/")
+	if err != nil {
+		t.Fatalf("a loopback target's own name: %v", err)
+	}
+	_ = resp.Body.Close()
+	if srv.n.Load() != 1 {
+		t.Errorf("the local target got %d requests", srv.n.Load())
+	}
+}
+
+// The browser's answers can't be judged by address through a proxy: a
+// given one, or one from the environment.
+func TestBrowserProxied(t *testing.T) {
+	site, _ := url.Parse("https://shop.example.com/")
+	if !browserProxied("http://127.0.0.1:8080", site) {
+		t.Error("a given proxy isn't seen")
+	}
+	p, err := http.ProxyFromEnvironment(&http.Request{URL: site})
+	if want := err == nil && p != nil; browserProxied("", site) != want {
+		t.Errorf("without a given proxy: %v, want %v (the environment's)", !want, want)
 	}
 }
 

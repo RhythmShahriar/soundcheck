@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -192,8 +193,12 @@ func (r IgnoreRule) describe() string {
 // another kind of change is never listed either (see issueRule).
 func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page) bool), site []model.Issue) []int {
 	var open []int
+	var mods []string
+	if len(rules) > 0 {
+		mods = comparers()
+	}
 	for n, r := range rules {
-		if r.state(now) == ruleLive && issueRule(r) {
+		if r.state(now) == ruleLive && issueRule(r, mods) {
 			open = append(open, n)
 		}
 	}
@@ -235,16 +240,31 @@ func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page
 	return out
 }
 
-// comparers are the modules that report changes of their own besides
-// issue changes (screenshots, timings, page content, messages). A rule
-// for one of them may hide a change no issue carries.
-var comparers = []string{"visual", "speed", "seo", "echo"}
+// builtinComparers are the shipped modules that report changes of their
+// own besides issue changes (screenshots, timings, page content,
+// redirects, caching, messages). They count even when the registry
+// doesn't hold them, e.g. when compare runs without the checks loaded.
+var builtinComparers = []string{"visual", "speed", "seo", "echo", "health", "cache"}
+
+// comparers returns the modules a rule for which may hide a change no
+// issue carries: the built-in ones plus every registered module that
+// implements check.Comparer (a check.PageComparer is one too). Tests
+// replace it.
+var comparers = func() []string {
+	out := slices.Clone(builtinComparers)
+	for _, m := range check.Registered() {
+		if _, ok := m.(check.Comparer); ok && !slices.Contains(out, m.Name()) {
+			out = append(out, m.Name())
+		}
+	}
+	return out
+}
 
 // issueRule reports whether a rule can only hide issue changes, so that
 // matching no issue makes it stale: its check names one module, which
-// isn't one of the comparers. A rule for any check ("*" or none) may
+// isn't in mods (see comparers). A rule for any check ("*" or none) may
 // hide a visual change and is never called stale.
-func issueRule(r IgnoreRule) bool {
+func issueRule(r IgnoreRule, mods []string) bool {
 	mod, _, _ := strings.Cut(r.Check, "/")
-	return mod != "" && !strings.Contains(mod, "*") && !slices.Contains(comparers, mod)
+	return mod != "" && !strings.Contains(mod, "*") && !slices.Contains(mods, mod)
 }

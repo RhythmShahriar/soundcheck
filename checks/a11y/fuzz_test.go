@@ -44,7 +44,9 @@ func FuzzIssues(f *testing.F) {
 				n := &doc.Violations[i].Nodes[j]
 				// The element's first attribute is what the visitor typed.
 				n.HTML = `<input value="` + planted + `" ` + without(n.HTML, planted)
-				n.Summary = without(n.Summary, planted)
+				// axe quotes an attribute in some summaries; the value is
+				// masked there too.
+				n.Summary = `value="` + planted + `" ` + without(n.Summary, planted)
 			}
 		}
 		got := issues(doc.Violations, max, version)
