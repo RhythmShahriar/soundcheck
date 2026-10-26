@@ -76,6 +76,7 @@ type session struct {
 	flowsChecked   bool           // checkFlows ran
 	loginShown     bool           // the Login line was printed
 	resume         *resumed       // snapshot --resume: the pages kept and the journal
+	checked        bool           // the command checked a site, so --eaa writes its files
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -180,6 +181,7 @@ func (s *session) start(target string) {
 		s.view.Step("Preset", h)
 	}
 	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
+	s.eaaSteps()
 	s.view.Step("Levels", levels(s.cfg))
 	s.view.Step("Viewports", strings.Join(s.cfg.Viewports, ", "))
 	s.view.Step("Production", production(s.cfg))
@@ -284,6 +286,9 @@ func (s *session) echoToken() string {
 	return token
 }
 
+// runSite checks a site; tests stand in for the browser with their own.
+var runSite = runner.Run
+
 // check runs the site once.
 func (s *session) check(target string, paths []string, snapshot bool, name, dir string) (*model.Run, error) {
 	opts, err := s.options(target, paths, snapshot, name, dir)
@@ -293,7 +298,8 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	if s.resume != nil {
 		opts.Done, opts.OnPage = s.resume.done, s.resume.add
 	}
-	run, err := runner.Run(s.ctx, opts)
+	run, err := runSite(s.ctx, opts)
+	s.checked = true
 	s.recordEAA(run)
 	if s.o.verbose && run != nil {
 		s.view.Step("Timing", timing(run))
@@ -399,6 +405,7 @@ func (s *session) render(w io.Writer, res report.Result, format string) error {
 func (s *session) finish(res report.Result, next string) int {
 	res.FailOn = s.o.failOn // JSON's summary.failed
 	res.Trend = s.trend(res.Run)
+	draft := s.eaaResult(&res)
 	html := filepath.Join(res.Dir, "report.html")
 	if err := writeFile(html, func(w io.Writer) error { return report.HTML(w, res) }); err != nil {
 		fmt.Fprintln(s.stderr, prefix(), "writing the HTML report:", err)
@@ -431,7 +438,7 @@ func (s *session) finish(res report.Result, next string) int {
 		hint = "full report: " + rel(open)
 	}
 	if s.live {
-		s.view.Summary(res, hint, next)
+		s.view.Summary(res, hint, draft, next)
 	}
 	if !s.o.quiet {
 		for _, path := range written {
@@ -462,6 +469,13 @@ func (s *session) finish(res report.Result, next string) int {
 	if report.Partial(res) {
 		fmt.Fprintln(s.stderr, prefix(), "this result is partial (interrupted); run it again")
 		return exitCanceled
+	}
+	// Under --eaa a page the a11y or keyboard tests didn't finish leaves
+	// the evidence incomplete: 3 wins over 1, as a site that couldn't be
+	// checked does.
+	if n := notAudited(res.Run); n > 0 {
+		fmt.Fprintln(s.stderr, prefix(), errNotAudited(n))
+		return exitError
 	}
 	if report.FailOn(res, s.o.failOn) {
 		return exitFindings

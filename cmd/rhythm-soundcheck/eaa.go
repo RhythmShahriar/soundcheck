@@ -116,6 +116,13 @@ func (p *plan) eaaSettle() error {
 	if err := p.eaaEnvironment(); err != nil {
 		return err
 	}
+	// The draft each --eaa run writes reads statement:, so a mistake in
+	// it is a usage error now rather than a missing draft at the end.
+	if p.cfg.EAA {
+		if _, err := decodeOwner(p.cfg); err != nil {
+			return cli.UsageError{Msg: err.Error()}
+		}
+	}
 	p.setWCAG(p.wcag)
 	p.keyboard = nil
 	if p.cfg.Has("keyboard") {
