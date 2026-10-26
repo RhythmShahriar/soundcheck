@@ -436,3 +436,22 @@ func Toggle(testbed, id, state string) error {
 	}
 	return nil
 }
+
+// sitePorts are the environment variables that move each site, as
+// docker-compose.yml and the Makefile read them.
+var sitePorts = map[string]struct{ env, scheme string }{
+	"wp":        {"TESTBED_WP_PORT", "http"},
+	"php":       {"TESTBED_PHP_PORT", "http"},
+	"php-https": {"TESTBED_PHP_HTTPS_PORT", "https"},
+}
+
+// sitesFromEnv points the sites at the ports in TESTBED_WP_PORT,
+// TESTBED_PHP_PORT and TESTBED_PHP_HTTPS_PORT when they are set, so the
+// tests follow a stack started on other ports.
+func sitesFromEnv(m *Manifest) {
+	for site, p := range sitePorts {
+		if port := os.Getenv(p.env); port != "" && m.Sites[site] != "" {
+			m.Sites[site] = p.scheme + "://localhost:" + port
+		}
+	}
+}

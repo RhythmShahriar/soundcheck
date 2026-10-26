@@ -11,6 +11,7 @@
 </head>
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
+<a class="skip-link" href="#main">Skip to content</a>
 <header class="site-header">
 	<a class="brand" href="<?php echo esc_url( home_url( '/' ) ); ?>"><?php bloginfo( 'name' ); ?></a>
 	<nav class="primary-nav" aria-label="Primary">
@@ -33,4 +34,4 @@
 		<li><a href="<?php echo esc_url( home_url( '/s09-links/' ) ); ?>">Offers</a></li>
 	</ul>
 </div>
-<main class="site-main">
+<main id="main" class="site-main">

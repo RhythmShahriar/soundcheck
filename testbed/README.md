@@ -122,6 +122,17 @@ Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37) sho
 
 **Pending** scenarios expect a detector or fix that isn't built yet (none today). They run like the others; the scoreboard lists them apart. Each one's `note` in `scenarios.yaml` says what it waits for; drop `pending: true` once it's caught.
 
+### Accessibility step zero
+
+**Step zero.** "A clean site must pass" means nothing until the clean states are clean, so both sites were audited before any scenario was added. `TestGoodStateAudit` does it with the testbed's own audit (`bench/audit.go`): axe-core 4.14.0 with the WCAG 2.1 A and AA tags, a placeholder-only label check, reflow at 320 px and a Tab walk that wants a skip link to `#main` first, no trap, no hidden stop and a visible focus ring on each of the first 40 stops. It is small and separate from Soundcheck's modules on purpose; `TestGoodStateIsClean` adds the `--eaa` pass with the modules themselves once they're merged.
+
+| Site | Before | After |
+|---|---|---|
+| WordPress | 34 findings on the 17 pages a run discovers: the Browse button's contrast (white on `#c96b2c`) and no skip link, on every page | 0 on every discovered page and every scenario page: 54 pages |
+| Plain PHP | 18 findings on 17 pages: no skip link on every page, the invoice logo wider than a 320 px screen | 0 on every discovered page and every scenario page: 36 pages |
+
+The fixes: a skip link to `#main` before the header and `id="main"` on `<main>` on both sites, a visible `:focus-visible` ring, the Browse button on `#a24a17`, a `<nav>` landmark on the plain-PHP site and images no wider than the screen. No scenario's broken behaviour changed.
+
 ### Mail through Echo (s33)
 
 s33 checks that a form which says "sent" really sends its email, with Soundcheck's `--echo`. WordPress sends mail to `TESTBED_SMTP` (host:port) when it's set. Run Echo (`rhythm echo up`, SMTP on :1025) with its SMTP port reachable from Docker containers. Start the testbed with `TESTBED_SMTP=host.docker.internal:1025 make -C testbed up` and pass `-echo http://127.0.0.1:8025` to the benchmark. Without `-echo`, s33 shows "not run" and is left out of the score: the benchmark doesn't start Echo itself, since Echo is another tool and WordPress must be started pointing at its SMTP port.
@@ -210,7 +221,8 @@ go test -tags testbed -v ./testbed/bench/
 ```
 
 - `TestHealthScenarios`: snapshot, break and compare for the health scenarios (s01–s10, s16, s17, plus s15 through health's "not responsive" check). It prints the score.
-- `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice.
+- `TestGoodStateIsClean`: with every scenario good, both sites have nothing above a notice. Its `--eaa` pass (health, a11y and keyboard) must find no a11y or keyboard issue at any level and no audit that didn't finish.
+- `TestGoodStateAudit`: step zero, the testbed's own accessibility audit on every good page. `TestAuditPage` audits the one page `TESTBED_AUDIT_URL` names.
 - `TestClickScenarios`: drives s12 and s13 in Chrome to prove the dead button and the click error.
 - `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestExpectString`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
 - `TestWPUpdateTestbed`: through the stack's WP-CLI, checks that all ten plugin updates are offered after a reset, that testbed-update-07 1.1 breaks `/contact/` and nothing else and that the rollback fixes it. It needs Docker and the stack, not Chrome. Set `TESTBED_WP_PORT` (and `COMPOSE_PROJECT_NAME`) for a stack started with them.

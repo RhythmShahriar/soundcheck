@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,7 +25,9 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/checks/a11y"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
+	"github.com/RhythmShahriar/soundcheck/checks/keyboard"
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -49,8 +52,11 @@ func setup(t *testing.T) (string, *Manifest) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sitesFromEnv(m)
+	// The https site has a self-signed certificate made at start.
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec // the local testbed
 	for _, base := range m.Sites {
-		resp, err := http.Get(base) //nolint:gosec,noctx // the local testbed
+		resp, err := client.Get(base) //nolint:noctx // the local testbed
 		if err != nil {
 			t.Skipf("testbed isn't running (make -C testbed up): %v", err)
 		}
@@ -172,28 +178,50 @@ func runScenario(ctx context.Context, dir string, m *Manifest, s Scenario, cfg c
 
 // TestGoodStateIsClean checks that, with every scenario good, the health
 // module finds nothing above a notice on any scenario page, so a caught
-// scenario is caught because of its broken state alone.
+// scenario is caught because of its broken state alone. Its --eaa pass
+// runs health, a11y and keyboard with cfg.EAA set: the a11y and keyboard
+// modules must report nothing at any level and finish every audit.
+// Before the axe and keyboard lanes are merged that is the WCAG 2.0
+// rules and an empty walk; TestGoodStateAudit holds the bar meanwhile.
 func TestGoodStateIsClean(t *testing.T) {
 	_, m := setup(t)
-	cfg := config.Default()
-	cfg.Modules = []string{"health"}
-	cfg.Viewports = []string{"desktop"}
-	cfg.Pages.Limit = 60
-	for site, base := range m.Sites {
-		run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: base, Dir: t.TempDir(), Version: "testbed",
-			Modules: []check.Module{health.Module{}}, Browser: browser.Options{NoDownload: true}})
-		if err != nil {
-			t.Fatal(err)
+	for _, eaa := range []bool{false, true} {
+		cfg := config.Default()
+		cfg.Modules = []string{"health"}
+		cfg.Viewports = []string{"desktop"}
+		cfg.Pages.Limit = 60
+		modules := []check.Module{health.Module{}}
+		if eaa {
+			cfg.EAA = true
+			cfg.Modules = []string{"health", "a11y", "keyboard"}
+			modules = []check.Module{health.Module{}, a11y.Module{}, keyboard.New()}
 		}
-		if len(run.Pages) < 3 {
-			t.Errorf("%s: only %d pages discovered", site, len(run.Pages))
-		}
-		for _, i := range run.AllIssues() {
-			if i.Level != model.Notice {
-				t.Errorf("%s %v: %s %s", site, i.Pages, i.Level, i.Title)
+		for site, base := range m.Sites {
+			// The https site's certificate is self-signed (-k).
+			insecure := strings.HasPrefix(base, "https:")
+			run, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: base, Dir: t.TempDir(), Version: "testbed",
+				Insecure: insecure, Modules: modules, Browser: browser.Options{NoDownload: true, Insecure: insecure}})
+			if err != nil {
+				t.Fatal(err)
 			}
+			if len(run.Pages) < 3 {
+				t.Errorf("%s: only %d pages discovered", site, len(run.Pages))
+			}
+			for _, i := range run.AllIssues() {
+				eaaIssue := strings.HasPrefix(i.Check, "a11y/") || strings.HasPrefix(i.Check, "keyboard/")
+				if i.Level != model.Notice || eaa && eaaIssue {
+					t.Errorf("%s %v (eaa %v): %s %s %s %s", site, i.Pages, eaa, i.Level, i.Check, i.Title, i.Source)
+				}
+			}
+			for _, p := range run.Pages {
+				for name, au := range p.Audits {
+					if !au.Finished() {
+						t.Errorf("%s %s: the %s audit %s: %s", site, p.Path, name, au.Status, au.Reason)
+					}
+				}
+			}
+			t.Logf("%s (eaa %v): %d pages, clean", site, eaa, len(run.Pages))
 		}
-		t.Logf("%s: %d pages, clean", site, len(run.Pages))
 	}
 }
 

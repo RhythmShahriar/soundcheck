@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: MIT
 
 // Shared page frame for the plain-PHP site (no framework, no WordPress).
-// $head is extra markup for <head>.
+// $head is extra markup for <head>. The frame passes the testbed's own
+// accessibility audit (step zero in README.md): a skip link to #main as
+// the first stop, landmarks, a visible focus ring and nothing wider than
+// a 320 px phone. The a11y pages (a11y/) break one of these at a time.
 function page_start( string $title, string $head = '' ): void {
 	testbed_gate();
 	?><!doctype html>
@@ -20,12 +23,18 @@ header a, footer a { color: #fff; margin-right: 16px; }
 main { max-width: 860px; margin: 0 auto; padding: 32px; }
 table { border-collapse: collapse; width: 100%; }
 td, th { border-bottom: 1px solid #d5dbe5; padding: 8px; text-align: left; }
+img { max-width: 100%; height: auto; }
+:focus-visible { outline: 3px solid #2f6fdb; outline-offset: 2px; }
+header :focus-visible, footer :focus-visible { outline-color: #ffd23f; }
+.skip-link { position: absolute; left: 8px; top: -48px; background: #fff; color: #1d2433; padding: 8px 16px; z-index: 10; }
+.skip-link:focus { top: 8px; }
 </style>
 <?= $head ?>
 </head>
 <body>
-<header><strong>Ledger</strong> &nbsp; <a href="/">Home</a><a href="/about.php">About</a><a href="/report.php">Monthly report</a></header>
-<main>
+<a class="skip-link" href="#main">Skip to content</a>
+<header><strong>Ledger</strong> &nbsp; <nav aria-label="Main" style="display:inline"><a href="/">Home</a><a href="/about.php">About</a><a href="/report.php">Monthly report</a></nav></header>
+<main id="main">
 	<?php
 }
 

@@ -11,7 +11,7 @@ a { color: #8a3b12; }
 .site-header a { color: #fbf7f2; text-decoration: none; }
 .brand { font-size: 24px; font-weight: bold; letter-spacing: .5px; }
 .primary-nav ul { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; margin: 0; padding: 0; }
-.menu-toggle { margin-left: auto; background: #c96b2c; color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.menu-toggle { margin-left: auto; background: #a24a17; color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
 .browse-panel { background: #f1e6da; padding: 16px 32px; border-bottom: 1px solid #e0cfbd; }
 .browse-panel ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; flex-wrap: wrap; }
 .site-main { max-width: 960px; margin: 0 auto; padding: 32px; min-height: 60vh; }
@@ -31,6 +31,13 @@ form.tb-contact button, .tb-wishlist { margin-top: 16px; background: #8a3b12; co
 .site-footer { background: #2b211b; color: #e9dccd; padding: 24px 32px; }
 .site-footer a { color: #e9dccd; }
 img { max-width: 100%; height: auto; }
+
+/* Keyboard users: a visible ring on every control and a skip link that
+   shows when focused (step zero in testbed/README.md). */
+:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 2px; }
+.site-header :focus-visible, .site-footer :focus-visible { outline-color: #ffd23f; }
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 10; background: #fff; color: #2b211b; padding: 8px 16px; }
+.skip-link:focus { top: 8px; }
 
 /* s14 (broken): the "2.0" layout drops the hero and puts the logo on the right. */
 .tb-layout-v2 .hero { display: none; }
