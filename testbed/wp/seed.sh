@@ -53,6 +53,10 @@ wp post delete 1 2 3 --force >/dev/null 2>&1 || true # sample post, page and pri
 # SOUNDCHECK_USER=soundcheck SOUNDCHECK_PASSWORD=soundcheck-testbed
 wp user create soundcheck soundcheck@testbed.invalid --role=editor --user_pass=soundcheck-testbed \
 	--display_name="Sam Soundcheck" --first_name=Sam --last_name=Soundcheck
+# Logged-in pages must not reach outside hosts: no admin bar (and with it
+# no Gravatar image). mu-plugins/testbed-local.php turns off avatars and
+# the admin bar for everyone; WP-CLI already sees show_avatars as 0.
+wp user meta update soundcheck show_admin_bar_front false
 
 # page SLUG TITLE CONTENT [PARENT_ID] prints the new page's ID.
 page() {

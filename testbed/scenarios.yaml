@@ -976,7 +976,7 @@ scenarios:
     # Soundcheck visits pages anonymously; only flows run logged in. The
     # key flow puts the canaries in front of the keyboard walk's trace.
     flows: [flows/keyboard-account.yaml]
-    harness: canaries
+    harness: [canaries, requests]
     toggle: "the phone field loses its label; the form is filled with the benchmark's runtime canaries (wp/plugins/testbed-shop)"
     expect:
       - {class: new, check: a11y/label, source: "acc_phone"}
