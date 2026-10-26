@@ -43,6 +43,9 @@ type walker struct {
 
 	reader *focus.Reader
 	guard  *guard
+	// pkEvent names the event the page's refused passkey requests
+	// fire, new for each walk (passkeyEvent).
+	pkEvent string
 
 	mu         sync.Mutex
 	workerSeen map[proto.TargetTargetID]bool // service workers held

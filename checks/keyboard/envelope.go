@@ -5,8 +5,11 @@ package keyboard
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-rod/rod/lib/proto"
@@ -58,7 +61,9 @@ const wsPolicyJS = `(() => {
     (d.head || d.documentElement).appendChild(m);
     m.remove();
     d.addEventListener('securitypolicyviolation', e => {
-      if (g && /^wss?:/i.test(e.blockedURI || '')) {
+      // Only Chrome's own reports count: a page can dispatch the event
+      // itself, untrusted, to write a made-up refusal into the trace.
+      if (g && e.isTrusted && /^wss?:/i.test(e.blockedURI || '')) {
         let h = '';
         try { h = new URL(e.blockedURI).host; } catch (x) {}
         g.ws.push(h);
@@ -68,16 +73,22 @@ const wsPolicyJS = `(() => {
   return '';
 })()`
 
-// webAuthnJS replaces the page's navigator.credentials.get and create,
-// in the page's own world where its scripts call them, with versions
-// that refuse at once (NotAllowedError, what a visitor's cancel gives)
-// and tell the walk. A reference the page took before the walk still
+// webAuthnJS returns the script that replaces the page's
+// navigator.credentials.get and create, in the page's own world where
+// its scripts call them, with versions that refuse at once
+// (NotAllowedError, what a visitor's cancel gives) and tell the walk by
+// the event named name. A reference the page took before the walk still
 // reaches the virtual authenticator, which never verifies a user.
-const webAuthnJS = `(() => {
-  const c = navigator.credentials;
+//
+// The name is the walk's own (passkeyEvent): a page that doesn't know
+// it can't write a made-up refusal into the trace by firing the event
+// itself, and the replacements' source text shows only the variable.
+func webAuthnJS(name string) string {
+	return `(() => {
+  const c = navigator.credentials, name = ` + strconv.Quote(name) + `;
   if (!c || c.__scKb) return '';
   const refuse = what => function () {
-    window.dispatchEvent(new CustomEvent('soundcheck-keyboard-passkey', {detail: what}));
+    window.dispatchEvent(new CustomEvent(name, {detail: what}));
     return Promise.reject(new DOMException('The keyboard walk refuses passkey requests.', 'NotAllowedError'));
   };
   try {
@@ -87,17 +98,27 @@ const webAuthnJS = `(() => {
   } catch (e) {}
   return '';
 })()`
+}
 
-// webAuthnLogJS, run in the walk's world, counts the refusals webAuthnJS
-// announces.
-const webAuthnLogJS = `(() => {
+// webAuthnLogJS returns the script, run in the walk's world, that
+// counts the refusals webAuthnJS announces by the event named name.
+func webAuthnLogJS(name string) string {
+	return `(() => {
   const g = window.__scKbNav;
   if (g && !g.passkeys) {
     g.passkeys = true;
-    window.addEventListener('soundcheck-keyboard-passkey', e => g.pk.push(String(e.detail)));
+    window.addEventListener(` + strconv.Quote(name) + `, e => g.pk.push(String(e.detail)));
   }
   return '';
 })()`
+}
+
+// passkeyEvent is a new event name for one walk's passkey refusals.
+func passkeyEvent() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b) // it never returns an error since Go 1.24
+	return "soundcheck-keyboard-passkey-" + hex.EncodeToString(b)
+}
 
 // envelope arms the tab-wide parts of the envelope and returns what
 // undoes them. Each part that fails is noted as an event and the rest
@@ -349,8 +370,11 @@ func (w *walker) docArm(ctx context.Context) {
 		w.guard.event("WebSocket policy not set: " + err.Error())
 		w.guard.mu.Unlock()
 	}
-	_, _ = w.reader.Eval(ctx, webAuthnLogJS)
-	if _, err := (proto.RuntimeEvaluate{Expression: webAuthnJS}).Call(w.tab.Context(ctx)); err != nil {
+	if w.pkEvent == "" {
+		w.pkEvent = passkeyEvent()
+	}
+	_, _ = w.reader.Eval(ctx, webAuthnLogJS(w.pkEvent))
+	if _, err := (proto.RuntimeEvaluate{Expression: webAuthnJS(w.pkEvent)}).Call(w.tab.Context(ctx)); err != nil {
 		w.guard.mu.Lock()
 		w.guard.event("passkeys not refused in the page: " + err.Error())
 		w.guard.mu.Unlock()

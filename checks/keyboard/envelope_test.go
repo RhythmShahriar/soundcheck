@@ -221,3 +221,42 @@ func TestSameDocument(t *testing.T) {
 }
 
 func pageAt(raw string) *model.Page { return &model.Page{URL: raw} }
+
+// A page that fires the refusal events itself can't write a passkey or
+// WebSocket refusal into the trace: the passkey event's name is the
+// walk's own and a policy violation must come from Chrome.
+func TestEnvelopeIgnoresForgedRefusals(t *testing.T) {
+	page := `<!doctype html><html lang="en"><body><main>
+<a id="a" href="#a" onfocus="forge()">First</a> <a id="b" href="#b">Second</a>
+<script>
+function forge() {
+  window.dispatchEvent(new CustomEvent('soundcheck-keyboard-passkey', {detail: 'get'}));
+  const e = new SecurityPolicyViolationEvent('securitypolicyviolation', {blockedURI: 'wss://forged.invalid/x',
+    violatedDirective: 'connect-src', effectiveDirective: 'connect-src', originalPolicy: 'x', disposition: 'enforce', statusCode: 200});
+  document.dispatchEvent(e);
+}
+</script></main></body></html>`
+	srv := serve(t, &pages{html: map[string]string{"/": page}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	tr := walkPage(t, tab, p, DefaultSettings())
+	for _, e := range tr.Events {
+		if strings.HasPrefix(e, "passkey request refused") || strings.HasPrefix(e, "WebSocket refused") {
+			t.Errorf("a forged refusal was recorded: %q", tr.Events)
+		}
+	}
+	if !tr.Wrapped() {
+		t.Errorf("the walk didn't finish: %q", forwardSelectors(tr))
+	}
+}
+
+// Each walk gets its own passkey event name, and the scripts use it.
+func TestPasskeyEventName(t *testing.T) {
+	a, b := passkeyEvent(), passkeyEvent()
+	if a == b || !strings.HasPrefix(a, "soundcheck-keyboard-passkey-") || len(a) != len("soundcheck-keyboard-passkey-")+16 {
+		t.Errorf("names %q %q", a, b)
+	}
+	if !strings.Contains(webAuthnJS(a), `"`+a+`"`) || !strings.Contains(webAuthnLogJS(a), `"`+a+`"`) {
+		t.Error("the scripts don't use the name")
+	}
+}
