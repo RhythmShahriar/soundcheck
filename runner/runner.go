@@ -240,6 +240,11 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	}
 	opts.scope = &capture.Scope{Site: base, Target: addrs, Allow: cfg.Trust.AllowHosts, Warn: cc.Warn,
 		Proxied: browserProxied(opts.Browser.Proxy, base)}
+	// Tabs the modules and the login open themselves are kept in the
+	// same scope as the run's own (check.GuardTab).
+	scope := opts.scope
+	ctx = check.WithTabGuard(ctx, func(tab *rod.Page) (func(), error) { return scope.Guard(tab, nil) })
+	cc.Ctx = ctx
 	for _, note := range capture.HeaderNotes(opts.Headers) {
 		cc.Warn(note)
 	}
