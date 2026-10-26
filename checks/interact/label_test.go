@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -173,20 +174,39 @@ func TestFlowsSkipKeyFlows(t *testing.T) {
 	cfg := config.Default()
 	cfg.Flows = dir
 	cfg.Interactions.Levels = []string{"flows"}
-	cc := &check.Context{Config: cfg, Run: &model.Run{}}
-	cc.NewSession = func() (*rod.Browser, error) { return nil, errors.New("no browser here") }
-	New().CheckSite(context.Background(), cc)
-	if len(cc.Run.Warnings) != 1 || cc.Run.Warnings[0] != `flow "By mouse": no browser here` {
-		t.Errorf("warnings %q: want only the mouse flow tried", cc.Run.Warnings)
+	run := func(cfg config.Config) []string {
+		cc := &check.Context{Config: cfg, Run: &model.Run{}}
+		cc.NewSession = func() (*rod.Browser, error) { return nil, errors.New("no browser here") }
+		New().CheckSite(context.Background(), cc)
+		return cc.Run.Warnings
 	}
-	// A folder of key flows only isn't empty: it says nothing.
+	// Without the keyboard module the key flows would run nowhere, so
+	// the run says so.
+	off := `keyboard: 2 key flows need the keyboard module (--eaa or +keyboard); not run`
+	if w := run(cfg); !slices.Equal(w, []string{off, `flow "By mouse": no browser here`}) {
+		t.Errorf("keyboard off: warnings %q", w)
+	}
+	cfg.Modules = append(slices.Clone(cfg.Modules), "keyboard")
+	if w := run(cfg); !slices.Equal(w, []string{`flow "By mouse": no browser here`}) {
+		t.Errorf("warnings %q: want only the mouse flow tried", w)
+	}
+	// A folder of key flows only isn't empty: with the keyboard module
+	// on it says nothing here.
 	if err := os.Remove(filepath.Join(dir, "mouse.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	cc = &check.Context{Config: cfg, Run: &model.Run{}}
-	cc.NewSession = func() (*rod.Browser, error) { return nil, errors.New("no browser here") }
-	New().CheckSite(context.Background(), cc)
-	if len(cc.Run.Warnings) != 0 {
-		t.Errorf("warnings %q", cc.Run.Warnings)
+	if w := run(cfg); len(w) != 0 {
+		t.Errorf("warnings %q", w)
+	}
+	cfg.Modules = slices.DeleteFunc(slices.Clone(cfg.Modules), func(m string) bool { return m == "keyboard" })
+	if w := run(cfg); !slices.Equal(w, []string{off}) {
+		t.Errorf("keyboard off, key flows only: warnings %q", w)
+	}
+	if err := os.Remove(filepath.Join(dir, "send.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	one := `keyboard: 1 key flow needs the keyboard module (--eaa or +keyboard); not run`
+	if w := run(cfg); !slices.Equal(w, []string{one}) {
+		t.Errorf("keyboard off, one key flow: warnings %q", w)
 	}
 }
