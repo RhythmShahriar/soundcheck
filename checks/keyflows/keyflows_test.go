@@ -56,7 +56,7 @@ func fakeContext(t *testing.T, files map[string]string) *check.Context {
 	cfg := config.Default()
 	cfg.Flows = dir
 	cfg.Interactions.Levels = []string{"flows"}
-	base, _ := url.Parse("http://127.0.0.1:37050/")
+	base, _ := url.Parse("http://127.0.0.1:20370/")
 	return &check.Context{Config: cfg, Base: base, Run: &model.Run{Pages: []model.Page{{Path: "/checkout/"}}},
 		NewSession: func() (*rod.Browser, error) { return nil, errors.New("no browser in a unit test") }}
 }

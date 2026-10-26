@@ -65,8 +65,8 @@ func newOrderShop(t *testing.T, mouseOnly bool) *orderShop {
 		fmt.Fprint(w, `<html><body><h1>Thank you</h1></body></html>`)
 	})
 	srv := httptest.NewUnstartedServer(mux)
-	// The ports 37040-37059 are this suite's, so it takes no other's.
-	for port := 37040; port <= 37059 && s.Server == nil; port++ {
+	// The ports 20360-20379 are this suite's, so it takes no other's.
+	for port := 20360; port <= 20379 && s.Server == nil; port++ {
 		if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
 			srv.Listener = l
 			srv.Start()
@@ -74,7 +74,7 @@ func newOrderShop(t *testing.T, mouseOnly bool) *orderShop {
 		}
 	}
 	if s.Server == nil {
-		t.Fatal("ports 37040-37059 are all taken")
+		t.Fatal("ports 20360-20379 are all taken")
 	}
 	t.Cleanup(srv.Close)
 	return s

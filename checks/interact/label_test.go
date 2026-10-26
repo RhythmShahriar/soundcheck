@@ -34,12 +34,12 @@ import (
 // assembled at run time so the test reads like any other value.
 var prefilled = "jane.doe" + "@" + "example.org"
 
-// listenLabels serves h on a free port of 37040-37059, the ports this
+// listenLabels serves h on a free port of 20360-20379, the ports this
 // lane's tests use.
 func listenLabels(t *testing.T, h http.Handler) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(h)
-	for port := 37040; port <= 37059; port++ {
+	for port := 20360; port <= 20379; port++ {
 		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
@@ -49,7 +49,7 @@ func listenLabels(t *testing.T, h http.Handler) *httptest.Server {
 		t.Cleanup(srv.Close)
 		return srv
 	}
-	t.Fatal("ports 37040-37059 are all taken")
+	t.Fatal("ports 20360-20379 are all taken")
 	return nil
 }
 
