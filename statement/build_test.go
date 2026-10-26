@@ -205,9 +205,17 @@ func TestBuildHidesTheRun(t *testing.T) {
 	in.Hide = []string{"jane.doe", "staging.shop.test"}
 	in.Insecure = true
 	in.Ignored = []model.Change{{Check: "a11y/image-alt", WCAG: []string{"1.1.1"}, Pages: []string{"/users/jane.doe/"}, Reason: "seen on staging.shop.test"}}
+	skipped := model.SkippedFlow{File: "flows/staging.shop.test-checkout.yaml", Reason: "needs the login of jane.doe on 127.0.0.1:37060"}
+	in.Summary.Keyboard.FlowsSkipped = []model.SkippedFlow{skipped}
 	d, err := Build(in)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if in.Summary.Keyboard.FlowsSkipped[0] != skipped {
+		t.Errorf("Build changed the run's summary: %+v", in.Summary.Keyboard.FlowsSkipped)
+	}
+	if len(d.Keyboard.FlowsSkipped) != 1 || !strings.Contains(d.Keyboard.FlowsSkipped[0].File, "checkout.yaml") {
+		t.Errorf("skipped flows = %+v", d.Keyboard.FlowsSkipped)
 	}
 	b, err := json.Marshal(d)
 	if err != nil {

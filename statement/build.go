@@ -68,6 +68,12 @@ func Build(in Input) (*Draft, error) {
 	// its paths can name customers and orders.
 	private := in.Run.Options.LoggedIn && !o.ListPrivatePaths
 	clean := func(p string) string { return cleanPath(p, hide) }
+	// A skipped flow's file and reason can name the staging host or the
+	// login account. A copy keeps the run's summary as it was.
+	d.Keyboard.FlowsSkipped = slices.Clone(d.Keyboard.FlowsSkipped)
+	for i, f := range d.Keyboard.FlowsSkipped {
+		d.Keyboard.FlowsSkipped[i] = model.SkippedFlow{File: cleanText(f.File, hide), Reason: cleanText(f.Reason, hide)}
+	}
 
 	// One pass over the pages: the paths checked, up to 3 per failed
 	// criterion and the hosts of frames the audits didn't enter.
