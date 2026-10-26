@@ -29,6 +29,9 @@ func decode(data []byte, c *Config) (map[string]int, error) {
 	if len(doc.Content) == 0 { // empty, or only comments
 		return nil, nil
 	}
+	if err := checkShape(&doc); err != nil {
+		return nil, err
+	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
 		return nil, &SettingError{Line: root.Line, Msg: "the file must be a list of settings like \"pages:\" and \"rate: 5\""}
@@ -46,6 +49,41 @@ func decode(data []byte, c *Config) (map[string]int, error) {
 		c.blocks[root.Content[i].Value] = root.Content[i+1]
 	}
 	return keys, nil
+}
+
+// The most aliases and the deepest nesting a config file may use. A real
+// one has no aliases and nests three or four levels; the limits stop a
+// "billion laughs" file, whose few lines of aliases expand into
+// gigabytes when decoded.
+const (
+	MaxAliases = 100
+	MaxDepth   = 20
+)
+
+// checkShape counts the aliases and the nesting of a parsed document
+// before anything decodes it. The parsed tree holds each alias once, as
+// a pointer, so counting is cheap; only decoding expands them.
+func checkShape(doc *yaml.Node) error {
+	aliases := 0
+	var walk func(n *yaml.Node, depth int) error
+	walk = func(n *yaml.Node, depth int) error {
+		if depth > MaxDepth {
+			return &SettingError{Line: n.Line, Msg: fmt.Sprintf("config.yaml nests settings more than %d levels deep", MaxDepth)}
+		}
+		if n.Kind == yaml.AliasNode {
+			if aliases++; aliases > MaxAliases {
+				return &SettingError{Line: n.Line, Msg: "config.yaml uses too many YAML aliases"}
+			}
+			return nil // its target is walked where it is defined
+		}
+		for _, c := range n.Content {
+			if err := walk(c, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(doc, 0)
 }
 
 // checkKeys walks a mapping alongside the struct it decodes into and

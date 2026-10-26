@@ -253,6 +253,11 @@ func TestAcceptIgnore(t *testing.T) {
 	if ok, err := path.Match(r.Source, `footer a[href*="x"]`); !ok || err != nil {
 		t.Errorf("source %q doesn't match the selector: %v", r.Source, err)
 	}
+	// The config is meant to be committed, so the rule writer leaves it
+	// readable (0644) even when it was private before.
+	if m := filePerm(t, ".soundcheck/config.yaml", 0o644); m != 0o644 {
+		t.Errorf("config mode %o", m)
+	}
 	if data, _ := os.ReadFile(".soundcheck/config.yaml"); !strings.Contains(string(data), "# mine") {
 		t.Errorf("comments lost:\n%s", data)
 	}

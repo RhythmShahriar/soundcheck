@@ -33,7 +33,7 @@ func TestFriendlyErrors(t *testing.T) {
 		"production: ['http://']\n":                  `config.yaml line 1: production: "http://" isn't a site`,
 		"modules: [health, echo]\n":                  `config.yaml line 1: modules: echo needs Echo's address`,
 		"modules: [+exec]\n":                         `config.yaml line 1: modules: exec runs the commands listed under exec: in the config; there are none`,
-		"ignore:\n  - reason: x\n":                   `ignore: rule 1 has nothing to match: give it a check, a title or pages`,
+		"ignore:\n  - reason: x\n":                   `ignore: rule 1 has nothing to match: give it a check, a title, pages or a source`,
 		"ignore:\n  - check: a/b\n    until: soon\n": `ignore: rule 1: until "soon" isn't a date like 2026-12-31`,
 		"ignore:\n  - check: a/b\n    page: [/x]\n":  `config.yaml line 3: unknown setting "ignore.page" (did you mean "ignore.pages"?)`,
 		"ignore: x\n":                                `ignore: "x" isn't a list like [a, b]`,
