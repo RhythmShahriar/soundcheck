@@ -9,12 +9,16 @@
 #   action-run.sh run       runs Soundcheck and writes the reports
 #
 # Both read the Action's inputs from the environment: URL, AGAINST, MODE,
-# NAME, BASELINE, FAIL_ON, ARGS, HEADERS, CONFIG and ECHO. They run in the
-# working-directory input, so .soundcheck/ (config and snapshots) is
-# looked up there.
+# NAME, BASELINE, FAIL_ON, ARGS, HEADERS, CONFIG, ECHO, EAA, STATEMENT and
+# WCAG. They run in the working-directory input, so .soundcheck/ (config
+# and snapshots) is looked up there.
 #
 # run writes the job summary, JUnit and the standalone HTML report into
-# $RUNNER_TEMP/soundcheck-report. The summary's Markdown also goes to
+# $RUNNER_TEMP/soundcheck-report. With STATEMENT=true it also writes the
+# statement draft accessibility-statement-draft.md into the working
+# directory and copies it into that folder. The a11y-open and
+# criteria-failed outputs come from the eaa block of the JSON report.
+# The summary's Markdown also goes to
 # $RUNNER_TEMP/soundcheck-summary.md for the pull request comment. When
 # Soundcheck can't check at all (exit 2 or 3) the summary still says why,
 # with its last lines of output, so a staging site that is down doesn't
@@ -76,6 +80,34 @@ resolve() {
   fi
   fail=()
   [ "$level" = none ] || fail=(--fail-on "$level")
+  local input value
+  for input in eaa:EAA statement:STATEMENT; do
+    value=${input#*:}
+    value=${!value:-}
+    case "$value" in
+    "" | true | false) ;;
+    *) couldnt 2 "the ${input%%:*} input is \"$value\": use true or false" ;;
+    esac
+  done
+}
+
+# eaa_counts FILE prints the open and criteria-failed counts from the eaa
+# block of a JSON report, one per line, or nothing for a run without
+# --eaa. The runner may have no jq; the report is indented two spaces
+# per level by Soundcheck's encoder: every string from the site is
+# escaped onto one line, so only a real key can start a line at a given
+# indent. "open" sits right in the eaa block; each failed criterion is
+# one object in criteria.failed.
+eaa_counts() {
+  awk '
+    /^  "eaa": \{/ { eaa = 1; next }
+    eaa && /^  \}/ { eaa = 0 }
+    eaa && /^    "open": [0-9]+/ { v = $0; gsub(/[^0-9]/, "", v); open = v }
+    eaa && /^      "failed": \[/ { failed = 0; inside = !/\]/; next }
+    inside && /^      \]/ { inside = 0 }
+    inside && /^        \{/ { failed++ }
+    END { if (open != "") { print open; print failed + 0 } }
+  ' "$1"
 }
 
 # artifact_name prints the report artifact's name. The first use of the
@@ -133,6 +165,8 @@ run() {
   true) extra+=(--echo) ;;
   *) extra+=("--echo=$ECHO") ;;
   esac
+  [ "${EAA:-}" != true ] || extra+=(--eaa)
+  [ -z "${WCAG:-}" ] || extra+=(--wcag "$WCAG")
 
   local cmd
   case "$mode" in
@@ -162,11 +196,45 @@ run() {
   cat "$markdown" >> "$summary" 2>/dev/null || true
   rhythm-soundcheck report "${which[@]}" "${fail[@]}" --junit -o "$out/soundcheck-junit.xml" -q || true
   rhythm-soundcheck report "${which[@]}" --html -o "$out/soundcheck-report.html" -q || true
+
+  # The counts for the a11y-open and criteria-failed outputs. The JSON
+  # holds issue details, so it stays out of the artifact.
+  local json="$RUNNER_TEMP/soundcheck-report.json" open="" criteria=""
+  rm -f "$json"
+  rhythm-soundcheck report "${which[@]}" --json -o "$json" -q || true
+  # Line by line rather than mapfile: macOS runners may have bash 3.2.
+  [ ! -f "$json" ] || { read -r open && read -r criteria; } < <(eaa_counts "$json")
+
+  local draft=""
+  [ "${STATEMENT:-}" != true ] || draft=$(statement)
   {
     echo "exit-code=$code"
     echo "report=$out/soundcheck-report.html"
     echo "markdown=$markdown"
+    echo "statement=$draft"
+    echo "a11y-open=$open"
+    echo "criteria-failed=$criteria"
   } >> "$GITHUB_OUTPUT"
+}
+
+# statement writes the statement draft of the run that just finished into
+# the working directory and the report folder and prints its path. The
+# workspace is a fresh checkout, so --force replaces a draft left there.
+# A draft that can't be written (no statement: block in the config, no
+# --eaa results) is a warning, not a failed job: the checks still ran.
+statement() {
+  local draft="$PWD/accessibility-statement-draft.md" args=(statement) last
+  [ "$mode" != snapshot ] || args+=("$name")
+  args+=(-o "$draft" --force -q)
+  [ -z "${CONFIG:-}" ] || args+=(--config "$CONFIG")
+  if rhythm-soundcheck "${args[@]}" 2> "$errlog" >&2; then
+    cp "$draft" "$out/" 2>/dev/null || true
+    printf '%s\n' "$draft"
+    return
+  fi
+  cat "$errlog" >&2
+  last=$(sed '/^[[:space:]]*$/d' "$errlog" | tail -n 1)
+  echo "::warning::Soundcheck couldn't write the statement draft: ${last//%/%25}" >&2
 }
 
 case "${1:-}" in
