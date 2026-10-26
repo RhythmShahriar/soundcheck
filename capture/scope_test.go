@@ -133,8 +133,8 @@ func TestScopeResponse(t *testing.T) {
 			t.Error("a private answer to a public site isn't caught")
 		}
 	}
-	if s.Response(u, "198.51.100.4") || s.Response(u, "") || s.Response(mustURL(t, "https://shop.example.com/"), "10.0.0.7") {
-		t.Error("a public answer, an unknown one or the site's own is caught")
+	if s.Response(u, "198.51.100.4") || s.Response(u, "") || s.Response(mustURL(t, "https://shop.example.com/"), "203.0.113.11") {
+		t.Error("a public answer, an unknown one or the site's own public one is caught")
 	}
 	want := []string{"blocked a response from rebind.example.org at 10.0.0.7: private address while the target is public"}
 	if !slices.Equal(warnings, want) {
@@ -143,6 +143,54 @@ func TestScopeResponse(t *testing.T) {
 	local := scopeFor(t, "http://intranet.lan/", "10.0.0.5")
 	if local.Response(u, "10.0.0.7") || !local.Response(u, "169.254.169.254") {
 		t.Error("a local site's scope")
+	}
+}
+
+// The site's own name rebound after the start of the run (DNS
+// rebinding, security.md S1) is caught: its page's scripts could read
+// the answer same-origin. A site given by its address, an --allow-host
+// host and a site whose name resolved to that kind of address from the
+// start aren't. Behind a proxy every answer comes from the proxy's
+// address, so none is judged.
+func TestScopeResponseRebindsTheSite(t *testing.T) {
+	var warnings []string
+	s := scopeFor(t, "https://shop.example.com/", "203.0.113.10")
+	s.Warn = func(w string) { warnings = append(warnings, w) }
+	meta := mustURL(t, "https://shop.example.com/latest/meta-data/")
+	for _, remote := range []string{"169.254.169.254", "10.0.0.7", "127.0.0.1", "[::1]"} {
+		if !s.Response(meta, remote) {
+			t.Errorf("the site's name answering from %s isn't caught", remote)
+		}
+	}
+	if s.Response(mustURL(t, "https://pay.example.net/"), "10.0.0.7") {
+		t.Error("an --allow-host host is caught")
+	}
+	want := []string{
+		"blocked a response from shop.example.com at 169.254.169.254: link-local address while the target is public",
+		"blocked a response from shop.example.com at 10.0.0.7: private address while the target is public",
+		"blocked a response from shop.example.com at 127.0.0.1: loopback address while the target is public",
+		"blocked a response from shop.example.com at ::1: loopback address while the target is public",
+	}
+	if !slices.Equal(warnings, want) {
+		t.Errorf("warnings = %q", warnings)
+	}
+
+	local := scopeFor(t, "http://intranet.lan/", "10.0.0.5")
+	site := mustURL(t, "http://intranet.lan/")
+	if local.Response(site, "10.0.0.9") || !local.Response(site, "169.254.169.254") || !local.Response(site, "127.0.0.1") {
+		t.Error("a private site's own name: another private address is fine, link-local and loopback aren't")
+	}
+	byAddr := scopeFor(t, "http://127.0.0.1:37016/", "203.0.113.10") // a test rig's pretend-public site
+	if byAddr.Response(mustURL(t, "http://127.0.0.1:37016/x"), "127.0.0.1") {
+		t.Error("a site given by its address is caught")
+	}
+	s.Proxied = true
+	if s.Response(meta, "10.0.0.7") || s.Response(mustURL(t, "https://rebind.example.org/"), "127.0.0.1") {
+		t.Error("an answer through a proxy is judged")
+	}
+	var nilScope *Scope
+	if nilScope.Response(meta, "10.0.0.7") {
+		t.Error("a nil scope judges")
 	}
 }
 

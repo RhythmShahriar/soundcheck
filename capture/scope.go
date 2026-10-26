@@ -37,7 +37,9 @@ const ScopeError = "blocked by Soundcheck's network scope"
 // neighbors. The site itself and the hosts given with --allow-host are
 // always allowed. Requests are judged by the address in their URL; a
 // name that resolves to a private address is caught when its answer
-// comes in (see Scope.Response).
+// comes in (see Scope.Response). That includes the site's own name: one
+// rebound after the run started to an address of a class it didn't
+// have is caught too.
 type Scope struct {
 	// Site is the site being checked. Its own host is always allowed.
 	Site *url.URL
@@ -50,6 +52,10 @@ type Scope struct {
 	// Warn receives one warning per host and address whose answer came
 	// from a private address while the target is public.
 	Warn func(string)
+	// Proxied says the browser connects through a proxy. Chrome then
+	// reports the proxy's address for every answer, which says nothing
+	// about where a name points, so Response judges none.
+	Proxied bool
 
 	warned sync.Map
 }
@@ -111,22 +117,51 @@ func (s *Scope) Blocks(u *url.URL) bool {
 // address Chrome connected to, "" when it didn't say) is out of scope: a
 // name that resolved to an address its URL didn't show. The first time
 // a host and address are seen it adds a run warning.
+//
+// The site's own name is judged too, more strictly: its answer has to
+// come from an address of a class the name resolved to at the start of
+// the run (httpx.AllowAddr). A public shop.example.com that answers from
+// 169.254.169.254 or 10.0.0.7 later on was rebound: the page's own
+// scripts could read that answer same-origin. A site given by its
+// address can't be rebound. The --allow-host hosts stay exempt: the user
+// vouched for them.
 func (s *Scope) Response(u *url.URL, remote string) bool {
-	if s == nil || u == nil || remote == "" || s.exempt(u) {
+	if s == nil || u == nil || remote == "" || s.Proxied {
 		return false
 	}
 	ip, err := netip.ParseAddr(strings.Trim(remote, "[]"))
 	if err != nil {
 		return false
 	}
-	if s.allows(httpx.AddrClass(ip)) {
+	switch {
+	case check.SameSite(s.Site, u):
+		if literal(u) || httpx.AllowAddr(s.Target, ip) {
+			return false
+		}
+	case slices.Contains(s.Allow, config.HostKey(u)) || s.allows(httpx.AddrClass(ip)):
 		return false
 	}
 	host := u.Hostname()
 	if _, seen := s.warned.LoadOrStore(host+" "+ip.String(), true); !seen && s.Warn != nil {
-		s.Warn(fmt.Sprintf("blocked a response from %s at %s: private address while the target is public", host, ip))
+		s.Warn(fmt.Sprintf("blocked a response from %s at %s: %s address while the target is %s", host, ip, httpx.AddrClass(ip), s.targetClass()))
 	}
 	return true
+}
+
+// literal reports whether u's host is an IP address, which no DNS answer
+// can change.
+func literal(u *url.URL) bool {
+	_, err := netip.ParseAddr(strings.Trim(u.Hostname(), "[]"))
+	return err == nil
+}
+
+// targetClass names the target's network for a warning: "public", or
+// the class of its addresses ("private" for a site on 10.0.0.5).
+func (s *Scope) targetClass() string {
+	if Public(s.Target) {
+		return "public"
+	}
+	return httpx.AddrClass(s.Target[0])
 }
 
 // scopePatterns are the URLs the scope has Chrome pause, a cheap first
