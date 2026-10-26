@@ -150,3 +150,25 @@ func TestEARLPrivate(t *testing.T) {
 		t.Error("private pages listed or not counted")
 	}
 }
+
+// The runner stores paths escaped (RequestURI): the page id keeps
+// them as they are and escapes a decoded path once.
+func TestPageURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"/%C3%BCber-uns/a%20b/": "https://shop.example/%C3%BCber-uns/a%20b/",
+		"/%E5%95%86%E5%93%81/":  "https://shop.example/%E5%95%86%E5%93%81/",
+		"/商品/a b/":              "https://shop.example/%E5%95%86%E5%93%81/a%20b/",
+		"shop/":                 "https://shop.example/shop/",
+		"/":                     "https://shop.example/",
+		"/100%/":                "https://shop.example/100%25/",
+		"/a%2Fb/":               "https://shop.example/a%2Fb/",
+	} {
+		if got := pageURL("https://shop.example/", in); got != want {
+			t.Errorf("pageURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// A website with a path of its own keeps it.
+	if got, want := pageURL("https://example.test/shop/", "/%C3%BCber/"), "https://example.test/shop/%C3%BCber/"; got != want {
+		t.Errorf("pageURL under a path = %q, want %q", got, want)
+	}
+}

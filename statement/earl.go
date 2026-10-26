@@ -242,13 +242,22 @@ func earlMethod(d *Draft) string {
 }
 
 // pageURL is the page's address on the public website. The path is
-// already cleaned and its host masked; it is escaped again so the id
-// stays one IRI.
+// already cleaned and its host masked. The runner stores it escaped
+// (RequestURI), so it is parsed as a reference rather than added to
+// u.Path, which would escape every '%' a second time. A path that isn't
+// valid escaped text is escaped as it is, so the id stays one IRI.
 func pageURL(website, path string) string {
 	u, err := url.Parse(strings.TrimSuffix(website, "/"))
 	if err != nil {
 		return website
 	}
-	u.Path += "/" + strings.TrimPrefix(plain(path), "/")
+	path = "/" + strings.TrimPrefix(plain(path), "/")
+	ref, err := url.Parse(path)
+	if err != nil || ref.Scheme != "" || ref.Host != "" || ref.RawQuery != "" || ref.Fragment != "" {
+		ref = &url.URL{Path: path}
+	}
+	base := strings.TrimSuffix(u.EscapedPath(), "/")
+	u.Path = strings.TrimSuffix(u.Path, "/") + ref.Path
+	u.RawPath = base + ref.EscapedPath()
 	return u.String()
 }
