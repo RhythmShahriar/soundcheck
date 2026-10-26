@@ -1,0 +1,41 @@
+
+  ERRORS  1 ──────────────────────────────────────────────────────────────────
+
+ ▌  ERROR      Keyboard focus is trapped: Card number              /checkout/
+ ▌             #card-element > div:nth-of-type(1)                            
+ ▌             wcag: 2.1.2 · EN 301 549 9.2.1.2                              
+ ▌             path: #billing_email → #billing_phone → #card-element >       
+ ▌             div:nth-of-type(1) ×4                                         
+ ▌             → Let Tab move on from the field.                             
+
+  WARNINGS  2 ────────────────────────────────────────────────────────────────
+
+ ▌  WARNING    Focus is lost after closing: Newsletter               38 pages
+ ▌             /, /shop/, /about/ +35 more (38 pages)                        
+ ▌             #newsletter-close                                             
+ ▌             wcag: 2.4.3 · EN 301 549 9.2.4.3                              
+ ▌             path: #newsletter-open → #newsletter-close                    
+ ▌             → When the dialog closes, move focus back to the button that …
+
+ ▌  WARNING    Form elements must have labels                      /checkout/
+ ▌             #billing_phone                                                
+ ▌             wcag: 1.3.1, 4.1.2 · EN 301 549 9.1.3.1, 9.4.1.2              
+ ▌             → See https://dequeuniversity.com/rules/axe/4.14/label for wh…
+
+  NOTICES  1 ─────────────────────────────────────────────────────────────────
+
+    ·  No skip link before a long run of stops                       38 pages
+
+  Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 21 had
+  none found by these tests · 24 need a person
+ ╭─────────────────────────────────────────╮
+ │  SNAPSHOT EAA-1   saved                 │
+ │  ✗ 1 error   ▲ 2 warnings   · 1 notice  │
+ ╰─────────────────────────────────────────╯
+  39 pages · 2m41s
+  Automated and keyboard tests find some accessibility problems, not all. This
+  is evidence for your own review, not a statement that the site meets WCAG,
+  EN 301 549 or the European Accessibility Act.
+
+  → full report: .soundcheck/snapshots/eaa-1/report.html
+

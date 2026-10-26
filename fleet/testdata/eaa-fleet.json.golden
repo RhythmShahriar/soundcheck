@@ -1,0 +1,37 @@
+{
+  "mode": "compare",
+  "created": "2026-10-26T09:30:00Z",
+  "sites": [
+    {
+      "site": "shop",
+      "url": "https://shop.test/",
+      "kind": "comparison",
+      "verdict": "broke",
+      "counts": {
+        "broke": 1,
+        "new": 2
+      },
+      "pages": 40,
+      "exit": 0,
+      "dir": "shop",
+      "report": "shop/.soundcheck/runs/r1/report.html",
+      "duration_ms": 161000,
+      "a11y_open": 12,
+      "criteria_failed": 4,
+      "a11y_trend": "up",
+      "a11y_before": 9,
+      "statement": "shop/.soundcheck/runs/r1/eaa/statement-draft.md"
+    },
+    {
+      "site": "blog",
+      "url": "https://blog.test/",
+      "kind": "comparison",
+      "verdict": "clean",
+      "counts": {},
+      "pages": 12,
+      "exit": 0,
+      "dir": "blog",
+      "duration_ms": 30000
+    }
+  ]
+}

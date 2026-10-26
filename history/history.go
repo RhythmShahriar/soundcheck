@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
@@ -79,6 +80,14 @@ type Entry struct {
 	TBT     float64        `json:"tbt_ms"`
 	TTFB    float64        `json:"ttfb_ms"`
 	PageSet []PageMetrics  `json:"page_metrics,omitempty"` // the first MaxPages pages that loaded
+	// A11yOpen and KeyboardOpen count the distinct a11y/* and
+	// keyboard/* problems of a run with the a11y or keyboard module on;
+	// A11yByCriterion counts both by the WCAG criterion they fail. A
+	// run without the modules leaves them out, so "not measured" reads
+	// apart from 0: the counts are pointers for that reason.
+	A11yOpen        *int           `json:"a11y_open,omitempty"`
+	A11yByCriterion map[string]int `json:"a11y_by_criterion,omitempty"`
+	KeyboardOpen    *int           `json:"keyboard_open,omitempty"`
 }
 
 // PageMetrics are one page's timings in an entry.
@@ -121,6 +130,7 @@ func New(run *model.Run, c *model.Comparison) Entry {
 		}
 	}
 	e.LCP, e.TBT, e.TTFB = median(lcp), median(tbt), median(ttfb)
+	accessibility(&e, run)
 	e.Verdict = Clean
 	switch {
 	case e.Issues[string(model.Error)] > 0:
@@ -143,6 +153,53 @@ func New(run *model.Run, c *model.Comparison) Entry {
 		}
 	}
 	return e
+}
+
+// accessibility fills an entry's a11y and keyboard counts when the run
+// had those modules on (--eaa turns both on): each distinct problem
+// once, however many pages it is on, as the reports count them.
+func accessibility(e *Entry, run *model.Run) {
+	o := run.Options
+	a11y := o.EAA || slices.Contains(o.Modules, "a11y")
+	keyboard := o.EAA || slices.Contains(o.Modules, "keyboard")
+	if !a11y && !keyboard {
+		return
+	}
+	seen := map[string]bool{}
+	var open, keys int
+	byCriterion := map[string]int{}
+	for _, i := range run.AllIssues() {
+		isA11y, isKey := strings.HasPrefix(i.Check, "a11y/"), strings.HasPrefix(i.Check, "keyboard/")
+		if !isA11y && !isKey {
+			continue
+		}
+		k := i.Key
+		if k == "" {
+			i.Identify()
+			k = i.Key
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if isA11y {
+			open++
+		} else {
+			keys++
+		}
+		for _, id := range i.WCAG {
+			byCriterion[id]++
+		}
+	}
+	if a11y {
+		e.A11yOpen = &open
+	}
+	if keyboard {
+		e.KeyboardOpen = &keys
+	}
+	if len(byCriterion) > 0 {
+		e.A11yByCriterion = byCriterion
+	}
 }
 
 // groupIssues returns the level of each distinct issue in a run, the

@@ -431,3 +431,89 @@ func TestEAAJSONMatchesSchemas(t *testing.T) {
 		t.Errorf("stored page lost its EAA records: %+v", bp)
 	}
 }
+
+// A snapshot and a comparison carry the eaa block too, the comparison's
+// taken from its run when only the run has it. The evidence note is
+// always in it and its lists are never null.
+func TestEAAJSONSnapshotAndCompare(t *testing.T) {
+	cmpSchema, runSchema := loadSchema(t, "comparison.v1.json"), loadSchema(t, "run.v1.json")
+	snap := eaaRun()
+	snap.Name = "eaa-1"
+	snap.EAA.EvidenceNote = ""
+	snap.EAA.Criteria = model.EAACriteria{}
+	doc := jsonOf(t, Result{Run: snap})
+	if p := validate(runSchema, doc); len(p) != 0 {
+		t.Errorf("EAA snapshot doesn't match its schema:\n%s", strings.Join(p, "\n"))
+	}
+	eaa, _ := doc["eaa"].(map[string]any)
+	if eaa == nil || eaa["evidence_note"] != model.EvidenceNote {
+		t.Fatalf("snapshot eaa block lacks the evidence note: %v", doc["eaa"])
+	}
+	for _, list := range []string{"failed", "no_failures_found", "not_tested"} {
+		if _, ok := eaa["criteria"].(map[string]any)[list].([]any); !ok {
+			t.Errorf("criteria.%s isn't a list: %v", list, eaa["criteria"])
+		}
+	}
+	if snap.EAA.EvidenceNote != "" {
+		t.Error("JSON changed the result it wrote")
+	}
+
+	run := eaaRun()
+	c := sampleComparison("")
+	doc = jsonOf(t, Result{Run: run, Comparison: c})
+	if p := validate(cmpSchema, doc); len(p) != 0 {
+		t.Errorf("EAA comparison doesn't match its schema:\n%s", strings.Join(p, "\n"))
+	}
+	if eaa, _ := doc["eaa"].(map[string]any); eaa == nil || eaa["wcag"] != "2.1" {
+		t.Errorf("comparison has no eaa block from its run: %v", doc["eaa"])
+	}
+	if c.EAA != nil {
+		t.Error("JSON changed the comparison it wrote")
+	}
+	var ch map[string]any
+	for _, v := range jsonOf(t, eaaComparison())["changes"].([]any) {
+		if m := v.(map[string]any); m["check"] == "keyboard/trap" {
+			ch = m
+		}
+	}
+	if ch == nil || fmt.Sprint(ch["wcag"]) != "[2.1.2]" || fmt.Sprint(ch["en301549"]) != "[9.2.1.2]" || ch["impact"] != "critical" || len(ch["focus_path"].([]any)) != 8 {
+		t.Errorf("trap change lost its EAA fields: %v", ch)
+	}
+
+	// Without --eaa there is no eaa block.
+	if _, ok := jsonOf(t, Result{Run: sampleRun()})["eaa"]; ok {
+		t.Error("a run without --eaa has an eaa block")
+	}
+}
+
+// A run stored by 1.2, before EAA mode, loads and renders in every
+// format: none of the new fields is required.
+func TestRun12StillRenders(t *testing.T) {
+	run, err := store.LoadRun(filepath.Join("testdata", "run-1.2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Version != "1.2.2" || len(run.Pages) != 2 || run.Options.WCAG != "" || run.EAA != nil {
+		t.Fatalf("1.2 run read back wrong: %+v", run)
+	}
+	r := Result{Run: run}
+	if p := validate(loadSchema(t, "run.v1.json"), jsonOf(t, r)); len(p) != 0 {
+		t.Errorf("1.2 run output doesn't match the schema:\n%s", strings.Join(p, "\n"))
+	}
+	var b bytes.Buffer
+	NewPretty(&b, &b, PrettyOptions{Plain: true}).Summary(r, "")
+	NewPretty(&b, &b, PrettyOptions{}).Summary(r, "")
+	for _, fn := range []func() error{
+		func() error { return Markdown(&b, r) },
+		func() error { return JUnit(&b, r, "") },
+		func() error { return HTML(&b, r) },
+	} {
+		if err := fn(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := b.String()
+	if !strings.Contains(out, "Form elements must have labels") || strings.Contains(out, "wcag:") || strings.Contains(out, "Automated and keyboard") {
+		t.Errorf("1.2 run rendered with EAA lines or without its a11y issue:\n%s", out)
+	}
+}

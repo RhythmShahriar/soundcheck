@@ -43,6 +43,10 @@ type Site struct {
 	EnvPrefix string `yaml:"env_prefix"`
 	// Args are extra Soundcheck flags for this site, e.g. ["--limit", "50"].
 	Args []string `yaml:"args"`
+	// EAA runs the site's check in EAA mode (--eaa): its fleet row then
+	// shows its open accessibility issues and the criteria with failures
+	// while its folder gets a statement draft.
+	EAA bool `yaml:"eaa"`
 }
 
 // Modes Run accepts.
@@ -176,6 +180,18 @@ func validate(sites []Site, dir string) error {
 		}
 	}
 	return nil
+}
+
+// hasFlag reports whether args set the flag name: "--eaa", "-eaa" or
+// "--eaa=true".
+func hasFlag(args []string, name string) bool {
+	for _, a := range args {
+		n, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if strings.HasPrefix(a, "-") && n == name {
+			return true
+		}
+	}
+	return false
 }
 
 // reservedArg returns the first of args that sets a flag the fleet sets

@@ -21,6 +21,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
+	"github.com/RhythmShahriar/soundcheck/wcag"
 )
 
 //go:embed client.html.tmpl
@@ -48,6 +49,23 @@ type pageData struct {
 	More                    int
 	Fixed                   []string
 	MoreFixed               int
+	// Access is the accessibility section of an --eaa result, nil
+	// otherwise.
+	Access *access
+}
+
+// access is the client report's accessibility section: counts in plain
+// words, the criteria with failures and the ones a person must check,
+// all from the WCAG catalog (never the site's text) and the evidence
+// note.
+type access struct {
+	Version     string
+	Counts      []count
+	Failed      []string // "2.1.2 No Keyboard Trap (1 problem on 1 page)"
+	NeedPerson  []string // "1.2.1 Audio-only and Video-only (Prerecorded)"
+	NotChecked  []string // pages an accessibility test couldn't finish
+	Note        string
+	NeedsPerson int
 }
 
 type count struct {
@@ -80,7 +98,8 @@ func Write(w io.Writer, res report.Result, b Brand) error {
 	}
 	run := res.Run
 	d := pageData{Agency: b.Name, Contact: strings.TrimSpace(b.Contact), Accent: b.Accent, Logo: b.logo,
-		Site: siteName(run.Target), Date: run.Started.Local().Format("2 January 2006"), Checked: checked(run)}
+		Site: siteName(run.Target), Date: run.Started.Local().Format("2 January 2006"), Checked: checked(run, report.EAA(res))}
+	d.Access = accessOf(report.EAA(res))
 	if res.Compared() {
 		fillComparison(&d, res)
 	} else {
@@ -197,7 +216,9 @@ func toneOf(class string) string {
 }
 
 // checked says in plain words what the run looked at, from its options.
-func checked(run *model.Run) []string {
+// An --eaa result (e set) says what its accessibility evidence covers
+// instead of "Accessibility basics".
+func checked(run *model.Run, e *model.EAASummary) []string {
 	o := run.Options
 	var out []string
 	pages := plural(len(run.Pages), "page", "pages")
@@ -220,7 +241,14 @@ func checked(run *model.Run) []string {
 		"echo":       "The emails and messages the site sends from its forms",
 		"lighthouse": "Google Lighthouse scores",
 	}
-	for _, m := range o.Modules {
+	modules := o.Modules
+	if e != nil {
+		words["a11y"] = accessWords(run, e)
+		if !slices.Contains(modules, "a11y") {
+			modules = append([]string{"a11y"}, modules...)
+		}
+	}
+	for _, m := range modules {
 		if w := words[m]; w != "" {
 			out = append(out, w)
 		}
@@ -239,6 +267,73 @@ func checked(run *model.Run) []string {
 		}
 	}
 	return out
+}
+
+// accessWords is what an --eaa run's accessibility tests covered:
+// "Accessibility evidence: WCAG 2.1 AA automated rules and a keyboard
+// walkthrough of 12 pages".
+func accessWords(run *model.Run, e *model.EAASummary) string {
+	walked := e.Keyboard.PagesWalked
+	if walked == 0 {
+		for _, p := range run.Pages {
+			if p.Keyboard != nil {
+				walked++
+			}
+		}
+	}
+	return fmt.Sprintf("Accessibility evidence: WCAG %s AA automated rules and a keyboard walkthrough of %s",
+		wcagVersion(e), plural(walked, "page", "pages"))
+}
+
+// wcagVersion is the summary's WCAG version, 2.0 when it has none.
+func wcagVersion(e *model.EAASummary) string {
+	if e.WCAG == "" {
+		return "2.0"
+	}
+	return e.WCAG
+}
+
+// accessOf is the accessibility section of an --eaa result, or nil
+// without one. Criteria are named from the WCAG catalog; an id the
+// catalog doesn't know is shown alone.
+func accessOf(e *model.EAASummary) *access {
+	if e == nil {
+		return nil
+	}
+	version := wcagVersion(e)
+	titles := map[string]string{}
+	for _, c := range wcag.Criteria(version) {
+		titles[c.ID] = c.Title
+	}
+	name := func(id string) string {
+		if t := titles[id]; t != "" {
+			return id + " " + t
+		}
+		return id
+	}
+	a := &access{Version: version, Note: model.EvidenceNote, NeedsPerson: len(e.Criteria.NotTested)}
+	failTone := "good"
+	if len(e.Criteria.Failed) > 0 {
+		failTone = "bad"
+	}
+	a.Counts = []count{
+		{"Accessibility problems found", failTone, e.Open},
+		{"Criteria with failures", failTone, len(e.Criteria.Failed)},
+		{"Criteria with none found by these tests", "note", len(e.Criteria.NoFailuresFound)},
+		{"Criteria a person needs to check", "note", len(e.Criteria.NotTested)},
+	}
+	for _, f := range e.Criteria.Failed {
+		a.Failed = append(a.Failed, fmt.Sprintf("%s (%s on %s)", name(f.ID), plural(f.Issues, "problem", "problems"), plural(f.Pages, "page", "pages")))
+	}
+	for _, id := range e.Criteria.NotTested {
+		a.NeedPerson = append(a.NeedPerson, name(id))
+	}
+	for _, n := range e.NotAudited {
+		if !slices.Contains(a.NotChecked, n.Path) {
+			a.NotChecked = append(a.NotChecked, n.Path)
+		}
+	}
+	return a
 }
 
 func screenWords(viewports []string) string {

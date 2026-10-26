@@ -93,6 +93,8 @@ func hostileResult() Result {
 				Fix: "fix \x1b[2J it", Pages: []string{"/b\x1b[2K"}},
 			{Class: model.Changed, Check: "health/title", Title: "Page title changed", Pages: []string{"/b`|"},
 				Before: "B", After: hostileTitle + "\uFFFE"},
+			{Class: model.New, Check: "keyboard/trap", Title: "Keyboard focus is trapped: " + osc52, Source: "#x\x1b[1A", Pages: []string{"/b\x1b[2K"},
+				WCAG: []string{"2.1.2\x1b[2J"}, EN301549: []string{"9.2.1.2\u202e"}, FocusPath: []string{"#a\x1b]0;t\x07", "#b\u202e", "#b\u202e"}},
 		},
 		Warnings: []string{"note \x1b[1A\u202e"}}
 	return Result{Run: run, Comparison: c}
@@ -102,18 +104,24 @@ func TestEscapedInEveryFormat(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	r := hostileResult()
 	runOnly := Result{Run: r.Run}
-	runOnly.Run.Pages[0].Issues = []model.Issue{{Check: "health/js-error", Level: model.Warning, Title: osc52, Source: "\x1b[1A", Detail: osc52, Key: "k"}}
+	runOnly.Run.Pages[0].Issues = []model.Issue{{Check: "health/js-error", Level: model.Warning, Title: osc52, Source: "\x1b[1A", Detail: osc52, Key: "k"},
+		{Check: "keyboard/trap", Level: model.Error, Title: osc52, Source: "#x", Key: "k2",
+			WCAG: []string{"2.1.2\x1b[2J"}, FocusPath: []string{"#a\x1b]0;t\x07", "#b\u202e"}}}
+	r.Run.EAA = &model.EAASummary{WCAG: "2.1\x1b[2J", EvidenceNote: model.EvidenceNote,
+		NotAudited: []model.NotAudited{{Path: "/c\x1b[2K", Module: "a11y\u202e", Status: "timeout", Reason: "axe \x1b]52;c;eA==\x07"}}}
 
 	terminal := map[string]func(io.Writer){
 		"pretty":     func(w io.Writer) { NewPretty(w, w, PrettyOptions{}).Summary(r, "") },
 		"plain":      func(w io.Writer) { NewPretty(w, w, PrettyOptions{Plain: true}).Summary(r, "") },
 		"run pretty": func(w io.Writer) { NewPretty(w, w, PrettyOptions{}).Summary(runOnly, "") },
 		"run plain":  func(w io.Writer) { NewPretty(w, w, PrettyOptions{Plain: true}).Summary(runOnly, "") },
+		"quiet":      func(w io.Writer) { NewPretty(w, w, PrettyOptions{Plain: true, Quiet: true}).Summary(runOnly, "") },
 		"live": func(w io.Writer) {
 			p := NewPretty(w, w, PrettyOptions{Plain: true, Verbose: true})
 			p.Header("1.0.0", r.Run.Target)
 			p.Step("Site", "\x1b]0;title\x07")
-			pg := model.Page{Path: "/b\x1b[2K", Error: "net::\x1b[1A"}
+			pg := model.Page{Path: "/b\x1b[2K", Error: "net::\x1b[1A",
+				Keyboard: &model.KeyboardSummary{Stops: 2, WidgetKinds: []string{"menu\x1b[2J"}}}
 			p.Page(&pg, 1, 1)
 			p.Log("console: " + osc52)
 		},

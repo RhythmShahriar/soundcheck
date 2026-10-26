@@ -12,13 +12,26 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/RhythmShahriar/soundcheck/wcag"
 )
 
-// Value is an entry's metric in milliseconds: the site median, or one
-// page's value when page is set. It's NaN when the entry has no value:
-// the page wasn't among the ones recorded, or the metric wasn't
-// measured.
+// Value is an entry's metric: for the timings, in milliseconds, the
+// site median or one page's value when page is set; for a11y and
+// keyboard, the site's open problems. It's NaN when the entry has no
+// value: the page wasn't among the ones recorded, the metric wasn't
+// measured or the run didn't have the module on. The a11y and keyboard
+// counts are kept for the whole site only.
 func (e Entry) Value(metric, page string) float64 {
+	if count, ok := countMetrics[metric]; ok {
+		if page != "" {
+			return math.NaN()
+		}
+		if n := count(e); n != nil {
+			return float64(*n)
+		}
+		return math.NaN()
+	}
 	pick := func(lcp, tbt, ttfb float64) float64 {
 		switch metric {
 		case "lcp":
@@ -44,6 +57,16 @@ func (e Entry) Value(metric, page string) float64 {
 	return math.NaN()
 }
 
+// countMetrics are the metrics that count problems instead of timing
+// pages, with the entry's count of each.
+var countMetrics = map[string]func(Entry) *int{
+	"a11y":     func(e Entry) *int { return e.A11yOpen },
+	"keyboard": func(e Entry) *int { return e.KeyboardOpen },
+}
+
+// countColumns name the column of a count metric.
+var countColumns = map[string]string{"a11y": "A11y open", "keyboard": "Keyboard open"}
+
 func positive(v float64) float64 {
 	if v > 0 {
 		return v
@@ -52,10 +75,11 @@ func positive(v float64) float64 {
 }
 
 // Render prints entries as a table, oldest first, with a column for the
-// metric (lcp, tbt or ttfb; empty is lcp) and a sparkline of it at the
+// metric (one of Metrics; empty is lcp) and a sparkline of it at the
 // end. With page set, the column is that page's value instead of the
 // site median. plain (--plain, for screen readers and logs) leaves out
-// the sparkline and writes every glyph as text: "160 ms to 276 ms".
+// the sparkline and writes every glyph as text: "160 ms to 276 ms". The
+// a11y and keyboard metrics count open problems (see renderCounts).
 func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error {
 	text := func(s string) string { return s }
 	if plain {
@@ -79,6 +103,12 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 			known++
 		}
 	}
+	if _, ok := countMetrics[metric]; ok {
+		if page != "" {
+			return fmt.Errorf("--page works with lcp, tbt and ttfb: the history keeps %s counts for the whole site", metric)
+		}
+		return renderCounts(w, entries, metric, values, plain)
+	}
 	if page != "" && known == 0 {
 		return fmt.Errorf("no timings for %s in the history; it keeps the first %d pages of each run", page, MaxPages)
 	}
@@ -88,18 +118,7 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 	} else {
 		col += " " + page
 	}
-	nameW := 4
-	for _, e := range entries {
-		nameW = max(nameW, min(24, utf8.RuneCountInString(e.Name)))
-	}
-	row := func(when, kind, name, pages, errs, warns, verdict, value string) {
-		fmt.Fprintf(w, "%-17s  %-10s  %-*s  %5s  %6s  %8s  %-8s  %s\n", when, kind, nameW, name, pages, errs, warns, verdict, value)
-	}
-	row("When", "Kind", "Name", "Pages", "Errors", "Warnings", "Verdict", col)
-	for i, e := range entries {
-		row(e.At.Local().Format("2006-01-02 15:04"), e.Kind, text(truncate(e.Name, nameW)), fmt.Sprint(e.Pages),
-			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Verdict, text(ms(values[i])))
-	}
+	table(w, entries, col, func(i int) string { return text(ms(values[i])) }, text)
 	fmt.Fprintf(w, "\n%s", strings.ToUpper(metric))
 	if !plain {
 		fmt.Fprintf(w, "  %s", Sparkline(values))
@@ -121,6 +140,127 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 	}
 	fmt.Fprintln(w)
 	return nil
+}
+
+// table prints the entries' rows with the metric's column last.
+func table(w io.Writer, entries []Entry, col string, value func(int) string, text func(string) string) {
+	nameW := 4
+	for _, e := range entries {
+		nameW = max(nameW, min(24, utf8.RuneCountInString(e.Name)))
+	}
+	row := func(when, kind, name, pages, errs, warns, verdict, value string) {
+		fmt.Fprintf(w, "%-17s  %-10s  %-*s  %5s  %6s  %8s  %-8s  %s\n", when, kind, nameW, name, pages, errs, warns, verdict, value)
+	}
+	row("When", "Kind", "Name", "Pages", "Errors", "Warnings", "Verdict", col)
+	for i, e := range entries {
+		row(e.At.Local().Format("2006-01-02 15:04"), e.Kind, text(truncate(e.Name, nameW)), fmt.Sprint(e.Pages),
+			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Verdict, value(i))
+	}
+}
+
+// renderCounts is Render for a count metric (a11y or keyboard): the
+// open problems per entry, "-" for a run without the module, then
+// "A11y open  188 to 64 (-66%)  ▇▇▆▆▁" and, for a11y, the criteria with
+// the most problems in the latest entry that has them:
+// "Worst criteria now: 1.4.3 Contrast (31), 4.1.2 Name, Role, Value (12)".
+func renderCounts(w io.Writer, entries []Entry, metric string, values []float64, plain bool) error {
+	col := countColumns[metric]
+	text := func(s string) string { return s }
+	if plain {
+		text = strings.NewReplacer("…", "...").Replace
+	}
+	table(w, entries, col, func(i int) string {
+		if math.IsNaN(values[i]) {
+			return "-"
+		}
+		return fmt.Sprintf("%.0f", values[i])
+	}, text)
+	var known []float64
+	for _, v := range values {
+		if !math.IsNaN(v) {
+			known = append(known, v)
+		}
+	}
+	fmt.Fprintf(w, "\n%s", col)
+	switch len(known) {
+	case 0:
+		fmt.Fprintf(w, "  not measured: no run had the %s module on (--eaa turns it on)", metric)
+	case 1:
+		fmt.Fprintf(w, "  %.0f", known[0])
+	default:
+		first, last := known[0], known[len(known)-1]
+		fmt.Fprintf(w, "  %.0f to %.0f", first, last)
+		if first > 0 {
+			fmt.Fprintf(w, " (%+.0f%%)", (last-first)/first*100)
+		}
+	}
+	if !plain && len(known) > 0 {
+		fmt.Fprintf(w, "  %s", Sparkline(values))
+	}
+	fmt.Fprintln(w)
+	if metric == "a11y" {
+		if worst := worstCriteria(entries, 3); worst != "" {
+			fmt.Fprintf(w, "Worst criteria now: %s\n", worst)
+		}
+	}
+	return nil
+}
+
+// worstCriteria names the n criteria with the most open problems in the
+// latest entry that counted them, most first (ties by id), titled from
+// the WCAG catalog: "1.4.3 Contrast (31)". An entry doesn't record its
+// WCAG version, so the titles come from every version (a criterion
+// keeps its number and title across them).
+func worstCriteria(entries []Entry, n int) string {
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.A11yOpen == nil {
+			continue
+		}
+		type crit struct {
+			id string
+			n  int
+		}
+		var list []crit
+		for id, c := range e.A11yByCriterion {
+			// The file is ours; still, an id is printed as it is, so only
+			// numbers and dots make it to the terminal.
+			if c > 0 && id != "" && strings.Trim(id, "0123456789.") == "" {
+				list = append(list, crit{id, c})
+			}
+		}
+		slices.SortFunc(list, func(a, b crit) int {
+			if a.n != b.n {
+				return b.n - a.n
+			}
+			return wcag.Compare(a.id, b.id)
+		})
+		titles := map[string]string{}
+		for _, v := range wcag.Versions {
+			for _, c := range wcag.Criteria(v) {
+				titles[c.ID] = shortTitle(c.Title)
+			}
+		}
+		var parts []string
+		for _, c := range list[:min(n, len(list))] {
+			name := c.id
+			if t := titles[c.id]; t != "" {
+				name += " " + t
+			}
+			parts = append(parts, fmt.Sprintf("%s (%d)", name, c.n))
+		}
+		return strings.Join(parts, ", ")
+	}
+	return ""
+}
+
+// shortTitle drops a criterion title's trailing note in brackets:
+// "Contrast (Minimum)" is "Contrast".
+func shortTitle(t string) string {
+	if i := strings.LastIndex(t, " ("); i > 0 && strings.HasSuffix(t, ")") {
+		return t[:i]
+	}
+	return t
 }
 
 func truncate(s string, n int) string {

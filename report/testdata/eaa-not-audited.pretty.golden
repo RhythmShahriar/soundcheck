@@ -1,0 +1,15 @@
+  not checked: /catalog/ (a11y: axe-core timed out after 45s); its issues are
+  kept from the snapshot, not counted as fixed
+  Accessibility: 0 of 50 WCAG 2.1 A and AA criteria have failures · 25 had
+  none found by these tests · 25 need a person
+ ╭─────────────────────────────────────────────────╮
+ │  SOUNDCHECK   No failures found by these tests  │
+ │  no failures found by these tests               │
+ ╰─────────────────────────────────────────────────╯
+  7 pages · 31s
+  Automated and keyboard tests find some accessibility problems, not all. This
+  is evidence for your own review, not a statement that the site meets WCAG,
+  EN 301 549 or the European Accessibility Act.
+
+  → full report: .soundcheck/snapshots/eaa-1/report.html
+

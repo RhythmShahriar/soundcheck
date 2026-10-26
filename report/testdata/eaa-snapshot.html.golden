@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; img-src data:; style-src &#39;unsafe-inline&#39;; script-src &#39;sha256-tNzLatnm57ZkDD46lNmL/tMTG/MmpNe1KDWQ4TBLSTI=&#39;">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="rhythm-soundcheck 1.3.0">
+<title>Soundcheck · Snapshot &#34;eaa-1&#34; saved; the site already has errors</title>
+<style>
+:root {
+  --ink: #100F0D; --paper: #FFFFFF; --dot: #E8603A;
+  --bg: #FAFAF9; --card: #FFFFFF; --text: #100F0D; --muted: #57534E; --line: #E7E5E4; --soft: #F5F5F4;
+  --broke: #B91C1C; --new: #C2410C; --changed: #A16207; --slower: #6D28D9; --fixed: #047857; --ok: #047857;
+  --error: #B91C1C; --warning: #C2410C; --notice: #57534E; --on-c: #FFFFFF;
+  --st-fail: #B91C1C; --st-none: #047857; --st-manual: #57534E;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --dot: #FF7C52; --bg: #100F0D; --card: #1A1917; --text: #F5F5F4; --muted: #A8A29E; --line: #2E2C29; --soft: #23211E;
+    --broke: #EF4444; --new: #F97316; --changed: #EAB308; --slower: #A78BFA; --fixed: #10B981; --ok: #10B981;
+    --error: #EF4444; --warning: #F97316; --notice: #A8A29E; --on-c: #100F0D;
+    --st-fail: #FCA5A5; --st-none: #6EE7B7; --st-manual: #D6D3D1;
+  }
+}
+:root[data-theme="dark"] {
+  --dot: #FF7C52; --bg: #100F0D; --card: #1A1917; --text: #F5F5F4; --muted: #A8A29E; --line: #2E2C29; --soft: #23211E;
+  --broke: #EF4444; --new: #F97316; --changed: #EAB308; --slower: #A78BFA; --fixed: #10B981; --ok: #10B981;
+  --error: #EF4444; --warning: #F97316; --notice: #A8A29E; --on-c: #100F0D;
+  --st-fail: #FCA5A5; --st-none: #6EE7B7; --st-manual: #D6D3D1;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); }
+a { color: inherit; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px 64px; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 0 18px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -.01em; }
+.brand .dot { color: var(--dot); font-size: 20px; }
+.brand small { color: var(--muted); font-weight: 500; font-family: var(--mono); font-size: 12px; }
+.meta { color: var(--muted); font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.meta b { color: var(--text); font-weight: 600; font-family: var(--mono); }
+.theme { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 8px; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+.hero { padding: 36px 0 22px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; color: var(--muted); font-weight: 600; }
+.verdict { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; font-weight: 750; letter-spacing: -.025em; margin: 6px 0 8px; }
+.verdict::before { content: ""; display: inline-block; width: .42em; height: .42em; border-radius: 50%; margin-right: .32em; vertical-align: .14em; background: var(--tone); }
+.tone-broke { --tone: var(--broke); } .tone-new { --tone: var(--new); } .tone-changed { --tone: var(--changed); } .tone-ok { --tone: var(--ok); }
+.sub { color: var(--muted); margin: 0; }
+.trend { color: var(--muted); margin: .4rem 0 0; display: flex; gap: .5rem; align-items: center; font-size: .9em; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
+.chip { --c: var(--muted); display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 14px 6px 10px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; transition: border-color .15s, opacity .15s; }
+.chip .n { font-weight: 700; color: var(--c); font-variant-numeric: tabular-nums; }
+.chip .g { color: var(--c); }
+.chip[aria-pressed="false"] { opacity: .45; }
+.chip.zero { opacity: .55; cursor: default; }
+.chip:hover:not(.zero) { border-color: var(--c); }
+.k-broke { --c: var(--broke); } .k-new { --c: var(--new); } .k-changed { --c: var(--changed); } .k-slower { --c: var(--slower); } .k-fixed { --c: var(--fixed); } .k-unstable { --c: var(--muted); }
+.k-error { --c: var(--error); } .k-warning { --c: var(--warning); } .k-notice { --c: var(--notice); }
+.toolbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); padding: 12px 0; margin-top: 18px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; }
+.toolbar input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: 9px 12px; font: inherit; }
+.toolbar input:focus { outline: 2px solid var(--dot); outline-offset: 1px; border-color: transparent; }
+section.group { margin-top: 34px; }
+.group h2 { display: flex; align-items: baseline; gap: 10px; font-size: 13px; letter-spacing: .1em; margin: 0 0 4px; color: var(--c); }
+.group h2 .count { color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.group .blurb { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.item { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--muted)); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+.item .head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.badge { flex: none; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--on-c); background: var(--c, var(--muted)); border-radius: 6px; padding: 2px 7px; margin-right: 8px; vertical-align: 2px; }
+.item h3 { margin: 0; font-size: 16px; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
+.where { flex: none; color: var(--muted); font: 12px/1.6 var(--mono); max-width: 40%; text-align: right; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.facts code, .pages code { font: 12.5px var(--mono); background: var(--soft); border-radius: 5px; padding: 1px 5px; }
+.ba { font: 600 13px var(--mono); }
+.fix { margin: 12px 0 0; padding: 10px 12px; background: var(--soft); border-radius: 8px; font-size: 14px; }
+.fix::before { content: "→ "; color: var(--dot); font-weight: 700; }
+details.pages { margin-top: 10px; font-size: 13px; }
+details.pages summary { cursor: pointer; color: var(--muted); }
+details.pages ul { margin: 8px 0 0; padding-left: 18px; columns: 2 260px; }
+.check { color: var(--muted); font: 11px var(--mono); margin-top: 10px; }
+.viewer { margin-top: 14px; }
+.modes { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin-bottom: 10px; }
+.modes button { border: 0; background: var(--card); color: var(--muted); font: inherit; font-size: 12.5px; padding: 6px 12px; cursor: pointer; }
+.modes button + button { border-left: 1px solid var(--line); }
+.modes button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.frame { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: auto; max-height: 72vh; background: var(--soft); touch-action: pan-y; cursor: ew-resize; user-select: none; }
+.frame img { display: block; width: 100%; height: auto; }
+.frame.phone { max-width: 390px; }
+.frame .before { position: absolute; inset: 0 auto auto 0; width: 100%; }
+.frame .before img { clip-path: inset(0 calc(100% - var(--x, 50%)) 0 0); }
+.frame .handle { position: absolute; top: 0; bottom: 0; left: var(--x, 50%); width: 2px; background: var(--dot); pointer-events: none; }
+.frame .tag { position: sticky; top: 8px; float: left; margin: 8px; z-index: 2; font: 600 11px var(--sans); letter-spacing: .06em; background: rgba(16,15,13,.78); color: #fff; padding: 3px 8px; border-radius: 6px; }
+.frame .tag.right { float: right; }
+.frame.single { cursor: default; }
+.frame.single .before, .frame.single .handle, .frame.single .tag { display: none; }
+.viewer input[type=range] { width: 100%; accent-color: var(--dot); margin-top: 8px; }
+.viewer.single input[type=range] { visibility: hidden; }
+.files { font: 12px var(--mono); color: var(--muted); margin-top: 10px; }
+.empty { text-align: center; padding: 56px 16px; color: var(--muted); border: 1px dashed var(--line); border-radius: 14px; margin-top: 30px; }
+.empty b { display: block; font-size: 20px; color: var(--text); margin-bottom: 6px; }
+details.allpages, details.notes { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 18px; }
+details.allpages > summary, details.notes > summary { cursor: pointer; font-weight: 650; }
+.tablewrap { overflow-x: auto; margin-top: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.path { font-family: var(--mono); white-space: normal; overflow-wrap: anywhere; min-width: 180px; }
+tr.bad td.path { color: var(--broke); }
+td.num, th.num { text-align: right; }
+.notes ul { color: var(--muted); font-size: 13px; }
+td.wrap { white-space: normal; overflow-wrap: anywhere; }
+tr.none td[colspan] { color: var(--muted); font-style: italic; }
+.echo-open { color: var(--muted); font-size: 13px; margin: 12px 0 0; overflow-wrap: anywhere; }
+footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.partial { margin: 18px 0 0; padding: 12px 16px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 10px; background: color-mix(in srgb, var(--warning) 8%, var(--card)); }
+.partial b { color: var(--warning); }
+.hidden { display: none !important; }
+.tabs { display: flex; gap: 4px; margin-top: 22px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--dot); }
+.tabs button:focus-visible, .tile:focus-visible { outline: 2px solid var(--dot); outline-offset: 2px; }
+.callout { margin: 24px 0 0; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--dot); border-radius: 10px; background: var(--card); }
+.callout p { margin: 0; } .callout p + p { margin-top: 8px; }
+.a11y h2 { font-size: 18px; margin: 34px 0 8px; }
+.legend { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.principle h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.tile .num { font: 600 12px var(--mono); }
+.tile .state { display: block; color: var(--st); font-weight: 650; font-size: 12px; }
+.st-failed { --st: var(--st-fail); } .st-none { --st: var(--st-none); } .st-manual { --st: var(--st-manual); }
+.crit { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
+.crit h3 { margin: 0; font-size: 15px; } .crit h3 .en { color: var(--muted); font-weight: 500; font-size: 13px; }
+.crit h4 { margin: 12px 0 4px; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.crit ul { margin: 0; padding-left: 0; list-style: none; } .crit li { margin: 4px 0; overflow-wrap: anywhere; }
+.more { color: var(--muted); font-size: 13px; }
+details.kb { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; }
+details.kb summary { cursor: pointer; overflow-wrap: anywhere; }
+ol.path { margin: 10px 0 0; padding-left: 28px; columns: 2 300px; font-size: 13px; }
+ol.path li { overflow-wrap: anywhere; }
+.crops { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.crops figure { margin: 0; max-width: 320px; }
+.crops img { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+.crops figcaption { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.statement { margin-top: 34px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.statement h2 { margin: 0 0 6px; }
+.statement pre { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px var(--mono); }
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  header.top { flex-wrap: wrap; } .meta { text-align: left; }
+  .item .head { flex-direction: column; } .where { max-width: none; text-align: left; }
+}
+@media print { .toolbar, .theme, .modes, .viewer input, .tabs { display: none; } [role="tabpanel"][hidden] { display: block !important; } .item { break-inside: avoid; } .frame { max-height: none; overflow: visible; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="dot">♪</span> rhythm soundcheck <small>1.3.0</small></div>
+    <div class="meta"><b>https://staging.shop.test/</b><br>26 Oct 2026, 09:00
+      <button class="theme" type="button" id="theme" aria-label="Switch light or dark theme">◐ theme</button></div>
+  </header>
+
+  
+
+  <div class="hero tone-broke">
+    <div class="eyebrow">Site check</div>
+    <h1 class="verdict">Snapshot &#34;eaa-1&#34; saved; the site already has errors</h1>
+    <p class="sub">39 pages · 2m41s</p>
+    
+    <div class="chips" role="group" aria-label="Filter by kind">
+      <button type="button" class="chip k-error" data-filter="error" aria-pressed="true"><span class="g">✗</span><span class="n">1</span> ERRORS</button>
+      <button type="button" class="chip k-warning" data-filter="warning" aria-pressed="true"><span class="g">▲</span><span class="n">2</span> WARNINGS</button>
+      <button type="button" class="chip k-notice" data-filter="notice" aria-pressed="true"><span class="g">·</span><span class="n">1</span> NOTICES</button>
+      
+    </div>
+  </div>
+
+  
+  <div class="tabs" role="tablist" aria-label="Report sections">
+    <button type="button" role="tab" id="tab-results" aria-controls="panel-results" aria-selected="true">Results</button><button type="button" role="tab" id="tab-a11y" aria-controls="panel-a11y" aria-selected="false" tabindex="-1">Accessibility</button>
+  </div>
+  
+  <div id="panel-results" role="tabpanel" aria-labelledby="tab-results">
+  
+  <div class="toolbar"><input id="q" type="search" placeholder="Filter by title, page, plugin or file…" aria-label="Filter results"></div>
+  
+  <section class="group k-error" data-group="error">
+    <h2>✗ ERRORS <span class="count">1</span></h2>
+    
+    
+    <article class="item k-error" id="item-1" data-kind="error">
+      <div class="head">
+        <h3><span class="badge">ERROR</span>Keyboard focus is trapped: Card number</h3>
+        <div class="where">/checkout/</div>
+      </div>
+      
+      <dl class="facts">
+        
+        <dt>Source</dt><dd><code>#card-element &gt; div:nth-of-type(1)</code></dd>
+        <dt>Detail</dt><dd>Tab and Shift&#43;Tab kept focus here for 4 presses; 3 focusable elements after it can&#39;t be reached.</dd>
+      </dl>
+      
+      <p class="fix">Let Tab move on from the field.</p>
+      
+      
+      
+      <div class="check">keyboard/trap</div>
+    </article>
+    
+  </section>
+  
+  <section class="group k-warning" data-group="warning">
+    <h2>▲ WARNINGS <span class="count">2</span></h2>
+    
+    
+    <article class="item k-warning" id="item-2" data-kind="warning">
+      <div class="head">
+        <h3><span class="badge">WARNING</span>Focus is lost after closing: Newsletter</h3>
+        <div class="where">38 pages</div>
+      </div>
+      
+      <dl class="facts">
+        
+        <dt>Source</dt><dd><code>#newsletter-close</code></dd>
+        
+      </dl>
+      
+      <p class="fix">When the dialog closes, move focus back to the button that opened it.</p>
+      
+      
+      
+      <details class="pages"><summary>38 pages</summary><ul><li><code>/</code></li><li><code>/shop/</code></li><li><code>/about/</code></li><li><code>/p/d/</code></li><li><code>/p/e/</code></li><li><code>/p/f/</code></li><li><code>/p/g/</code></li><li><code>/p/h/</code></li><li><code>/p/i/</code></li><li><code>/p/j/</code></li><li><code>/p/k/</code></li><li><code>/p/l/</code></li><li><code>/p/m/</code></li><li><code>/p/n/</code></li><li><code>/p/o/</code></li><li><code>/p/p/</code></li><li><code>/p/q/</code></li><li><code>/p/r/</code></li><li><code>/p/s/</code></li><li><code>/p/t/</code></li><li><code>/p/u/</code></li><li><code>/p/v/</code></li><li><code>/p/w/</code></li><li><code>/p/x/</code></li><li><code>/p/y/</code></li><li><code>/p/z/</code></li><li><code>/p/ax/</code></li><li><code>/p/bx/</code></li><li><code>/p/cx/</code></li><li><code>/p/dx/</code></li><li><code>/p/ex/</code></li><li><code>/p/fx/</code></li><li><code>/p/gx/</code></li><li><code>/p/hx/</code></li><li><code>/p/ix/</code></li><li><code>/p/jx/</code></li><li><code>/p/kx/</code></li><li><code>/p/lx/</code></li></ul></details>
+      
+      <div class="check">keyboard/focus-lost</div>
+    </article>
+    
+    <article class="item k-warning" id="item-3" data-kind="warning">
+      <div class="head">
+        <h3><span class="badge">WARNING</span>Form elements must have labels</h3>
+        <div class="where">/checkout/</div>
+      </div>
+      
+      <dl class="facts">
+        
+        <dt>Source</dt><dd><code>#billing_phone</code></dd>
+        <dt>Detail</dt><dd>&lt;input id=&#34;billing_phone&#34; name=&#34;billing_phone&#34; type=&#34;tel&#34;&gt;</dd>
+      </dl>
+      
+      <p class="fix">See https://dequeuniversity.com/rules/axe/4.14/label for what the rule asks and how to fix it.</p>
+      
+      
+      
+      <div class="check">a11y/label</div>
+    </article>
+    
+  </section>
+  
+  <section class="group k-notice" data-group="notice">
+    <h2>· NOTICES <span class="count">1</span></h2>
+    
+    
+    <article class="item k-notice" id="item-4" data-kind="notice">
+      <div class="head">
+        <h3><span class="badge">NOTICE</span>No skip link before a long run of stops</h3>
+        <div class="where">38 pages</div>
+      </div>
+      
+      
+      
+      
+      
+      <details class="pages"><summary>38 pages</summary><ul><li><code>/</code></li><li><code>/shop/</code></li><li><code>/about/</code></li><li><code>/p/d/</code></li><li><code>/p/e/</code></li><li><code>/p/f/</code></li><li><code>/p/g/</code></li><li><code>/p/h/</code></li><li><code>/p/i/</code></li><li><code>/p/j/</code></li><li><code>/p/k/</code></li><li><code>/p/l/</code></li><li><code>/p/m/</code></li><li><code>/p/n/</code></li><li><code>/p/o/</code></li><li><code>/p/p/</code></li><li><code>/p/q/</code></li><li><code>/p/r/</code></li><li><code>/p/s/</code></li><li><code>/p/t/</code></li><li><code>/p/u/</code></li><li><code>/p/v/</code></li><li><code>/p/w/</code></li><li><code>/p/x/</code></li><li><code>/p/y/</code></li><li><code>/p/z/</code></li><li><code>/p/ax/</code></li><li><code>/p/bx/</code></li><li><code>/p/cx/</code></li><li><code>/p/dx/</code></li><li><code>/p/ex/</code></li><li><code>/p/fx/</code></li><li><code>/p/gx/</code></li><li><code>/p/hx/</code></li><li><code>/p/ix/</code></li><li><code>/p/jx/</code></li><li><code>/p/kx/</code></li><li><code>/p/lx/</code></li></ul></details>
+      
+      <div class="check">keyboard/skip-link-missing</div>
+    </article>
+    
+  </section>
+  
+  <div class="empty hidden" id="nomatch"><b>Nothing matches</b>Clear the filter to see every result.</div>
+  
+
+  
+
+  
+
+  <details class="allpages"><summary>All pages (39)</summary>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Page</th><th class="num">Status</th><th class="num">Issues</th><th class="num">LCP</th><th class="num">CLS</th><th class="num">Weight</th><th class="num">Load</th></tr></thead>
+      <tbody><tr><td class="path"><a href="https://staging.shop.test/" rel="noreferrer">/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/shop/" rel="noreferrer">/shop/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/about/" rel="noreferrer">/about/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/d/" rel="noreferrer">/p/d/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/e/" rel="noreferrer">/p/e/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/f/" rel="noreferrer">/p/f/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/g/" rel="noreferrer">/p/g/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/h/" rel="noreferrer">/p/h/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/i/" rel="noreferrer">/p/i/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/j/" rel="noreferrer">/p/j/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/k/" rel="noreferrer">/p/k/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/l/" rel="noreferrer">/p/l/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/m/" rel="noreferrer">/p/m/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/n/" rel="noreferrer">/p/n/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/o/" rel="noreferrer">/p/o/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/p/" rel="noreferrer">/p/p/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/q/" rel="noreferrer">/p/q/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/r/" rel="noreferrer">/p/r/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/s/" rel="noreferrer">/p/s/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/t/" rel="noreferrer">/p/t/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/u/" rel="noreferrer">/p/u/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/v/" rel="noreferrer">/p/v/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/w/" rel="noreferrer">/p/w/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/x/" rel="noreferrer">/p/x/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/y/" rel="noreferrer">/p/y/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/z/" rel="noreferrer">/p/z/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/ax/" rel="noreferrer">/p/ax/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/bx/" rel="noreferrer">/p/bx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/cx/" rel="noreferrer">/p/cx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/dx/" rel="noreferrer">/p/dx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/ex/" rel="noreferrer">/p/ex/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/fx/" rel="noreferrer">/p/fx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/gx/" rel="noreferrer">/p/gx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/hx/" rel="noreferrer">/p/hx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/ix/" rel="noreferrer">/p/ix/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/jx/" rel="noreferrer">/p/jx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/kx/" rel="noreferrer">/p/kx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="https://staging.shop.test/p/lx/" rel="noreferrer">/p/lx/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr class="bad"><td class="path"><a href="https://staging.shop.test/checkout/" rel="noreferrer">/checkout/</a></td><td class="num">200</td><td class="num">2</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr></tbody>
+    </table></div>
+  </details>
+  </div>
+
+  
+  <div id="panel-a11y" class="a11y" role="tabpanel" aria-labelledby="tab-a11y" hidden>
+    <div class="callout" role="note">
+      <p><b>5 of 50 WCAG 2.1 A and AA criteria have failures · 21 had none found by these tests · 24 need a person</b></p>
+      <p>Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.</p>
+    </div>
+    
+
+    <h2>WCAG 2.1 A and AA criteria</h2>
+    <p class="legend">✕ failures: the tests found a failure · ○ none found: the tests found none, which isn't a pass · ? needs a person: these tests can't judge it</p>
+    <div class="grid">
+      <div class="principle"><h3>Perceivable</h3><ul class="tiles"><li class="tile st-none"><span class="num">1.1.1</span> Non-text Content<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.2.1</span> Audio-only and Video-only (Prerecorded)<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.2.2</span> Captions (Prerecorded)<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.2.3</span> Audio Description or Media Alternative (Prerecorded)<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.2.4</span> Captions (Live)<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.2.5</span> Audio Description (Prerecorded)<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-failed"><span class="num">1.3.1</span> Info and Relationships<span class="state"><span aria-hidden="true">✕</span> failures (1)</span></li><li class="tile st-manual"><span class="num">1.3.2</span> Meaningful Sequence<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.3.3</span> Sensory Characteristics<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.3.4</span> Orientation<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.3.5</span> Identify Input Purpose<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.4.1</span> Use of Color<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.4.2</span> Audio Control<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.4.3</span> Contrast (Minimum)<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.4.4</span> Resize Text<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.4.5</span> Images of Text<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.4.10</span> Reflow<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.4.11</span> Non-text Contrast<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">1.4.12</span> Text Spacing<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">1.4.13</span> Content on Hover or Focus<span class="state"><span aria-hidden="true">?</span> needs a person</span></li></ul></div>
+      <div class="principle"><h3>Operable</h3><ul class="tiles"><li class="tile st-none"><span class="num">2.1.1</span> Keyboard<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-failed"><span class="num">2.1.2</span> No Keyboard Trap<span class="state"><span aria-hidden="true">✕</span> failures (1)</span></li><li class="tile st-none"><span class="num">2.1.4</span> Character Key Shortcuts<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">2.2.1</span> Timing Adjustable<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">2.2.2</span> Pause, Stop, Hide<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">2.3.1</span> Three Flashes or Below Threshold<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-failed"><span class="num">2.4.1</span> Bypass Blocks<span class="state"><span aria-hidden="true">✕</span> failures (1)</span></li><li class="tile st-manual"><span class="num">2.4.2</span> Page Titled<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-failed"><span class="num">2.4.3</span> Focus Order<span class="state"><span aria-hidden="true">✕</span> failures (1)</span></li><li class="tile st-manual"><span class="num">2.4.4</span> Link Purpose (In Context)<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">2.4.5</span> Multiple Ways<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">2.4.6</span> Headings and Labels<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">2.4.7</span> Focus Visible<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">2.5.1</span> Pointer Gestures<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">2.5.2</span> Pointer Cancellation<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">2.5.3</span> Label in Name<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">2.5.4</span> Motion Actuation<span class="state"><span aria-hidden="true">○</span> none found</span></li></ul></div>
+      <div class="principle"><h3>Understandable</h3><ul class="tiles"><li class="tile st-manual"><span class="num">3.1.1</span> Language of Page<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">3.1.2</span> Language of Parts<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">3.2.1</span> On Focus<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">3.2.2</span> On Input<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">3.2.3</span> Consistent Navigation<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">3.2.4</span> Consistent Identification<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">3.3.1</span> Error Identification<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">3.3.2</span> Labels or Instructions<span class="state"><span aria-hidden="true">○</span> none found</span></li><li class="tile st-manual"><span class="num">3.3.3</span> Error Suggestion<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-none"><span class="num">3.3.4</span> Error Prevention (Legal, Financial, Data)<span class="state"><span aria-hidden="true">○</span> none found</span></li></ul></div>
+      <div class="principle"><h3>Robust</h3><ul class="tiles"><li class="tile st-manual"><span class="num">4.1.1</span> Parsing<span class="state"><span aria-hidden="true">?</span> needs a person</span></li><li class="tile st-failed"><span class="num">4.1.2</span> Name, Role, Value<span class="state"><span aria-hidden="true">✕</span> failures (1)</span></li><li class="tile st-manual"><span class="num">4.1.3</span> Status Messages<span class="state"><span aria-hidden="true">?</span> needs a person</span></li></ul></div>
+      
+    </div>
+
+    
+    <h2>Issues by criterion</h2>
+    <section class="crit">
+      <h3>1.3.1 Info and Relationships <span class="en">EN 301 549 9.1.3.1</span></h3>
+      <h4><code>/checkout/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-3" data-goto="results">Form elements must have labels</a></li></ul>
+      
+    </section>
+    <section class="crit">
+      <h3>2.1.2 No Keyboard Trap <span class="en">EN 301 549 9.2.1.2</span></h3>
+      <h4><code>/checkout/</code></h4>
+      <ul><li class="k-error"><span class="badge">ERROR</span><a href="#item-1" data-goto="results">Keyboard focus is trapped: Card number</a></li></ul>
+      
+    </section>
+    <section class="crit">
+      <h3>2.4.1 Bypass Blocks <span class="en">EN 301 549 9.2.4.1</span></h3>
+      <h4><code>/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/shop/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/about/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/d/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/e/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/f/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/g/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/h/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/i/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <h4><code>/p/j/</code></h4>
+      <ul><li class="k-notice"><span class="badge">NOTICE</span><a href="#item-4" data-goto="results">No skip link before a long run of stops</a></li></ul>
+      <p class="more">+28 more pages</p>
+    </section>
+    <section class="crit">
+      <h3>2.4.3 Focus Order <span class="en">EN 301 549 9.2.4.3</span></h3>
+      <h4><code>/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/shop/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/about/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/d/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/e/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/f/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/g/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/h/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/i/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <h4><code>/p/j/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-2" data-goto="results">Focus is lost after closing: Newsletter</a></li></ul>
+      <p class="more">+28 more pages</p>
+    </section>
+    <section class="crit">
+      <h3>4.1.2 Name, Role, Value <span class="en">EN 301 549 9.4.1.2</span></h3>
+      <h4><code>/checkout/</code></h4>
+      <ul><li class="k-warning"><span class="badge">WARNING</span><a href="#item-3" data-goto="results">Form elements must have labels</a></li></ul>
+      
+    </section>
+    
+
+    
+    <h2>Keyboard walk</h2>
+    <details class="kb"><summary><code>/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/shop/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/about/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/d/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/e/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/f/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/g/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/h/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/i/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/j/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/k/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/l/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/m/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/n/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/o/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/p/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/q/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/r/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/s/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/t/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/u/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/v/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/w/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/x/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/y/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/z/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/ax/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/bx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/cx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/dx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/ex/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/fx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/gx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/hx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/ix/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/jx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/kx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/p/lx/</code> · 23 stops, 3 widgets (details, dialog, menu), 0.9s</summary>
+      <p class="more">focus path not available</p>
+      
+    </details>
+    <details class="kb"><summary><code>/checkout/</code> · 9 stops, 0 widgets, 1.3s</summary>
+      <ol class="path"><li><code>(page)</code></li><li><code>#billing_email</code></li><li><code>#stop-2</code></li><li><code>#stop-3</code></li></ol>
+      <div class="crops"><figure><img src="data:…&#43;gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4&#43;Tl5ufo6ery8/T19vf4&#43;fr/2gAMAwEAAhEDEQA/APn&#43;ip/tEX/PnB&#43;b/wDxVH2iL/nzg/N//iqm77G3s4/zr8f8iCip/tEX/PnB&#43;b//ABVH2iL/AJ84Pzf/AOKou&#43;wezj/Ovx/yIKKn&#43;0Rf8&#43;cH5v8A/FUfaIv&#43;fOD83/8AiqLvsHs4/wA6/H/IgoooqjEKKKKACiiigD//2Q==" alt="Focused element #card-element &gt; div:nth-of-type(1) (keyboard/trap)"><figcaption><code>keyboard/trap: #card-element &gt; div:nth-of-type(1)</code></figcaption></figure></div>
+    </details>
+    
+
+    <div class="statement">
+      <h2>Make the statement draft</h2>
+      <p>Soundcheck drafts an accessibility statement from this run for you to finish and publish. Run:</p>
+      <pre><code>rhythm soundcheck statement -o accessibility-statement.md</code></pre>
+    </div>
+  </div>
+  
+
+  <footer><span>Made with ♪ rhythm soundcheck 1.3.0. Lab measurements from one headless browser; check anything surprising by hand.</span><span>rythm.sh/soundcheck</span></footer>
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  try { var t = localStorage.getItem("soundcheck-theme"); if (t) root.setAttribute("data-theme", t); } catch (e) {}
+  document.getElementById("theme").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") ? root.getAttribute("data-theme") === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("soundcheck-theme", next); } catch (e) {}
+  });
+
+  
+  var off = {}, q = document.getElementById("q");
+  function apply() {
+    var text = q ? q.value.trim().toLowerCase() : "", any = false;
+    document.querySelectorAll("section.group").forEach(function (g) {
+      var shown = 0;
+      g.querySelectorAll(".item").forEach(function (it) {
+        var ok = !off[it.dataset.kind] && (!text || it.textContent.toLowerCase().indexOf(text) >= 0);
+        it.classList.toggle("hidden", !ok);
+        if (ok) shown++;
+      });
+      g.classList.toggle("hidden", shown === 0);
+      if (shown) any = true;
+    });
+    var none = document.getElementById("nomatch");
+    if (none) none.classList.toggle("hidden", any);
+  }
+  document.querySelectorAll(".chip[data-filter]").forEach(function (c) {
+    c.addEventListener("click", function () {
+      var k = c.dataset.filter;
+      off[k] = !off[k];
+      c.setAttribute("aria-pressed", off[k] ? "false" : "true");
+      apply();
+    });
+  });
+  if (q) q.addEventListener("input", apply);
+
+  
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  function show(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () { show(t); });
+    t.addEventListener("keydown", function (e) {
+      var step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      var next = tabs[(i + step + tabs.length) % tabs.length];
+      show(next);
+      next.focus();
+      e.preventDefault();
+    });
+  });
+  
+  
+  document.querySelectorAll("a[data-goto]").forEach(function (a) {
+    a.addEventListener("click", function () { var r = document.getElementById("tab-results"); if (r) show(r); });
+  });
+
+  
+  document.querySelectorAll(".viewer").forEach(function (v) {
+    var frame = v.querySelector(".frame"), range = v.querySelector("input[type=range]"), after = v.querySelector("img.after");
+    function set(x) { x = Math.max(0, Math.min(100, x)); frame.style.setProperty("--x", x + "%"); range.value = x; }
+    range.addEventListener("input", function () { set(+range.value); });
+    var dragging = false;
+    function at(e) { var r = frame.getBoundingClientRect(); set((e.clientX - r.left) / r.width * 100); }
+    frame.addEventListener("pointerdown", function (e) { if (frame.classList.contains("single")) return; dragging = true; at(e); });
+    window.addEventListener("pointermove", function (e) { if (dragging) at(e); });
+    window.addEventListener("pointerup", function () { dragging = false; });
+    v.querySelectorAll(".modes button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        v.querySelectorAll(".modes button").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+        var m = b.dataset.mode;
+        frame.classList.toggle("single", m !== "slide");
+        v.classList.toggle("single", m !== "slide");
+        after.src = m === "diff" ? after.dataset.diff : m === "before" ? v.querySelector(".before img").src : after.dataset.after;
+      });
+    });
+    set(50);
+  });
+})();
+</script>
+</body>
+</html>

@@ -19,7 +19,8 @@ import (
 // versioned rhythm-soundcheck/v1 schema (model.Schemas describes both).
 // Lists are [] when empty, every change has an ID and a summary counts
 // what the terminal shows; a run also gets its issues grouped across
-// pages. The result itself isn't changed.
+// pages. An --eaa result also gets its accessibility summary as eaa,
+// with the evidence note always in it. The result itself isn't changed.
 func JSON(w io.Writer, r Result) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -34,9 +35,11 @@ func JSON(w io.Writer, r Result) error {
 		c.Changes = slices.Clone(c.Changes)
 		c.Complete()
 		c.Summary.Failed = failed
+		c.EAA = eaaJSON(r)
 		return enc.Encode(&c)
 	}
 	run := *r.Run
+	run.EAA = eaaJSON(r)
 	run.Complete()
 	issues := Issues(&run)
 	counts := Counts(issues)
@@ -57,6 +60,33 @@ func JSON(w io.Writer, r Result) error {
 		run.Groups = append(run.Groups, model.Group{Key: i.Key, Check: i.Check, Level: i.Level, Title: i.Title, Pages: i.Pages})
 	}
 	return enc.Encode(&run)
+}
+
+// eaaJSON is the eaa block of r's JSON: a copy of its accessibility
+// summary that always carries model.EvidenceNote, so a tool that shows
+// the counts downstream has the sentence too. It is nil without --eaa.
+func eaaJSON(r Result) *model.EAASummary {
+	e := eaaOf(r)
+	if e == nil {
+		return nil
+	}
+	out := *e
+	out.EvidenceNote = model.EvidenceNote
+	// Lists are [] when empty, as everywhere in the JSON.
+	if out.Criteria.Failed == nil {
+		out.Criteria.Failed = []model.CriterionCount{}
+	}
+	out.Criteria.NoFailuresFound = nonNil(out.Criteria.NoFailuresFound)
+	out.Criteria.NotTested = nonNil(out.Criteria.NotTested)
+	return &out
+}
+
+// nonNil is ss, or an empty list for nil.
+func nonNil(ss []string) []string {
+	if ss == nil {
+		return []string{}
+	}
+	return ss
 }
 
 // Markdown writes a report for pull requests, issues and CI summaries.
@@ -89,7 +119,7 @@ func Markdown(w io.Writer, r Result) error {
 			fmt.Fprintf(&b, "### %s %s (%d)\n\n_%s._\n\n", classes[class].Glyph, classes[class].Label, len(cs), capitalize(classes[class].Blurb))
 			b.WriteString("| Change | Where | Before → after | Fix |\n|---|---|---|---|\n")
 			for _, ch := range cs {
-				title := mdCell(ch.Title)
+				title := mdCell(ch.Title) + mdCriteria(ch.Check, ch.WCAG)
 				if ch.Source != "" {
 					title += "<br><sub>" + mdCell(ch.Source) + "</sub>"
 				}
@@ -101,6 +131,7 @@ func Markdown(w io.Writer, r Result) error {
 			}
 			b.WriteString("\n")
 		}
+		writeAccessibility(&b, r)
 		writeNotes(&b, c.Warnings)
 	} else {
 		issues := Issues(run)
@@ -111,7 +142,7 @@ func Markdown(w io.Writer, r Result) error {
 		if len(issues) > 0 {
 			b.WriteString("| Level | Issue | Where | Fix |\n|---|---|---|---|\n")
 			for _, i := range issues {
-				title := mdCell(i.Title)
+				title := mdCell(i.Title) + mdCriteria(i.Check, i.WCAG)
 				if i.Source != "" {
 					title += "<br><sub>" + mdCell(i.Source) + "</sub>"
 				}
@@ -119,6 +150,7 @@ func Markdown(w io.Writer, r Result) error {
 			}
 			b.WriteString("\n")
 		}
+		writeAccessibility(&b, r)
 		writeNotes(&b, run.Warnings)
 	}
 	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", MarkdownText(run.Version), r.stats(), run.Started.Format("2006-01-02 15:04 MST"))
@@ -167,7 +199,7 @@ func capitalize(s string) string {
 }
 
 // JUnit XML: one test suite per change class (or issue level), one test
-// case per change. Cases at or above failOn fail; with no failOn, BROKE
+// case per change, plus a suite per page under --eaa (see eaaSuites). Cases at or above failOn fail; with no failOn, BROKE
 // and NEW changes (or errors, for a single run) fail.
 type junitSuites struct {
 	XMLName  xml.Name     `xml:"testsuites"`
@@ -201,12 +233,14 @@ type junitProperty struct {
 }
 
 type junitCase struct {
-	Name      string        `xml:"name,attr"`
-	Classname string        `xml:"classname,attr"`
-	Failure   *junitFailure `xml:"failure,omitempty"`
-	Error     *junitFailure `xml:"error,omitempty"`
-	Skipped   *struct{}     `xml:"skipped,omitempty"`
-	Out       string        `xml:"system-out,omitempty"`
+	Name      string `xml:"name,attr"`
+	Classname string `xml:"classname,attr"`
+	// Failure holds one failure, or one per error of a page's module
+	// under --eaa (see eaaSuites).
+	Failure []junitFailure `xml:"failure,omitempty"`
+	Error   *junitFailure  `xml:"error,omitempty"`
+	Skipped *struct{}      `xml:"skipped,omitempty"`
+	Out     string         `xml:"system-out,omitempty"`
 }
 
 type junitFailure struct {
@@ -243,7 +277,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 					s.Skipped++
 				}
 				if !partial && i <= limit && class != model.Fixed && class != model.Unstable {
-					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
+					tc.Failure = []junitFailure{{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -267,7 +301,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 				tc := junitCase{Name: xmlText(i.Title), Classname: xmlText(strings.ReplaceAll(i.Check, "/", ".")),
 					Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
 				if !partial && level.Rank() <= limit {
-					tc.Failure = &junitFailure{Message: tc.Name, Type: string(level), Text: tc.Out}
+					tc.Failure = []junitFailure{{Message: tc.Name, Type: string(level), Text: tc.Out}}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -277,6 +311,9 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 			out.Suites = append(out.Suites, s)
 		}
 	}
+	// An --eaa result also gets a suite per page with a case per page
+	// and accessibility module, so a CI test tab shows where a trap is.
+	out.Suites = append(out.Suites, eaaSuites(r, failOn, stamp, partial)...)
 	// A run with nothing to report still shows as one passing case, so CI
 	// dashboards record that the check ran.
 	pages := junitSuite{Name: "soundcheck.pages", Timestamp: stamp,

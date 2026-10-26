@@ -4,7 +4,7 @@
 
 | Broke | New | Changed | Slower | Fixed |
 |---:|---:|---:|---:|---:|
-| 1 | 0 | 1 | 0 | 0 |
+| 1 | 1 | 1 | 0 | 0 |
 
 ### ✗ BROKE (1)
 
@@ -14,6 +14,14 @@ _Worked in the snapshot, fails now._
 |---|---|---|---|
 | JS error: boom \\x1b\]52;c;Y3VybCBldmlsLnRlc3QgfCBzaA==\\x07\\x1b\[1A\\x1b\[2Kall good<br><sub>inline \\x1b\[1Ascript</sub> | `/b\x1b[2K` |  | fix \\x1b\[2J it |
 
+### ▲ NEW (1)
+
+_Problems that weren't there before._
+
+| Change | Where | Before → after | Fix |
+|---|---|---|---|
+| Keyboard focus is trapped: JS error: boom \\x1b\]52;c;Y3VybCBldmlsLnRlc3QgfCBzaA==\\x07\\x1b\[1A\\x1b\[2Kall good (2.1.2\\x1b\[2J)<br><sub>\#x\\x1b\[1A</sub> | `/b\x1b[2K` |  |  |
+
 ### ■ CHANGED (1)
 
 _Looks or reads differently; check it's intended._
@@ -21,6 +29,16 @@ _Looks or reads differently; check it's intended._
 | Change | Where | Before → after | Fix |
 |---|---|---|---|
 | Page title changed | `/b\|` | B → Sale \| 50% \`off\` \*\*now\*\* \[click\]\(http\://127.0.0.1:20300/x\) \<img src=x onerror=alert\(1\)\> \\x01\\x02\\x1b\[31mRED\\x1b\[0m gnp.exe￾ |  |
+
+### Accessibility (WCAG 2.1\\x1b\[2J A and AA)
+
+0 of 0 criteria have failures · 0 had none found by these tests · 0 need a person · 0 open issues
+
+Not checked, so their issues are kept from the snapshot and not counted as fixed:
+
+- `/c\x1b[2K` (a11y: timeout)
+
+> Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
 
 <details><summary>1 note</summary>
 

@@ -2,15 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; img-src data:; style-src &#39;unsafe-inline&#39;; script-src &#39;sha256-tNzLatnm57ZkDD46lNmL/tMTG/MmpNe1KDWQ4TBLSTI=&#39;">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="rhythm-soundcheck 1.0.0">
 <title>Soundcheck · Nothing changed</title>
 <style>
 :root {
   --ink: #100F0D; --paper: #FFFFFF; --dot: #E8603A;
-  --bg: #FAFAF9; --card: #FFFFFF; --text: #100F0D; --muted: #6B7280; --line: #E7E5E4; --soft: #F5F5F4;
-  --broke: #DC2626; --new: #EA580C; --changed: #CA8A04; --slower: #7C3AED; --fixed: #059669; --ok: #059669;
-  --error: #DC2626; --warning: #EA580C; --notice: #6B7280;
+  --bg: #FAFAF9; --card: #FFFFFF; --text: #100F0D; --muted: #57534E; --line: #E7E5E4; --soft: #F5F5F4;
+  --broke: #B91C1C; --new: #C2410C; --changed: #A16207; --slower: #6D28D9; --fixed: #047857; --ok: #047857;
+  --error: #B91C1C; --warning: #C2410C; --notice: #57534E; --on-c: #FFFFFF;
+  --st-fail: #B91C1C; --st-none: #047857; --st-manual: #57534E;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
@@ -18,13 +20,15 @@
   :root:not([data-theme="light"]) {
     --dot: #FF7C52; --bg: #100F0D; --card: #1A1917; --text: #F5F5F4; --muted: #A8A29E; --line: #2E2C29; --soft: #23211E;
     --broke: #EF4444; --new: #F97316; --changed: #EAB308; --slower: #A78BFA; --fixed: #10B981; --ok: #10B981;
-    --error: #EF4444; --warning: #F97316; --notice: #A8A29E;
+    --error: #EF4444; --warning: #F97316; --notice: #A8A29E; --on-c: #100F0D;
+    --st-fail: #FCA5A5; --st-none: #6EE7B7; --st-manual: #D6D3D1;
   }
 }
 :root[data-theme="dark"] {
   --dot: #FF7C52; --bg: #100F0D; --card: #1A1917; --text: #F5F5F4; --muted: #A8A29E; --line: #2E2C29; --soft: #23211E;
   --broke: #EF4444; --new: #F97316; --changed: #EAB308; --slower: #A78BFA; --fixed: #10B981; --ok: #10B981;
-  --error: #EF4444; --warning: #F97316; --notice: #A8A29E;
+  --error: #EF4444; --warning: #F97316; --notice: #A8A29E; --on-c: #100F0D;
+  --st-fail: #FCA5A5; --st-none: #6EE7B7; --st-manual: #D6D3D1;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -63,7 +67,7 @@ section.group { margin-top: 34px; }
 .group .blurb { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
 .item { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--muted)); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
 .item .head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
-.badge { flex: none; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--c, var(--muted)); border-radius: 6px; padding: 2px 7px; margin-right: 8px; vertical-align: 2px; }
+.badge { flex: none; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--on-c); background: var(--c, var(--muted)); border-radius: 6px; padding: 2px 7px; margin-right: 8px; vertical-align: 2px; }
 .item h3 { margin: 0; font-size: 16px; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
 .where { flex: none; color: var(--muted); font: 12px/1.6 var(--mono); max-width: 40%; text-align: right; overflow-wrap: anywhere; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
@@ -114,11 +118,44 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
 .partial { margin: 18px 0 0; padding: 12px 16px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: 10px; background: color-mix(in srgb, var(--warning) 8%, var(--card)); }
 .partial b { color: var(--warning); }
 .hidden { display: none !important; }
+.tabs { display: flex; gap: 4px; margin-top: 22px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--dot); }
+.tabs button:focus-visible, .tile:focus-visible { outline: 2px solid var(--dot); outline-offset: 2px; }
+.callout { margin: 24px 0 0; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--dot); border-radius: 10px; background: var(--card); }
+.callout p { margin: 0; } .callout p + p { margin-top: 8px; }
+.a11y h2 { font-size: 18px; margin: 34px 0 8px; }
+.legend { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.principle h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.tile .num { font: 600 12px var(--mono); }
+.tile .state { display: block; color: var(--st); font-weight: 650; font-size: 12px; }
+.st-failed { --st: var(--st-fail); } .st-none { --st: var(--st-none); } .st-manual { --st: var(--st-manual); }
+.crit { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
+.crit h3 { margin: 0; font-size: 15px; } .crit h3 .en { color: var(--muted); font-weight: 500; font-size: 13px; }
+.crit h4 { margin: 12px 0 4px; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.crit ul { margin: 0; padding-left: 0; list-style: none; } .crit li { margin: 4px 0; overflow-wrap: anywhere; }
+.more { color: var(--muted); font-size: 13px; }
+details.kb { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; }
+details.kb summary { cursor: pointer; overflow-wrap: anywhere; }
+ol.path { margin: 10px 0 0; padding-left: 28px; columns: 2 300px; font-size: 13px; }
+ol.path li { overflow-wrap: anywhere; }
+.crops { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.crops figure { margin: 0; max-width: 320px; }
+.crops img { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+.crops figcaption { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.statement { margin-top: 34px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.statement h2 { margin: 0 0 6px; }
+.statement pre { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px var(--mono); }
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) {
   header.top { flex-wrap: wrap; } .meta { text-align: left; }
   .item .head { flex-direction: column; } .where { max-width: none; text-align: left; }
 }
-@media print { .toolbar, .theme, .modes, .viewer input { display: none; } .item { break-inside: avoid; } .frame { max-height: none; overflow: visible; } }
+@media print { .toolbar, .theme, .modes, .viewer input, .tabs { display: none; } [role="tabpanel"][hidden] { display: block !important; } .item { break-inside: avoid; } .frame { max-height: none; overflow: visible; } }
 </style>
 </head>
 <body>
@@ -147,6 +184,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
   </div>
 
   
+  <div id="panel-results">
+  
   <div class="empty"><b>No differences</b>Every page that was checked looks, works and loads the way it did in the snapshot.</div>
   
 
@@ -162,6 +201,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
       <tbody><tr><td class="path"><a href="http://brew.test/" rel="noreferrer">/</a></td><td class="num">200</td><td class="num">0</td><td class="num">–</td><td class="num">0.00</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="http://brew.test/slow" rel="noreferrer">/slow</a></td><td class="num">not checked</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">–</td></tr><tr><td class="path"><a href="http://brew.test/shop/" rel="noreferrer">/shop/</a></td><td class="num">not checked</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">–</td></tr></tbody>
     </table></div>
   </details>
+  </div>
+
+  
 
   <footer><span>Made with ♪ rhythm soundcheck 1.0.0. Lab measurements from one headless browser; check anything surprising by hand.</span><span>rythm.sh/soundcheck</span></footer>
 </div>
@@ -202,6 +244,33 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
     });
   });
   if (q) q.addEventListener("input", apply);
+
+  
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  function show(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () { show(t); });
+    t.addEventListener("keydown", function (e) {
+      var step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      var next = tabs[(i + step + tabs.length) % tabs.length];
+      show(next);
+      next.focus();
+      e.preventDefault();
+    });
+  });
+  
+  
+  document.querySelectorAll("a[data-goto]").forEach(function (a) {
+    a.addEventListener("click", function () { var r = document.getElementById("tab-results"); if (r) show(r); });
+  });
 
   
   document.querySelectorAll(".viewer").forEach(function (v) {

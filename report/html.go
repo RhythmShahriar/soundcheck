@@ -53,6 +53,8 @@ type htmlData struct {
 	Echo                                   *htmlEcho
 	Trend                                  template.HTML // a sparkline of the site's LCP over its latest runs
 	TrendLabel                             string
+	CSP                                    string   // the Content-Security-Policy meta's content
+	EAA                                    *htmlEAA // the Accessibility tab of an --eaa result
 }
 
 // htmlEcho lists what each form submit and flow sent, when Echo ran.
@@ -79,7 +81,10 @@ type htmlGroup struct {
 type htmlItem struct {
 	// ID is the change's id (data-id on its article), which the review
 	// bar pairs it by; empty for a run's issues.
-	ID                              string
+	ID string
+	// Anchor is the article's element id, which the Accessibility tab
+	// links to.
+	Anchor                          string
 	Key, Label, Title, Check, Where string
 	Pages                           []string
 	BeforeAfter, Source, Detail     string
@@ -105,7 +110,17 @@ func HTML(w io.Writer, r Result) error {
 	run := r.Run
 	d := htmlData{
 		Version: run.Version, Target: run.Target, Created: run.Started.Local().Format("2 Jan 2006, 15:04"),
-		Compared: r.Compared(), Stats: r.stats(),
+		Compared: r.Compared(), Stats: r.stats(), CSP: CSP,
+	}
+	// Every card in the order shown, with what the Accessibility tab
+	// needs of it.
+	var cards []htmlItem
+	var sources []eaaSource
+	add := func(g *htmlGroup, it htmlItem, src eaaSource) {
+		it.Anchor = fmt.Sprintf("item-%d", len(cards)+1)
+		g.Items = append(g.Items, it)
+		cards = append(cards, it)
+		sources = append(sources, src)
 	}
 	if Partial(r) {
 		d.Partial = capitalize(partialNote) + "."
@@ -161,7 +176,7 @@ func HTML(w io.Writer, r Result) error {
 						}
 					}
 				}
-				g.Items = append(g.Items, it)
+				add(&g, it, eaaSource{Check: ch.Check, WCAG: ch.WCAG, Pages: ch.Pages})
 			}
 			d.Groups = append(d.Groups, g)
 		}
@@ -184,8 +199,9 @@ func HTML(w io.Writer, r Result) error {
 			g := htmlGroup{Key: string(level), Label: label, Glyph: levelGlyphs[level]}
 			for _, i := range issues {
 				if i.Level == level {
-					g.Items = append(g.Items, htmlItem{Key: string(level), Label: strings.ToUpper(string(level)), Title: i.Title,
-						Check: i.Check, Where: where(i.Pages), Pages: i.Pages, Source: i.Source, Detail: i.Detail, Fix: i.Fix})
+					add(&g, htmlItem{Key: string(level), Label: strings.ToUpper(string(level)), Title: i.Title,
+						Check: i.Check, Where: where(i.Pages), Pages: i.Pages, Source: i.Source, Detail: i.Detail, Fix: i.Fix},
+						eaaSource{Check: i.Check, WCAG: i.WCAG, Pages: i.Pages})
 				}
 			}
 			if len(g.Items) > 0 {
@@ -213,6 +229,7 @@ func HTML(w io.Writer, r Result) error {
 		d.Pages = append(d.Pages, hp)
 	}
 	d.Echo = echoTable(run)
+	d.EAA = r.eaaTab(cards, sources)
 	// html/template escapes site text but keeps bidi overrides, which
 	// make a name like "gnp.exe" read backwards. None of the report's own
 	// text has one, so they are removed from the whole page.

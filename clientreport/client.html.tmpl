@@ -43,7 +43,13 @@ ul.checked li { margin: 4px 0; }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 560px) { .pics { grid-template-columns: 1fr; } .meta { text-align: left; } }
 @media print { .wrap { max-width: none; } }
-</style>
+</style>{{if .Access}}
+<style>
+h3.sub { font-size: 16px; margin: 20px 0 6px; }
+details.person { margin-top: 16px; }
+details.person summary { cursor: pointer; font-weight: 600; }
+.note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 14px; margin: 20px 0 0; font-size: 14px; }
+</style>{{end}}
 </head>
 <body>
 <div class="wrap">
@@ -75,7 +81,23 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line);
   {{if .More}}<p class="more">And {{.More}} more, which we're looking at too.</p>{{end}}
   {{end}}
 
-  {{if .Fixed}}
+  {{with .Access}}
+  <h2>Accessibility</h2>
+  <p>We tested the site against the WCAG {{.Version}} A and AA criteria with automated rules and by using it with the keyboard alone.</p>
+  <div class="counts">{{range .Counts}}<div class="count t-{{.Tone}}{{if eq .N 0}} zero{{end}}"><b>{{.N}}</b><span>{{.Label}}</span></div>{{end}}</div>
+  {{if .Failed}}
+  <h3 class="sub">Criteria with failures</h3>
+  <ul class="checked">{{range .Failed}}<li>{{.}}</li>{{end}}</ul>
+  {{end}}
+  {{if .NotChecked}}<p class="more">We couldn't finish the accessibility tests on {{range $i, $p := .NotChecked}}{{if $i}}, {{end}}{{$p}}{{end}}, so {{if eq (len .NotChecked) 1}}that page needs{{else}}those pages need{{end}} checking again.</p>{{end}}
+  {{if .NeedPerson}}
+  <details class="person"><summary>What still needs a person ({{.NeedsPerson}} criteria)</summary>
+  <p class="more">These tests can't judge these criteria; someone needs to check them by hand.</p>
+  <ul class="checked">{{range .NeedPerson}}<li>{{.}}</li>{{end}}</ul>
+  </details>
+  {{end}}
+  <p class="note">{{.Note}}</p>
+  {{end}}{{if .Fixed}}
   <h2>Fixed since last time</h2>
   <ul class="checked">{{range .Fixed}}<li>{{.}}</li>{{end}}</ul>
   {{if .MoreFixed}}<p class="more">And {{.MoreFixed}} more.</p>{{end}}

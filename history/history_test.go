@@ -349,15 +349,17 @@ func TestSVG(t *testing.T) {
 }
 
 // The a11y and keyboard metrics are accepted; entries without them
-// show an empty column.
+// show "-" and say the module never ran.
 func TestRenderEAAMetrics(t *testing.T) {
-	for _, metric := range []string{"a11y", "keyboard"} {
+	for metric, col := range map[string]string{"a11y": "A11y open", "keyboard": "Keyboard open"} {
 		var b bytes.Buffer
 		if err := Render(&b, sampleEntries(), "", metric, true); err != nil {
 			t.Fatalf("%s: %v", metric, err)
 		}
-		if !strings.Contains(b.String(), strings.ToUpper(metric)) || !strings.Contains(b.String(), " -\n") {
-			t.Errorf("%s:\n%s", metric, b.String())
+		out := b.String()
+		if !strings.Contains(out, "Verdict   "+col+"\n") || !strings.Contains(out, " -\n") ||
+			!strings.Contains(out, col+"  not measured: no run had the "+metric+" module on (--eaa turns it on)") {
+			t.Errorf("%s:\n%s", metric, out)
 		}
 	}
 }

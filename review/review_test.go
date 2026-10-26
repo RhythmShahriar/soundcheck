@@ -242,8 +242,29 @@ func TestServePage(t *testing.T) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
-		t.Errorf("CSP = %q", csp)
+	// The page runs the report's script and the toolbar's, each allowed
+	// by its hash and no other; the report's own stricter meta policy
+	// is gone, or the browser would block the toolbar under it.
+	csp := resp.Header.Get("Content-Security-Policy")
+	for _, want := range []string{"frame-ancestors 'none'", "connect-src 'self'", "'" + report.ScriptHash + "'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP lacks %q: %q", want, csp)
+		}
+	}
+	if strings.Contains(csp, "unsafe-inline'; connect") || strings.Contains(csp, "script-src 'unsafe-inline'") {
+		t.Errorf("CSP lets any inline script run: %q", csp)
+	}
+	scripts := regexp.MustCompile(`(?s)<script>(.*?)</script>`).FindAllSubmatch(body, -1)
+	if len(scripts) != 2 {
+		t.Fatalf("%d scripts on the review page, want 2", len(scripts))
+	}
+	for _, sc := range scripts {
+		if !strings.Contains(csp, report.CSPHash(string(sc[1]))) {
+			t.Errorf("CSP doesn't allow the script %.60q", sc[1])
+		}
+	}
+	if bytes.Contains(body, []byte(`http-equiv="Content-Security-Policy"`)) {
+		t.Error("the review page keeps the report's CSP meta")
 	}
 	data := barJSON(t, body)
 	if len(data.Items) != 4 || data.Items[3] != nil || data.Items[0].Class != model.Broke || data.Token != s.token {
