@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 // Package a11y is the accessibility module: after each page loads it runs
-// axe-core (the WCAG 2 A and AA rules) and reports every violation as a
-// page issue, a11y/<rule-id>, keyed by the rule and a stable selector of
-// the element. A comparison then shows only what a change broke: a form
-// that lost its labels or a button whose contrast dropped is NEW, the
-// violations the snapshot already had stay quiet.
+// axe-core (the A and AA rules of the run's WCAG version) and reports
+// every violation as a page issue, a11y/<rule-id>, keyed by the rule and
+// a stable selector of the element. Each issue names the WCAG success
+// criteria and EN 301 549 clauses it fails. A comparison then shows only
+// what a change broke: a form that lost its labels or a button whose
+// contrast dropped is NEW, the violations the snapshot already had stay
+// quiet.
 //
 // axe-core is vendored in vendor/ (axe.min.js with its MPL-2.0 license,
 // unmodified, from the npm package; see axeVersion) and pinned by
 // SHA-256 in the tests, so a run never fetches code and two runs with the
-// same Soundcheck always apply the same rules.
+// same Soundcheck always apply the same rules. The run records the rules
+// it applied (model.Options.A11y) and whether each page's audit finished
+// (model.Page.Audits): a page whose audit timed out isn't a clean page.
 //
 // The module is off by default: it's slower than the other Live hooks on
 // big pages. Most sites also have a backlog of violations nobody wants to
@@ -19,18 +23,20 @@
 package a11y
 
 import (
+	"cmp"
 	"context"
+	"crypto/sha256"
 	_ "embed" // axe-core
-	"encoding/json"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
 	"github.com/RhythmShahriar/soundcheck/check"
@@ -46,145 +52,134 @@ var axeSource string
 // axeVersion is the vendored axe-core release.
 const axeVersion = "4.14.0"
 
-// maxNodes caps how many elements one rule reports per page: a theme
-// with a low-contrast footer would otherwise add hundreds of issues.
-// axe lists elements in document order, so the same ones are kept on
-// every run.
-const maxNodes = 20
+// axeDigest is the hex SHA-256 of axeSource, recorded with the rules a
+// run applied.
+var axeDigest = func() string {
+	sum := sha256.Sum256([]byte(axeSource))
+	return hex.EncodeToString(sum[:])
+}()
 
 // timeout bounds one page's audit. axe takes well under a second on a
-// typical page; a huge DOM can take several.
-const timeout = 45 * time.Second
+// typical page; a huge DOM can take several. A variable so the tests
+// can make a page run out of time.
+var timeout = 45 * time.Second
 
-// Module is the accessibility module.
+// Module is the accessibility module. It keeps no state: its settings
+// come from the run's config and what it records goes on the run.
 type Module struct{}
 
 // Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "a11y" }
 
-// result is what runJS sends back: axe's violations, trimmed to what the
-// issues use.
-type result struct {
-	ID      string `json:"id"`
-	Impact  string `json:"impact"`
-	Help    string `json:"help"`
-	HelpURL string `json:"helpUrl"`
-	Nodes   []node `json:"nodes"`
-}
-
-type node struct {
-	Path    [][]Elem `json:"path"` // see Selector
-	HTML    string   `json:"html"`
-	Summary string   `json:"failureSummary"`
-	Impact  string   `json:"impact"`
-}
-
-// runJS runs axe in the page and returns its violations as JSON, with
-// each element's path for Selector. Only the WCAG 2 level A and AA rules
-// run (axe tags them wcag2a and wcag2aa); best practices and AAA rules
-// are opinions a site owner hasn't signed up for. iframes are left out:
-// each would need its own copy of axe. Embeds (maps, videos, consent
-// banners) are someone else's.
-const runJS = `(async () => {
-  const path = el => {
-    const trees = [];
-    let tree = [];
-    for (let n = el; n && n.nodeType === 1;) {
-      const p = n.parentNode;
-      const same = p ? Array.from(p.children || []).filter(c => c.localName === n.localName) : [];
-      tree.unshift({tag: n.localName, id: n.id || '', name: n.getAttribute('name') || '', nth: same.length > 1 ? same.indexOf(n) + 1 : 0});
-      if (p && p.nodeType === 11 && p.host) {
-        trees.unshift(tree);
-        tree = [];
-        n = p.host;
-      } else {
-        n = n.parentElement;
-      }
-    }
-    trees.unshift(tree);
-    return trees;
-  };
-  const r = await axe.run(document, {
-    runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa']},
-    resultTypes: ['violations'],
-    iframes: false,
-    elementRef: true,
-  });
-  return JSON.stringify(r.violations.map(v => ({
-    id: v.id, impact: v.impact || '', help: v.help, helpUrl: v.helpUrl,
-    nodes: v.nodes.map(n => ({path: n.element ? path(n.element) : [], html: n.html, failureSummary: n.failureSummary || '', impact: n.impact || ''})),
-  })));
-})()`
-
 // Live audits the loaded page. axe runs in an isolated world: it shares
 // the page's DOM but not its globals. A site's AMD loader or a script
 // that redefines Array or Promise can't break it. The page can't see or
 // tamper with axe either.
+//
+// The page's Audits["a11y"] always says how the audit went, so a page
+// whose audit timed out or failed is never taken for a clean one.
 func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *model.Page) {
 	if p.Status >= 400 {
-		return // a 404 or 500 page is the server's template, not the page
-	}
-	found, err := audit(ctx, tab)
-	if err != nil {
-		cc.Warn(fmt.Sprintf("a11y: %s: %v", p.Path, err))
+		// A 404 or 500 page is the server's template, not the page.
+		setAudit(p, model.Audit{Status: model.AuditSkipped, Reason: "status " + strconv.Itoa(p.Status)})
 		return
 	}
-	p.Issues = append(p.Issues, issues(found)...)
-}
-
-// audit injects axe into a fresh isolated world and runs it.
-func audit(ctx context.Context, tab *rod.Page) ([]result, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	page := tab.Context(ctx)
-	world, err := proto.PageCreateIsolatedWorld{FrameID: page.FrameID, WorldName: "soundcheck-a11y"}.Call(page)
+	s := settingsOf(cc.Config)
+	version := runVersion(cc.Run)
+	opts := auditOptions{Tags: tags(version), Max: s.MaxElements, Rules: needRules(cc)}
+	rep, err := audit(ctx, tab, opts, s.IFrames)
 	if err != nil {
-		return nil, fmt.Errorf("can't open an isolated world: %w", err)
+		a := failed(ctx, err)
+		setAudit(p, a)
+		cc.Warn(fmt.Sprintf("a11y: %s: axe-core: %s; the page's a11y results are missing; the statement marks it", p.Path, strings.TrimPrefix(a.Reason, "axe-core ")))
+		return
 	}
-	if _, err := eval(page, world.ExecutionContextID, axeSource, false); err != nil {
-		return nil, fmt.Errorf("can't load axe-core: %w", err)
+	if rep.Rules != nil {
+		recordRules(cc, opts, rep.Rules)
 	}
-	raw, err := eval(page, world.ExecutionContextID, runJS, true)
-	if err != nil {
-		return nil, fmt.Errorf("axe-core: %w", err)
-	}
-	var out []result
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, fmt.Errorf("axe-core's result: %w", err)
-	}
-	return out, nil
-}
-
-// eval runs js in the given execution context and returns its string
-// result.
-func eval(page *rod.Page, id proto.RuntimeExecutionContextID, js string, await bool) (string, error) {
-	res, err := proto.RuntimeEvaluate{Expression: js, ContextID: id, AwaitPromise: await, ReturnByValue: true}.Call(page)
-	if err != nil {
-		return "", err
-	}
-	if res.ExceptionDetails != nil {
-		msg := res.ExceptionDetails.Text
-		if e := res.ExceptionDetails.Exception; e != nil && e.Description != "" {
-			msg, _, _ = strings.Cut(e.Description, "\n")
+	a := model.Audit{Status: model.AuditOK, Frames: rep.Frames}
+	for _, v := range rep.Violations {
+		if v.Total > s.MaxElements {
+			if a.CappedRules == nil {
+				a.CappedRules = map[string]int{}
+			}
+			a.CappedRules[v.ID] = v.Total
 		}
-		return "", errors.New(msg)
 	}
-	if res.Result == nil {
-		return "", nil
+	setAudit(p, a)
+	p.Issues = append(p.Issues, issues(rep.Violations, s.MaxElements, version)...)
+}
+
+// runVersion is the WCAG version run's rules are for. A run made before
+// 1.3 recorded none and used the 2.0 rules. So does a compare of it.
+func runVersion(run *model.Run) string {
+	if run == nil || run.Options.WCAG == "" {
+		return "2.0"
 	}
-	return res.Result.Value.Str(), nil
+	return run.Options.WCAG
+}
+
+// needRules reports whether the run still has to record the rules axe
+// applies. The first page to finish records them; asking on every page
+// until then costs one list of ids.
+func needRules(cc *check.Context) bool {
+	if cc.Run == nil {
+		return false
+	}
+	cc.Lock()
+	defer cc.Unlock()
+	return cc.Run.Options.A11y == nil
+}
+
+// recordRules sets the run's A11y options once: pages audited in
+// parallel all get the same rules, so the first one wins.
+func recordRules(cc *check.Context, opts auditOptions, rules []string) {
+	cc.Lock()
+	defer cc.Unlock()
+	if cc.Run.Options.A11y != nil {
+		return
+	}
+	cc.Run.Options.A11y = &model.A11yRules{Axe: axeVersion, AxeSHA256: axeDigest, Tags: slices.Clone(opts.Tags),
+		Rules: rules, MaxElements: opts.Max}
+}
+
+func setAudit(p *model.Page, a model.Audit) {
+	if p.Audits == nil {
+		p.Audits = map[string]model.Audit{}
+	}
+	p.Audits["a11y"] = a
+}
+
+// maxReason caps an error's text in Audit.Reason.
+const maxReason = 200
+
+// failed is the audit of a page whose run of axe returned err: a
+// timeout when the audit's own time ran out, otherwise an error with
+// the error's text, redacted and shortened.
+func failed(ctx context.Context, err error) model.Audit {
+	if ctx.Err() == nil && isTimeout(err) {
+		return model.Audit{Status: model.AuditTimeout, Reason: "axe-core timed out after " + timeout.String()}
+	}
+	reason := secrets.Redact(err.Error())
+	if r := []rune(reason); len(r) > maxReason {
+		reason = string(r[:maxReason-1]) + "…"
+	}
+	return model.Audit{Status: model.AuditError, Reason: reason}
 }
 
 // issues turns axe's violations into page issues, one per rule and
-// element. The key is the check and the stable selector alone (see
-// model.IssueKey): axe's help text can be reworded in a new release
-// without making every violation look new.
-func issues(found []result) []model.Issue {
+// element, at most keep per rule. The key is the check and the stable
+// selector alone (see model.IssueKey): axe's help text can be reworded
+// in a new release without making every violation look new. version is
+// the run's WCAG version, which decides the criteria an issue names.
+func issues(found []result, keep int, version string) []model.Issue {
 	var out []model.Issue
 	for _, v := range found {
+		total := max(v.Total, len(v.Nodes))
+		wcag, en := criteria(v.Tags, version)
 		seen := map[string]bool{}
 		for n, el := range v.Nodes {
-			if n == maxNodes {
+			if n == keep {
 				break
 			}
 			sel := Selector(el.Path)
@@ -196,16 +191,68 @@ func issues(found []result) []model.Issue {
 			if h := snippet(el.HTML); h != "" {
 				detail = strings.TrimSpace(h + "\n" + detail)
 			}
-			if len(v.Nodes) > maxNodes {
-				detail += fmt.Sprintf("\nThe first %d of %d elements that fail this rule on the page are reported.", maxNodes, len(v.Nodes))
+			if total > keep {
+				detail += fmt.Sprintf("\nThe first %d of %d elements that fail this rule on the page are reported.", keep, total)
 			}
-			i := model.Issue{Check: "a11y/" + v.ID, Level: level(firstOf(el.Impact, v.Impact)), Title: v.Help,
-				Detail: detail, Source: sel, Fix: fix(v.HelpURL)}
+			impact := firstOf(el.Impact, v.Impact)
+			i := model.Issue{Check: "a11y/" + v.ID, Level: level(impact), Title: v.Help,
+				Detail: detail, Source: sel, Fix: fix(v.HelpURL),
+				WCAG: slices.Clone(wcag), EN301549: slices.Clone(en), Impact: impact}
 			i.Identify()
 			out = append(out, i)
 		}
 	}
 	return out
+}
+
+var (
+	// criterionTag is axe's tag for a WCAG success criterion: wcag1412
+	// is 1.4.12 (principle, guideline, then the criterion's number).
+	criterionTag = regexp.MustCompile(`^wcag(\d)(\d)(\d+)$`)
+	// clauseTag is axe's tag for an EN 301 549 clause: EN-9.1.3.5.
+	clauseTag = regexp.MustCompile(`^EN-9\.[0-9.]+$`)
+)
+
+// wcag22Only are the criteria WCAG 2.2 added. axe tags its rules with
+// them whatever version runs, so a 2.1 run leaves them out: they aren't
+// part of the standard it tests against.
+var wcag22Only = []string{"2.4.11", "2.4.12", "2.4.13", "2.5.7", "2.5.8", "3.2.6", "3.3.7", "3.3.8", "3.3.9"}
+
+// criteria reads the WCAG success criteria ("1.4.12") and EN 301 549
+// clauses ("9.1.4.12") from a rule's axe tags, each sorted by number and
+// without repeats. Tags of neither kind (cat.forms, wcag2aa) are left
+// out. So are the criteria version doesn't have.
+func criteria(tags []string, version string) (wcag, en []string) {
+	dropped := func(id string) bool { return version != "2.2" && slices.Contains(wcag22Only, id) }
+	for _, t := range tags {
+		if m := criterionTag.FindStringSubmatch(t); m != nil {
+			if id := m[1] + "." + m[2] + "." + m[3]; !dropped(id) {
+				wcag = append(wcag, id)
+			}
+		} else if clauseTag.MatchString(t) {
+			if c := strings.TrimPrefix(t, "EN-"); !dropped(strings.TrimPrefix(c, "9.")) {
+				en = append(en, c)
+			}
+		}
+	}
+	return sortedIDs(wcag), sortedIDs(en)
+}
+
+// sortedIDs sorts dotted numbers part by part (1.4.3 comes before
+// 1.4.12) and drops repeats.
+func sortedIDs(ids []string) []string {
+	slices.SortFunc(ids, func(a, b string) int {
+		as, bs := strings.Split(a, "."), strings.Split(b, ".")
+		for i := range min(len(as), len(bs)) {
+			x, _ := strconv.Atoi(as[i])
+			y, _ := strconv.Atoi(bs[i])
+			if c := cmp.Compare(x, y); c != 0 {
+				return c
+			}
+		}
+		return cmp.Compare(len(as), len(bs))
+	})
+	return slices.Compact(ids)
 }
 
 // level maps axe's impact to an issue level: critical and serious

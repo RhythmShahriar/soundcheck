@@ -81,6 +81,14 @@ type Options struct {
 	// silently move somewhere the user didn't name.
 	FollowHost bool
 	Hooks      Hooks
+	// WCAG is the WCAG version the accessibility checks use (2.0, 2.1 or
+	// 2.2), recorded in the run's options for the a11y module and for a
+	// comparison. Empty records none, which reads as 2.0.
+	WCAG string
+	// EAA records that the run was made with --eaa.
+	EAA bool
+	// Keyboard records the keyboard walk's limits, when it runs.
+	Keyboard *model.KeyboardOptions
 
 	// Done resumes an interrupted run: these pages were finished before
 	// and are kept as they are, not visited again. Their links are added
@@ -154,7 +162,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: startURL.String(),
 		Name: opts.Name, Started: start.UTC(),
 		Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules,
-			Limit: cfg.Pages.Limit},
+			Limit: cfg.Pages.Limit, WCAG: opts.WCAG, EAA: opts.EAA, Keyboard: opts.Keyboard},
 	}
 
 	// Pages: the given paths, or discovered from sitemaps and links.

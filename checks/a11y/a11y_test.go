@@ -4,10 +4,13 @@
 package a11y
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -127,14 +130,14 @@ func TestIssues(t *testing.T) {
 		{ID: "region", Impact: "minor", Help: "All page content should be contained by landmarks",
 			Nodes: []node{{Path: [][]Elem{tree("html", "body", "aside#promo")}}}},
 	}
-	got := issues(found)
+	got := issues(found, 20, "2.1")
 	if len(got) != 3 {
 		t.Fatalf("issues = %+v", got)
 	}
 	want := model.Issue{Check: "a11y/label", Level: model.Warning, Title: "Form elements must have labels", Source: "#email",
 		Detail: "<input id=\"email\">\nFix any of the following:\nElement does not have an implicit (wrapped) <label>\nElement has no title attribute",
 		Fix:    "See https://dequeuniversity.com/rules/axe/4.14/label for what the rule asks and how to fix it.",
-		Key:    "a11y/label|#email"}
+		Key:    "a11y/label|#email", Impact: "critical"}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("label issue =\n%+v\nwant\n%+v", got[0], want)
 	}
@@ -154,7 +157,7 @@ func TestIssues(t *testing.T) {
 func TestIssueKeyIsTheChangeKey(t *testing.T) {
 	found := []result{{ID: "label", Impact: "critical", Help: "Form elements must have labels",
 		Nodes: []node{{Path: [][]Elem{tree("html", "body", "form", "input#email")}}}}}
-	for _, i := range issues(found) {
+	for _, i := range issues(found, 20, "2.1") {
 		if want := model.IssueKey(i.Check, i.Title, i.Source); i.Key != want {
 			t.Errorf("key %q, a change of it looks for %q", i.Key, want)
 		}
@@ -204,9 +207,9 @@ func TestIssuesCapsElements(t *testing.T) {
 	for i := range 50 {
 		r.Nodes = append(r.Nodes, node{Path: [][]Elem{tree("html", "body", "ul", "li:"+strconv.Itoa(i+1), "a")}})
 	}
-	got := issues([]result{r})
-	if len(got) != maxNodes {
-		t.Fatalf("%d issues, want %d", len(got), maxNodes)
+	got := issues([]result{r}, 20, "2.1")
+	if len(got) != 20 {
+		t.Fatalf("%d issues, want 20", len(got))
 	}
 	if !strings.HasSuffix(got[0].Detail, "The first 20 of 50 elements that fail this rule on the page are reported.") {
 		t.Errorf("detail = %q", got[0].Detail)
@@ -220,5 +223,119 @@ func TestLevel(t *testing.T) {
 		if got := level(impact); got != want {
 			t.Errorf("level(%q) = %s, want %s", impact, got, want)
 		}
+	}
+}
+
+func TestCriteria(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		tags     []string
+		version  string
+		wcag, en []string
+	}{
+		{name: "two-digit criterion", tags: []string{"cat.text-spacing", "wcag21aa", "wcag1412", "EN-301-549", "EN-9.1.4.12"}, version: "2.1",
+			wcag: []string{"1.4.12"}, en: []string{"9.1.4.12"}},
+		{name: "one-digit criterion", tags: []string{"cat.forms", "wcag21aa", "wcag135", "EN-9.1.3.5"}, version: "2.1",
+			wcag: []string{"1.3.5"}, en: []string{"9.1.3.5"}},
+		{name: "sorted by number, no repeats", tags: []string{"wcag412", "wcag131", "wcag1412", "wcag143", "wcag131", "EN-9.4.1.2", "EN-9.1.3.1"}, version: "2.2",
+			wcag: []string{"1.3.1", "1.4.3", "1.4.12", "4.1.2"}, en: []string{"9.1.3.1", "9.4.1.2"}},
+		{name: "2.2 criterion under 2.2", tags: []string{"wcag22aa", "wcag2411", "wcag258"}, version: "2.2",
+			wcag: []string{"2.4.11", "2.5.8"}},
+		{name: "2.2 criterion under 2.1", tags: []string{"wcag22aa", "wcag2411", "wcag258", "wcag111"}, version: "2.1",
+			wcag: []string{"1.1.1"}},
+		{name: "2.2 criterion under 2.0", tags: []string{"wcag258", "EN-9.2.5.8"}, version: "2.0"},
+		{name: "unrelated tags", tags: []string{"cat.forms", "wcag2a", "wcag21aa", "best-practice", "ACT", "TTv5", "section508", "EN-301-549", "wcag", "wcag1x2"}, version: "2.1"},
+		{name: "no tags", version: "2.1"},
+	} {
+		wcag, en := criteria(c.tags, c.version)
+		if !slices.Equal(wcag, c.wcag) || !slices.Equal(en, c.en) {
+			t.Errorf("%s: criteria(%v, %s) = %v, %v; want %v, %v", c.name, c.tags, c.version, wcag, en, c.wcag, c.en)
+		}
+	}
+}
+
+// Every issue of a rule names its criteria and clauses. It has axe's
+// impact of the element.
+func TestIssuesCarryCriteria(t *testing.T) {
+	found := []result{{ID: "label", Impact: "critical", Help: "Form elements must have labels",
+		Tags: []string{"cat.forms", "wcag2a", "wcag412", "section508", "EN-301-549", "EN-9.4.1.2", "wcag131", "EN-9.1.3.1"},
+		Nodes: []node{
+			{Path: [][]Elem{tree("html", "body", "input#a")}, Impact: "serious"},
+			{Path: [][]Elem{tree("html", "body", "input#b")}},
+		}}}
+	got := issues(found, 20, "2.1")
+	if len(got) != 2 {
+		t.Fatalf("issues = %+v", got)
+	}
+	for n, i := range got {
+		if !slices.Equal(i.WCAG, []string{"1.3.1", "4.1.2"}) || !slices.Equal(i.EN301549, []string{"9.1.3.1", "9.4.1.2"}) {
+			t.Errorf("issue %d: wcag %v, en %v", n, i.WCAG, i.EN301549)
+		}
+	}
+	if got[0].Impact != "serious" || got[1].Impact != "critical" {
+		t.Errorf("impacts %q and %q, want the element's then the rule's", got[0].Impact, got[1].Impact)
+	}
+	// Two issues don't share their lists: a later change of one stays
+	// its own.
+	got[0].WCAG[0] = "x"
+	if got[1].WCAG[0] != "1.3.1" {
+		t.Error("issues share their WCAG list")
+	}
+}
+
+func TestParse(t *testing.T) {
+	doc, err := parse(`{"violations":[{"id":"label","impact":"critical","tags":["wcag412"],"total":3,"nodes":[{"path":[[{"tag":"input","id":"a"}]]}]}],"frames":[{"host":"maps.example","same":false}],"rules":["label"]}`)
+	if err != nil || len(doc.Violations) != 1 || doc.Violations[0].Total != 3 || doc.Frames[0] != (frameRef{Host: "maps.example"}) ||
+		!slices.Equal(doc.Rules, []string{"label"}) {
+		t.Errorf("parse = %+v, %v", doc, err)
+	}
+	// runJS trims what it sends; a result past 2 MB isn't axe's.
+	huge := `{"violations":[{"id":"x","help":"` + strings.Repeat("a", maxResult) + `"}]}`
+	if _, err := parse(huge); err == nil || err.Error() != "axe-core result too large" {
+		t.Errorf("parse(%d bytes) = %v", len(huge), err)
+	}
+	if _, err := parse(`{"violations":`); err == nil || !strings.HasPrefix(err.Error(), "axe-core's result: ") {
+		t.Errorf("parse(truncated) = %v", err)
+	}
+	var many strings.Builder
+	many.WriteString(`{"violations":[`)
+	for i := range maxRules + 5 {
+		if i > 0 {
+			many.WriteString(",")
+		}
+		many.WriteString(`{"id":"r` + strconv.Itoa(i) + `"}`)
+	}
+	many.WriteString(`]}`)
+	if doc, err := parse(many.String()); err != nil || len(doc.Violations) != maxRules {
+		t.Errorf("parse(%d rules) = %d rules, %v", maxRules+5, len(doc.Violations), err)
+	}
+}
+
+// A failed audit says why in at most 200 characters, with credentials
+// the kit knows masked; only the audit's own time running out is a
+// timeout.
+func TestFailed(t *testing.T) {
+	if a := failed(context.Background(), errTimedOut); !reflect.DeepEqual(a, model.Audit{Status: model.AuditTimeout, Reason: "axe-core timed out after 45s"}) {
+		t.Errorf("timeout = %+v", a)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if a := failed(canceled, errTimedOut); a.Status != model.AuditError {
+		t.Errorf("a stopped run's audit = %+v", a)
+	}
+	token := "ghp_" + strings.Repeat("A1b2C3d4", 5)
+	a := failed(context.Background(), errors.New("TypeError: cannot read "+token+" "+strings.Repeat("x", 300)))
+	if a.Status != model.AuditError || strings.Contains(a.Reason, token) || len([]rune(a.Reason)) != maxReason ||
+		!strings.HasPrefix(a.Reason, "TypeError: cannot read ") {
+		t.Errorf("error = %+v", a)
+	}
+}
+
+func TestMerge(t *testing.T) {
+	page := []result{{ID: "label", Total: 1, Nodes: []node{{HTML: "a"}}}}
+	frame := []result{{ID: "label", Total: 2, Nodes: []node{{HTML: "b"}, {HTML: "c"}}}, {ID: "image-alt", Total: 1, Nodes: []node{{HTML: "d"}}}}
+	got := merge(page, frame)
+	if len(got) != 2 || got[0].Total != 3 || len(got[0].Nodes) != 3 || got[0].Nodes[0].HTML != "a" || got[1].ID != "image-alt" {
+		t.Errorf("merge = %+v", got)
 	}
 }
