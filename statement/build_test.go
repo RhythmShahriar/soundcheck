@@ -4,8 +4,10 @@
 package statement
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -211,12 +213,25 @@ func TestBuildHidesTheRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := string(b)
-	for _, leak := range []string{"127.0.0.1", "37060", "jane.doe", "staging.shop.test", token, "session=", "abc", "sid=", "#top"} {
-		if strings.Contains(out, leak) {
-			t.Errorf("draft holds %q:\n%s", leak, out)
+	outputs := map[string]string{"draft": string(b)}
+	for name, render := range map[string]func(io.Writer, *Draft) error{"md": Markdown, "html": HTML, "json": JSON, "earl": EARL} {
+		for _, layout := range Layouts {
+			d.Layout = layout
+			var buf bytes.Buffer
+			if err := render(&buf, d); err != nil {
+				t.Fatalf("%s %s: %v", name, layout, err)
+			}
+			outputs[name+" "+layout] = buf.String()
 		}
 	}
+	for name, out := range outputs {
+		for _, leak := range []string{"127.0.0.1", "37060", "jane.doe", "staging.shop.test", token, "session=", "abc", "sid=", "#top"} {
+			if strings.Contains(out, leak) {
+				t.Errorf("%s holds %q:\n%s", name, leak, out)
+			}
+		}
+	}
+	out := string(b)
 	if !strings.Contains(out, "https://shop.example") || !slices.Contains(d.Checked, "/password/reset/"+masked) || !slices.Equal(d.Frames, []string{"js.stripe.com"}) {
 		t.Errorf("checked %v, frames %v", d.Checked, d.Frames)
 	}
