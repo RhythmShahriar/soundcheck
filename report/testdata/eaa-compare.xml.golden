@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="soundcheck" tests="82" failures="3" errors="0" time="161">
+  <testsuite name="soundcheck.broke" tests="1" failures="1" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="Keyboard focus is trapped: Card number" classname="keyboard.trap">
+      <failure message="BROKE: Keyboard focus is trapped: Card number" type="broke">where: /checkout/&#xA;source: #card-element &gt; div:nth-of-type(1)&#xA;detail: Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can&#39;t be reached.&#xA;fix: Let Tab move on from the field.</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.new" tests="1" failures="1" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="Form elements must have labels" classname="a11y.label">
+      <failure message="NEW: Form elements must have labels" type="new">where: /checkout/&#xA;source: #card_cvc&#xA;detail: &lt;input id=&#34;card_cvc&#34; name=&#34;card_cvc&#34;&gt;&#xA;fix: See https://dequeuniversity.com/rules/axe/4.14/label for what the rule asks and how to fix it.</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.changed" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.slower" tests="0" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z"></testsuite>
+  <testsuite name="soundcheck.fixed" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="Focus is lost after closing: Newsletter" classname="keyboard.focus-lost">
+      <system-out>where: /, /shop/, /about/, /p/d/, /p/e/, /p/f/, /p/g/, /p/h/, /p/i/, /p/j/ +28 more&#xA;source: #newsletter-close&#xA;fix: When the dialog closes, move focus back to the button that opened it.</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /shop/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/shop/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/shop/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /about/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/about/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/about/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/d/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/d/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/d/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/e/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/e/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/e/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/f/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/f/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/f/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/g/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/g/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/g/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/h/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/h/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/h/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/i/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/i/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/i/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/j/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/j/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/j/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/k/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/k/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/k/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/l/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/l/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/l/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/m/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/m/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/m/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/n/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/n/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/n/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/o/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/o/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/o/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/p/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/p/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/p/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/q/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/q/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/q/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/r/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/r/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/r/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/s/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/s/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/s/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/t/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/t/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/t/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/u/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/u/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/u/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/v/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/v/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/v/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/w/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/w/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/w/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/x/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/x/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/x/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/y/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/y/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/y/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/z/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/z/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/z/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/ax/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/ax/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/ax/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/bx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/bx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/bx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/cx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/cx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/cx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/dx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/dx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/dx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/ex/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/ex/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/ex/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/fx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/fx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/fx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/gx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/gx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/gx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/hx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/hx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/hx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/ix/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/ix/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/ix/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/jx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/jx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/jx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/kx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/kx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/kx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /p/lx/" tests="2" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/p/lx/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/p/lx/ · keyboard" classname="soundcheck.keyboard"></testcase>
+  </testsuite>
+  <testsuite name="soundcheck.page /checkout/" tests="2" failures="1" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="/checkout/ · a11y" classname="soundcheck.a11y"></testcase>
+    <testcase name="/checkout/ · keyboard" classname="soundcheck.keyboard">
+      <failure message="Keyboard focus is trapped: Card number" type="error">check: keyboard/trap&#xA;wcag: 2.1.2 · EN 301 549 9.2.1.2&#xA;path: #billing_email &gt; #billing_phone &gt; #card-element &gt; div:nth-of-type(1) x4&#xA;source: #card-element &gt; div:nth-of-type(1)&#xA;detail: Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can&#39;t be reached.&#xA;fix: Let Tab move on from the field.</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="soundcheck.pages" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
+    <testcase name="39 pages checked" classname="soundcheck"></testcase>
+  </testsuite>
+</testsuites>

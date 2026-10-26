@@ -29,6 +29,12 @@ func eaaOf(r Result) *model.EAASummary {
 	return nil
 }
 
+// EAA is the accessibility summary a result shows, or nil when the run
+// wasn't made with --eaa: the comparison's for a comparison, else the
+// run's. Other packages (the client report) use it to pick the same
+// summary every format of this package shows.
+func EAA(r Result) *model.EAASummary { return eaaOf(r) }
+
 // accessibilityCheck reports whether check is an accessibility or
 // keyboard check, whose issues the EAA summary counts.
 func accessibilityCheck(check string) bool {

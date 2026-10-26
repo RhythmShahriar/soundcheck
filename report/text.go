@@ -199,7 +199,7 @@ func capitalize(s string) string {
 }
 
 // JUnit XML: one test suite per change class (or issue level), one test
-// case per change. Cases at or above failOn fail; with no failOn, BROKE
+// case per change, plus a suite per page under --eaa (see eaaSuites). Cases at or above failOn fail; with no failOn, BROKE
 // and NEW changes (or errors, for a single run) fail.
 type junitSuites struct {
 	XMLName  xml.Name     `xml:"testsuites"`
@@ -233,12 +233,14 @@ type junitProperty struct {
 }
 
 type junitCase struct {
-	Name      string        `xml:"name,attr"`
-	Classname string        `xml:"classname,attr"`
-	Failure   *junitFailure `xml:"failure,omitempty"`
-	Error     *junitFailure `xml:"error,omitempty"`
-	Skipped   *struct{}     `xml:"skipped,omitempty"`
-	Out       string        `xml:"system-out,omitempty"`
+	Name      string `xml:"name,attr"`
+	Classname string `xml:"classname,attr"`
+	// Failure holds one failure, or one per error of a page's module
+	// under --eaa (see eaaSuites).
+	Failure []junitFailure `xml:"failure,omitempty"`
+	Error   *junitFailure  `xml:"error,omitempty"`
+	Skipped *struct{}      `xml:"skipped,omitempty"`
+	Out     string         `xml:"system-out,omitempty"`
 }
 
 type junitFailure struct {
@@ -275,7 +277,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 					s.Skipped++
 				}
 				if !partial && i <= limit && class != model.Fixed && class != model.Unstable {
-					tc.Failure = &junitFailure{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}
+					tc.Failure = []junitFailure{{Message: classes[class].Label + ": " + tc.Name, Type: class, Text: tc.Out}}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -299,7 +301,7 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 				tc := junitCase{Name: xmlText(i.Title), Classname: xmlText(strings.ReplaceAll(i.Check, "/", ".")),
 					Out: caseText(i.Pages, "", i.Source, i.Detail, i.Fix)}
 				if !partial && level.Rank() <= limit {
-					tc.Failure = &junitFailure{Message: tc.Name, Type: string(level), Text: tc.Out}
+					tc.Failure = []junitFailure{{Message: tc.Name, Type: string(level), Text: tc.Out}}
 					tc.Out = ""
 					s.Failures++
 				}
@@ -309,6 +311,9 @@ func JUnit(w io.Writer, r Result, failOn string) error {
 			out.Suites = append(out.Suites, s)
 		}
 	}
+	// An --eaa result also gets a suite per page with a case per page
+	// and accessibility module, so a CI test tab shows where a trap is.
+	out.Suites = append(out.Suites, eaaSuites(r, failOn, stamp, partial)...)
 	// A run with nothing to report still shows as one passing case, so CI
 	// dashboards record that the check ran.
 	pages := junitSuite{Name: "soundcheck.pages", Timestamp: stamp,
