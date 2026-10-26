@@ -225,12 +225,12 @@ func TestStaleIgnores(t *testing.T) {
 		{Check: "a11y/color-contrast", Pages: []string{"/legal/*"}, Until: "2026-10-01"}, // expired
 		{Check: "visual/*", Pages: []string{"/team/*"}},                                  // may hide a change no issue carries
 		{Check: "a11y/label", Source: "#q"},
-		{Check: "health/broken-link", Pages: []string{"/legal/*"}},
+		{Check: "a11y/keyboard-trap", Pages: []string{"/legal/*"}},
 		{Check: "a11y/label", Until: "soon"},
 		{Reason: "empty"},
 	}
 	with := pagesOf(model.Page{Path: "/legal/terms/", Issues: []model.Issue{contrast}}, model.Page{Path: "/", Issues: []model.Issue{{Check: "a11y/label", Source: "#search"}}})
-	site := []model.Issue{{Check: "health/broken-link", Title: "Broken link", Pages: []string{"/legal/terms/"}}}
+	site := []model.Issue{{Check: "a11y/keyboard-trap", Title: "Keyboard trap", Pages: []string{"/legal/terms/"}}}
 	if got, want := StaleIgnores(rules, day, with, site), []int{3}; !slices.Equal(got, want) {
 		t.Errorf("stale = %v, want %v", got, want)
 	}
@@ -243,5 +243,38 @@ func TestStaleIgnores(t *testing.T) {
 	}
 	if got := StaleIgnores(rules[:1], day, nil, nil); !slices.Equal(got, []int{0}) {
 		t.Errorf("no pages: %v", got)
+	}
+}
+
+// A rule for a module that reports changes of its own is never stale:
+// it may hide a change no issue carries, such as a team page whose
+// title changes weekly or a page that stopped being cached.
+func TestStaleIgnoresKeepsComparerRules(t *testing.T) {
+	rules := []IgnoreRule{
+		{Check: "health/title", Pages: []string{"/team/"}},
+		{Check: "cache/stopped"},
+		{Check: "health/content-lost"},
+		{Check: "seo/*"},
+		{Check: "visual/*"},
+		{Check: "a11y/label"}, // issues only: stale once gone
+	}
+	gone := pagesOf(model.Page{Path: "/team/"})
+	if got, want := StaleIgnores(rules, day, gone, nil), []int{5}; !slices.Equal(got, want) {
+		t.Errorf("stale = %v, want %v", got, want)
+	}
+}
+
+// A registered module that implements check.Comparer counts as one even
+// when it isn't built in; others don't.
+func TestStaleIgnoresAsksTheRegistry(t *testing.T) {
+	old := comparers
+	t.Cleanup(func() { comparers = old })
+	comparers = func() []string { return append(slices.Clone(builtinComparers), "forms") }
+	rules := []IgnoreRule{{Check: "forms/sent"}, {Check: "a11y/label"}}
+	if got, want := StaleIgnores(rules, day, pagesOf(model.Page{Path: "/"}), nil), []int{1}; !slices.Equal(got, want) {
+		t.Errorf("stale = %v, want %v", got, want)
+	}
+	if !slices.Contains(old(), "health") || !slices.Contains(old(), "cache") {
+		t.Errorf("comparers() = %v, want health and cache", old())
 	}
 }
