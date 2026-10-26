@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -313,5 +314,52 @@ func TestRecordJudgesStops(t *testing.T) {
 	}
 	if strings.Contains(fmt.Sprint(tr.Held, tr.Events), "token") {
 		t.Errorf("a query string was kept: %q %q", tr.Held, tr.Events)
+	}
+}
+
+// A held request or a navigation the page started keeps its path in the
+// trace, with a token-like segment (a reset or verify link's key)
+// masked, like the page's own path.
+func TestRecordMasksTokenPaths(t *testing.T) {
+	// Assembled here, so no file holds a token-shaped literal.
+	token := strings.Repeat("k9", 8) + "Zq" + strings.Repeat("x7", 6)
+	page := `<!doctype html><html lang="en"><body><main>
+<button id="reset" onfocus="fetch('/password/reset/` + token + `', {method: 'POST', body: 'x'})">Reset</button>
+<a id="verify" href="#v" onfocus="location.href = '/email/verify/7/` + token + `'">Verify</a>
+<a id="last" href="#l">Last</a>
+</main></body></html>`
+	srv := serve(t, &pages{html: map[string]string{"/": page}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	tr := walkPage(t, tab, p, DefaultSettings())
+	all := fmt.Sprint(tr.Held, tr.Events)
+	if strings.Contains(all, token) {
+		t.Fatalf("a token was kept: held %q events %q", tr.Held, tr.Events)
+	}
+	if !slices.ContainsFunc(tr.Held, func(h string) bool { return strings.HasPrefix(h, "POST /password/reset/") }) {
+		t.Errorf("held %q", tr.Held)
+	}
+	if !slices.ContainsFunc(tr.Events, func(e string) bool { return strings.HasPrefix(e, "navigation stopped: GET /email/verify/7/") }) {
+		t.Errorf("events %q", tr.Events)
+	}
+}
+
+// pathOf and pathOfRaw mask a token-like segment and keep a short one.
+func TestPathOfMasksTokens(t *testing.T) {
+	token := strings.Repeat("ab12", 6) + "Cd"
+	for raw, keep := range map[string]bool{
+		"http://h/password/reset/" + token + "?x=1": false,
+		"http://h/email/verify/7/" + token:          false,
+		"http://h/password/reset/short":             true,
+		"http://h/blog/" + token:                    true, // no reset or verify segment before it
+	} {
+		got := pathOfRaw("POST", raw)
+		if strings.Contains(got, token) != (keep && strings.Contains(raw, token)) || strings.Contains(got, "?") {
+			t.Errorf("pathOfRaw(%q) = %q", raw, got)
+		}
+	}
+	u, _ := url.Parse("http://h/password/reset/" + token)
+	if got := pathOf("GET", u); strings.Contains(got, token) || !strings.HasPrefix(got, "GET /password/reset/") {
+		t.Errorf("pathOf %q", got)
 	}
 }

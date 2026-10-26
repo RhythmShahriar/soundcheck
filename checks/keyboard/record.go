@@ -21,6 +21,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/capture/intercept"
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/a11y"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/internal/focus"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -248,7 +249,8 @@ func (g *guard) event(msg string) {
 }
 
 // pathOf is a request's method and path, with no query: what a held
-// request is listed as.
+// request is listed as. Token-like segments are masked, like the page's
+// own path in the trace.
 func pathOf(method string, u *url.URL) string {
 	if u == nil {
 		return method
@@ -257,7 +259,7 @@ func pathOf(method string, u *url.URL) string {
 	if p == "" {
 		p = "/"
 	}
-	return method + " " + p
+	return method + " " + echolink.RedactURL(p)
 }
 
 // arm starts watching the tab and installs the walk's in-page guard and
@@ -607,6 +609,9 @@ func (w *walker) navigations(ctx context.Context) error {
 		g.event("passkey request refused: " + clip(k, 10))
 	}
 	for _, n := range log {
+		// The page's own path, read in the page: masked like any other
+		// (a reset link's token), as the guard writes it down as is.
+		n.What = echolink.RedactURL(n.What)
 		g.navs++
 		kind := EffectNavigation
 		if n.Form {
