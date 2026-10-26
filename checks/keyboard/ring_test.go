@@ -210,3 +210,38 @@ func TestRingMarginJS(t *testing.T) {
 		t.Errorf("ringMarginJS %q, ringMargin %d", ringMarginJS, ringMargin)
 	}
 }
+
+// offsetSkipPage has the common skip link that sits above the page, its
+// lower edge a few pixels from the top, and moves into view on focus, over a dark header, with a second link that
+// shows no ring at all.
+const offsetSkipPage = `<!doctype html><html lang="en"><head><title>Skip</title><style>
+body { background: #fff; margin: 0; font: 16px sans-serif; }
+header { background: #2b211b; padding: 18px 32px; }
+header a { color: #fff; }
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 10; background: #fff; color: #2b211b; padding: 12px 16px; }
+.skip-link:focus { top: 8px; }
+#bare:focus { outline: none; }
+</style></head><body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header><a href="/">Brew</a></header>
+<main id="main"><h1>Hi</h1><p><a id="bare" href="/x">No ring here</a></p></main>
+</body></html>`
+
+// A skip link that moves into view on focus is pictured where it shows:
+// it has a visible focus indicator. A link without one still fails.
+func TestRingOfOffsetSkipLink(t *testing.T) {
+	srv := serve(t, &pages{html: map[string]string{"/": offsetSkipPage}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	cc := withSaver(runContext(t))
+	live(t, New(), cc, tab, p)
+	var rings []string
+	for _, i := range p.Issues {
+		if i.Check == ids.NoFocusRing {
+			rings = append(rings, i.Source)
+		}
+	}
+	if len(rings) != 1 || rings[0] != "#bare" {
+		t.Errorf("no-focus-ring on %q, want #bare alone", rings)
+	}
+}

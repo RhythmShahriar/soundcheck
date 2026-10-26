@@ -98,7 +98,8 @@ func urlGroup(path string) string {
 
 // ringJS is called on a stop to measure. It scrolls the element to the
 // middle of the viewport and returns the region to take pictures of in
-// document coordinates of the top page: the element's box plus
+// document coordinates of the top page: the element's box (blurred and
+// focused together, as focus may move it) plus
 // ringMargin, joined with its parent's box when the parent is at most
 // twice as big (a ring drawn on a wrapper), cut to the viewport. text
 // is true for a field a visitor types into, whose picture is never kept
@@ -119,7 +120,17 @@ const ringJS = `function () {
     return [x, y];
   };
   const [ox, oy] = offset(el.ownerDocument);
-  const r = el.getBoundingClientRect();
+  // The box blurred and focused: an element that moves into view on
+  // focus (an offset skip link) is pictured where it shows, not only
+  // where it hides.
+  const r0 = el.getBoundingClientRect();
+  el.focus({preventScroll: true});
+  const r1 = el.getBoundingClientRect();
+  const boxes = [r0, r1].filter(b => b.width * b.height > 0);
+  const all = boxes.length ? boxes : [r1];
+  const r = {left: Math.min(...all.map(b => b.left)), top: Math.min(...all.map(b => b.top)),
+    right: Math.max(...all.map(b => b.right)), bottom: Math.max(...all.map(b => b.bottom))};
+  r.width = r.right - r.left; r.height = r.bottom - r.top;
   const m = ` + ringMarginJS + `;
   let l = r.left - m, t = r.top - m, rt = r.right + m, b = r.bottom + m;
   const p = up(el);
