@@ -20,6 +20,13 @@ const (
 	reasonDocument      = "the baseline didn't report the page's <html> or <body>"
 )
 
+// ownChecks are the a11y module's own checks, recorded with axe's rules
+// (checks/a11y ownRules). They're guarded like a rule but the note
+// names them only when it put one of their issues aside: the note is
+// about the rules axe ran. A 1.2 snapshot compared with a clean
+// 1.3 run shouldn't list checks that found nothing.
+var ownChecks = map[string]bool{"overlay": true, "placeholder-label": true, "reflow": true}
+
 // ruleSets are the a11y rules each run applied, which decide whether an
 // a11y change can be a real one. A rule the snapshot didn't run found
 // nothing there, so all its issues would look NEW: a run made before
@@ -54,7 +61,7 @@ func rulesOf(before, after *model.Run, ran func(string) bool) ruleSets {
 	if a := after.Options.A11y; a != nil {
 		rs.current = setOf(a.Rules)
 		for _, r := range a.Rules {
-			if !rs.baseline[r] {
+			if !rs.baseline[r] && !ownChecks[r] {
 				rs.added = append(rs.added, r)
 			}
 		}
@@ -182,8 +189,8 @@ func (g *pageGuard) reason(class string, i model.Issue) string {
 }
 
 // rulesNote is the comparison's warning naming the rules the snapshot
-// didn't apply: the later run's (rs.added) and those of NEW changes put
-// aside for it (moved). It's "" when there are none.
+// didn't apply: the later run's axe rules (rs.added) and the rules or
+// own checks of NEW changes put aside for it (moved). It's "" when there are none.
 func rulesNote(rs ruleSets, moved map[string]bool) string {
 	all := slices.Clone(rs.added)
 	all = append(all, slices.Collect(maps.Keys(moved))...)

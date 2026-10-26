@@ -17,9 +17,10 @@ import (
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
-// The note a comparison with a 1.2 snapshot prints names the rules the
-// way a real 1.3 run records them: axe's 2.1 rules from the golden plus
-// the module's own checks, which no 1.2 snapshot ran either.
+// The note a comparison with a 1.2 snapshot prints names the rules a
+// real 1.3 run records: axe's 2.1 rules from the golden plus the
+// module's own checks, which no 1.2 snapshot ran either. The own checks
+// are named only once their issues were put aside.
 func TestBaselineNoteFromRecordedRules(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "compare", "testdata", "run-1.2.json"))
 	if err != nil {
@@ -43,9 +44,28 @@ func TestBaselineNoteFromRecordedRules(t *testing.T) {
 		after.Pages = append(after.Pages, p)
 	}
 	c := compare.Compare(context.Background(), &check.CompareContext{Before: &before, After: after}, nil, "test")
-	want := "note: 6 rules didn't run in the baseline (autocomplete-valid, avoid-inline-spacing, label-content-name-mismatch, overlay, placeholder-label, reflow); their issues aren't counted as new. Take a new snapshot to include them"
+	// The module's own checks are recorded too but named only when one
+	// of their issues was put aside: compare's list of them has to match
+	// ownRules, or one shows up here.
+	want := "note: 3 rules didn't run in the baseline (autocomplete-valid, avoid-inline-spacing, label-content-name-mismatch); their issues aren't counted as new. Take a new snapshot to include them"
 	if !slices.Contains(c.Warnings, want) {
 		t.Errorf("warnings = %q\nwant %q", c.Warnings, want)
+	}
+
+	// A placeholder used as a label the 1.2 snapshot never checked for
+	// isn't NEW and the note names the check.
+	ph := model.Issue{Check: "a11y/placeholder-label", Level: model.Warning, Title: "placeholder as label", Source: "#q"}
+	ph.Identify()
+	after.Pages[0].Issues = append(slices.Clone(after.Pages[0].Issues), ph)
+	c = compare.Compare(context.Background(), &check.CompareContext{Before: &before, After: after}, nil, "test")
+	want = "note: 4 rules didn't run in the baseline (autocomplete-valid, avoid-inline-spacing, label-content-name-mismatch, placeholder-label); their issues aren't counted as new. Take a new snapshot to include them"
+	if !slices.Contains(c.Warnings, want) {
+		t.Errorf("with a placeholder-label issue: warnings = %q\nwant %q", c.Warnings, want)
+	}
+	for _, ch := range c.Changes {
+		if ch.Check == ph.Check {
+			t.Errorf("placeholder-label counted as %s", ch.Class)
+		}
 	}
 
 	// A 1.3 snapshot recorded the same rules: no note.
