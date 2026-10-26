@@ -161,7 +161,8 @@ func options(ctx context.Context, cc *check.Context, f flow.Flow, ko model.Keybo
 		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction,
 		AllowEnv: t.AllowEnv, AllowHosts: t.AllowHosts, PlainHTTP: t.InsecureLogin,
 		MaxTabs: ko.MaxTabs, Dry: f.Keyboard == flow.KeyboardDry}
-	if f.Keyboard == flow.KeyboardSend && public(ctx, cc) && !t.Staging && !(f.Production && cc.Config.IsProduction(startURL(cc, f))) {
+	liveOK := f.Production && cc.Config.IsProduction(startURL(cc, f)) // the owner said it's safe on the live site
+	if f.Keyboard == flow.KeyboardSend && public(ctx, cc) && !t.Staging && !liveOK {
 		o.Dry = true
 		cc.Warn(fmt.Sprintf("keyboard: send runs only on a loopback or private address, or with --staging; %s ran dry", filepath.Base(f.File)))
 	}
