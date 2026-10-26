@@ -69,7 +69,7 @@ func TestKeyboardTemplates(t *testing.T) {
 func TestWithoutHeader(t *testing.T) {
 	for in, want := range map[string]string{
 		"# Copyright (c) 2026 X\n# SPDX-License-Identifier: MIT\n\n# A flow\nname: x\n": "# A flow\nname: x\n",
-		"# Copyright (c) 2026 X\n# SPDX-License-Identifier: MIT\nname: x\n":            "name: x\n",
+		"# Copyright (c) 2026 X\n# SPDX-License-Identifier: MIT\nname: x\n":             "name: x\n",
 		"# A flow\nname: x\n":                     "# A flow\nname: x\n",
 		"# Copyright (c) 2026 X\nname: x\n":       "# Copyright (c) 2026 X\nname: x\n",
 		"# SPDX-License-Identifier: MIT\nname: x": "# SPDX-License-Identifier: MIT\nname: x",
