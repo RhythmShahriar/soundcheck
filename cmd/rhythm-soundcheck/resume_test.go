@@ -94,19 +94,22 @@ func TestResumeRefusesOtherSettings(t *testing.T) {
 	}
 }
 
-// --resume keeps a snapshot's EAA mode and WCAG version: its pages are
-// audited one way or the run is refused.
+var eaaWith = model.Options{Viewports: []string{"desktop"}, Levels: []string{"inspect", "click"},
+	Modules: []string{"health", "a11y", "keyboard"}, EAA: true, WCAG: "2.2"}
+
+// --resume keeps a snapshot's EAA mode and WCAG version: left out, they
+// come from the stopped snapshot; chosen otherwise, the run is refused.
 func TestResumeKeepsEAAMode(t *testing.T) {
-	eaaWith := model.Options{Viewports: []string{"desktop"}, Levels: []string{"inspect", "click"},
-		Modules: []string{"health", "a11y", "keyboard"}, EAA: true, WCAG: "2.1"}
 	for _, tc := range []struct {
 		name string
 		args []string
 		want string // "" when it may resume
 	}{
-		{"same", []string{"--eaa"}, ""},
-		{"eaa left out", []string{"--modules", "health,a11y,keyboard"}, "eaa on (WCAG 2.1) -> off"},
-		{"other version", []string{"--eaa", "--wcag", "2.2"}, "eaa on (WCAG 2.1) -> on (WCAG 2.2)"},
+		{"same", []string{"--eaa", "--wcag", "2.2"}, ""},
+		{"eaa left out", []string{"--modules", "health,a11y,keyboard"}, ""},
+		{"version left out", []string{"--eaa"}, ""},
+		{"eaa off", []string{"--eaa=false"}, "eaa on (WCAG 2.2) -> off"},
+		{"other version", []string{"--eaa", "--wcag", "2.1"}, "eaa on (WCAG 2.2) -> on (WCAG 2.1)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
@@ -123,7 +126,61 @@ func TestResumeKeepsEAAMode(t *testing.T) {
 				t.Errorf("refused: %v", err)
 			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
 				t.Errorf("err %v, want one naming %q", err, tc.want)
+			case tc.want == "" && (!p.cfg.EAA || p.wcag != "2.2" || !p.cfg.Has("keyboard") || p.keyboard == nil):
+				t.Errorf("resumed with eaa %v, wcag %q, modules %v, keyboard %v", p.cfg.EAA, p.wcag, p.cfg.Modules, p.keyboard)
 			}
 		})
+	}
+	// A snapshot stopped without --eaa can't carry on with it.
+	t.Run("eaa added", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		writeConfig(t, "")
+		dir := stopped(t, model.Options{Viewports: []string{"desktop"}, Levels: []string{"inspect", "click"}, Modules: []string{"health"}})
+		p, err := parse([]string{"snapshot", "127.0.0.1:22200", "--name", "r1", "--resume", "--eaa"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := &session{plan: p, st: store.Store{Root: ".soundcheck"}}
+		if err := s.resumeSettings("r1", dir); err == nil || !strings.Contains(err.Error(), "eaa off -> on (WCAG 2.1)") {
+			t.Errorf("err %v", err)
+		}
+	})
+}
+
+// The command a canceled --eaa snapshot prints carries on with it as
+// printed: EAA mode and the WCAG version come from the stopped one.
+func TestResumeHintAsPrinted(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	writeConfig(t, "")
+	f := &fakeEAA{pages: clean}
+	f.install(t)
+	stopped(t, eaaWith)
+	p, err := parse([]string{"snapshot", "127.0.0.1:22200", "--eaa", "--wcag", "2.2", "--name", "r1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hint := (&session{plan: p}).resumeHint("127.0.0.1:22200", "r1", 1)
+	const head = "rhythm-soundcheck: snapshot canceled; 1 finished page kept: to carry on with the same modules, levels, viewports, browser and EAA mode, run rhythm-soundcheck "
+	if !strings.HasPrefix(hint, head) {
+		t.Fatalf("hint %q", hint)
+	}
+	args := strings.Fields(strings.TrimPrefix(hint, head))
+	code, out, errOut := runCLI(t, append(args, "-q")...)
+	if code != exitOK {
+		t.Fatalf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+	}
+	run := readRunJSON(t, filepath.Join(".soundcheck", "snapshots", "r1"))
+	if !run.Options.EAA || run.Options.WCAG != "2.2" {
+		t.Errorf("resumed with %+v", run.Options)
+	}
+	// Without --eaa the hint doesn't name EAA mode.
+	p, err = parse([]string{"snapshot", "127.0.0.1:22200", "--name", "r2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hint := (&session{plan: p}).resumeHint("127.0.0.1:22200", "r2", 2); strings.Contains(hint, "EAA") || !strings.Contains(hint, "2 finished pages kept") {
+		t.Errorf("hint %q", hint)
 	}
 }

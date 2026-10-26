@@ -631,8 +631,7 @@ func cmdSnapshot(s *session) int {
 		if errors.Is(err, context.Canceled) {
 			if journal.Len()+len(done) > 0 {
 				keep = true
-				fmt.Fprintf(s.stderr, "%s snapshot canceled; %s kept: to carry on with the same modules, levels, viewports and browser, run %s snapshot %s --name %s --resume\n",
-					prefix(), plural(journal.Len()+len(done), "finished page"), cmdName(), site, name)
+				fmt.Fprintln(s.stderr, s.resumeHint(site, name, journal.Len()+len(done)))
 				return exitCanceled
 			}
 			fmt.Fprintln(s.stderr, prefix(), "snapshot canceled; nothing was saved")
@@ -664,12 +663,25 @@ func cmdSnapshot(s *session) int {
 		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
 }
 
-// resumeSettings gives the session the modules, levels, viewports and
-// browser of the stopped snapshot in dir where the user didn't choose
-// them, so its pages and the new ones are checked alike. Settings the
-// user chose that differ are a usage error: the snapshot would mix
-// pages checked two ways. A snapshot stopped by an older Soundcheck
-// recorded none and carries on with the settings given.
+// resumeHint is the line a canceled snapshot leaves on stderr: the
+// command that carries on with it. resumeSettings gives that command
+// the stopped snapshot's settings, so it needs no more flags.
+func (s *session) resumeHint(site, name string, pages int) string {
+	what := "modules, levels, viewports and browser"
+	if s.cfg.EAA {
+		what = "modules, levels, viewports, browser and EAA mode"
+	}
+	return fmt.Sprintf("%s snapshot canceled; %s kept: to carry on with the same %s, run %s snapshot %s --name %s --resume",
+		prefix(), plural(pages, "finished page"), what, cmdName(), site, name)
+}
+
+// resumeSettings gives the session the modules, levels, viewports,
+// browser, EAA mode and WCAG version of the stopped snapshot in dir
+// where the user didn't choose them, so its pages and the new ones are
+// checked alike. Settings the user chose that differ are a usage
+// error: the snapshot would mix pages checked two ways. A snapshot
+// stopped by an older Soundcheck recorded none and carries on with the
+// settings given.
 func (s *session) resumeSettings(name, dir string) error {
 	prev, err := store.ResumeOptions(dir)
 	if err != nil || prev == nil {
@@ -678,6 +690,9 @@ func (s *session) resumeSettings(name, dir string) error {
 	changes := inherit(&s.cfg, *prev, s.chosen, s.o.skip)
 	if c := inheritEngine(&s.engine, *prev, s.chosen); c != nil {
 		changes = append(changes, *c)
+	}
+	if err := s.resumeEAA(*prev); err != nil {
+		return err
 	}
 	// A snapshot's pages are audited one way: half its pages without the
 	// a11y and keyboard audits, or by other WCAG rules, is no evidence.
@@ -689,6 +704,28 @@ func (s *session) resumeSettings(name, dir string) error {
 			name, joinChanges(changes))
 	}
 	return nil
+}
+
+// resumeEAA turns EAA mode on and takes the WCAG version of a stopped
+// --eaa snapshot when neither the flags nor the config file chose them,
+// with the modules and limits EAA mode brings. A choice that differs
+// is left for resumeSettings to refuse.
+func (s *session) resumeEAA(prev model.Options) error {
+	if !prev.EAA {
+		return nil
+	}
+	changed := false
+	if !s.set["eaa"] && !s.cfg.InFile("eaa") && !s.cfg.EAA {
+		s.cfg.EAA, changed = true, true
+	}
+	if !s.set["wcag"] && !s.cfg.InFile("a11y.wcag") && prev.WCAG != "" && s.wcag != prev.WCAG {
+		s.wcag, changed = prev.WCAG, true
+	}
+	if !changed || !s.cfg.EAA {
+		return nil
+	}
+	s.eaaModules()
+	return cmp.Or(s.eaaSkipped(), s.eaaSettle())
 }
 
 // eaaSetting words EAA mode for a --resume refusal: "off", or "on" with
