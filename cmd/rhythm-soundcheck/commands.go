@@ -81,6 +81,7 @@ type session struct {
 	checked        bool           // the command checked a site, so --eaa writes its files
 	discovered     atomic.Int64   // the pages the last check set out to visit, for an interrupted --eaa run
 	chrome         string         // the browser's version, from runner.Hooks.Browser, for the evidence pack
+	compareNotes   []string       // notes about the snapshot for the comparison's warnings
 }
 
 // columns is the width of the terminal w writes to, for the text the
@@ -932,6 +933,7 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 	if err != nil {
 		return s.fail(err)
 	}
+	c.Warnings = append(c.Warnings, s.compareNotes...)
 	s.confirm(c, &model.Run{Pages: known}, site, dir)
 	compare.ApplyIgnore(c, ignoreRules(s.cfg), time.Now())
 	if err := store.SaveComparison(dir, c); err != nil {

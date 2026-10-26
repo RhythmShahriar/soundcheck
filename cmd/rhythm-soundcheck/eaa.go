@@ -212,8 +212,8 @@ func (s *session) recordEAA(run *model.Run) {
 // snapshot with no version stored (one from before 1.3) is compared with
 // the 2.0 rules it ran, except under EAA mode, which needs 2.1 or later.
 // Under EAA mode a11y and keyboard are added to the inherited modules.
-// It prints the notes about a snapshot taken without --eaa or with the
-// 2.0 rules and returns the settings that still differ from the
+// It prints the note about a snapshot taken without --eaa, keeps the one
+// about the 2.0 rules for the comparison's warnings and returns the settings that still differ from the
 // snapshot, for --strict.
 func (s *session) inheritEAA(snap *model.Run, changes []settingChange) ([]settingChange, error) {
 	cfg := &s.cfg
@@ -255,9 +255,11 @@ func (s *session) inheritEAA(snap *model.Run, changes []settingChange) ([]settin
 		if cfg.EAA && !snap.Options.EAA {
 			fmt.Fprintf(s.stderr, "note: snapshot %q was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n", snap.Name)
 		}
-		if snap.Options.WCAG == "" && cfg.Has("a11y") {
-			fmt.Fprintf(s.stderr, "note: snapshot %q used the WCAG 2.0 rules; take a new snapshot to add the %s rules\n", snap.Name, cmpOr(s.wcag, "2.1"))
-		}
+	}
+	// This one goes with the comparison's warnings, so the reports and
+	// the JSON carry it too.
+	if snap.Options.WCAG == "" && cfg.Has("a11y") {
+		s.compareNotes = append(s.compareNotes, fmt.Sprintf("note: snapshot %q used the WCAG 2.0 rules; take a new snapshot to add the %s rules", snap.Name, cmpOr(s.wcag, "2.1")))
 	}
 	return changes, nil
 }

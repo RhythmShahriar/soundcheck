@@ -6,6 +6,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -265,8 +266,8 @@ func TestCompareInheritsEAA(t *testing.T) {
 	}
 	// With a11y asked for, the note about the 2.0 rules.
 	s, errb = newSession(t, "--modules", "+a11y")
-	if _, err := compare(t, s, oldSnap); err != nil || s.wcag != "" ||
-		errb.String() != "note: snapshot \"before\" used the WCAG 2.0 rules; take a new snapshot to add the 2.1 rules\n" {
+	if _, err := compare(t, s, oldSnap); err != nil || s.wcag != "" || errb.Len() > 0 ||
+		!slices.Equal(s.compareNotes, []string{"note: snapshot \"before\" used the WCAG 2.0 rules; take a new snapshot to add the 2.1 rules"}) {
 		t.Errorf("1.2 snapshot with +a11y: %v wcag %q\n%s", err, s.wcag, errb)
 	}
 
@@ -274,9 +275,8 @@ func TestCompareInheritsEAA(t *testing.T) {
 	// rules and what differs for --strict.
 	s, errb = newSession(t, "--eaa")
 	changes, err = compare(t, s, oldSnap)
-	want := "note: snapshot \"before\" was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n" +
-		"note: snapshot \"before\" used the WCAG 2.0 rules; take a new snapshot to add the 2.1 rules\n"
-	if err != nil || s.wcag != "2.1" || errb.String() != want {
+	want := "note: snapshot \"before\" was taken without --eaa; keyboard issues will all be new. Take a new snapshot with --eaa\n"
+	if err != nil || s.wcag != "2.1" || errb.String() != want || len(s.compareNotes) != 1 {
 		t.Errorf("--eaa on a 1.2 snapshot: %v wcag %q\n%s\nwant\n%s", err, s.wcag, errb, want)
 	}
 	if got := joinChanges(changes); got != "modules health,visual -> health,visual,a11y,keyboard (--eaa); eaa off -> on (--eaa)" {
