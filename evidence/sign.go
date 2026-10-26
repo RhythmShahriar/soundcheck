@@ -143,6 +143,25 @@ func checkSignature(dir, prefix string) error {
 	return nil
 }
 
+// SigningKey returns the public key, base64, in the pack's
+// eaa/evidence.pub: the key Verify checked the signature with. Verify
+// trusts it as found, so anyone who re-signs a changed pack passes;
+// comparing it with the key the owner published is what tells. It is
+// "" for a pack that isn't signed.
+func SigningKey(dir string) (string, error) {
+	pub, err := readB64(dir, PubFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("evidence: %s: %w", PubFile, err)
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		return "", fmt.Errorf("evidence: %s isn't an ed25519 public key", PubFile)
+	}
+	return base64.StdEncoding.EncodeToString(pub), nil
+}
+
 // readB64 reads a small base64 file of the pack.
 func readB64(dir, rel string) ([]byte, error) {
 	data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))) //nolint:gosec // the run folder

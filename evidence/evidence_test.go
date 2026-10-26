@@ -288,6 +288,9 @@ func TestSign(t *testing.T) {
 	if err := Verify(dir); err != nil {
 		t.Fatalf("signed pack: %v", err)
 	}
+	if got, err := SigningKey(dir); err != nil || got != pub {
+		t.Errorf("SigningKey = %q, %v, want %s", got, err, pub)
+	}
 	// Any change to evidence.json, even one that keeps it valid, breaks
 	// the signature.
 	data := must(os.ReadFile(filepath.Join(dir, File)))
@@ -390,4 +393,35 @@ func FuzzEvidence(f *testing.F) {
 		}
 		_ = verifyPack(dir, p, "")
 	})
+}
+
+// SigningKey shows who signed: a pack re-signed with another key still
+// verifies, but its key differs from the owner's.
+func TestSigningKey(t *testing.T) {
+	dir, run := saveRun(t, t.TempDir(), "runs", "r1", time.Unix(1000, 0), true, target)
+	if err := Write(dir, run, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := SigningKey(dir); got != "" || err != nil {
+		t.Errorf("unsigned: %q, %v", got, err)
+	}
+	keys := t.TempDir()
+	owner, _ := Keygen(filepath.Join(keys, "owner.key"))
+	other, _ := Keygen(filepath.Join(keys, "other.key"))
+	if err := Sign(dir, filepath.Join(keys, "owner.key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sign(dir, filepath.Join(keys, "other.key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(dir); err != nil {
+		t.Fatalf("re-signed: %v", err)
+	}
+	if got, _ := SigningKey(dir); got != other || got == owner {
+		t.Errorf("SigningKey = %s, want the second key %s", got, other)
+	}
+	write(t, dir, PubFile, "c2hvcnQ=\n")
+	if _, err := SigningKey(dir); err == nil {
+		t.Error("a short key passed")
+	}
 }
