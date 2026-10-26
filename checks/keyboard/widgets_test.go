@@ -28,7 +28,7 @@ func widgetPage(body string) string {
 }
 
 // The widget fixtures. Each script finds its elements with
-// getElementById, and selfTest checks once that the fixture does what
+// getElementById; selfTest checks once that the fixture does what
 // it claims with a click, before the walk tests it by keyboard.
 var widgetFixtures = map[string]struct {
 	html     string
@@ -124,7 +124,7 @@ b.addEventListener('click', () => { const open = b.getAttribute('aria-expanded')
 // widgetIssueChecks are the checks the widget test raises.
 var widgetIssueChecks = []string{ids.FocusLost, ids.DialogFocus, ids.Escape, ids.Menu}
 
-// Each fixture gives exactly the widget issues it was built for, and
+// Each fixture gives exactly the widget issues it was built for;
 // the ones done right give none.
 func TestWidgets(t *testing.T) {
 	html := map[string]string{}
@@ -184,7 +184,7 @@ func jsString(s string) string {
 }
 
 // The widget rules, from hand-written results: each issue with its
-// Detail, and the guards that keep each quiet.
+// Detail, plus the guards that keep each quiet.
 func TestClassifyWidgets(t *testing.T) {
 	email := "jane" + "@" + "example.test"
 	cases := []struct {
@@ -267,7 +267,7 @@ func TestWidgetGroups(t *testing.T) {
 	}
 }
 
-// The destructive list keeps its words in every language it has, and
+// The destructive list keeps its words in every language it has;
 // leaves ordinary widgets alone.
 func TestDestructiveWidget(t *testing.T) {
 	for _, s := range []string{"Delete account", "Log out", "Abmelden", "Zur Kasse", "Se déconnecter", "Cerrar sesión",
@@ -321,7 +321,7 @@ document.getElementById('fine').addEventListener('click', () => {
 </script>
 </main></body></html>`
 
-// Only the safe trigger is pressed; with widgets: 0 nothing is, and a
+// Only the safe trigger is pressed. With widgets: 0 nothing is; a
 // second page of the same group isn't tested again.
 func TestWidgetsNeverPressed(t *testing.T) {
 	srv := serve(t, &pages{html: map[string]string{"/a/1": neverPressed, "/a/2": neverPressed}})

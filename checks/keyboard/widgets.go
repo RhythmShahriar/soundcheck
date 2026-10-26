@@ -25,11 +25,11 @@ import (
 // Each is focused, opened with Enter (Space for a button, ArrowDown for
 // a menu, when Enter did nothing), looked into (did a dialog take
 // focus, does a modal keep Tab inside), closed with Escape, its close
-// control or its trigger, and where focus went is written down. The
+// control or its trigger; where focus went is written down. The
 // classifier (classify.go) judges the results.
 //
 // A press never reaches a link to another page, a submit control or
-// anything that looks destructive (destructiveWidget), and the safety
+// anything that looks destructive (destructiveWidget); the safety
 // envelope holds any write a press asks for all the same.
 
 // widgetWait is how long a widget gets to open or close after a press.
@@ -400,7 +400,7 @@ func (w *walker) widget(ctx context.Context, id int, tested map[string]bool) (r 
 
 // inspectOpen looks into an open widget and closes it: where focus
 // is, whether a modal keeps Tab inside, Escape, the close control and
-// the trigger again, and where focus went once it closed.
+// the trigger again. It records where focus went once it closed.
 func (w *walker) inspectOpen(ctx context.Context, r WidgetResult, id int, st openState) (WidgetResult, bool, error) {
 	if r.Kind == WidgetDialog {
 		s, inside, err := w.reader.ActiveWith(ctx, insideJS(false))
@@ -580,7 +580,7 @@ func (w *walker) waitOpen(ctx context.Context, open bool) (openState, error) {
 }
 
 // tabInto tries a link trigger's submenu by Tab alone: focused, does
-// the submenu show, and does the next Tab land in it.
+// the submenu show; does the next Tab land in it.
 func (w *walker) tabInto(ctx context.Context) (openState, error) {
 	if err := focus.Press(ctx, w.tab, focus.Tab); err != nil {
 		return openState{}, err
