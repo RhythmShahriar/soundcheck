@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 	"github.com/muesli/termenv"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -82,6 +83,21 @@ type session struct {
 	chrome         string         // the browser's version, from runner.Hooks.Browser, for the evidence pack
 }
 
+// columns is the width of the terminal w writes to, for the text the
+// report wraps; 0 (the report's default of 80) when w isn't a terminal
+// or its size can't be read.
+func columns(w io.Writer) int {
+	f, ok := w.(*os.File)
+	if !ok || !term.IsTerminal(f.Fd()) {
+		return 0
+	}
+	width, _, err := term.GetSize(f.Fd())
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
+}
+
 func (p *plan) begin(stdout, stderr io.Writer) *session {
 	s := &session{plan: p, stdout: stdout, stderr: stderr, st: store.Store{Root: p.storeDir}}
 	s.ctx, s.stop = signal.NotifyContext(context.Background(), stopSignals...)
@@ -102,6 +118,7 @@ func (p *plan) begin(stdout, stderr io.Writer) *session {
 	}
 	s.view = report.NewPretty(out, stderr, report.PrettyOptions{
 		Plain: plain, Quiet: p.o.quiet, Progress: s.tty && s.live && !p.o.verbose, Verbose: p.o.verbose,
+		Columns: columns(stdout),
 		// The header names the command the same way the hints do,
 		// with cmdName's filter on RHYTHM_INVOKED_AS.
 		Name:   cmdName(),

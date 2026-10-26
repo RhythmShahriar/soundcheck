@@ -495,3 +495,19 @@ func TestAcceptEvidenceNote(t *testing.T) {
 		t.Errorf("pack: %q", b.String())
 	}
 }
+
+// A writer that isn't a terminal keeps the report's default width.
+func TestColumnsNotATerminal(t *testing.T) {
+	var b strings.Builder
+	if got := columns(&b); got != 0 {
+		t.Errorf("a buffer: %d", got)
+	}
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if got := columns(f); got != 0 {
+		t.Errorf("a file: %d", got)
+	}
+}
