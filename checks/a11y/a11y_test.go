@@ -462,3 +462,85 @@ func TestOverlayScript(t *testing.T) {
 		t.Errorf("issue = %+v", i)
 	}
 }
+
+// Masking follows where the HTML tokenizer starts an attribute. An
+// element's HTML axe cut short still loses its values.
+func TestSnippetMasksLikeTheTokenizer(t *testing.T) {
+	for in, want := range map[string]string{
+		`<input value="ana.visitor@exam`:             `<input value="***"`,
+		`<input id="a"value="typed">`:                `<input id="a"value="***">`,
+		`<input/value="typed">`:                      `<input/value="***">`,
+		`<A vAlue=""dAtA-=00000>`:                    `<A vAlue=""dAtA-="***">`,
+		`<div data-x@y="4471">`:                      `<div data-x@y="***">`,
+		`<input data-a= value="typed">`:              `<input data-a= "***">`,
+		`<a href="/r?t=9f8e7d`:                       `<a href="/r?***"`,
+		`<a title='say "hi"' href=/a?b=1>`:           `<a title='say "hi"' href="/a?***">`,
+		`<input aria-valuenow="5" xvalue="visible">`: `<input aria-valuenow="5" xvalue="visible">`,
+	} {
+		if got := snippet(in); got != want {
+			t.Errorf("snippet(%s) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// A snippet is cut to 160 runes, stays valid UTF-8 and doesn't change
+// when it goes through again.
+func TestSnippetCutAndStable(t *testing.T) {
+	long := `<button value="` + strings.Repeat("x", 150) + `" title="` + strings.Repeat("é", 200) + "\xff\">"
+	got := snippet(long)
+	if n := len([]rune(got)); n != 160 || !strings.HasSuffix(got, "…") {
+		t.Errorf("snippet is %d runes: %q", n, got)
+	}
+	if strings.Contains(got, "\xff") || strings.Contains(got, "xxx") {
+		t.Errorf("snippet = %q", got)
+	}
+	if again := snippet(got); again != got {
+		t.Errorf("snippet changed on a second pass: %q, then %q", got, again)
+	}
+}
+
+// <html> and <body> themselves fail rules (html-has-lang, document-title):
+// they get a selector instead of being dropped. A selector is one line
+// whatever an id or name holds.
+func TestSelectorEdges(t *testing.T) {
+	for _, c := range []struct {
+		path [][]Elem
+		want string
+	}{
+		{[][]Elem{tree("html")}, "html"},
+		{[][]Elem{tree("html", "body")}, "body"},
+		{[][]Elem{{{Tag: "html"}, {Tag: "body"}, {Tag: "input", Name: "first\nlast\x00"}}}, `input[name="first\a last\fffd "]`},
+		{[][]Elem{{{Tag: ""}}}, "*"},
+		{[][]Elem{{{Tag: "x\ny"}}}, `x\a y`},
+		{[][]Elem{{}, tree("html", "body", "a")}, "a"},
+	} {
+		if got := Selector(c.path); got != c.want {
+			t.Errorf("Selector(%+v) = %q, want %q", c.path, got, c.want)
+		}
+	}
+}
+
+// A rule listed twice (merged frames, or a result that isn't axe's)
+// gives each element once and keeps the cap per rule.
+func TestIssuesRuleTwice(t *testing.T) {
+	field := func(id string) node { return node{Path: [][]Elem{{{Tag: "input", ID: id}}}} }
+	got := issues([]result{
+		{ID: "label", Nodes: []node{field("q")}},
+		{ID: "label", Nodes: []node{field("q"), field("s"), field("t")}},
+	}, 2, "2.1")
+	var keys []string
+	for _, i := range got {
+		keys = append(keys, i.Key)
+	}
+	if want := []string{"a11y/label|#q", "a11y/label|#s"}; !slices.Equal(keys, want) {
+		t.Errorf("keys = %q, want %q", keys, want)
+	}
+}
+
+func TestIssuesDocumentElement(t *testing.T) {
+	got := issues([]result{{ID: "html-has-lang", Impact: "serious", Help: "<html> element must have a lang attribute",
+		Nodes: []node{{Path: [][]Elem{tree("html")}, HTML: `<html class="js">`}}}}, 20, "2.1")
+	if len(got) != 1 || got[0].Source != "html" || got[0].Key != "a11y/html-has-lang|html" {
+		t.Errorf("issues = %+v", got)
+	}
+}

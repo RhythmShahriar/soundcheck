@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-rod/rod"
 
@@ -217,19 +218,24 @@ func failed(ctx context.Context, err error) model.Audit {
 // the run's WCAG version, which decides the criteria an issue names.
 func issues(found []result, keep int, version string) []model.Issue {
 	var out []model.Issue
+	// Keyed across rules: axe lists each rule once; merged frames or
+	// a result that isn't axe's could name one twice.
+	seen := map[string]bool{}
+	kept := map[string]int{}
 	for _, v := range found {
 		total := max(v.Total, len(v.Nodes))
 		wcag, en := criteria(v.Tags, version)
-		seen := map[string]bool{}
-		for n, el := range v.Nodes {
-			if n == keep {
+		check := "a11y/" + v.ID
+		for _, el := range v.Nodes {
+			if kept[check] >= keep {
 				break
 			}
 			sel := Selector(el.Path)
-			if sel == "" || seen[sel] {
+			if sel == "" || seen[check+"|"+sel] {
 				continue
 			}
-			seen[sel] = true
+			seen[check+"|"+sel] = true
+			kept[check]++
 			detail := clean(el.Summary)
 			if h := snippet(el.HTML); h != "" {
 				detail = strings.TrimSpace(h + "\n" + detail)
@@ -238,7 +244,7 @@ func issues(found []result, keep int, version string) []model.Issue {
 				detail += fmt.Sprintf("\nThe first %d of %d elements that fail this rule on the page are reported.", keep, total)
 			}
 			impact := firstOf(el.Impact, v.Impact)
-			i := model.Issue{Check: "a11y/" + v.ID, Level: level(impact), Title: v.Help,
+			i := model.Issue{Check: check, Level: level(impact), Title: v.Help,
 				Detail: detail, Source: sel, Fix: fix(v.HelpURL),
 				WCAG: slices.Clone(wcag), EN301549: slices.Clone(en), Impact: impact}
 			i.Identify()
@@ -340,44 +346,102 @@ func clean(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// The attribute patterns follow the HTML tokenizer: an attribute name
+// starts after white space, a "/" or the closing quote of the attribute
+// before it (see attrs). A quoted value runs to its closing quote or, in
+// HTML axe cut short, to the end. An unquoted one runs to white space or
+// ">".
+const attrValue = `("[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s>]+)`
+
 // filled matches attributes that can carry what a visitor typed or what
 // the site knows about them (a prefilled email on a page behind a login):
 // value and data-*. Their contents never reach run.json or a report.
-var filled = regexp.MustCompile(`(?i)(\s(?:value|data-[\w.:-]+)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)`)
+var filled = regexp.MustCompile(`(?i)((?:value|data-[^\s/>=]*)\s*=\s*)` + attrValue)
 
 // linked matches the URL attributes of an element, whose query (a reset
 // link's token and email) or long path segments may be a credential.
-var linked = regexp.MustCompile(`(?i)(\s(?:href|src|action|formaction)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'<>` + "`" + `]+)`)
+var linked = regexp.MustCompile(`(?i)((?:href|src|action|formaction)\s*=\s*)` + attrValue)
 
 // opaque is a path segment long and random enough to be a token.
 var opaque = regexp.MustCompile(`/[A-Za-z0-9_-]{24,}`)
 
+// maxSnippet is the most runes of an element's HTML an issue shows.
+const maxSnippet = 160
+
 // snippet shortens the element's HTML to its opening tag. The values of
 // filled attributes become "***". So do the query of every link and any
 // long opaque path segment in it. Credentials the kit knows are redacted.
+// Running it on its own result changes nothing.
 func snippet(html string) string {
+	html = strings.ToValidUTF8(html, "\uFFFD")
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
-	html = filled.ReplaceAllStringFunc(html, func(m string) string {
-		sub := filled.FindStringSubmatch(m)
-		if v := strings.Trim(sub[2], `"'`); v == "" {
-			return m
+	html = attrs(filled, html, func(name, value string) string {
+		if attrText(value) == "" {
+			return name + value
 		}
-		return sub[1] + `"***"`
+		return name + `"***"`
 	})
-	html = linked.ReplaceAllStringFunc(html, func(m string) string {
-		sub := linked.FindStringSubmatch(m)
-		v := strings.Trim(sub[2], `"'`)
+	html = attrs(linked, html, func(name, value string) string {
+		v := attrText(value)
 		if q := strings.IndexAny(v, "?#"); q >= 0 && q < len(v)-1 {
 			v = v[:q+1] + "***"
 		}
 		v = opaque.ReplaceAllString(v, "/***")
-		return sub[1] + `"` + v + `"`
+		switch {
+		case !strings.Contains(v, `"`):
+			return name + `"` + v + `"`
+		case !strings.Contains(v, "'"):
+			return name + "'" + v + "'"
+		}
+		return name + v
 	})
 	html = secrets.Redact(html)
-	if r := []rune(html); len(r) > 160 {
-		html = string(r[:159]) + "…"
+	if r := []rune(html); len(r) > maxSnippet {
+		html = string(r[:maxSnippet-1]) + "…"
 	}
 	return html
+}
+
+// attrs replaces each attribute re matches in html (group 1 its name and
+// "=", group 2 its value) with what with returns. A match counts only
+// where an attribute can start: after white space, "/" or a quote, or at
+// the very start of what axe sent. The
+// character before isn't part of the match, so the closing quote of one
+// value can start the next attribute (id="a"value="b").
+func attrs(re *regexp.Regexp, html string, with func(name, value string) string) string {
+	var b strings.Builder
+	last, from := 0, 0
+	for from < len(html) {
+		m := re.FindStringSubmatchIndex(html[from:])
+		if m == nil {
+			break
+		}
+		for i := range m {
+			m[i] += from
+		}
+		if m[0] > 0 && !strings.ContainsRune(" \t\n\f\r/\"'", rune(html[m[0]-1])) {
+			from = m[0] + 1
+			continue
+		}
+		b.WriteString(html[last:m[0]])
+		b.WriteString(with(html[m[2]:m[3]], html[m[4]:m[5]]))
+		last, from = m[1], m[1]
+	}
+	b.WriteString(html[last:])
+	return b.String()
+}
+
+// attrText is an attribute value as attrValue matched it, without its
+// quotes.
+func attrText(v string) string {
+	if v != "" && (v[0] == '"' || v[0] == '\'') {
+		q := v[:1]
+		v = v[1:]
+		if strings.HasSuffix(v, q) {
+			v = v[:len(v)-1]
+		}
+	}
+	return v
 }
 
 // Elem is one element on the way from the page to a violating element:
@@ -407,14 +471,15 @@ var (
 // last element with a stable id or a name instead, so the steps above
 // it (where widgets come and go) don't count. Only the steps below
 // it have :nth-of-type(), for elements whose parent has siblings of the
-// same tag. Without such an element the path starts below <body>.
+// same tag. Without such an element the path starts below <body>, or at
+// the element itself when that's <html> or <body> (html-has-lang).
 func Selector(path [][]Elem) string {
 	var parts []string
 	for _, tree := range path {
 		start := 0
 		for i, e := range tree {
 			if e.Tag == "html" || e.Tag == "body" {
-				start = i + 1
+				start = min(i+1, len(tree)-1)
 			}
 		}
 		for i := len(tree) - 1; i >= start; i-- {
@@ -439,17 +504,42 @@ func stableID(id string) bool { return id != "" && !generated.MatchString(id) }
 // css writes one step. An id or a name is enough to find the element,
 // so only the other steps carry a position.
 func (e Elem) css() string {
+	tag := ident(e.Tag)
 	switch {
 	case stableID(e.ID) && plainID.MatchString(e.ID):
 		return "#" + e.ID
 	case stableID(e.ID):
-		return e.Tag + `[id="` + quote(e.ID) + `"]`
+		return tag + `[id="` + quote(e.ID) + `"]`
 	case e.Name != "":
-		return e.Tag + `[name="` + quote(e.Name) + `"]`
+		return tag + `[name="` + quote(e.Name) + `"]`
 	case e.Nth > 0:
-		return fmt.Sprintf("%s:nth-of-type(%d)", e.Tag, e.Nth)
+		return fmt.Sprintf("%s:nth-of-type(%d)", tag, e.Nth)
 	}
-	return e.Tag
+	return tag
 }
 
-func quote(s string) string { return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) }
+// quote escapes s for a CSS string in double quotes. Line breaks and NUL
+// are written as CSS escapes, so a selector is always one line: an id
+// or a name may hold any character.
+func quote(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\a `, "\r", `\d `, "\f", `\c `, "\x00", `\fffd `).Replace(s)
+}
+
+// ident writes a tag name as a CSS identifier. Element names are plain
+// in HTML; anything else (an empty or odd name in an XML document) is
+// escaped so the selector stays one line. An empty one is "*".
+func ident(tag string) string {
+	if tag == "" {
+		return "*"
+	}
+	var b strings.Builder
+	for _, r := range tag {
+		switch {
+		case r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r > 0x7f && r != utf8.RuneError:
+			b.WriteRune(r)
+		default:
+			fmt.Fprintf(&b, `\%x `, r)
+		}
+	}
+	return b.String()
+}

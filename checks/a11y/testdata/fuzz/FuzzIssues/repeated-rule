@@ -1,0 +1,4 @@
+go test fuzz v1
+string("{\"violations\":[{\"id\":\"label\",\"nodes\":[{\"path\":[[{\"tag\":\"input\",\"id\":\"q\"}]]}]},{\"id\":\"label\",\"nodes\":[{\"path\":[[{\"tag\":\"input\",\"id\":\"q\"}]]},{\"path\":[[{\"tag\":\"select\",\"id\":\"s\"}]]}]}]}")
+uint8(1)
+uint8(1)

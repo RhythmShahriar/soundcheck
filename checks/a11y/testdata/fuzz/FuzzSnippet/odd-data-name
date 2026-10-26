@@ -1,0 +1,2 @@
+go test fuzz v1
+string("<div data-x@y=\"4471\" data-=\"x\" data-a= value=\"typed\">")

@@ -17,6 +17,7 @@ const (
 	reasonNotInBaseline = "rule not in the baseline"
 	reasonNotRun        = "rule not in this run"
 	reasonBeyondCap     = "beyond the elements kept per rule"
+	reasonDocument      = "the baseline didn't report the page's <html> or <body>"
 )
 
 // ruleSets are the a11y rules each run applied, which decide whether an
@@ -30,6 +31,10 @@ type ruleSets struct {
 	baseline map[string]bool // the snapshot's rules
 	current  map[string]bool // the later run's; nil when it recorded none
 	added    []string        // rules of the later run the snapshot didn't apply, sorted
+	// legacy is a snapshot made before 1.3. Its Soundcheck dropped the
+	// violations of <html> and <body> themselves (html-has-lang,
+	// document-title), so they'd all look NEW.
+	legacy bool
 }
 
 // rulesOf works out the rule sets of before and after. ran says whether
@@ -42,6 +47,8 @@ func rulesOf(before, after *model.Run, ran func(string) bool) ruleSets {
 	base := baselineRules
 	if a := before.Options.A11y; a != nil {
 		base = a.Rules
+	} else {
+		rs.legacy = true
 	}
 	rs.baseline = setOf(base)
 	if a := after.Options.A11y; a != nil {
@@ -153,6 +160,9 @@ func (g *pageGuard) reason(class string, i model.Issue) string {
 		}
 		if g.beforeCapped[r] > 0 {
 			return reasonBeyondCap
+		}
+		if g.rules.legacy && (i.Source == "html" || i.Source == "body") {
+			return reasonDocument
 		}
 	case model.Fixed:
 		if g.rules.current != nil && !g.rules.current[r] {

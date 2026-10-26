@@ -252,3 +252,29 @@ func TestCapGuardOnlyThatRuleAndPage(t *testing.T) {
 		t.Errorf("ignored = %q", changeLines(c.Ignored))
 	}
 }
+
+// Soundcheck before 1.3 dropped the violations of <html> and <body>
+// themselves. A missing lang the 1.2 snapshot never reported isn't NEW;
+// against a 1.3 snapshot, which reports them, it is.
+func TestDocumentElementAgainstOldSnapshot(t *testing.T) {
+	before := loadRun(t, "run-1.2.json")
+	lang := a11yIssue("html-has-lang", "html")
+	label := a11yIssue("label", "#email")
+	after := &model.Run{Options: model.Options{Modules: []string{"health", "a11y"}, WCAG: "2.1", A11y: rules21()}, Pages: []model.Page{
+		{Path: "/checkout/", Status: 200, Issues: append(slices.Clone(before.Pages[0].Issues), lang, label), Audits: ok()},
+	}}
+	c := both(t, before, after)
+	if got, want := changeLines(c.Changes), []string{"new a11y/label #email /checkout/ "}; !slices.Equal(got, want) {
+		t.Errorf("changes = %q, want %q", got, want)
+	}
+	if got, want := changeLines(c.Ignored), []string{"new a11y/html-has-lang html /checkout/ the baseline didn't report the page's <html> or <body>"}; !slices.Equal(got, want) {
+		t.Errorf("ignored = %q, want %q", got, want)
+	}
+
+	snap := &model.Run{Options: after.Options, Pages: []model.Page{{Path: "/checkout/", Status: 200, Audits: ok()}}}
+	snap.Options.A11y = rules21()
+	c = both(t, snap, after)
+	if !slices.Contains(changeLines(c.Changes), "new a11y/html-has-lang html /checkout/ ") {
+		t.Errorf("against a 1.3 snapshot: changes = %q", changeLines(c.Changes))
+	}
+}
