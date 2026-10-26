@@ -162,7 +162,11 @@ type guard struct {
 	effects map[int]string
 	held    []string
 	events  []string
-	left    bool // a navigation the page couldn't be kept from committed
+	// requests counts every request the page made while the walk had
+	// it (sent or held) and navs every navigation it started: a press
+	// that makes either did something.
+	requests, navs int
+	left           bool // a navigation the page couldn't be kept from committed
 	// armed is true while the walk has the page; reloading while the
 	// walk loads it again itself, which isn't the page leaving.
 	armed, reloading bool
@@ -179,6 +183,7 @@ func (g *guard) on() bool {
 // stopTop records a main-frame navigation stopped through the protocol,
 // so its request is held should it still come. g.mu is held.
 func (g *guard) stopTop(raw string) {
+	g.navs++
 	if len(g.stopped) < maxList {
 		g.stopped = append(g.stopped, raw)
 	}
@@ -262,6 +267,9 @@ func (w *walker) arm(ctx context.Context) (func(), error) {
 		since: func() float64 { return float64(time.Since(w.loaded).Microseconds()) / 1000 }}
 	w.guard = g
 	remove, err := intercept.Add(w.tab, func(r *intercept.Request) {
+		g.mu.Lock()
+		g.requests++
+		g.mu.Unlock()
 		if r.Header("Upgrade") != "" || r.Type == proto.NetworkResourceTypeWebSocket {
 			// A connection that would stay open past the walk (K2).
 			r.Block()
@@ -464,7 +472,10 @@ func record(ctx context.Context, w *walker) (*Trace, error) {
 	if err := w.rings(ctx, t); err != nil {
 		return t, err
 	}
-	return t, w.widgets(ctx, t)
+	if err := w.widgets(ctx, t); err != nil {
+		return t, err
+	}
+	return t, w.listeners(ctx, t)
 }
 
 // finish copies what the guard saw into the trace.
@@ -596,6 +607,7 @@ func (w *walker) navigations(ctx context.Context) error {
 		g.event("passkey request refused: " + clip(k, 10))
 	}
 	for _, n := range log {
+		g.navs++
 		kind := EffectNavigation
 		if n.Form {
 			kind = EffectForm

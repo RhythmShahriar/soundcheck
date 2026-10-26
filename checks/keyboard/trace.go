@@ -209,11 +209,41 @@ const (
 )
 
 // Candidate is an element with mouse listeners of its own, checked for
-// keyboard access.
+// keyboard access. Only elements past the false-alarm guards are
+// listed (visible, enabled, not natively focusable, at least 4x4 px,
+// not inside a focusable element or a label, not a container of more
+// than 5 elements a listener may be delegated from).
 type Candidate struct {
 	Selector string   `json:"selector"`
 	Events   []string `json:"events,omitempty"` // click, mousedown, pointerdown, mouseup or pointerup
+	Tag      string   `json:"tag,omitempty"`
+	Name     string   `json:"name,omitempty"` // the accessible name, redacted
+	// Focusable is true when its tabindex is 0 or more: Tab can reach
+	// it. Seen is true when the walk's Tab or Shift+Tab focused it.
+	Focusable bool `json:"focusable,omitempty"`
+	Seen      bool `json:"seen,omitempty"`
+	// Link is true for an element with role link: it gets Enter only.
+	Link bool `json:"link,omitempty"`
+	// Tested is true when the walk pressed it: Enter, then Space, then
+	// a mouse click when neither key did anything. Enter, Space and
+	// Click say what each did: "" nothing, or dom, navigation or
+	// request (sent or held).
+	Tested bool   `json:"tested,omitempty"`
+	Enter  string `json:"enter,omitempty"`
+	Space  string `json:"space,omitempty"`
+	Click  string `json:"click,omitempty"`
+	// Skipped says why a focusable control wasn't pressed: it looks
+	// destructive, keyboard.widgets ran out or something covers it.
+	Skipped string `json:"skipped,omitempty"`
 }
+
+// Effects of a press on a mouse-only candidate (Candidate.Enter,
+// Space and Click).
+const (
+	PressDOM        = "dom"
+	PressNavigation = "navigation"
+	PressRequest    = "request"
+)
 
 // Caps a trace keeps to, on disk and when it is read back.
 const (
@@ -281,6 +311,8 @@ func (t *Trace) clamp() {
 		c := &t.Listeners[i]
 		c.Selector = clip(c.Selector, maxSelectorRunes)
 		c.Events = clipAll(c.Events[:min(len(c.Events), 5)], maxText)
+		c.Tag, c.Name, c.Skipped = clip(c.Tag, maxText), clip(c.Name, maxName), clip(c.Skipped, maxText)
+		c.Enter, c.Space, c.Click = clip(c.Enter, maxText), clip(c.Space, maxText), clip(c.Click, maxText)
 	}
 	t.Rings = t.Rings[:min(len(t.Rings), maxRings)]
 	for i := range t.Rings {

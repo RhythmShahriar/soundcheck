@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/RhythmShahriar/soundcheck/checks/keyboard/ids"
+	"github.com/RhythmShahriar/soundcheck/internal/focus"
 	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -72,7 +73,34 @@ func Classify(t Trace, o model.KeyboardOptions, wcag string) []model.Issue {
 	for _, i := range widgetIssues(t, wcag) {
 		set.add(i)
 	}
+	for _, i := range mouseOnly(t, wcag) {
+		set.add(i)
+	}
 	return set.out
+}
+
+// mouseOnly reports the controls only a mouse can use: one Tab never
+// reached (not-reachable) and a focusable one that did something when
+// clicked but not on Enter or Space (not-operable). A control a click
+// didn't move either isn't reported; neither is one the walk
+// didn't press.
+func mouseOnly(t Trace, wcag string) []model.Issue {
+	var out []model.Issue
+	for _, c := range t.Listeners {
+		if c.Selector == "" || len(c.Events) == 0 {
+			continue
+		}
+		what := describe(Step{Stop: focus.Stop{Tag: c.Tag, Name: c.Name}})
+		switch {
+		case !c.Focusable && !c.Seen:
+			out = append(out, newIssue(ids.NotReachable, wcag, c.Selector,
+				fmt.Sprintf("%s reacts to %s but Tab never reaches it.", what, c.Events[0])))
+		case c.Focusable && c.Tested && c.Skipped == "" && c.Enter == "" && (c.Link || c.Space == "") && c.Click != "":
+			out = append(out, newIssue(ids.NotOperable, wcag, c.Selector,
+				fmt.Sprintf("%s reacts to a mouse click but not to Enter or Space.", what)))
+		}
+	}
+	return out
 }
 
 // focusWords say where focus went after a widget closed, closeWords
