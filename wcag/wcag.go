@@ -98,8 +98,8 @@ func (c Criterion) HowTested() string {
 // ForCheck returns the criteria of a WCAG version an issue of check
 // fails, sorted: for an axe rule (a11y/<rule>) the criteria its tags
 // name, for Soundcheck's own checks the criteria criteria.yaml lists it
-// under. Checks that map to none, and criteria outside the version, are
-// left out.
+// under. Checks that map to none get nil. Criteria outside the version
+// are left out.
 func ForCheck(check, version string) []string {
 	t := tables()[orDefault(version)]
 	if rule, ok := strings.CutPrefix(check, "a11y/"); ok {
