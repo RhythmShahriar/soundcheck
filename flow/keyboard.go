@@ -154,12 +154,8 @@ func (r *runner) keyStep(n int, s Step) error {
 				return err
 			}
 		}
-		if s.Press.Key == focus.Enter && len(r.secrets) > 0 {
-			if el, err := r.focused(); err == nil {
-				if err := r.sendSecret(el, true); err != nil {
-					return err
-				}
-			}
+		if err := r.pressSecret(s.Press.Key); err != nil {
+			return err
 		}
 		if s.Press.activates() {
 			r.keys.arm()
@@ -176,6 +172,55 @@ func (r *runner) keyStep(n int, s Step) error {
 	}
 	return r.step(n, s)
 }
+
+// pressSecret refuses an Enter or Space press on whatever has focus
+// when it would send what the flow read from the environment off the
+// site or down to plain http (see keySecret). Other keys send nothing.
+func (r *runner) pressSecret(k focus.Key) error {
+	if len(r.secrets) == 0 || (k != focus.Enter && k != focus.Space) {
+		return nil
+	}
+	el, err := r.focused()
+	if err != nil {
+		return fmt.Errorf("couldn't tell what has focus, so nothing from the environment is sent: %w", err)
+	}
+	return r.keySecret(el, k)
+}
+
+// keySecret is sendSecret for a key pressed on el: it reads where the
+// key sends the page (see keyDestJS) and refuses a place that may not
+// get what the flow read from the environment.
+func (r *runner) keySecret(el *rod.Element, k focus.Key) error {
+	if len(r.secrets) == 0 || (k != focus.Enter && k != focus.Space) {
+		return nil
+	}
+	res, err := el.Timeout(r.o.Timeout).Eval(keyDestJS, string(k))
+	if err != nil {
+		return err
+	}
+	return r.destSafe(res.Value.Str())
+}
+
+// keyDestJS returns where pressing a key on this element sends the
+// page, or "" when it sends nothing a link or form shows. Enter follows
+// a link. Enter or Space on a submit button sends its form to the
+// button's formaction, else the form's action. Enter in any other input
+// of a form submits it as its default button would (implicit
+// submission); a textarea, select or plain button takes Enter as its
+// own.
+const keyDestJS = `function(key) {
+  const tag = this.tagName, type = (this.getAttribute('type') || '').toLowerCase();
+  if (key === 'Enter' && this.closest) {
+    const a = this.closest('a[href]');
+    if (a) return a.href;
+  }
+  const form = this.form || (this.closest && this.closest('form'));
+  if (!form) return '';
+  const dest = b => b && b.hasAttribute('formaction') ? b.formAction : form.action;
+  if ((tag === 'BUTTON' && (type === '' || type === 'submit')) || (tag === 'INPUT' && (type === 'submit' || type === 'image'))) return dest(this);
+  if (key !== 'Enter' || tag !== 'INPUT' || type === 'button' || type === 'reset') return '';
+  return dest(form.querySelector('[type=submit],button:not([type])'));
+}`
 
 // press presses p's key p.Times times on whatever has focus.
 func (r *runner) press(p Press) error {
@@ -356,6 +401,11 @@ func (r *runner) operate(n int, kind string, t Target, el, active *rod.Element, 
 		if res, err := active.Eval(spaceJS); err == nil && res.Value.Bool() {
 			key = focus.Space
 		}
+	}
+	// The key goes to the focused element, which may send more than el
+	// does: Enter in a field submits its form.
+	if err := r.keySecret(active, key); err != nil {
+		return err
 	}
 	did := r.watchEffect()
 	r.keys.arm()

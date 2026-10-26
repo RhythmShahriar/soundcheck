@@ -359,7 +359,12 @@ func (r *runner) sendSecret(el *rod.Element, submit bool) error {
 	if err != nil {
 		return err
 	}
-	dest := res.Value.Str()
+	return r.destSafe(res.Value.Str())
+}
+
+// destSafe refuses to send the page, with what the flow typed, to dest
+// when secretSafe refuses it.
+func (r *runner) destSafe(dest string) error {
 	if u, err := url.Parse(dest); dest == "" || err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil // nothing to follow, or a javascript: or mailto: link
 	}
@@ -569,7 +574,18 @@ func (r *runner) step(n int, s Step) error {
 				return fmt.Errorf("couldn't focus it: %w", err)
 			}
 		}
-		return r.press(*s.Press)
+		if err := r.pressSecret(s.Press.Key); err != nil {
+			return err
+		}
+		if err := r.press(*s.Press); err != nil {
+			return err
+		}
+		if s.Press.activates() {
+			// Enter or Space may follow a link or send a form, as a click
+			// does.
+			r.settle()
+			return r.stayed()
+		}
 	case s.Screenshot != "":
 		if r.o.Save == nil {
 			return nil

