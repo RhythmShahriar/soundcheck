@@ -43,9 +43,11 @@ func claim(s string, allowed []string) string {
 
 // allowedPhrases are the fixed text that may hold a banned word because
 // it denies what the word claims, plus the EARL vocabulary of the W3C
-// Report Tool, which is a key name, not a claim.
+// Report Tool, which is a key name, not a claim, and the address of
+// WCAG-EM, the W3C's method for a person's review.
 func allowedPhrases() []string {
 	out := []string{model.EvidenceNote, "not a compliance guarantee", StatusOptions,
+		"https://www.w3.org/WAI/test-evaluate/conformance/wcag-em/",
 		`"fully compliant", "partially compliant" or "not compliant"`,
 		"conformanceTarget", "WCAG2A-Conformance", "WCAG2AA-Conformance", "WCAG2AAA-Conformance"}
 	return append(out, Limits...)

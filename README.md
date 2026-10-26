@@ -171,7 +171,7 @@ rhythm soundcheck compare --eaa --fail-on new           # after a change: new pr
 
 Each finding is a normal issue keyed by rule and element, with its WCAG success criterion and EN 301 549 clause. NEW, FIXED, UNSTABLE, `accept`, `ignore:` and `--fail-on` work on it as on any other change: a new trap is BROKE, so the default `--fail-on broke` already stops it.
 
-**What it never does.** It never says a site is compliant and never picks the conformance status for you. During the walk it holds requests that would send data and follows no links except skip links. A key flow only really submits with `keyboard: send` on a staging or local address. A page whose audit timed out is never reported as fixed: the run exits 3, since the evidence is incomplete.
+**What it never does.** It never gives a verdict on a site and never picks the statement's status for you. During the walk it holds requests that would send data and follows no links except skip links. A key flow only really submits with `keyboard: send` on a staging or local address. A page whose audit timed out is never reported as fixed: the run exits 3, since the evidence is incomplete.
 
 **The statement.** Every `--eaa` run writes `eaa/statement-draft.md` in its folder. `rhythm-soundcheck init --eaa` adds a `statement:` block (owner, public address, contact) to `.soundcheck/config.yaml`; then
 

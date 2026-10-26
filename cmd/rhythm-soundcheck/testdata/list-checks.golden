@@ -75,8 +75,11 @@ speed: on by default
   speed/host-cost         notice   Third-party host adds weight
 
 a11y: off unless asked for (+a11y); on with --eaa
-  a11y/label          warning  Form field without a label                                                                               advisory
-  a11y/<axe rule id>  warning  Every axe-core rule that fails, e.g. a11y/color-contrast (a notice when axe rates it minor or moderate)  wcag from the rule's tags
+  a11y/label              warning   Form field without a label                                                                               wcag 4.1.2
+  a11y/<axe rule id>      warning   Every axe-core rule that fails, e.g. a11y/color-contrast (a notice when axe rates it minor or moderate)  wcag from the rule's tags
+  a11y/placeholder-label  warning   Form field is labelled only by its placeholder (WCAG 3.3.2)                                              wcag 3.3.2
+  a11y/reflow             warning   Page scrolls sideways at 320 px wide (WCAG 1.4.10)                                                       wcag 1.4.10
+  a11y/overlay            advisory  Accessibility overlay widget found (no WCAG criterion)                                                   advisory
 
 keyboard: off unless asked for (+keyboard); on with --eaa
   keyboard/trap               error    Keyboard focus is trapped                       wcag 2.1.2
