@@ -182,7 +182,7 @@ func TestKeyboardTemplatesRun(t *testing.T) {
 		file string
 		held int // the step a dry run stops at; 0 when nothing is sent
 	}{
-		{"keyboard-checkout.yaml", 10},
+		{"keyboard-checkout.yaml", 11},
 		{"keyboard-contact.yaml", 4},
 		{"keyboard-menu.yaml", 0},
 		{"keyboard-dialog.yaml", 0},
