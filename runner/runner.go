@@ -101,6 +101,9 @@ type Options struct {
 
 	revisit bool           // set by Revisit: no site-wide checks
 	driver  capture.Driver // set by Run for an engine other than Chrome
+	// noChrome names the modules Run left out because they need Chrome
+	// (check.ChromeOnly), for the pages' Audits.
+	noChrome []string
 }
 
 // Hooks report progress. Calls are serialized.
@@ -252,6 +255,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		opts.driver = d
 		var skippedModules []string
 		opts.Modules, skippedModules = chromeFree(opts.Modules, engine, cc.Warn)
+		opts.noChrome = skippedModules
 		// As with echo below: a comparison mustn't think they ran.
 		run.Options.Modules = slices.DeleteFunc(slices.Clone(run.Options.Modules), func(name string) bool {
 			return slices.Contains(skippedModules, name)
@@ -619,6 +623,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	if ctx.Err() != nil {
 		return fail(ctx.Err())
 	}
+	skippedAudits(p, opts.noChrome)
 	for _, m := range opts.Modules {
 		if c, ok := m.(check.PageChecker); ok {
 			check.Safe(m.Name(), "CheckPage", cc.Warn, func() { c.CheckPage(cc, p) })
@@ -846,6 +851,18 @@ func chromeFree(modules []check.Module, engine capture.Engine, warn func(string)
 		kept = append(kept, m)
 	}
 	return kept, skipped
+}
+
+// skippedAudits records on p that the modules named in noChrome didn't
+// audit it, so a comparison doesn't take their missing issues for fixed
+// ones and the statement lists the page as not checked.
+func skippedAudits(p *model.Page, noChrome []string) {
+	for _, name := range noChrome {
+		if p.Audits == nil {
+			p.Audits = map[string]model.Audit{}
+		}
+		p.Audits[name] = model.Audit{Status: model.AuditSkipped, Reason: "needs Chrome"}
+	}
 }
 
 // tryLogin logs in within a throwaway private session.
