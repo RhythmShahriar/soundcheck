@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,19 @@ func fakeSoundcheck(args []string) int {
 		}
 		dir := filepath.Join(".soundcheck", "snapshots", run.Name)
 		_ = os.MkdirAll(dir, 0o750)
+		if slices.Contains(args, "--eaa") {
+			// Each --eaa snapshot has two fewer open issues than the last.
+			open := 9
+			if b, err := os.ReadFile("open.txt"); err == nil {
+				_, _ = fmt.Sscan(string(b), &open)
+				open -= 2
+			}
+			_ = os.WriteFile("open.txt", []byte(fmt.Sprint(open)), 0o600)
+			run.EAA = &model.EAASummary{WCAG: "2.1", Open: open, EvidenceNote: model.EvidenceNote,
+				Criteria: model.EAACriteria{Failed: []model.CriterionCount{{ID: "1.4.3", Issues: open - 1, Pages: 2}, {ID: "2.1.2", Issues: 1, Pages: 1}}}}
+			_ = os.MkdirAll(filepath.Join(dir, "eaa"), 0o750)
+			_ = os.WriteFile(filepath.Join(dir, "eaa", "statement-draft.md"), []byte("# Draft"), 0o600)
+		}
 		_ = os.WriteFile(filepath.Join(dir, "run.json"), []byte(`{"schema":"`+model.Schema+`"}`), 0o600)
 		_ = os.WriteFile(filepath.Join(dir, "report.html"), []byte("<html>"), 0o600)
 		emit(run)

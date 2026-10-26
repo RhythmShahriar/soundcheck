@@ -70,7 +70,30 @@ type Result struct {
 	// Trend is the site's median LCP over its last runs, oldest first,
 	// from its history.
 	Trend []float64 `json:"trend_lcp_ms,omitempty"`
+	// A11yOpen and CriteriaFailed are the open accessibility and
+	// keyboard issues and the WCAG criteria with failures of an --eaa
+	// run, from its JSON eaa block. A site checked without --eaa leaves
+	// them out (not 0).
+	A11yOpen       *int `json:"a11y_open,omitempty"`
+	CriteriaFailed *int `json:"criteria_failed,omitempty"`
+	// A11yTrend says how A11yOpen moved since the site's previous fleet
+	// run: up, down or same. It is absent when either run had no eaa
+	// block.
+	A11yTrend string `json:"a11y_trend,omitempty"`
+	// A11yBefore is A11yOpen of that previous fleet run, for the page's
+	// trend label.
+	A11yBefore *int `json:"a11y_before,omitempty"`
+	// Statement is the site's accessibility statement draft, relative
+	// to the fleet folder, when its --eaa run wrote one.
+	Statement string `json:"statement,omitempty"`
 }
+
+// Trends of A11yOpen against the previous fleet run.
+const (
+	TrendUp   = "up"
+	TrendDown = "down"
+	TrendSame = "same"
+)
 
 // Label is the verdict in words.
 func (r Result) Label() string { return verdictLabels[r.Verdict] }
@@ -150,6 +173,7 @@ func Run(ctx context.Context, bin, file, mode string, parallel int, extra []stri
 	wg.Wait()
 
 	slices.SortStableFunc(results, worse)
+	a11yTrends(results, previous(filepath.Join(root, "fleet.json")))
 	page := Page{Mode: mode, Created: time.Now(), Sites: results}
 	if err := cache.WriteJSON(filepath.Join(root, "fleet.json"), page); err != nil {
 		return 0, err
@@ -168,6 +192,50 @@ func Run(ctx context.Context, bin, file, mode string, parallel int, extra []stri
 	}
 	fmt.Fprintf(out, "Worst: %s (%s)\nFleet report: %s\n", results[0].Site, results[0].Label(), html)
 	return worst, nil
+}
+
+// previous reads the last fleet run's page, or nil when there is none or
+// it can't be read: the trend is then left out, never guessed.
+func previous(path string) *Page {
+	data, err := os.ReadFile(path) //nolint:gosec // our own fleet folder
+	if err != nil {
+		return nil
+	}
+	var p Page
+	if json.Unmarshal(data, &p) != nil {
+		return nil
+	}
+	return &p
+}
+
+// a11yTrends sets each --eaa result's A11yTrend against the same site in
+// the previous fleet run, when that run had an eaa block for it too.
+func a11yTrends(results []Result, prev *Page) {
+	if prev == nil {
+		return
+	}
+	before := map[string]int{}
+	for _, r := range prev.Sites {
+		if r.A11yOpen != nil {
+			before[r.Site] = *r.A11yOpen
+		}
+	}
+	for i := range results {
+		r := &results[i]
+		b, ok := before[r.Site]
+		if r.A11yOpen == nil || !ok {
+			continue
+		}
+		r.A11yBefore = &b
+		switch now := *r.A11yOpen; {
+		case now > b:
+			r.A11yTrend = TrendUp
+		case now < b:
+			r.A11yTrend = TrendDown
+		default:
+			r.A11yTrend = TrendSame
+		}
+	}
 }
 
 func verb(mode string) string {
@@ -228,7 +296,13 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []
 	if s.Config != "" {
 		args = append(args, "--config", filepath.Join(base, s.Config))
 	}
-	args = append(append(append(args, s.Args...), extra...), s.URL)
+	args = append(args, s.Args...)
+	// eaa: true in sites.yaml adds --eaa, unless the site's args or the
+	// fleet's own (fleet ... --eaa) already have it.
+	if s.EAA && !hasFlag(s.Args, "eaa") && !hasFlag(extra, "eaa") {
+		args = append(args, "--eaa")
+	}
+	args = append(append(args, extra...), s.URL)
 	logf, err := os.Create(filepath.Join(dir, "soundcheck.log")) //nolint:gosec // inside our own fleet folder
 	if err != nil {
 		return fail(exitError, err.Error())
@@ -258,10 +332,10 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []
 		}
 		return fail(max(r.Exit, exitError), msg)
 	}
-	if rep := reportPath(dir, r.Kind, stdout.Bytes()); rep != "" {
-		if rel, err := filepath.Rel(root, rep); err == nil {
-			r.Report = filepath.ToSlash(rel)
-		}
+	runDir := resultDir(dir, r.Kind, stdout.Bytes())
+	r.Report = inFleet(root, runDir, "report.html")
+	if r.A11yOpen != nil {
+		r.Statement = inFleet(root, runDir, filepath.Join("eaa", "statement-draft.md"))
 	}
 	r.Trend = trend(filepath.Join(dir, config.Dir))
 	r.Duration = float64(time.Since(start).Milliseconds())
@@ -302,6 +376,13 @@ type child struct {
 	Changes []model.Change `json:"changes"`
 	Before  *model.RunRef  `json:"before"`
 	Pages   json.RawMessage
+	// EAA is the accessibility summary of an --eaa run or comparison.
+	EAA *struct {
+		Open     int `json:"open"`
+		Criteria struct {
+			Failed []json.RawMessage `json:"failed"`
+		} `json:"criteria"`
+	} `json:"eaa"`
 }
 
 func (r *Result) parse(data []byte) error {
@@ -322,6 +403,10 @@ func (r *Result) parse(data []byte) error {
 		}
 	}
 	r.Kind = c.Kind
+	if c.EAA != nil {
+		open, failed := c.EAA.Open, len(c.EAA.Criteria.Failed)
+		r.A11yOpen, r.CriteriaFailed = &open, &failed
+	}
 	if c.Kind == "comparison" {
 		_ = json.Unmarshal(c.Pages, &r.Pages)
 		for _, ch := range c.Changes {
@@ -366,9 +451,27 @@ func (r *Result) parse(data []byte) error {
 	return nil
 }
 
-// reportPath finds the HTML report Soundcheck wrote next to the result:
-// in the snapshot's folder, or in the newest run's.
-func reportPath(dir, kind string, data []byte) string {
+// inFleet is the file name in runDir relative to the fleet folder, or ""
+// when there's no such file.
+func inFleet(root, runDir, name string) string {
+	if runDir == "" {
+		return ""
+	}
+	p := filepath.Join(runDir, name)
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// resultDir finds the folder Soundcheck wrote the result's files (the
+// HTML report, the statement draft) in: the snapshot's folder, or the
+// newest run's.
+func resultDir(dir, kind string, data []byte) string {
 	st := store.Store{Root: filepath.Join(dir, config.Dir)}
 	var d string
 	if kind == "comparison" {
@@ -379,14 +482,7 @@ func reportPath(dir, kind string, data []byte) string {
 			d, _ = st.Snapshot(run.Name)
 		}
 	}
-	if d == "" {
-		return ""
-	}
-	p := filepath.Join(d, "report.html")
-	if _, err := os.Stat(p); err != nil {
-		return ""
-	}
-	return p
+	return d
 }
 
 // passEnv are the variables every site's run gets from the fleet's own
