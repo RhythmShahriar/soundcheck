@@ -736,7 +736,9 @@ scenarios:
       - {class: broke}
     tools: []
     pending: axe
-    note: "the statement must count each field once although interact/unlabeled and a11y/label both name it (statement lane, harness statement)"
+    # The bench doesn't parse the draft's rows: the one-count rule is the
+    # statement lane's unit test (changes-testbed.md follow-ups).
+    note: "the statement must count each field once although interact/unlabeled and a11y/label both name it (statement lane test; the bench checks wording only)"
 
   - id: s51
     name: Focus lost when the newsletter dialog closes
@@ -1092,8 +1094,10 @@ scenarios:
     include: ["/a11y/reload-trap.php*"]
     module: keyboard
     args: [--eaa]
-    # The walk's cap is 60 s a page; the compare must not hang past it.
-    within: 3m
+    # PRD 16.1 asks for the walk's cap plus 10%: 60 s a page (PRD 8.3)
+    # is 66 s. within times the whole compare, so it adds 24 s for
+    # Chrome's start, the crawl and the other --eaa audits of the page.
+    within: 90s
     toggle: "the second link's focus handler reloads the page (php/a11y/reload-trap.php)"
     expect:
       - {check: keyboard/trap}
