@@ -44,7 +44,7 @@ func TestPickerEAA(t *testing.T) {
 
 // pendingKeyboard is true until the keyboard module (lane keyboard) is
 // merged; until then the demo can't find the trap it plants.
-const pendingKeyboard = true
+const pendingKeyboard = false
 
 // demo --eaa plants a keyboard trap and lost focus next to the usual
 // breaks and shows the trap as BROKE.

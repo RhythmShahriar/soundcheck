@@ -28,14 +28,14 @@ import (
 // pendingVerdict is true until the report lane prints "no failures
 // found by these tests" for a clean --eaa result; the integrator sets
 // it false.
-const pendingVerdict = true
+const pendingVerdict = false
 
 // pendingLinkQueries is true while a page's links (Page.Links, in
 // pages.jsonl and the JSON report) keep their query strings, so a token
 // in a link's query is written as found. The sweep then ignores the
 // query canary inside those link lists only; everywhere else it still
 // counts. Set it false once links are stored without their queries.
-const pendingLinkQueries = true
+const pendingLinkQueries = false
 
 // linkList matches a "links" list in JSON, compact or indented.
 var linkList = regexp.MustCompile(`"links":\s*\[[^\]]*\]`)
@@ -101,6 +101,8 @@ document.getElementById("hours-close").addEventListener("click", function () {
   dialog.hidden = true; `+restore+`
 });
 document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !dialog.hidden) { document.getElementById("hours-close").click(); } });
+// A modal keeps Tab inside: Close is its only control.
+dialog.addEventListener("keydown", function (e) { if (e.key === "Tab") { e.preventDefault(); document.getElementById("hours-close").focus(); } });
 </script>`)
 	})
 	mux.HandleFunc("/help/", func(w http.ResponseWriter, _ *http.Request) {
@@ -151,7 +153,7 @@ func TestEAAEndToEnd(t *testing.T) {
 	default:
 		t.Errorf("clean compare: no verdict in\n%s", out)
 	}
-	if !strings.Contains(out, model.EvidenceNote) && !pendingVerdict {
+	if !strings.Contains(strings.Join(strings.Fields(out), " "), model.EvidenceNote) && !pendingVerdict {
 		t.Errorf("clean compare: no evidence note in\n%s", out)
 	}
 
