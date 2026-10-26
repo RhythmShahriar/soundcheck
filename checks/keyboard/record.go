@@ -53,8 +53,13 @@ type walker struct {
 	// ringSeen keeps focus indicator results across the run's pages;
 	// nil measures every page afresh.
 	ringSeen *ringCache
-	reloads  int
-	loaded   time.Time // when the page walked was loaded
+	// widgetsOn says the page's widgets are tested (widgetGroups);
+	// budget is how many triggers and mouse-only controls may still be
+	// pressed, keyboard.widgets at the start.
+	widgetsOn bool
+	budget    int
+	reloads   int
+	loaded    time.Time // when the page walked was loaded
 }
 
 // partial is the trace recorded so far, or nil before the walk began.
@@ -456,7 +461,10 @@ func record(ctx context.Context, w *walker) (*Trace, error) {
 	if err := w.skipLink(ctx, t); err != nil {
 		return t, err
 	}
-	return t, w.rings(ctx, t)
+	if err := w.rings(ctx, t); err != nil {
+		return t, err
+	}
+	return t, w.widgets(ctx, t)
 }
 
 // finish copies what the guard saw into the trace.

@@ -177,7 +177,7 @@ func dialogTrap(tr *Trace, closes bool) {
 			tr.Forward[i].InDialog = true
 		}
 	}
-	tr.Widgets = []WidgetResult{{Kind: "dialog", Trigger: "#open", Opened: true, EscapeClosed: closes}}
+	tr.Widgets = []WidgetResult{{Kind: "dialog", Trigger: "#open", Opened: true, FocusInside: true, EscapeTried: true, EscapeClosed: closes}}
 }
 
 // The details of the stop checks, with names redacted and the early

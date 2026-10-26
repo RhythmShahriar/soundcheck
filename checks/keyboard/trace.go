@@ -142,15 +142,71 @@ type SkipLink struct {
 	Scrolled bool `json:"scrolled"`
 }
 
-// WidgetResult is one menu, dialog or disclosure the walk tested.
+// WidgetResult is one menu, dialog or disclosure the walk tested by
+// keyboard: opened from its trigger, Tab inside, Escape, closed.
 type WidgetResult struct {
 	Kind    string `json:"kind"`    // menu, dialog, details or disclosure
 	Trigger string `json:"trigger"` // selector of the control that opens it
 	Target  string `json:"target,omitempty"`
-	Opened  bool   `json:"opened"`
-	// EscapeClosed is true when Escape closed it again.
+	Tag     string `json:"tag,omitempty"`  // the trigger's tag
+	Name    string `json:"name,omitempty"` // the trigger's accessible name, redacted
+	// Link is true for a trigger that is a link to another page: it is
+	// never pressed, only Tab is tried into its submenu.
+	Link bool `json:"link,omitempty"`
+	// Submenu is true for a menu whose submenu the walk found: a list
+	// nested in the item or the element the trigger controls.
+	Submenu bool `json:"submenu,omitempty"`
+	// Keys lists the keys tried to open it, in order: Enter, Space,
+	// ArrowDown or Tab.
+	Keys []string `json:"keys,omitempty"`
+	// Opened is true when one of them opened it, OpenedBy that key.
+	Opened   bool   `json:"opened"`
+	OpenedBy string `json:"opened_by,omitempty"`
+	// Modal is true for a dialog opened with showModal() or marked
+	// aria-modal="true".
+	Modal bool `json:"modal,omitempty"`
+	// FocusInside is true when focus was inside the dialog once it
+	// opened.
+	FocusInside bool `json:"focus_inside,omitempty"`
+	// Leaked is the element behind a modal dialog Tab reached from
+	// inside it, within its focusable elements plus two presses.
+	Leaked string `json:"leaked,omitempty"`
+	// EscapeTried is true when Escape was pressed on it, EscapeClosed
+	// when that closed it again within 500 ms.
+	EscapeTried  bool `json:"escape_tried,omitempty"`
 	EscapeClosed bool `json:"escape_closed"`
+	// Closed says how it was closed: escape, close (Enter on its close
+	// control) or toggle (its trigger again); "" when it stayed open.
+	Closed string `json:"closed,omitempty"`
+	// FocusAfter says where focus went once it closed: "" (somewhere a
+	// visitor can see), body, removed or hidden.
+	FocusAfter string `json:"focus_after,omitempty"`
+	// Left is true when a press took the page away: the rest of the
+	// widget was skipped and the page loaded again.
+	Left bool `json:"left,omitempty"`
 }
+
+// Kinds of widget (WidgetResult.Kind).
+const (
+	WidgetMenu       = "menu"
+	WidgetDialog     = "dialog"
+	WidgetDetails    = "details"
+	WidgetDisclosure = "disclosure"
+)
+
+// How a widget was closed (WidgetResult.Closed).
+const (
+	ClosedEscape = "escape"
+	ClosedClose  = "close"
+	ClosedToggle = "toggle"
+)
+
+// Where focus went after a widget closed (WidgetResult.FocusAfter).
+const (
+	FocusBody    = "body"
+	FocusRemoved = "removed"
+	FocusHidden  = "hidden"
+)
 
 // Candidate is an element with mouse listeners of its own, checked for
 // keyboard access.
@@ -216,6 +272,9 @@ func (t *Trace) clamp() {
 	for i := range t.Widgets {
 		w := &t.Widgets[i]
 		w.Kind, w.Trigger, w.Target = clip(w.Kind, maxText), clip(w.Trigger, maxSelectorRunes), clip(w.Target, maxSelectorRunes)
+		w.Tag, w.Name, w.Leaked = clip(w.Tag, maxText), clip(w.Name, maxName), clip(w.Leaked, maxSelectorRunes)
+		w.Keys = clipAll(w.Keys[:min(len(w.Keys), 5)], maxText)
+		w.OpenedBy, w.Closed, w.FocusAfter = clip(w.OpenedBy, maxText), clip(w.Closed, maxText), clip(w.FocusAfter, maxText)
 	}
 	t.Listeners = t.Listeners[:min(len(t.Listeners), maxList)]
 	for i := range t.Listeners {

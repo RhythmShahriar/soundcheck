@@ -48,6 +48,8 @@ type Module struct {
 	set  Settings
 	// rings keeps focus indicator results across the run's pages.
 	rings ringCache
+	// groups keeps the URL groups whose widgets were tested.
+	groups widgetGroups
 
 	// limit and walk are pageLimit and record unless a test sets them,
 	// to time a page out in a second or make the recorder fail.
@@ -87,7 +89,8 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	start := time.Now()
 	pctx, cancel := context.WithTimeout(ctx, m.pageLimit())
 	defer cancel()
-	w := &walker{cc: cc, tab: tab, page: p, set: s, start: start, ringSeen: &m.rings}
+	w := &walker{cc: cc, tab: tab, page: p, set: s, start: start, ringSeen: &m.rings, budget: s.Widgets}
+	w.widgetsOn = s.Widgets > 0 && m.groups.claim(p.Path, s.Pages)
 	t, err := m.safeWalk(pctx, w)
 	if ctx.Err() != nil {
 		return // the run stopped: the runner records the page as canceled

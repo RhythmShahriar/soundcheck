@@ -69,7 +69,58 @@ func Classify(t Trace, o model.KeyboardOptions, wcag string) []model.Issue {
 	for _, i := range noRings(t, wcag) {
 		set.add(i)
 	}
+	for _, i := range widgetIssues(t, wcag) {
+		set.add(i)
+	}
 	return set.out
+}
+
+// focusWords say where focus went after a widget closed, closeWords
+// how it was closed, for an issue's Detail.
+var (
+	focusWords = map[string]string{FocusBody: "the page body", FocusRemoved: "a removed element", FocusHidden: "a hidden element"}
+	closeWords = map[string]string{ClosedEscape: "Escape", ClosedClose: "Enter on the close control", ClosedToggle: "toggle"}
+)
+
+// widgetIssues judges the widgets the walk tested. A widget a press
+// took the page away from is recorded, never judged: the walk didn't
+// see the rest of it.
+func widgetIssues(t Trace, wcag string) []model.Issue {
+	var out []model.Issue
+	for _, r := range t.Widgets {
+		if r.Left || r.Trigger == "" {
+			continue
+		}
+		name := widgetName(r)
+		if !r.Opened {
+			// Only a submenu the walk found can be said not to open: a
+			// trigger whose popup it can't see may open something else.
+			if r.Kind == WidgetMenu && r.Submenu {
+				out = append(out, newIssue(ids.Menu, wcag, r.Trigger,
+					fmt.Sprintf("The submenu of %s doesn't open with %s.", name, menuKeys(r))))
+			}
+			continue
+		}
+		if r.Kind == WidgetDialog {
+			switch {
+			case !r.FocusInside:
+				out = append(out, newIssue(ids.DialogFocus, wcag, r.Trigger,
+					fmt.Sprintf("The dialog opened by %s didn't get focus.", name)))
+			case r.Modal && r.Leaked != "":
+				out = append(out, newIssue(ids.DialogFocus, wcag, r.Trigger,
+					fmt.Sprintf("The dialog opened by %s let Tab reach %s behind it.", name, r.Leaked)))
+			}
+		}
+		if r.EscapeTried && !r.EscapeClosed && (r.Kind == WidgetDialog || r.Kind == WidgetMenu) {
+			out = append(out, newIssue(ids.Escape, wcag, r.Trigger,
+				fmt.Sprintf("The %s opened by %s is still visible 500 ms after Escape.", widgetWord(r.Kind), name)))
+		}
+		if where, ok := focusWords[r.FocusAfter]; ok && closeWords[r.Closed] != "" {
+			out = append(out, newIssue(ids.FocusLost, wcag, r.Trigger,
+				fmt.Sprintf("After %s on %s focus went to %s.", closeWords[r.Closed], name, where)))
+		}
+	}
+	return out
 }
 
 // hiddenWords and effectWords say what a Step's Hidden and Effect mean,

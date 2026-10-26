@@ -84,6 +84,12 @@ const envelopePage = `<!doctype html><html lang="en"><head><title>Envelope</titl
 <a id="pop" href="#pop" onfocus="window.open('/popup', '_blank')">Popup</a>
 <a id="key" href="#key" onfocus="navigator.credentials.get({publicKey: {challenge: new Uint8Array(16), timeout: 1000}}).catch(e => { document.title = e.name; })">Passkey</a>
 <a id="geo" href="#geo" onfocus="navigator.geolocation.getCurrentPosition(() => { document.title = 'located'; }, () => { document.title = 'denied'; })">Locate</a>
+<button id="e-post" aria-expanded="false" onclick="fetch('/enter-write', {method: 'POST', body: 'x'})">Save view</button>
+<button id="e-dl" aria-expanded="false" onclick="const a = document.createElement('a'); a.href = '/FILE?enter=1'; a.download = 'FILE'; document.body.appendChild(a); a.click();">Export</button>
+<button id="e-pick" aria-expanded="false" onclick="document.getElementById('file').click()">Attach</button>
+<button id="e-alert" aria-expanded="false" onclick="alert('Enter')">Notice</button>
+<button id="e-pop" aria-expanded="false" onclick="window.open('/popup-enter', '_blank')">Help</button>
+<button id="e-key" aria-expanded="false" onclick="navigator.credentials.get({publicKey: {challenge: new Uint8Array(16), timeout: 1000}}).catch(() => {})">Passkey sign-in</button>
 <script>navigator.serviceWorker.register('/sw.js');</script>
 </main></body></html>`
 
@@ -159,6 +165,19 @@ func TestEnvelope(t *testing.T) {
 	}
 	if !slices.Contains(tr.Held, "POST /through-sw") || !slices.Contains(tr.Held, "POST /sw-write") {
 		t.Errorf("held %q", tr.Held)
+	}
+	// The buttons acting on Enter were pressed, under the same envelope.
+	var pressed []string
+	for _, r := range tr.Widgets {
+		pressed = append(pressed, r.Trigger+" "+strings.Join(r.Keys, ","))
+	}
+	for _, id := range []string{"#e-post", "#e-dl", "#e-pick", "#e-alert", "#e-pop", "#e-key"} {
+		if !slices.Contains(pressed, id+" Enter,Space") {
+			t.Errorf("%s not pressed: %q", id, pressed)
+		}
+	}
+	if !slices.Contains(tr.Held, "POST /enter-write") || !slices.Contains(tr.Events, "dialog dismissed: alert") {
+		t.Errorf("held %q events %q", tr.Held, tr.Events)
 	}
 	if title, _ := tab.Eval(`() => document.title`); title == nil || title.Value.Str() == "located" {
 		t.Errorf("geolocation was granted")
