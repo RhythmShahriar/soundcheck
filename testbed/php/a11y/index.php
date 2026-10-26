@@ -63,12 +63,22 @@ page_start(
 testbed_selftest(
 	<<<'JS'
 	var dialog = document.getElementById('delivery');
-	document.getElementById('delivery-open').click();
+	var opener = document.getElementById('delivery-open');
+	opener.click();
 	var inside = dialog.open && dialog.contains(document.activeElement);
+	// The close event (and with it the focus return) comes a task later,
+	// and on a busy machine later still: wait for it instead of a fixed
+	// delay, with a deadline so a dialog that never closes still fails.
+	var closed = new Promise(function (resolve) {
+		dialog.addEventListener('close', resolve, { once: true });
+		setTimeout(resolve, 5000);
+	});
 	document.getElementById('delivery-close').click();
-	// The close event (and with it the focus return) comes a task later.
-	return new Promise(function (resolve) { setTimeout(resolve, 50); }).then(function () {
-		return inside && !dialog.open && document.activeElement === document.getElementById('delivery-open') ? true : 'dialog';
+	return closed.then(function () {
+		if (!inside) {
+			return 'dialog: focus did not move into it';
+		}
+		return !dialog.open && document.activeElement === opener ? true : 'dialog: focus did not come back';
 	});
 JS
 );
