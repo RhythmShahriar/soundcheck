@@ -356,7 +356,9 @@ func noEAA(dir string) error {
 	return fmt.Errorf("%s has no --eaa results; run %s snapshot <url> --eaa first", rel(dir), cmdName())
 }
 
-// interruptedRun is the refusal of an interrupted run (exit 3).
+// interruptedRun is the refusal of an interrupted run (exit 3). The
+// total is the pages the run set out to visit, from eaa/progress.json,
+// as pages it never reached aren't stored.
 func interruptedRun(dir string, run *model.Run, pages func(func(*model.Page) bool)) error {
 	total, done := 0, 0
 	for p := range pages {
@@ -364,6 +366,11 @@ func interruptedRun(dir string, run *model.Run, pages func(func(*model.Page) boo
 		if !p.Canceled() {
 			done++
 		}
+	}
+	var pr progress
+	data, err := os.ReadFile(filepath.Join(dir, eaaDir, progressFile)) //nolint:gosec // a run folder of the store
+	if err == nil && json.Unmarshal(data, &pr) == nil {
+		total = max(total, pr.Pages)
 	}
 	return fmt.Errorf("%s was interrupted after %d of %d pages; a statement from part of the site would leave problems out. Run it again",
 		rel(dir), done, total)

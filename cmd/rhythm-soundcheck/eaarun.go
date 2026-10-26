@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,10 +32,27 @@ var (
 	decodeOwner      = statement.DecodeOwner
 	buildStatement   = statement.Build
 	statementMD      = statement.Markdown
-	writeEvidence    = evidence.Write
+	writeEvidence    = writePack
 	previousEvidence = evidence.Previous
 	staleIgnores     = compare.StaleIgnores
 )
+
+// evidenceExtra is what an evidence pack records that the run itself
+// doesn't: the browser's version and whether TLS was verified (-k). Its
+// fields match evidence.Extra, so writePack converts it as it is.
+type evidenceExtra struct {
+	Chrome   string
+	Insecure bool
+}
+
+// writePack writes the evidence pack of run with extra.
+//
+// The evidence package of this branch has Write only; with WriteWith
+// this is evidence.WriteWith(dir, run, prev, evidence.Extra(extra)), so
+// a pack of a run made with -k says so and evidence sign refuses it.
+func writePack(dir string, run *model.Run, prev *evidence.Ref, _ evidenceExtra) error {
+	return evidence.Write(dir, run, prev)
+}
 
 // axeVersion is the axe-core release checks/a11y vendors, for the
 // header, which is printed before the a11y module records it in the
@@ -46,6 +64,7 @@ const (
 	eaaDir        = "eaa"
 	draftFile     = "statement-draft.md"
 	evidenceFile  = "evidence.json"
+	progressFile  = "progress.json" // an interrupted run's page count; see interruptedRun
 	statementHint = "accessibility-statement.md"
 )
 
@@ -163,6 +182,7 @@ func (s *session) eaaResult(res *report.Result) string {
 	// A draft from part of the site would leave problems out; a rule
 	// may match a page the run didn't reach.
 	if interrupted {
+		s.writeProgress(res.Dir)
 		return ""
 	}
 	s.staleNotes(pages, run.Issues)
@@ -203,7 +223,9 @@ func ruleText(r config.IgnoreRule) string {
 }
 
 // writeEvidence writes the evidence pack, chained to the last --eaa run
-// of the same site. An interrupted run records that it was.
+// of the same site. An interrupted run records that it was. A run made
+// with -k records that TLS wasn't verified: a signature would otherwise
+// vouch for pages that may not have come from the site.
 func (s *session) writeEvidence(dir string, run *model.Run, interrupted bool) error {
 	prev, err := previousEvidence(s.st.Root, run.Target)
 	if err != nil {
@@ -211,7 +233,30 @@ func (s *session) writeEvidence(dir string, run *model.Run, interrupted bool) er
 	}
 	r := *run
 	r.Interrupted = r.Interrupted || interrupted
-	return writeEvidence(dir, &r, prev)
+	return writeEvidence(dir, &r, prev, evidenceExtra{Insecure: s.o.insecure})
+}
+
+// progress is eaa/progress.json: how many pages an interrupted run set
+// out to visit. The run's pages file holds only the ones it reached, so
+// the statement command's refusal would otherwise say "17 of 17".
+type progress struct {
+	Pages int `json:"pages"`
+}
+
+// writeProgress records how many pages the interrupted check set out to
+// visit, when the runner said.
+func (s *session) writeProgress(dir string) {
+	n := int(s.discovered.Load())
+	if n <= 0 || dir == "" {
+		return
+	}
+	data, err := json.Marshal(progress{Pages: n})
+	if err == nil {
+		err = writePrivate(filepath.Join(dir, eaaDir, progressFile), func(w io.Writer) error { _, err := w.Write(data); return err })
+	}
+	if err != nil {
+		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), filepath.Join(dir, eaaDir, progressFile), err)
+	}
 }
 
 // writeDraft writes the statement draft to path, with [TO DO]s where

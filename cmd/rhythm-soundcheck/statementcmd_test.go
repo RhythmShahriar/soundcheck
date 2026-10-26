@@ -215,6 +215,14 @@ func TestStatementRefusals(t *testing.T) {
 	if want := "rhythm-soundcheck: " + dir + " was interrupted after 2 of 3 pages; a statement from part of the site would leave problems out. Run it again\n"; code != exitError || slashes(errOut) != slashes(want) {
 		t.Errorf("interrupted: exit %d %q\nwant %q", code, errOut, want)
 	}
+	// The pages it never reached count too, from eaa/progress.json.
+	if err := writePrivate(filepath.Join(dir, eaaDir, progressFile), func(w io.Writer) error { _, err := io.WriteString(w, `{"pages":42}`); return err }); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut = runCLI(t, "statement")
+	if want := "rhythm-soundcheck: " + dir + " was interrupted after 2 of 42 pages; a statement from part of the site would leave problems out. Run it again\n"; code != exitError || slashes(errOut) != slashes(want) {
+		t.Errorf("interrupted with progress: exit %d %q\nwant %q", code, errOut, want)
+	}
 
 	// The statement package's own refusals map the same way.
 	_ = os.RemoveAll(dir)

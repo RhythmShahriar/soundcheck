@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -77,6 +78,7 @@ type session struct {
 	loginShown     bool           // the Login line was printed
 	resume         *resumed       // snapshot --resume: the pages kept and the journal
 	checked        bool           // the command checked a site, so --eaa writes its files
+	discovered     atomic.Int64   // the pages the last check set out to visit, for an interrupted --eaa run
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -349,8 +351,15 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
 			Visible: s.o.show, Log: browserLog(s.view.Log)},
-		Hooks: runner.Hooks{Discovered: s.view.Discovered, Skipped: s.view.Skipped, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress},
+		Hooks: runner.Hooks{Discovered: s.discover, Skipped: s.view.Skipped, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress},
 	}, nil
+}
+
+// discover notes how many pages the check will visit and shows it
+// (runner.Hooks.Discovered).
+func (s *session) discover(pages int, skipped map[string]int) {
+	s.discovered.Store(int64(pages))
+	s.view.Discovered(pages, skipped)
 }
 
 // browserInfo names the browser a run will use, for -v. It never
@@ -1225,7 +1234,7 @@ func writeFile(path string, write func(io.Writer) error) error {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return errSymlink
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".report-*")

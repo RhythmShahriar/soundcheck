@@ -29,6 +29,7 @@ import (
 // interrupted.
 type fakeEAA struct {
 	pages  func(n int) []model.Page
+	total  int // the pages the runner says it will visit, when more than it returns
 	checks int
 	owners []string
 	prev   []string // targets evidence.Previous was asked about
@@ -46,6 +47,9 @@ func (f *fakeEAA) install(t *testing.T) {
 		run := &model.Run{Schema: model.Schema, Tool: "rhythm-soundcheck", Version: opts.Version, Target: opts.Target, Name: opts.Name,
 			Options: model.Options{Viewports: cfg.Viewports, Levels: cfg.Interactions.Levels, Modules: cfg.Modules, Limit: cfg.Pages.Limit},
 			Pages:   f.pages(f.checks)}
+		if opts.Hooks.Discovered != nil {
+			opts.Hooks.Discovered(max(f.total, len(run.Pages)), nil)
+		}
 		for i := range run.Pages {
 			if opts.OnPage != nil {
 				opts.OnPage(&run.Pages[i])
@@ -64,8 +68,8 @@ func (f *fakeEAA) install(t *testing.T) {
 		_, err := fmt.Fprintf(w, "# Accessibility statement draft (%s)\n", d.Layout)
 		return err
 	}
-	writeEvidence = func(dir string, run *model.Run, prev *evidence.Ref) error {
-		data, _ := json.Marshal(map[string]any{"interrupted": run.Interrupted, "target": run.Target, "prev": prev != nil})
+	writeEvidence = func(dir string, run *model.Run, prev *evidence.Ref, extra evidenceExtra) error {
+		data, _ := json.Marshal(map[string]any{"interrupted": run.Interrupted, "insecure": extra.Insecure, "target": run.Target, "prev": prev != nil})
 		return writePrivate(filepath.Join(dir, eaaDir, evidenceFile), func(w io.Writer) error { _, err := w.Write(data); return err })
 	}
 	previousEvidence = func(root, target string) (*evidence.Ref, error) {
@@ -233,7 +237,7 @@ func TestEAAInterrupted(t *testing.T) {
 		pages := clean(0)
 		pages[1].Error = model.CanceledError
 		return pages
-	}}
+	}, total: 5}
 	f.install(t)
 	code, out, errOut := runCLI(t, "run", "127.0.0.1:20260", "--eaa", "--plain")
 	if code != exitCanceled {
@@ -252,6 +256,53 @@ func TestEAAInterrupted(t *testing.T) {
 	}
 	if strings.Contains(out, "statement:") {
 		t.Errorf("an interrupted run points at a draft:\n%s", out)
+	}
+	// It records the pages it set out to visit, for the statement
+	// command's refusal: "after 1 of 5 pages", not "1 of 2".
+	if data, err := os.ReadFile(filepath.Join(filepath.Dir(evs[0]), progressFile)); err != nil || string(data) != `{"pages":5}` {
+		t.Errorf("progress: %s %v", data, err)
+	}
+	code, _, errOut = runCLI(t, "statement")
+	if !strings.Contains(errOut, " was interrupted after 1 of 5 pages;") || code != exitError {
+		t.Errorf("statement: exit %d %q", code, errOut)
+	}
+}
+
+// A run made with -k says so in its evidence pack, so evidence sign
+// refuses it; a run that verified TLS can be signed.
+func TestEAAInsecureEvidence(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	writeConfig(t, "")
+	f := &fakeEAA{pages: clean}
+	f.install(t)
+	fakeEvidence(t)
+	if err := os.WriteFile("sign.key", []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		flags []string
+		code  int
+		err   string
+	}{
+		{"eaa-k", []string{"-k"}, exitUsage, "rhythm-soundcheck: can't sign a run made with -k: TLS wasn't verified\n"},
+		{"eaa-tls", nil, exitOK, ""},
+	} {
+		args := append([]string{"snapshot", "127.0.0.1:20260", "--eaa", "--name", tc.name, "--plain"}, tc.flags...)
+		if code, out, errOut := runCLI(t, args...); code != exitOK {
+			t.Fatalf("%s: exit %d\n%s\n%s", tc.name, code, out, errOut)
+		}
+		data, err := os.ReadFile(filepath.Join(".soundcheck", "snapshots", tc.name, eaaDir, evidenceFile))
+		want := fmt.Sprintf(`"insecure":%t`, tc.flags != nil)
+		if err != nil || !strings.Contains(string(data), want) {
+			t.Errorf("%s: evidence %s %v, want %s", tc.name, data, err, want)
+		}
+		code, _, errOut := runCLI(t, "evidence", "sign", tc.name, "--key", "sign.key")
+		if code != tc.code || errOut != tc.err {
+			t.Errorf("%s: sign exit %d %q, want %d %q", tc.name, code, errOut, tc.code, tc.err)
+		}
 	}
 }
 
