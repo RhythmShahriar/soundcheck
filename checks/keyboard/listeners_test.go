@@ -81,7 +81,7 @@ func TestMouseOnly(t *testing.T) {
 		}
 	}
 	want := []string{
-		// A plain div has no accessible name, and the text is never read.
+		// A plain div has no accessible name; its text is never read.
 		ids.NotReachable + `|#nr|div reacts to click but Tab never reaches it.`,
 		ids.NotOperable + `|#no|div "Add note" reacts to a mouse click but not to Enter or Space.`,
 	}
