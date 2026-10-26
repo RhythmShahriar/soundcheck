@@ -362,7 +362,7 @@ func FuzzTrace(f *testing.F) {
 	})
 }
 
-// An issue's key never holds an accessible name: a link labelled with
+// An issue's key never holds an accessible name: a link labeled with
 // the signed-in customer's email or phone keeps its key when they
 // change. The Detail shows neither.
 func TestClassifyKeyIgnoresPII(t *testing.T) {
