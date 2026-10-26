@@ -181,6 +181,15 @@ func (s *session) eaaHeader() string {
 	return fmt.Sprintf("--eaa: modules %s; WCAG %s", mods, cmpOr(s.wcag, "2.0"))
 }
 
+// runKeyboard is the keyboard walk's limits for the runner to record,
+// nil when the keyboard module doesn't run.
+func (s *session) runKeyboard() *model.KeyboardOptions {
+	if !s.cfg.Has("keyboard") {
+		return nil
+	}
+	return s.keyboard
+}
+
 // recordEAA writes what the run was made with into its options: EAA
 // mode, the WCAG version and the keyboard walk's limits, unless the
 // runner recorded them already.

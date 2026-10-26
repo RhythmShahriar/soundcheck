@@ -5,6 +5,7 @@ package runner
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
@@ -36,5 +37,23 @@ func TestPlanPages(t *testing.T) {
 	planPages([]check.Module{plain("health")}, done, pages)
 	if got != nil {
 		t.Errorf("Plan called without a planner: %q", got)
+	}
+}
+
+func TestStoredLinks(t *testing.T) {
+	token := "abcdefghijklmnopqrstuvwxyz0123456789"
+	got := storedLinks([]string{
+		"https://example.test/a/?token=" + token,
+		"https://example.test/a/#top",
+		"https://example.test/b/",
+		"https://example.test/password/reset/" + token,
+	})
+	want := []string{"https://example.test/a/", "https://example.test/b/", "https://example.test/password/reset/"}
+	if len(got) != len(want) || !slices.Equal(got[:2], want[:2]) ||
+		!strings.HasPrefix(got[2], want[2]) || strings.Contains(got[2], token) {
+		t.Errorf("storedLinks = %q, want %q", got, want)
+	}
+	if storedLinks(nil) != nil {
+		t.Error("nil links became a list")
 	}
 }

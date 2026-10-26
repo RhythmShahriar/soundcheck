@@ -380,7 +380,13 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			// A page the cancel or the run's deadline cut short isn't
 			// finished: a resumed run visits it again.
 			if opts.OnPage != nil && !cutShort(p) {
-				emit(func() { opts.OnPage(p) })
+				kept := p
+				if opts.EAA {
+					q := *p
+					q.Links = storedLinks(p.Links)
+					kept = &q
+				}
+				emit(func() { opts.OnPage(kept) })
 			}
 		})
 	}
@@ -414,6 +420,12 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 		markSiteIssues(run, had)
 	}
+	if opts.EAA {
+		// The site-wide checks above needed the links as found.
+		for i := range run.Pages {
+			run.Pages[i].Links = storedLinks(run.Pages[i].Links)
+		}
+	}
 	run.Duration = float64(time.Since(start).Milliseconds())
 	// A cancel after the last page cut the site-wide checks short (or
 	// skipped them): the run isn't a full result even though every page
@@ -422,6 +434,33 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		run.Interrupted = true
 	}
 	return run, ctx.Err()
+}
+
+// storedLinks is how an --eaa run stores a page's links: without their
+// query strings and fragments and with token-like path segments masked
+// (security M3), since a link can carry a reset key or a magic login
+// token and the run's files end up in CI artifacts. Links that become the
+// same are kept once. The run itself followed and checked them as found.
+func storedLinks(links []string) []string {
+	if len(links) == 0 {
+		return links
+	}
+	out := make([]string, 0, len(links))
+	seen := map[string]bool{}
+	for _, l := range links {
+		if u, err := url.Parse(l); err == nil {
+			u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
+			l = u.String()
+		} else if i := strings.IndexAny(l, "?#"); i >= 0 {
+			l = l[:i]
+		}
+		l = echolink.RedactURL(l)
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // planner is a module that wants the run's page list before the visits

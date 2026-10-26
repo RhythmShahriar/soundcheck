@@ -348,6 +348,7 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 	}
 	return runner.Options{
 		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,
+		EAA: s.cfg.EAA, WCAG: s.wcag, Keyboard: s.runKeyboard(),
 		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: s.modules(s.cfg), Login: login,
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
