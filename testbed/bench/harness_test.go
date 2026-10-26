@@ -61,6 +61,7 @@ func TestCheckStatement(t *testing.T) {
 		"status outside TODO": {draft() + "Status: fully compliant\n", nil, "says \"complian\""},
 		"other words in TODO": {draft() + "[TO DO: say it conforms]\n", nil, "says \"conform\""},
 		"canary":              {draft() + "Contact " + cs[0].value + "\n", nil, "holds the email canary"},
+		"non-ASCII before":    {draft() + strings.Repeat("İ", 40) + " It conforms.\n", nil, "conforms."},
 	}
 	for name, c := range cases {
 		got := checkStatement(c.text, c.says, cs)

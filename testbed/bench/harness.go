@@ -410,10 +410,12 @@ func checkStatement(text string, says []string, cs []canary) []string {
 		rest = strings.ReplaceAll(rest, d, " ")
 	}
 	rest = toDo.ReplaceAllStringFunc(rest, func(m string) string { return statuses.ReplaceAllString(m, "") })
+	// The snippet comes from lower, not rest: lowercasing can change the
+	// byte length of non-ASCII text, so an index into one is not one into the other.
 	lower := strings.ToLower(rest)
 	for _, w := range never {
 		if i := strings.Index(lower, w); i >= 0 {
-			problems = append(problems, fmt.Sprintf("statement: says %q (…%s…)", w, around(rest, i, len(w))))
+			problems = append(problems, fmt.Sprintf("statement: says %q (…%s…)", w, around(lower, i, len(w))))
 		}
 	}
 	for _, c := range cs {
