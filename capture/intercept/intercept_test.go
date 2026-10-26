@@ -320,11 +320,35 @@ func TestAddForPausesOnlyItsURLs(t *testing.T) {
 		*list = nil
 		return out
 	}
-	visit := func() {
+	// await waits until list holds every path in want: the page fetches
+	// /plain and /held from a script, so those can arrive after the load
+	// and after a quiet second on a busy machine. Asserting then would
+	// blame the handler for a late fetch.
+	await := func(list *[]string, want ...string) {
+		t.Helper()
+		deadline := time.Now().Add(testenv.Timeout(10 * time.Second))
+		for time.Now().Before(deadline) {
+			mu.Lock()
+			seen := 0
+			for _, w := range want {
+				if slices.Contains(*list, w) {
+					seen++
+				}
+			}
+			mu.Unlock()
+			if seen == len(want) {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	// visit loads the page and waits for the fetches the handler on list
+	// should see.
+	visit := func(list *[]string, want ...string) {
 		t.Helper()
 		_ = tab.Navigate(base + "/")
 		_ = tab.WaitLoad()
-		_ = tab.WaitIdle(time.Second)
+		await(list, want...)
 	}
 
 	removeSome, err := AddFor(tab, []string{"*/held*"}, note(&some))
@@ -332,7 +356,7 @@ func TestAddForPausesOnlyItsURLs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer removeSome()
-	visit()
+	visit(&some, "/held")
 	if g := got(&some); !slices.Equal(g, []string{"/held"}) {
 		t.Errorf("alone, the handler saw %q", g)
 	}
@@ -341,7 +365,8 @@ func TestAddForPausesOnlyItsURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	visit()
+	visit(&all, "/", "/held", "/plain")
+	await(&some, "/", "/held", "/plain")
 	removeAll()
 	if g := got(&all); !slices.Equal(g, []string{"/", "/held", "/plain"}) {
 		t.Errorf("the handler for every URL saw %q", g)
