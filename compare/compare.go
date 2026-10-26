@@ -232,8 +232,12 @@ func (d *issueDiff) add(class string, x issueAt) {
 		first = slices.Min(x.pages)
 	}
 	if g == nil {
+		// WCAG, EN301549, Impact and FocusPath follow from the check and
+		// the element, which the key holds, so the first issue's do.
 		g = &issueGroup{change: model.Change{Class: class, Check: x.issue.Check, Title: x.issue.Title, Detail: x.issue.Detail,
-			Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site && !x.issue.FromSite, Key: x.issue.Key}, pages: map[string]bool{}, detailFrom: first, detailSite: x.site}
+			Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site && !x.issue.FromSite, Key: x.issue.Key,
+			WCAG: slices.Clone(x.issue.WCAG), EN301549: slices.Clone(x.issue.EN301549), Impact: x.issue.Impact,
+			FocusPath: slices.Clone(x.issue.FocusPath)}, pages: map[string]bool{}, detailFrom: first, detailSite: x.site}
 		d.groups[k] = g
 	} else if first < g.detailFrom || (first == g.detailFrom && g.detailSite && !x.site) {
 		g.change.Detail, g.detailFrom, g.detailSite = x.issue.Detail, first, x.site
