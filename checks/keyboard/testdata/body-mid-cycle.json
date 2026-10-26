@@ -1,0 +1,28 @@
+{
+ "schema": "rhythm-soundcheck/keyboard-trace/v1",
+ "page": "/",
+ "viewport": "desktop",
+ "forward": [
+  {"selector": "#a", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 6, "name": "Before", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#b", "backend_node_id": 2, "tag": "a", "role": "", "name_len": 5, "name": "After", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#a", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 6, "name": "Before", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#b", "backend_node_id": 2, "tag": "a", "role": "", "name_len": 5, "name": "After", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#a", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 6, "name": "Before", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "backward": [
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#b", "backend_node_id": 2, "tag": "a", "role": "", "name_len": 5, "name": "After", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#a", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 6, "name": "Before", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#b", "backend_node_id": 2, "tag": "a", "role": "", "name_len": 5, "name": "After", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "main_index": -1,
+ "widgets": [],
+ "listeners": [],
+ "held": [],
+ "events": [],
+ "capped": false,
+ "trap_probe": {"set": ["#a", "#b"], "escape_left": false, "focusables_after": 1, "after": ["#c"]}
+}

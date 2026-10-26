@@ -1,0 +1,25 @@
+{
+ "schema": "rhythm-soundcheck/keyboard-trace/v1",
+ "page": "/",
+ "viewport": "desktop",
+ "forward": [
+  {"selector": "#top", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 3, "name": "Top", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d1", "backend_node_id": 7, "tag": "button", "role": "", "name_len": 3, "name": "Yes", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d2", "backend_node_id": 8, "tag": "button", "role": "", "name_len": 2, "name": "No", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d1", "backend_node_id": 7, "tag": "button", "role": "", "name_len": 3, "name": "Yes", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d2", "backend_node_id": 8, "tag": "button", "role": "", "name_len": 2, "name": "No", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "backward": [
+  {"selector": "#d2", "backend_node_id": 8, "tag": "button", "role": "", "name_len": 2, "name": "No", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d1", "backend_node_id": 7, "tag": "button", "role": "", "name_len": 3, "name": "Yes", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d2", "backend_node_id": 8, "tag": "button", "role": "", "name_len": 2, "name": "No", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#d1", "backend_node_id": 7, "tag": "button", "role": "", "name_len": 3, "name": "Yes", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": true, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "main_index": -1,
+ "widgets": [{"kind": "dialog", "trigger": "#open", "target": "#modal", "opened": true, "modal": true, "focus_inside": true, "escape_tried": true, "escape_closed": true, "closed": "escape"}],
+ "listeners": [],
+ "held": [],
+ "events": [],
+ "capped": false,
+ "trap_probe": {"set": ["#d1", "#d2"], "escape_left": false, "focusables_after": 4, "after": ["#a", "#b"]}
+}
