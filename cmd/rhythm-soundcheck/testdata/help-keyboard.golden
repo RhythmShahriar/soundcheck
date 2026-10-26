@@ -1,0 +1,62 @@
+Usage:
+  rhythm-soundcheck snapshot <url> --eaa
+  rhythm-soundcheck run <url> --modules +keyboard
+
+The keyboard module walks each page the way a keyboard user would, in Chrome
+only. It presses Tab until focus comes back to the start (up to
+keyboard.max_tabs), then Shift+Tab back and records every stop. On the first
+page of each URL group and on keyboard.pages it opens and closes menus,
+dialogs and disclosures by keyboard and checks where focus goes. Key flows
+(flows with keyboard: true or send) run at --level flows; rhythm-soundcheck
+flows init --keyboard writes four to edit.
+
+Checks:
+  keyboard/trap (error, wcag 2.1.2): Keyboard focus is trapped.
+  keyboard/not-reachable (warning, wcag 2.1.1): Clickable element can't be
+      reached by keyboard.
+  keyboard/not-operable (warning, wcag 2.1.1): Control doesn't respond to
+      Enter or Space.
+  keyboard/menu (warning, wcag 2.1.1): Submenu doesn't open by keyboard.
+  keyboard/focus-lost (warning, wcag 2.4.3): Focus is lost after closing.
+  keyboard/dialog-focus (warning, wcag 2.4.3): Dialog doesn't take or keep
+      focus.
+  keyboard/no-focus-ring (warning, wcag 2.4.7): No visible focus indicator.
+  keyboard/focus-invisible (warning, wcag 2.4.7): Focused element is hidden.
+  keyboard/context-change (warning, wcag 3.2.1): Moving focus changes the
+      page.
+  keyboard/skip-link-broken (warning, wcag 2.4.1): Skip link doesn't move
+      focus to the content.
+  keyboard/skip-link-missing (notice, advisory): No skip link before a long
+      run of stops.
+  keyboard/escape (notice, advisory): Escape doesn't close it.
+  keyboard/focus-obscured (notice, wcag 2.4.11 with --wcag 2.2): Focused
+      element is covered by fixed content.
+  keyboard/flow (error, wcag 2.1.1): Key flow can't be finished by keyboard.
+  keyboard/error-not-linked (warning, wcag 3.3.1): Form errors aren't tied
+      to their fields.
+
+Settings (keyboard: in .soundcheck/config.yaml):
+  - max_tabs: Tab presses per page before the walk stops, 10-2000 (default
+    150); a walk that stops there is capped, never a trap.
+  - widgets: menus, dialogs and disclosures tested per page, 0-200 (default
+    10).
+  - trap_after: presses on the same element or region that count as a trap,
+    3-20 (default 4).
+  - skip_link: expected (a missing skip link is a notice), required (a
+    warning) or off.
+  - pages: globs of the pages whose widgets are tested besides the first of
+    each URL group.
+  - ignore: CSS selectors the walk steps over, such as a cookie banner.
+
+What the walk never does:
+  - press Enter on a link that leaves the page, or Enter or Space on a
+    submit control or anything that looks destructive (delete, remove, log
+    out, unsubscribe, place order, pay, buy, checkout, empty cart);
+  - type into fields, act inside frames from other sites or on
+    keyboard.ignore selectors;
+  - run on /wp-admin or /wp-login.php.
+
+A key flow with keyboard: true holds every request that would send data: the
+step that would send counts as done and the rest are listed as not run.
+keyboard: send really submits, only on this machine or a private address or
+with --staging. It never submits on a site listed under production.

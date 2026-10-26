@@ -26,10 +26,20 @@ const rodEnv = "DISABLE_ROD_FLAG"
 // rodReport makes the test binary print what rod's init read and exit.
 const rodReport = "RHYTHM_SOUNDCHECK_TEST_ROD"
 
+// argsReport makes the test binary write its arguments to args.txt and
+// exit, standing in for Soundcheck where a command starts it (fleet). A
+// fleet passes a site SOUNDCHECK_* variables only from <PREFIX>_ copies.
+const argsReport = "SOUNDCHECK_TEST_ARGS"
+
 func TestMain(m *testing.M) {
 	switch {
 	case os.Getenv(asCLI) == "1":
 		main()
+	case os.Getenv(argsReport) == "1":
+		if err := os.WriteFile("args.txt", []byte(strings.Join(os.Args[1:], "\n")), 0o600); err != nil {
+			os.Exit(3)
+		}
+		os.Exit(0)
 	case os.Getenv(rodReport) == "1":
 		// Before main's run() resets rod: this is what init order left.
 		fmt.Printf("env=%s monitor=%s\n", os.Getenv(rodEnv), defaults.Monitor)

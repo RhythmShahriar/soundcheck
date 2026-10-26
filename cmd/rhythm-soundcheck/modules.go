@@ -158,18 +158,23 @@ func (s *session) lighthouse(site, dir string) {
 
 // cmdFlows handles `flows init`.
 func cmdFlows(args []string, stdout, stderr io.Writer) int {
-	args, code, ok := subFlags(flag.NewFlagSet("flows", flag.ContinueOnError), args, flowsUsage, stdout, stderr)
+	fs := flag.NewFlagSet("flows", flag.ContinueOnError)
+	keys := fs.Bool("keyboard", false, "")
+	args, code, ok := subFlags(fs, args, flowsUsage, stdout, stderr)
 	if !ok {
 		return code
 	}
 	if len(args) != 1 || args[0] != "init" {
-		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "flows init")
+		fmt.Fprintln(stderr, prefix(), "usage:", cmdName(), "flows init [--keyboard]")
 		return exitUsage
 	}
 	cfg, err := config.Load(filepath.Join(config.Dir, "config.yaml"))
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitUsage
+	}
+	if *keys {
+		return keyFlowsInit(cfg.Flows, stdout, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Flows, "example.yaml")); err == nil {
 		fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), filepath.Join(cfg.Flows, "example.yaml"))
@@ -181,5 +186,37 @@ func cmdFlows(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	fmt.Fprintf(stdout, "Wrote %s. Edit it, then run flows with: --level flows (it submits forms too)\n", path)
+	return exitOK
+}
+
+// keyFlowFiles are the key flows flows init --keyboard writes.
+var keyFlowFiles = []string{"keyboard-checkout.yaml", "keyboard-contact.yaml", "keyboard-dialog.yaml", "keyboard-menu.yaml"}
+
+// keyFlowsInit writes the four key flow templates into the flows folder.
+// Like flows init it replaces nothing: when one of them is there, it
+// writes none and says which.
+func keyFlowsInit(dir string, stdout, stderr io.Writer) int {
+	for _, n := range keyFlowFiles {
+		if _, err := os.Lstat(filepath.Join(dir, n)); err == nil {
+			fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), filepath.Join(dir, n))
+			return exitUsage
+		}
+	}
+	written, kept, err := writeKeyFlows(dir, keyFlowFiles)
+	for _, p := range written {
+		fmt.Fprintf(stdout, "Wrote %s\n", p)
+	}
+	// A file made between the check and the write is left alone too.
+	for _, p := range kept {
+		fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), p)
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, prefix(), named(err.Error()))
+		return exitError
+	}
+	if len(kept) > 0 {
+		return exitUsage
+	}
+	fmt.Fprintln(stdout, "Edit them, then run them with --level flows: they press keys only; keyboard: true holds every request that would send data.")
 	return exitOK
 }

@@ -20,6 +20,9 @@
 #         mode: compare
 #         baseline: main
 #         comment: true
+#
+# Accessibility evidence for the European Accessibility Act on each
+# preview: add eaa: true (and statement: true for the draft).
 name: Rhythm Soundcheck
 description: Did your change break anything? Compare a whole site before and after a deploy, in a real browser.
 author: Rhythm Shahriar
@@ -115,6 +118,29 @@ inputs:
       with RhythmShahriar/echo@v1 and mode up. Point the site's mail at it. Default off.
     required: false
     default: ""
+  eaa:
+    description: >
+      "true" adds --eaa: accessibility evidence for the European Accessibility Act (the a11y
+      and keyboard modules, WCAG 2.1 rules and a statement draft in the run folder). The job
+      summary and the comment then carry the accessibility counts and the evidence note. With
+      fail-on left at its default a new keyboard trap fails the job; fail-on: new fails on any
+      new accessibility problem. Evidence, not a compliance guarantee.
+    required: false
+    default: "false"
+  statement:
+    description: >
+      "true" also writes the accessibility statement draft accessibility-statement-draft.md in
+      working-directory after the run and adds it to the uploaded artifact. It needs a statement:
+      block in the settings file (rhythm soundcheck init --eaa writes one); without it the step
+      only warns. It replaces a file of that name in the workspace.
+    required: false
+    default: "false"
+  wcag:
+    description: >
+      Accessibility rules, passed as --wcag: 2.0, 2.1 or 2.2. Default 2.1 for a new snapshot; a
+      compare uses its snapshot's.
+    required: false
+    default: ""
   version:
     description: >
       Soundcheck version to install, e.g. 1.2.3, or latest. Default the release that matches the
@@ -124,7 +150,9 @@ inputs:
     required: false
     default: ""
   upload:
-    description: Upload the HTML and JUnit reports as a workflow artifact.
+    description: >
+      Upload the HTML and JUnit reports (and the statement draft) as a workflow artifact, kept
+      for 14 days. Reports contain what your pages showed, screenshots of logged-in pages too.
     required: false
     default: "true"
 
@@ -138,6 +166,15 @@ outputs:
   report:
     description: Path of the standalone HTML report.
     value: ${{ steps.check.outputs.report }}
+  statement:
+    description: Path of the statement draft with statement true, otherwise empty.
+    value: ${{ steps.check.outputs.statement }}
+  a11y-open:
+    description: Open accessibility and keyboard problems of an --eaa run, e.g. 12; empty without it.
+    value: ${{ steps.check.outputs.a11y-open }}
+  criteria-failed:
+    description: WCAG success criteria with failures in an --eaa run, e.g. 3; empty without it.
+    value: ${{ steps.check.outputs.criteria-failed }}
 
 runs:
   using: composite
@@ -175,6 +212,8 @@ runs:
         MODE: ${{ inputs.mode }}
         NAME: ${{ inputs.name }}
         BASELINE: ${{ inputs.baseline }}
+        EAA: ${{ inputs.eaa }}
+        STATEMENT: ${{ inputs.statement }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" prepare'
 
     # The newest cache whose key starts with soundcheck-<baseline>-. The
@@ -202,6 +241,9 @@ runs:
         CONFIG: ${{ inputs.config }}
         ECHO: ${{ inputs.echo }}
         BASELINE: ${{ inputs.baseline }}
+        EAA: ${{ inputs.eaa }}
+        STATEMENT: ${{ inputs.statement }}
+        WCAG: ${{ inputs.wcag }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
     # A snapshot with issues (exit 1) is still the baseline; one that
@@ -223,6 +265,8 @@ runs:
         name: ${{ steps.prep.outputs.artifact }}
         path: ${{ runner.temp }}/soundcheck-report/
         if-no-files-found: ignore
+        # Reports can hold page content and screenshots of logged-in pages.
+        retention-days: 14
 
     - name: Comment on the pull request
       if: always() && inputs.comment == 'true' && steps.check.outputs.markdown != ''

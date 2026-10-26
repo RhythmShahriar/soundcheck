@@ -25,6 +25,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/flow"
+	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/rules"
 )
@@ -61,6 +62,10 @@ type options struct {
 	allowExec              bool
 
 	echo echoFlag
+
+	eaa     bool   // accessibility evidence: health, a11y and keyboard, WCAG 2.1
+	wcag    string // the a11y rules' WCAG version
+	staging bool   // the target is a staging site, so key flows may send
 
 	failOn string
 
@@ -213,6 +218,9 @@ func flagSet(o *options) *flag.FlagSet {
 	fs.StringVar(&o.brand, "brand", "", "")
 
 	fs.Var(&o.echo, "echo", "")
+	fs.BoolVar(&o.eaa, "eaa", false, "")
+	fs.StringVar(&o.wcag, "wcag", "", "")
+	fs.BoolVar(&o.staging, "staging", false, "")
 
 	fs.StringVar(&o.failOn, "fail-on", "", "")
 	return fs
@@ -267,6 +275,17 @@ type plan struct {
 	engine capture.Engine
 	// bin is the browser binary --browser named, if any.
 	bin string
+	// wcag is the WCAG version the a11y rules use: --wcag, a11y.wcag or
+	// the default; a comparison uses the snapshot's. Empty is a
+	// snapshot from before 1.3 compared as it was taken, with the 2.0
+	// rules.
+	wcag string
+	// eaaKept names what chose the modules --eaa added a11y and keyboard
+	// to (--modules, --quick or the config file), or "" when --eaa chose
+	// them all, for the header.
+	eaaKept string
+	// keyboard is the keyboard walk's limits, when the module runs.
+	keyboard *model.KeyboardOptions
 }
 
 func parse(args []string) (*plan, error) {
@@ -318,6 +337,7 @@ func parse(args []string) (*plan, error) {
 		cfg.Pages.IgnoreRobots = true
 	}
 	p.quickPreset(set)
+	p.eaaPreset(set)
 	if len(o.modules) > 0 {
 		if cfg.Modules, err = config.AddList(cfg.Modules, o.modules); err != nil {
 			return nil, cli.Usagef("--modules (modules): %v", err)
@@ -349,6 +369,10 @@ func parse(args []string) (*plan, error) {
 		return nil, cli.Usagef("%s: %v", filepath.Join(config.Dir, "rules"), err)
 	}
 	if err := p.browserFlag(); err != nil {
+		return nil, err
+	}
+	p.eaaModules()
+	if err := p.eaaRules(); err != nil {
 		return nil, err
 	}
 	// Echo: --echo, then SOUNDCHECK_ECHO, then echo.url. It's on whenever
@@ -615,6 +639,7 @@ func (p *plan) trust() error {
 		t.AllowHosts = append(t.AllowHosts, key)
 	}
 	t.InsecureLogin = p.o.insecureLogin
+	t.Staging = p.o.staging
 	return nil
 }
 

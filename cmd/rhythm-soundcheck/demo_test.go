@@ -85,7 +85,7 @@ func TestDemoOptions(t *testing.T) {
 		{[]string{"--fail-on", "broke", "--level", "click"}, false, "", "demo doesn't take --fail-on, --level"},
 		{[]string{"--frobnicate"}, false, "", "unknown flag --frobnicate"},
 	} {
-		keep, rest, err := demoOptions(tc.args)
+		keep, _, rest, err := demoOptions(tc.args)
 		switch {
 		case tc.err != "":
 			if err == nil || !strings.Contains(err.Error(), tc.err) {

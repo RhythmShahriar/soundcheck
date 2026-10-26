@@ -1,0 +1,114 @@
+health: on by default
+  health/unreachable     error    Page can't be reached
+  health/blocked         error    Blocked by a firewall or bot check
+  health/auth-required   error    Password required (401)
+  health/status          error    Page returns an error status
+  health/redirect-chain  notice   Long redirect chain
+  health/redirect        notice   Page now redirects
+  health/php-error       error    PHP errors and warnings
+  health/white-screen    error    White screen
+  health/wp-critical     error    WordPress critical error
+  health/database        error    Database error
+  health/error-page      error    Framework error page
+  health/js-error        warning  JavaScript errors
+  health/failed-request  warning  Failed requests
+  health/broken-asset    warning  Broken images, scripts and styles
+  health/mixed-content   warning  Mixed content
+  health/no-title        notice   No page title
+  health/noindex         notice   Hidden from search engines
+  health/not-responsive  notice   Not responsive
+  health/broken-link     warning  Broken links
+  health/favicon         notice   No favicon
+  health/title           notice   Page title changed
+  health/content-lost    warning  Content lost
+
+visual: on by default
+  visual/page    notice  Page looks different
+  visual/block   notice  Part of the page looks different
+  visual/shared  notice  Same change on several pages
+  visual/size    notice  Page size changed
+
+interact: on by default
+  interact/dead-click       warning  Control does nothing
+  interact/click-error      error    Click causes an error
+  interact/click-request    error    Click request fails
+  interact/form-action      error    Form posts nowhere
+  interact/form-error       error    Form submission fails
+  interact/form-submit      error    Form no longer submits
+  interact/form-validation  warning  Form shows no validation
+  interact/no-nonce         warning  Form without a security token
+  interact/unnamed-field    warning  Field without a name
+  interact/unlabeled        notice   Required field without a label
+  interact/duplicate-id     notice   Duplicate ids
+  interact/flow             error    Flow fails
+  interact/flow-file        error    Flow file can't be read
+  interact/flow-production  warning  Flow skipped on production
+
+cache: on by default
+  cache/leak            error    Logged-in page shown to visitors
+  cache/private-cached  error    Private page cached
+  cache/expired-nonce   warning  Cached page has an expired token
+  cache/stale           warning  Stale cached page
+  cache/none            notice   No page cache
+  cache/never-cached    notice   Pages never served from the cache
+  cache/stopped         warning  Page cache stopped working
+
+speed: on by default
+  speed/lcp               warning  Slow largest paint (LCP)
+  speed/tbt               warning  Blocked main thread (TBT)
+  speed/cls               warning  Layout shift (CLS)
+  speed/ttfb              warning  Slow server response (TTFB)
+  speed/weight            warning  Heavy page
+  speed/requests          notice   Many requests
+  speed/oversized-images  notice   Oversized images
+  speed/lazy-load         notice   Images not lazy-loaded
+  speed/render-blocking   notice   Render-blocking files
+  speed/unused-css        notice   Mostly unused CSS
+  speed/unused-js         notice   Mostly unused JavaScript
+  speed/compression       warning  Files sent uncompressed
+  speed/http-version      notice   Old HTTP version
+  speed/cache-headers     notice   Files without cache headers
+  speed/third-party       notice   Heavy third-party scripts
+  speed/site              notice   Site-wide speed
+  speed/plugin-cost       notice   Plugin adds weight
+  speed/theme-cost        notice   Theme adds weight
+  speed/host-cost         notice   Third-party host adds weight
+
+a11y: off unless asked for (+a11y); on with --eaa
+  a11y/label          warning  Form field without a label                                                                               advisory
+  a11y/<axe rule id>  warning  Every axe-core rule that fails, e.g. a11y/color-contrast (a notice when axe rates it minor or moderate)  wcag from the rule's tags
+
+keyboard: off unless asked for (+keyboard); on with --eaa
+  keyboard/trap               error    Keyboard focus is trapped                       wcag 2.1.2
+  keyboard/not-reachable      warning  Clickable element can't be reached by keyboard  wcag 2.1.1
+  keyboard/not-operable       warning  Control doesn't respond to Enter or Space       wcag 2.1.1
+  keyboard/menu               warning  Submenu doesn't open by keyboard                wcag 2.1.1
+  keyboard/focus-lost         warning  Focus is lost after closing                     wcag 2.4.3
+  keyboard/dialog-focus       warning  Dialog doesn't take or keep focus               wcag 2.4.3
+  keyboard/no-focus-ring      warning  No visible focus indicator                      wcag 2.4.7
+  keyboard/focus-invisible    warning  Focused element is hidden                       wcag 2.4.7
+  keyboard/context-change     warning  Moving focus changes the page                   wcag 3.2.1
+  keyboard/skip-link-broken   warning  Skip link doesn't move focus to the content     wcag 2.4.1
+  keyboard/skip-link-missing  notice   No skip link before a long run of stops         advisory
+  keyboard/escape             notice   Escape doesn't close it                         advisory
+  keyboard/focus-obscured     notice   Focused element is covered by fixed content     wcag 2.4.11 with --wcag 2.2
+  keyboard/flow               error    Key flow can't be finished by keyboard          wcag 2.1.1
+  keyboard/error-not-linked   warning  Form errors aren't tied to their fields         wcag 3.3.1
+
+seo: off unless asked for (+seo)
+  seo/canonical    notice   Canonical link changed
+  seo/description  notice   Meta description changed
+  seo/robots-meta  warning  Robots meta changed
+  seo/h1           notice   Headings changed
+  seo/hreflang     notice   Language links changed
+  seo/og           notice   Open Graph tags changed
+  seo/jsonld       notice   Structured data changed
+  seo/redirect     notice   Redirect changed
+  seo/robots-txt   warning  robots.txt changed
+  seo/sitemap      warning  Sitemap changed
+
+echo: on with --echo
+  echo/message/missing  error    Message no longer sent
+  echo/no-message       warning  Form sends nothing
+
+exec: on when the config lists exec: commands, which run with --allow-exec

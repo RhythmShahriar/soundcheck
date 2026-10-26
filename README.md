@@ -21,6 +21,7 @@
   <a href="#install">Install</a> ·
   <a href="#check-a-change">Check a change</a> ·
   <a href="#what-it-catches">What it catches</a> ·
+  <a href="#accessibility-evidence-for-the-eaa">EAA</a> ·
   <a href="https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck">Docs</a> ·
   <a href="https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CI">CI</a> ·
   <a href="https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Benchmark">Benchmark</a>
@@ -102,7 +103,8 @@ Add `--echo` (with [Echo](https://github.com/RhythmShahriar/echo) running) and e
 | Move over from Lost Pixel (page paths only) | `rhythm-soundcheck import lostpixel.config.ts --pages-only` |
 | Accept a change you meant to make | `rhythm-soundcheck accept 3f2a9c01` |
 | Go through the changes one by one | `rhythm-soundcheck review` |
-| Also check accessibility and what search engines see | `rhythm-soundcheck compare --modules +a11y,seo` |
+| Accessibility evidence for the European Accessibility Act | `rhythm-soundcheck snapshot staging.site.com --eaa` |
+| Also check what search engines see | `rhythm-soundcheck compare --modules +seo` |
 | Carry on with a big snapshot that stopped | `rhythm-soundcheck snapshot shop.test --name before --resume` |
 | Check many client sites in one go | `rhythm-soundcheck fleet sites.yaml compare` |
 | Update WordPress plugins and find the one that breaks | `rhythm-soundcheck wp-update staging.site.com --wp "wp --path=/srv/www" --bisect` |
@@ -134,7 +136,7 @@ Before reporting BROKE or NEW, `compare` visits those pages again; a page whose 
 
 ### More checks
 
-- `--modules +a11y` runs axe-core's accessibility rules on every page; `+seo` compares canonical links, meta descriptions, robots rules, headings, hreflang, structured data, robots.txt and the sitemap. Both are off by default.
+- `--modules +a11y` runs axe-core's WCAG 2.1 A and AA rules on every page (`--wcag 2.2` for the 2.2 rules); `--eaa` adds the keyboard walkthrough and a statement draft, see [below](#accessibility-evidence-for-the-eaa); `+seo` compares canonical links, meta descriptions, robots rules, headings, hreflang, structured data, robots.txt and the sitemap. Both are off by default.
 - Your own error signatures go in `.soundcheck/rules/*.yaml`, each with a `<name>_test.yaml` of positive and negative samples. `rhythm-soundcheck rules list` shows every rule; `rhythm-soundcheck rules test` runs the samples.
 - Programs in any language can check every page: list them under `exec:` in the config and pass `--allow-exec`. Each gets the page as JSON on stdin and answers with issues on stdout. `rhythm-soundcheck --list-checks` lists every check.
 
@@ -149,6 +151,72 @@ Before reporting BROKE or NEW, `compare` visits those pages again; a page whose 
 
 > [!IMPORTANT]
 > Check only sites you own or have permission to test. Soundcheck browses like a visitor at 5 page loads a second. It only submits forms when you turn the `submit` level on and refuses to on sites you list as production. See [Responsible use](#responsible-use--disclaimer).
+
+## Accessibility evidence for the EAA
+
+The European Accessibility Act asks shops and services to be usable without a mouse and to publish an accessibility statement. `--eaa` gathers the evidence for that review:
+
+```sh
+rhythm soundcheck snapshot staging.yoursite.com --eaa   # once: what the site does today
+rhythm soundcheck compare --eaa --fail-on new           # after a change: new problems only
+```
+
+`rhythm soundcheck snapshot <url> --eaa` is the first command. The same mode works on `compare`, `run`, `--against` and `fleet`. The rest of this section uses `rhythm-soundcheck`; `rhythm soundcheck` runs the same commands through the router.
+
+**What it checks.** On every page it visits, in Chrome:
+
+- axe-core's WCAG 2.1 A and AA rules (`--wcag 2.2` for 2.2), plus placeholder-only labels, reflow at narrow width and overlay widgets.
+- A real keyboard walk: Tab and Shift+Tab through the page, then menus, dialogs and disclosures. It reports keyboard traps, focus lost after a dialog closes, focus you can't see, skip links that go nowhere and controls only a mouse can use.
+- Key flows: a flow marked `keyboard: true` is replayed with keys only, so "checkout can be finished by keyboard" becomes a test (`rhythm-soundcheck flows init --keyboard` writes four to edit).
+
+Each finding is a normal issue keyed by rule and element, with its WCAG success criterion and EN 301 549 clause. NEW, FIXED, UNSTABLE, `accept`, `ignore:` and `--fail-on` work on it as on any other change: a new trap is BROKE, so the default `--fail-on broke` already stops it.
+
+**What it never does.** It never says a site is compliant and never picks the conformance status for you. During the walk it holds requests that would send data and follows no links except skip links. A key flow only really submits with `keyboard: send` on a staging or local address. A page whose audit timed out is never reported as fixed: the run exits 3, since the evidence is incomplete.
+
+**The statement.** Every `--eaa` run writes `eaa/statement-draft.md` in its folder. `rhythm-soundcheck init --eaa` adds a `statement:` block (owner, public address, contact) to `.soundcheck/config.yaml`; then
+
+```sh
+rhythm-soundcheck statement -o accessibility-statement.md   # also .html, .json, .jsonld (EARL for WCAG-EM)
+```
+
+drafts a statement in the layout of the EU model statement, with a table of every WCAG 2.1 A and AA success criterion: failures found, no failures found by these tests, or not tested: needs a person. Every place only you can fill in is marked `[TO DO]`.
+
+**The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool and axe-core versions and a hash chain to the previous `--eaa` run of the same site.
+
+```sh
+rhythm-soundcheck evidence verify                      # the files and the chain are unchanged
+rhythm-soundcheck evidence keygen -o soundcheck.key    # once
+rhythm-soundcheck evidence sign --key soundcheck.key   # sign the latest pack
+```
+
+**In CI.** The [GitHub Action](#ci) takes `eaa`, `statement` and `wcag` inputs and gives `a11y-open` and `criteria-failed` outputs:
+
+```yaml
+- uses: RhythmShahriar/soundcheck@v1.3.0
+  with:
+    url: ${{ github.event.deployment_status.target_url }}
+    mode: compare
+    baseline: main
+    eaa: true
+    comment: true
+    fail-on: new        # fail on any new accessibility problem, not only traps
+```
+
+The job summary and the pull request comment carry counts and rule ids only. The full report is a workflow artifact kept for 14 days.
+
+**Honest limits.** Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
+
+1. Soundcheck's EAA mode gives you evidence about your site. It is not an audit, not a certification and not legal advice.
+2. Many success criteria need a person: meaningful alt text, captions, reading order, plain language. The draft marks them not tested: needs a person, never passed.
+3. Only the pages and flows Soundcheck visited, in the states it saw, in Chrome, with the keyboard walk at desktop width. Content in iframes from other sites, PDFs, videos, apps and emails was not tested.
+4. The keyboard walkthrough uses Chrome's keyboard events. It is not a screen reader test, not a voice control test and not a test with disabled users.
+5. The site decides what Soundcheck sees. A site that serves headless browsers a different page can pass while visitors fail. Overlay widgets don't make a site accessible.
+6. EAA mode presses keys on your pages. It holds requests that would change data, blocks downloads and follows no links except skip links. A site that changes data on a GET or on focus can still change. Run it on staging and list your live site under production.
+7. Reports contain what your pages showed. Soundcheck masks form values, credentials and tokens it recognises and emails, phone numbers and card numbers in text it writes. Masking is pattern-based: it is pseudonymised, not anonymised. Screenshots are not masked.
+8. A signed evidence pack proves who produced it and that it wasn't changed afterwards. It doesn't prove the site was in that state for every visitor.
+9. Nothing leaves your machine except requests to your own site and hosts you allow. No telemetry, no hosted service, no AI.
+
+The [benchmark's EAA section](docs/benchmark.md#eaa-mode) measures what the checks catch on known cases and what they cost per page. More in `rhythm-soundcheck help eaa`.
 
 ## What it catches
 

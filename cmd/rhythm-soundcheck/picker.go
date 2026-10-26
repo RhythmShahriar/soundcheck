@@ -28,15 +28,10 @@ func pick(stdout, stderr io.Writer) int {
 	}
 
 	action := "snapshot"
-	var opts []huh.Option[string]
 	if last != "" {
 		action = "compare"
-		opts = append(opts, huh.NewOption("Compare with the latest snapshot ("+last+")", "compare"))
 	}
-	opts = append(opts,
-		huh.NewOption("Take a snapshot: record how the site works now", "snapshot"),
-		huh.NewOption("Check once, without comparing", "run"),
-	)
+	opts := pickOptions(last)
 	var site, output string
 	output = "open"
 	form := huh.NewForm(
@@ -68,9 +63,39 @@ func pick(stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
+	return run(pickArgs(action, site, output), stdout, stderr)
+}
+
+// pickEAA is the picker's action for an --eaa snapshot.
+const pickEAA = "eaa"
+
+// pickOptions are the picker's actions: comparing with the latest
+// snapshot (described by last) when there is one, then the others.
+func pickOptions(last string) []huh.Option[string] {
+	var opts []huh.Option[string]
+	if last != "" {
+		opts = append(opts, huh.NewOption("Compare with the latest snapshot ("+last+")", "compare"))
+	}
+	return append(opts,
+		huh.NewOption("Take a snapshot: record how the site works now", "snapshot"),
+		huh.NewOption("Check once, without comparing", "run"),
+		huh.NewOption("Check accessibility (EAA evidence)", pickEAA),
+	)
+}
+
+// pickArgs turns the picker's answers into a command line. The
+// accessibility check is a snapshot with --eaa, so a later compare has
+// a baseline.
+func pickArgs(action, site, output string) []string {
 	args := []string{action}
+	if action == pickEAA {
+		args = []string{"snapshot"}
+	}
 	if action != "compare" {
 		args = append(args, strings.TrimSpace(site))
+	}
+	if action == pickEAA {
+		args = append(args, "--eaa")
 	}
 	switch output {
 	case "open":
@@ -78,5 +103,5 @@ func pick(stdout, stderr io.Writer) int {
 	case "md":
 		args = append(args, "-o", "soundcheck.md")
 	}
-	return run(args, stdout, stderr)
+	return args
 }

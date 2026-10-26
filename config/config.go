@@ -9,10 +9,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -193,7 +195,7 @@ func Default() Config {
 // Every error names the file and, when it can, the line.
 func Load(path string) (Config, error) {
 	c := Default()
-	data, err := os.ReadFile(path) //nolint:gosec // the user's own project config
+	data, err := readLimited(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return c, nil
 	}
@@ -229,6 +231,29 @@ func Load(path string) (Config, error) {
 		return c, inFile(err)
 	}
 	return c, nil
+}
+
+// MaxSize is the largest config file Load reads. A real one is a few
+// kilobytes; the limit keeps a hostile file (the config comes with a
+// repository) from tying up the parser.
+const MaxSize = 1 << 20
+
+// readLimited reads the config file, refusing one over MaxSize without
+// reading past it.
+func readLimited(path string) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // the user's own project config
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, MaxSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxSize {
+		return nil, fmt.Errorf("%s is larger than 1 MB", path)
+	}
+	return data, nil
 }
 
 // InFile reports whether the config file set key, written with dots for
@@ -307,8 +332,13 @@ func (c *Config) Validate() error {
 		return err
 	}
 	for n, r := range c.Ignore {
-		if r.Check == "" && r.Title == "" && len(r.Pages) == 0 {
-			return settingErr("ignore", "rule %d has nothing to match: give it a check, a title or pages", n+1)
+		if r.Check == "" && r.Title == "" && len(r.Pages) == 0 && r.Source == "" {
+			return settingErr("ignore", "rule %d has nothing to match: give it a check, a title, pages or a source", n+1)
+		}
+		// source is matched with path.Match, which reports a bad pattern
+		// only when it is used: catch it here, where the line is known.
+		if _, err := path.Match(r.Source, ""); err != nil {
+			return settingErr(fmt.Sprintf("ignore.%d.source", n+1), "%q isn't a glob: %v", r.Source, err)
 		}
 		if r.Until != "" {
 			if _, err := time.Parse("2006-01-02", r.Until); err != nil {

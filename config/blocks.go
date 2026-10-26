@@ -5,6 +5,7 @@ package config
 
 import (
 	"reflect"
+	"slices"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -74,4 +75,36 @@ func KeyLine(node yaml.Node, key string) int {
 		}
 	}
 	return node.Line
+}
+
+// SetBlockValue sets key in the block name to value, as if the config
+// file said `name: {key: value}`, for a flag that sets a module's own
+// setting: --wcag sets a11y.wcag. The module's Configure and helpers such
+// as a11y.Standard then read the flag's value. The rest of the block
+// stays. Copies of c made before keep the block they had.
+func (c *Config) SetBlockValue(name, key, value string) {
+	blocks := make(map[string]*yaml.Node, len(c.blocks)+1)
+	for k, v := range c.blocks {
+		blocks[k] = v
+	}
+	var node yaml.Node
+	if old, ok := c.blocks[name]; ok && old.Kind == yaml.MappingNode {
+		node = *old
+		node.Content = slices.Clone(old.Content)
+	} else {
+		node = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	}
+	v := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value, Style: yaml.DoubleQuotedStyle}
+	set := false
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			v.Line = node.Content[i+1].Line
+			node.Content[i+1], set = v, true
+		}
+	}
+	if !set {
+		node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
+	}
+	blocks[name] = &node
+	c.blocks = blocks
 }

@@ -21,19 +21,24 @@ import (
 // uses. Everything else is fixed, so the demo shows the same result
 // everywhere.
 var demoFlags = []string{"plain", "no-color", "q", "quiet", "v", "verbose", "open", "keep",
-	"browser", "no-download", "show-browser"}
+	"browser", "no-download", "no-sandbox", "show-browser", "eaa"}
 
 // demoArgs are the settings demo runs with. The levels include submit,
 // so the broken contact form is caught; Echo and the login stay off
 // whatever the environment says.
 var demoArgs = []string{"--level", "submit", "--viewport", "desktop", "--rate", "20", "--echo=false", "--no-login"}
 
+// demoEAAArgs are added for demo --eaa: health and interact keep the
+// usual breaks in view and --eaa adds a11y and keyboard, which catch the
+// keyboard breaks.
+var demoEAAArgs = []string{"--modules", "health,interact"}
+
 // cmdDemo serves the built-in demo site on this machine, snapshots it,
 // breaks it and compares. Its snapshot and run go to a temporary folder,
 // never the project's .soundcheck, which is removed afterwards unless
 // --keep or --open asks for the report.
 func cmdDemo(args []string, stdout, stderr io.Writer) int {
-	keep, rest, err := demoOptions(args)
+	keep, eaa, rest, err := demoOptions(args)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			usage(stdout)
@@ -58,6 +63,7 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	var site demo.Site
+	site.SetKeyboard(eaa)
 	srv, err := demo.Start(&site)
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), "starting the demo site:", err)
@@ -75,7 +81,7 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 	say("1. Taking a snapshot of it while it works (a few seconds)...")
 	// The snapshot's own result isn't the point: its output is left out
 	// and only errors show.
-	snap, code := demoSession(append([]string{srv.URL, "--name", "working", "-q"}, rest...), cfgPath, tmp, keep, io.Discard, stderr)
+	snap, code := demoSession(append([]string{srv.URL, "--name", "working", "-q"}, rest...), cfgPath, tmp, keep, eaa, io.Discard, stderr)
 	if snap == nil {
 		return code
 	}
@@ -85,10 +91,10 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	site.SetBroken(true)
-	say("2. Breaking it the way an update can: %s.", demo.Describe())
+	say("2. Breaking it the way an update can: %s.", demo.Describe(eaa))
 	say("3. Comparing with the snapshot:")
 	say("")
-	cmpS, code := demoSession(rest, cfgPath, tmp, keep, stdout, stderr)
+	cmpS, code := demoSession(rest, cfgPath, tmp, keep, eaa, stdout, stderr)
 	if cmpS == nil {
 		return code
 	}
@@ -99,26 +105,29 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 	}
 	say("")
 	say("On your own site, %s accept <id> makes a change you expected part of the snapshot.", cmdName())
+	if eaa {
+		say("With --eaa on your own site, every run also writes a statement draft for you to finish (%s help eaa).", cmdName())
+	}
 	say("Now try it on your staging site: %s snapshot staging.example.com", cmdName())
 	return code
 }
 
 // demoOptions checks demo's arguments: only the flags in demoFlags and
-// no site. It returns --keep (or --open, which needs the report kept)
-// and the other flags to pass on.
-func demoOptions(args []string) (keep bool, rest []string, err error) {
+// no site. It returns --keep (or --open, which needs the report kept),
+// --eaa and the other flags to pass on.
+func demoOptions(args []string) (keep, eaa bool, rest []string, err error) {
 	var o options
 	fs := flagSet(&o)
 	fs.BoolVar(&keep, "keep", false, "")
 	pos, err := cli.ParseInterspersed(fs, args)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return false, nil, err
+			return false, false, nil, err
 		}
-		return false, nil, flagError(fs, err)
+		return false, false, nil, flagError(fs, err)
 	}
 	if len(pos) > 0 {
-		return false, nil, fmt.Errorf("demo checks its own site, so it takes no URL: %s demo", cmdName())
+		return false, false, nil, fmt.Errorf("demo checks its own site, so it takes no URL: %s demo", cmdName())
 	}
 	var bad []string
 	fs.Visit(func(f *flag.Flag) {
@@ -127,7 +136,7 @@ func demoOptions(args []string) (keep bool, rest []string, err error) {
 		}
 	})
 	if len(bad) > 0 {
-		return false, nil, fmt.Errorf("demo doesn't take %s; it takes --plain, --no-color, -q, -v, --keep, --open, --browser, --no-download and --show-browser",
+		return false, false, nil, fmt.Errorf("demo doesn't take %s; it takes --plain, --no-color, -q, -v, --keep, --open, --eaa, --browser, --no-download, --no-sandbox and --show-browser",
 			strings.Join(bad, ", "))
 	}
 	for _, a := range args {
@@ -135,14 +144,18 @@ func demoOptions(args []string) (keep bool, rest []string, err error) {
 			rest = append(rest, a)
 		}
 	}
-	return keep || o.open, rest, nil
+	return keep || o.open, o.eaa, rest, nil
 }
 
 // demoSession parses one demo step's flags into a session that keeps its
 // files in tmp. Without keep the run folder goes away with tmp, so the
 // summary doesn't point at its report.
-func demoSession(args []string, cfgPath, tmp string, keep bool, stdout, stderr io.Writer) (*session, int) {
-	p, err := parse(append(append([]string{"--config", cfgPath}, demoArgs...), args...))
+func demoSession(args []string, cfgPath, tmp string, keep, eaa bool, stdout, stderr io.Writer) (*session, int) {
+	fixed := slices.Clone(demoArgs)
+	if eaa {
+		fixed = append(fixed, demoEAAArgs...)
+	}
+	p, err := parse(append(append([]string{"--config", cfgPath}, fixed...), args...))
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return nil, exitUsage

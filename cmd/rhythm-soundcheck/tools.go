@@ -29,6 +29,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/review"
 	"github.com/RhythmShahriar/soundcheck/rules"
+	"github.com/RhythmShahriar/soundcheck/wcag"
 	"github.com/RhythmShahriar/soundcheck/wpupdate"
 )
 
@@ -81,7 +82,8 @@ func boolFlag(fs *flag.FlagSet, name string) bool {
 }
 
 // listChecks prints every check of every module, in config.Modules
-// order, for --list-checks.
+// order, for --list-checks. The a11y and keyboard checks also name the
+// WCAG criteria they fail, or say they are advisory.
 func listChecks(w io.Writer) {
 	mods := check.Registered()
 	slices.SortStableFunc(mods, func(a, b check.Module) int {
@@ -96,6 +98,8 @@ func listChecks(w io.Writer) {
 		switch {
 		case slices.Contains(config.DefaultModules, m.Name()):
 			state = "on by default"
+		case slices.Contains(eaaNeeds, m.Name()):
+			state += "; on with --eaa"
 		case m.Name() == "echo":
 			state = "on with --echo"
 		case m.Name() == "exec":
@@ -107,6 +111,10 @@ func listChecks(w io.Writer) {
 			continue
 		}
 		for _, c := range d.Checks() {
+			if listedCriteria(m.Name()) {
+				fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", c.ID, c.Level, c.Title, criteriaText(c.ID))
+				continue
+			}
 			fmt.Fprintf(tw, "  %s\t%s\t%s\n", c.ID, c.Level, c.Title)
 		}
 	}
@@ -114,11 +122,12 @@ func listChecks(w io.Writer) {
 }
 
 const historyUsage = `Usage:
-  rhythm soundcheck history [--page <path>] [--metric lcp|tbt|ttfb] [--backfill]
+  rhythm soundcheck history [--page <path>] [--metric <name>] [--backfill]
 
 Shows every snapshot, run and comparison in .soundcheck/history.jsonl,
 oldest first, with the site's median LCP (or --metric) and a sparkline.
---page shows that page's timing instead. --backfill adds the runs and
+--metric takes lcp, tbt, ttfb, a11y (open accessibility issues) or keyboard
+(open keyboard issues). --page shows that page's figures instead. --backfill adds the runs and
 snapshots still in .soundcheck that the history doesn't have.
 `
 
@@ -135,6 +144,9 @@ func cmdHistory(args []string, stdout, stderr io.Writer) int {
 	if len(pos) > 0 {
 		fmt.Fprint(stderr, named(historyUsage))
 		return exitUsage
+	}
+	if *metric != "" && !slices.Contains(history.Metrics, *metric) {
+		return failed(stderr, cli.Usagef("--metric: %v", config.OneOf(*metric, history.Metrics)))
 	}
 	root := config.Dir
 	if _, err := os.Stat(filepath.Join(root, history.File)); *backfill || errors.Is(err, os.ErrNotExist) {
@@ -165,6 +177,7 @@ them worst first in .soundcheck-fleet/fleet.html. A site's variables come
 from <PREFIX>_SOUNDCHECK_* (env_prefix, default from its name). A site's
 args can't run programs: set <PREFIX>_SOUNDCHECK_ALLOW_EXEC=1 or
 <PREFIX>_SOUNDCHECK_LIGHTHOUSE=1 for --allow-exec or --lighthouse.
+--eaa and --wcag <version> go to every site's command.
 `
 
 // cmdFleet runs snapshot or compare for every site in a sites file.
@@ -172,9 +185,22 @@ func cmdFleet(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("fleet", flag.ContinueOnError)
 	tabs := fs.Int("tabs", 3, "")
 	open := fs.Bool("open", false, "")
+	eaa := fs.Bool("eaa", false, "")
+	version := fs.String("wcag", "", "")
 	pos, code, ok := subFlags(fs, args, fleetUsage, stdout, stderr)
 	if !ok {
 		return code
+	}
+	// --eaa and --wcag go to every site, after the site's own args.
+	var extra []string
+	if *eaa {
+		extra = append(extra, "--eaa")
+	}
+	if *version != "" {
+		if !slices.Contains(wcag.Versions, *version) {
+			return failed(stderr, cli.Usagef("--wcag (a11y.wcag): %q isn't one of %s", *version, strings.Join(wcag.Versions, ", ")))
+		}
+		extra = append(extra, "--wcag", *version)
 	}
 	if len(pos) != 2 || (pos[1] != fleet.Snapshot && pos[1] != fleet.Compare) {
 		fmt.Fprint(stderr, named(fleetUsage))
@@ -190,7 +216,7 @@ func cmdFleet(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
 	defer stop()
-	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, nil, stdout)
+	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, extra, stdout)
 	if err != nil {
 		if code == 0 { // the file was refused before any site ran
 			return failed(stderr, cli.UsageError{Msg: err.Error()})
@@ -436,7 +462,7 @@ func (s *session) clientReport(res report.Result) int {
 // helpTopics are the commands with their own --help plus the main ones
 // that `help <command>` describes before the full list of flags.
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
-	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage,
+	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage, "statement": statementUsage, "evidence": evidenceUsage,
 	"snapshots": snapshotsUsage, "flows": flowsUsage, "update": updateUsage, "init": initUsage,
 	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic}
 
@@ -450,18 +476,24 @@ for scripts. delete removes one.
 `
 
 const initUsage = `Usage:
-  rhythm soundcheck init [--force]
+  rhythm soundcheck init [--eaa] [--force]
 
 Writes .soundcheck/config.yaml with every setting described and asks git to
 ignore the snapshot folders. --force replaces a config that's already there.
+--eaa turns EAA mode on (eaa: true), adds the a11y, keyboard and statement:
+blocks as comments to fill in and writes the key flow
+.soundcheck/flows/keyboard-checkout.yaml.
 `
 
 const flowsUsage = `Usage:
-  rhythm soundcheck flows init
+  rhythm soundcheck flows init [--keyboard]
 
 Writes an example flow to the flows folder (.soundcheck/flows unless the
 config sets flows:). Edit it, then run flows with --level flows, which
-submits forms too.
+submits forms too. --keyboard writes four key flows instead, which the
+keyboard module runs by keyboard alone: keyboard-checkout.yaml,
+keyboard-contact.yaml, keyboard-menu.yaml and keyboard-dialog.yaml. A file
+that's already there is never replaced.
 `
 
 const updateUsage = `Usage:
@@ -529,6 +561,10 @@ there.
 
 // topic returns a command's own usage, for `help <command>`.
 func topic(name string) (string, bool) {
-	u, ok := helpTopics[strings.TrimSpace(name)]
+	name = strings.TrimSpace(name)
+	if gen, ok := generatedTopics[name]; ok {
+		return gen(), true
+	}
+	u, ok := helpTopics[name]
 	return u, ok
 }

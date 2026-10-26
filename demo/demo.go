@@ -10,6 +10,10 @@
 // home page, a button whose script no longer binds, a page that lost its
 // title, a page that went missing (404) and a contact form whose handler
 // answers 500. Nothing runs PHP: the warning is the text PHP would print.
+//
+// With keyboard breaks on (demo --eaa) the site also has a newsletter
+// field and an opening hours dialog; the broken state traps the
+// keyboard in the field and loses focus when the dialog closes.
 package demo
 
 import (
@@ -18,6 +22,7 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,11 +39,23 @@ var Breaks = []string{
 	"the contact form answers 500",
 }
 
-// Site is the demo site. The zero value is the working state; it is
-// safe to flip while requests are being served.
+// KeyboardBreaks lists what the broken state also changes with keyboard
+// breaks on, for demo --eaa.
+var KeyboardBreaks = []string{
+	"a keyboard trap in the newsletter field on /",
+	"focus lost when the opening hours dialog on /about/ closes",
+}
+
+// Site is the demo site. The zero value is the working state without
+// keyboard breaks; it is safe to flip while requests are being served.
 type Site struct {
 	broken atomic.Bool
+	keys   atomic.Bool
 }
+
+// SetKeyboard adds the newsletter field and the dialog, whose broken
+// state is in KeyboardBreaks.
+func (s *Site) SetKeyboard(on bool) { s.keys.Store(on) }
 
 // SetBroken switches the site between its working and broken states.
 func (s *Site) SetBroken(broken bool) { s.broken.Store(broken) }
@@ -79,10 +96,50 @@ func (s *Site) home(w http.ResponseWriter, broken bool) {
 		// throws on load.
 		script = `<script>document.getElementById('cart').textContent = window.demoCart.count();</script>`
 	}
+	extra := ""
+	if s.keys.Load() {
+		extra = "\n" + newsletter
+		if broken {
+			// The newsletter plugin's new "stay in the field until it's
+			// valid" script swallows Tab and Shift+Tab: a keyboard trap.
+			script += "\n" + trapScript
+		}
+	}
 	page(w, "Home", broken, `<h1>Brightside Bakery</h1>
 <p>Fresh bread every morning, cakes to order and a small cafe by the river.</p>
 <p>Items in your basket: <span id="cart">0</span></p>
-<ul><li><a href="/about/">Meet the bakers</a></li><li><a href="/pricing/">Cake prices</a></li><li><a href="/contact/">Order a cake</a></li></ul>`, script)
+<ul><li><a href="/about/">Meet the bakers</a></li><li><a href="/pricing/">Cake prices</a></li><li><a href="/contact/">Order a cake</a></li></ul>`+extra, script)
+}
+
+// newsletter is the home page's newsletter field with keyboard breaks on.
+// The button only says thanks, so nothing is sent.
+const newsletter = `<p><label for="news">Newsletter email</label> <input id="news" type="email" autocomplete="email"> <button type="button" id="join">Join</button> <span id="joined" role="status"></span></p>
+<script>document.getElementById('join').addEventListener('click', function () { document.getElementById('joined').textContent = 'Thanks!'; });</script>`
+
+// trapScript keeps focus in the newsletter field: Tab and Shift+Tab do
+// nothing there.
+const trapScript = `<script>document.getElementById('news').addEventListener('keydown', function (e) { if (e.key === 'Tab') { e.preventDefault(); } });</script>`
+
+// hoursDialog is the about page's opening hours dialog with keyboard
+// breaks on. Closing it returns focus to its button, as a native dialog
+// does; the broken script removes the dialog instead, which drops focus
+// on the page body.
+func hoursDialog(broken bool) (body, script string) {
+	body = `<p><button type="button" id="hours-open">Opening hours</button></p>
+<dialog id="hours" aria-labelledby="hours-title"><h2 id="hours-title">Opening hours</h2><p>Every day, 7am to 3pm.</p><button type="button" id="hours-close">Close</button></dialog>`
+	closeIt := "dlg.close();"
+	if broken {
+		closeIt = "dlg.remove();"
+	}
+	script = `<script>(function () {
+  var dlg = document.getElementById('hours');
+  var open = document.getElementById('hours-open');
+  open.addEventListener('click', function () { if (dlg.isConnected) { dlg.showModal(); } });
+  function shut(e) { if (e) { e.preventDefault(); } ` + closeIt + ` }
+  document.getElementById('hours-close').addEventListener('click', function () { shut(); });
+  dlg.addEventListener('cancel', shut);
+})();</script>`
+	return body, script
 }
 
 func (s *Site) about(w http.ResponseWriter, broken bool) {
@@ -102,10 +159,15 @@ func (s *Site) about(w http.ResponseWriter, broken bool) {
     panel.hidden = open;
   });
 })();</script>`
+	extra := ""
+	if s.keys.Load() {
+		body, dialog := hoursDialog(broken)
+		extra, script = "\n"+body, script+"\n"+dialog
+	}
 	page(w, "About us", broken, `<h1>About us</h1>
 <p>Three bakers, one oven and a lot of flour since 2011.</p>
 <button type="button" class="team-toggle" aria-controls="team" aria-expanded="false">Show the team</button>
-<ul id="team" hidden><li>Ada, bread</li><li>Ben, cakes</li><li>Cleo, coffee</li></ul>`, script)
+<ul id="team" hidden><li>Ada, bread</li><li>Ben, cakes</li><li>Cleo, coffee</li></ul>`+extra, script)
 }
 
 func (s *Site) pricing(w http.ResponseWriter) {
@@ -227,10 +289,15 @@ func (s *Server) Close() error {
 	return err
 }
 
-// Describe joins Breaks for one line: "a, b and c".
-func Describe() string {
-	if len(Breaks) < 2 {
-		return strings.Join(Breaks, "")
+// Describe joins Breaks for one line: "a, b and c". With keyboard it
+// adds KeyboardBreaks.
+func Describe(keyboard bool) string {
+	all := Breaks
+	if keyboard {
+		all = append(slices.Clone(Breaks), KeyboardBreaks...)
 	}
-	return strings.Join(Breaks[:len(Breaks)-1], ", ") + " and " + Breaks[len(Breaks)-1]
+	if len(all) < 2 {
+		return strings.Join(all, "")
+	}
+	return strings.Join(all[:len(all)-1], ", ") + " and " + all[len(all)-1]
 }
