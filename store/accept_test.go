@@ -212,6 +212,11 @@ func TestAcceptA11yIssue(t *testing.T) {
 			t.Fatal(err)
 		}
 		r.Options.Modules = append(r.Options.Modules, "a11y")
+		// A run of a11y records each page's audit; a page without one
+		// wasn't audited and its issues aren't compared.
+		for i := range r.Pages {
+			r.Pages[i].Audits = map[string]model.Audit{"a11y": {Status: model.AuditOK}}
+		}
 		if dir == f.run {
 			r.Page("/b/").Issues = append(r.Page("/b/").Issues, label)
 		}

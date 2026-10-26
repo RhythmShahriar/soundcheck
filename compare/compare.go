@@ -38,7 +38,9 @@ func Compare(ctx context.Context, cc *check.CompareContext, modules []check.Modu
 	c.WarnFunc = moduleWarn
 	cc = &c
 	out := start(cc, version, len(cc.After.Pages), warnings, droppedBefore, dropped)
-	out.Changes = compared(Issues(cc.Before, cc.After), cc, modules)
+	changes, ignored, notes := IssuesWithGaps(cc.Before, cc.After)
+	out.Changes = compared(changes, cc, modules)
+	aside(out, compared(ignored, cc, modules), notes)
 	warn := func(msg string) { out.Warnings = append(out.Warnings, msg) }
 	for _, m := range modules {
 		if c, ok := m.(check.Comparer); ok {
@@ -90,6 +92,18 @@ func start(cc *check.CompareContext, version string, pages int, warnings []strin
 	}
 	out.Warnings = append(notes, out.Warnings...)
 	return out
+}
+
+// aside puts the issue changes of pages whose audit didn't finish in the
+// comparison's Ignored list, with a warning for each page. Ignore rules
+// add theirs to the list later (ApplyIgnore).
+func aside(out *model.Comparison, ignored []model.Change, notes []string) {
+	if len(ignored) == 0 {
+		return
+	}
+	out.Ignored = append(out.Ignored, ignored...)
+	Sort(out.Ignored)
+	out.Warnings = append(out.Warnings, notes...)
 }
 
 // compared drops the issue changes of modules that didn't run in both
@@ -181,9 +195,25 @@ func ref(r *model.Run, dir string) model.RunRef {
 
 // Issues diffs the issues of two runs. Issues are matched by key on the
 // same page (page issues) or by key alone (site issues). A page that only
-// exists in one run doesn't make its issues new or fixed.
+// exists in one run doesn't make its issues new or fixed. Neither does a
+// page whose a11y or keyboard audit didn't finish on one side (see
+// IssuesWithGaps).
 func Issues(before, after *model.Run) []model.Change {
-	d := issueDiff{groups: map[string]*issueGroup{}}
+	return diffIssues(before, after).changes()
+}
+
+// IssuesWithGaps is Issues that also returns the issue changes of pages
+// whose audit didn't finish on one side (model.Audit), which aren't
+// counted. They have the class they would have had and a Reason
+// ("not checked on this page: a11y timed out"), for the comparison's
+// Ignored list. notes are its warnings, one per page and module, sorted.
+func IssuesWithGaps(before, after *model.Run) (changes, ignored []model.Change, notes []string) {
+	d := diffIssues(before, after)
+	return d.changes(), d.ignoredChanges(), d.sortedNotes()
+}
+
+func diffIssues(before, after *model.Run) *issueDiff {
+	d := newIssueDiff()
 	// Every page with a path counts, when a path is there twice.
 	byPath := func(r *model.Run) map[string][]model.Issue {
 		m := map[string][]model.Issue{}
@@ -193,13 +223,24 @@ func Issues(before, after *model.Run) []model.Change {
 		return m
 	}
 	b, a := byPath(before), byPath(after)
+	ba, aa := auditsByPath(before), auditsByPath(after)
+	ran, listed := ranInBoth(before, after), func(m string) bool { return slices.Contains(after.Options.Modules, m) }
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
-			d.page(path, bi, ai)
+			d.page(path, bi, ai, gaps(path, ba[path], aa[path], ran, listed))
 		}
 	}
 	d.site(before.Issues, after.Issues)
-	return d.changes()
+	return d
+}
+
+// auditsByPath is the audits of r's pages by path (see mergeAudits).
+func auditsByPath(r *model.Run) map[string]map[string]model.Audit {
+	m := map[string]map[string]model.Audit{}
+	for _, p := range r.Pages {
+		m[p.Path] = mergeAudits(m[p.Path], p.Audits)
+	}
+	return m
 }
 
 // issueDiff collects the changes Issues reports a path at a time, so
@@ -207,7 +248,18 @@ func Issues(before, after *model.Run) []model.Change {
 // 14 pages is one change. The result doesn't depend on the order paths
 // come in: pages are a set; the detail comes from the lowest page
 // path (a page's issue before a site issue listing the same page).
-type issueDiff struct{ groups map[string]*issueGroup }
+//
+// Issues of a module whose audit didn't finish on a page go to ignored
+// instead, grouped by reason too, with a note for the page.
+type issueDiff struct {
+	groups  map[string]*issueGroup
+	ignored map[string]*issueGroup // by reason, class and key
+	notes   map[string]bool
+}
+
+func newIssueDiff() *issueDiff {
+	return &issueDiff{groups: map[string]*issueGroup{}, ignored: map[string]*issueGroup{}, notes: map[string]bool{}}
+}
 
 type issueGroup struct {
 	change     model.Change
@@ -225,8 +277,19 @@ type issueAt struct {
 }
 
 func (d *issueDiff) add(class string, x issueAt) {
-	k := class + "|" + x.issue.Key
-	g := d.groups[k]
+	addTo(d.groups, class+"|"+x.issue.Key, class, x)
+}
+
+// addAside adds a change of a page whose audit didn't finish, which
+// doesn't count (see unaudited).
+func (d *issueDiff) addAside(class string, x issueAt, gap auditGap) {
+	g := addTo(d.ignored, gap.reason+"|"+class+"|"+x.issue.Key, class, x)
+	g.change.Reason = gap.reason
+	d.notes[gap.note] = true
+}
+
+func addTo(groups map[string]*issueGroup, k, class string, x issueAt) *issueGroup {
+	g := groups[k]
 	first := ""
 	if len(x.pages) > 0 {
 		first = slices.Min(x.pages)
@@ -238,7 +301,7 @@ func (d *issueDiff) add(class string, x issueAt) {
 			Source: x.issue.Source, Fix: x.issue.Fix, FromPageIssue: !x.site && !x.issue.FromSite, Key: x.issue.Key,
 			WCAG: slices.Clone(x.issue.WCAG), EN301549: slices.Clone(x.issue.EN301549), Impact: x.issue.Impact,
 			FocusPath: slices.Clone(x.issue.FocusPath)}, pages: map[string]bool{}, detailFrom: first, detailSite: x.site}
-		d.groups[k] = g
+		groups[k] = g
 	} else if first < g.detailFrom || (first == g.detailFrom && g.detailSite && !x.site) {
 		g.change.Detail, g.detailFrom, g.detailSite = x.issue.Detail, first, x.site
 	}
@@ -246,11 +309,13 @@ func (d *issueDiff) add(class string, x issueAt) {
 	for _, p := range x.pages {
 		g.pages[p] = true
 	}
+	return g
 }
 
 // page diffs the issues of every page with path in each run. The first
-// issue with a key is the one reported.
-func (d *issueDiff) page(path string, before, after []model.Issue) {
+// issue with a key is the one reported. The issues of the modules in
+// gaps go aside.
+func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudited) {
 	byKey := func(is []model.Issue) map[string]model.Issue {
 		m := make(map[string]model.Issue, len(is))
 		for _, i := range is {
@@ -261,14 +326,22 @@ func (d *issueDiff) page(path string, before, after []model.Issue) {
 		return m
 	}
 	b, a := byKey(before), byKey(after)
+	add := func(class string, i model.Issue) {
+		x := issueAt{issue: i, pages: []string{path}}
+		if gap, ok := gaps.of(i.Check); ok {
+			d.addAside(class, x, gap)
+			return
+		}
+		d.add(class, x)
+	}
 	for k, i := range a {
 		if _, ok := b[k]; !ok {
-			d.add(appeared(i), issueAt{issue: i, pages: []string{path}})
+			add(appeared(i), i)
 		}
 	}
 	for k, i := range b {
 		if _, ok := a[k]; !ok {
-			d.add(model.Fixed, issueAt{issue: i, pages: []string{path}})
+			add(model.Fixed, i)
 		}
 	}
 }
@@ -306,10 +379,19 @@ func appeared(i model.Issue) string {
 }
 
 // changes returns the collected changes, in a fixed order.
-func (d *issueDiff) changes() []model.Change {
-	out := make([]model.Change, 0, len(d.groups))
-	for _, k := range sortedKeys(d.groups) {
-		g := d.groups[k]
+func (d *issueDiff) changes() []model.Change { return grouped(d.groups) }
+
+// ignoredChanges returns the changes put aside, in a fixed order.
+func (d *issueDiff) ignoredChanges() []model.Change { return grouped(d.ignored) }
+
+// sortedNotes returns the warnings for the pages whose changes were put
+// aside.
+func (d *issueDiff) sortedNotes() []string { return sortedKeys(d.notes) }
+
+func grouped(groups map[string]*issueGroup) []model.Change {
+	out := make([]model.Change, 0, len(groups))
+	for _, k := range sortedKeys(groups) {
+		g := groups[k]
 		g.change.Pages = sortedKeys(g.pages)
 		g.change.Score = float64(len(g.change.Pages))
 		out = append(out, g.change)
