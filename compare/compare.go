@@ -94,15 +94,15 @@ func start(cc *check.CompareContext, version string, pages int, warnings []strin
 	return out
 }
 
-// aside puts the issue changes of pages whose audit didn't finish in the
-// comparison's Ignored list, with a warning for each page. Ignore rules
-// add theirs to the list later (ApplyIgnore).
+// aside puts the issue changes that can't count (an audit that didn't
+// finish, an a11y rule one run didn't apply or an element past the
+// per-rule cap) in the comparison's Ignored list and adds their
+// warnings. Ignore rules add theirs to the list later (ApplyIgnore).
 func aside(out *model.Comparison, ignored []model.Change, notes []string) {
-	if len(ignored) == 0 {
-		return
+	if len(ignored) > 0 {
+		out.Ignored = append(out.Ignored, ignored...)
+		Sort(out.Ignored)
 	}
-	out.Ignored = append(out.Ignored, ignored...)
-	Sort(out.Ignored)
 	out.Warnings = append(out.Warnings, notes...)
 }
 
@@ -213,7 +213,8 @@ func IssuesWithGaps(before, after *model.Run) (changes, ignored []model.Change, 
 }
 
 func diffIssues(before, after *model.Run) *issueDiff {
-	d := newIssueDiff()
+	ran, listed := ranInBoth(before, after), func(m string) bool { return slices.Contains(after.Options.Modules, m) }
+	d := newIssueDiff(rulesOf(before, after, ran))
 	// Every page with a path counts, when a path is there twice.
 	byPath := func(r *model.Run) map[string][]model.Issue {
 		m := map[string][]model.Issue{}
@@ -224,10 +225,9 @@ func diffIssues(before, after *model.Run) *issueDiff {
 	}
 	b, a := byPath(before), byPath(after)
 	ba, aa := auditsByPath(before), auditsByPath(after)
-	ran, listed := ranInBoth(before, after), func(m string) bool { return slices.Contains(after.Options.Modules, m) }
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
-			d.page(path, bi, ai, gaps(path, ba[path], aa[path], ran, listed))
+			d.page(path, bi, ai, gaps(path, ba[path], aa[path], ran, listed), d.guard(bi, ba[path], aa[path]))
 		}
 	}
 	d.site(before.Issues, after.Issues)
@@ -250,15 +250,25 @@ func auditsByPath(r *model.Run) map[string]map[string]model.Audit {
 // path (a page's issue before a site issue listing the same page).
 //
 // Issues of a module whose audit didn't finish on a page go to ignored
-// instead, grouped by reason too, with a note for the page.
+// instead, grouped by reason too, with a note for the page. So do the
+// a11y issues the guards put aside (see pageGuard).
 type issueDiff struct {
 	groups  map[string]*issueGroup
 	ignored map[string]*issueGroup // by reason, class and key
 	notes   map[string]bool
+	rules   ruleSets
+	moved   map[string]bool // rules whose NEW changes were put aside as not in the baseline
 }
 
-func newIssueDiff() *issueDiff {
-	return &issueDiff{groups: map[string]*issueGroup{}, ignored: map[string]*issueGroup{}, notes: map[string]bool{}}
+func newIssueDiff(rules ruleSets) *issueDiff {
+	return &issueDiff{groups: map[string]*issueGroup{}, ignored: map[string]*issueGroup{}, notes: map[string]bool{},
+		rules: rules, moved: map[string]bool{}}
+}
+
+// guard is the a11y guard of a page pair: the snapshot's issues on the
+// page and both sides' audits.
+func (d *issueDiff) guard(before []model.Issue, b, a map[string]model.Audit) *pageGuard {
+	return newPageGuard(&d.rules, before, b, a)
 }
 
 type issueGroup struct {
@@ -280,12 +290,15 @@ func (d *issueDiff) add(class string, x issueAt) {
 	addTo(d.groups, class+"|"+x.issue.Key, class, x)
 }
 
-// addAside adds a change of a page whose audit didn't finish, which
-// doesn't count (see unaudited).
-func (d *issueDiff) addAside(class string, x issueAt, gap auditGap) {
-	g := addTo(d.ignored, gap.reason+"|"+class+"|"+x.issue.Key, class, x)
-	g.change.Reason = gap.reason
-	d.notes[gap.note] = true
+// addAside adds a change that doesn't count, with the reason it gives
+// and the comparison's note for it ("" for none): one of a page whose
+// audit didn't finish (see unaudited) or one a guard put aside.
+func (d *issueDiff) addAside(class string, x issueAt, reason, note string) {
+	g := addTo(d.ignored, reason+"|"+class+"|"+x.issue.Key, class, x)
+	g.change.Reason = reason
+	if note != "" {
+		d.notes[note] = true
+	}
 }
 
 func addTo(groups map[string]*issueGroup, k, class string, x issueAt) *issueGroup {
@@ -314,8 +327,8 @@ func addTo(groups map[string]*issueGroup, k, class string, x issueAt) *issueGrou
 
 // page diffs the issues of every page with path in each run. The first
 // issue with a key is the one reported. The issues of the modules in
-// gaps go aside.
-func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudited) {
+// gaps go aside. So do the a11y changes guard puts aside.
+func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudited, guard *pageGuard) {
 	byKey := func(is []model.Issue) map[string]model.Issue {
 		m := make(map[string]model.Issue, len(is))
 		for _, i := range is {
@@ -329,10 +342,26 @@ func (d *issueDiff) page(path string, before, after []model.Issue, gaps unaudite
 	add := func(class string, i model.Issue) {
 		x := issueAt{issue: i, pages: []string{path}}
 		if gap, ok := gaps.of(i.Check); ok {
-			d.addAside(class, x, gap)
+			d.addAside(class, x, gap.reason, gap.note)
+			return
+		}
+		if why := guard.reason(class, i); why != "" {
+			if why == reasonNotInBaseline {
+				r, _ := a11yRule(i.Check)
+				d.moved[r] = true
+			}
+			d.addAside(class, x, why, "")
 			return
 		}
 		d.add(class, x)
+	}
+	if guard.counts() {
+		// The cap guard judges a rule's FIXED changes on the page together.
+		for k, i := range b {
+			if _, ok := a[k]; !ok {
+				guard.count(model.Fixed, i)
+			}
+		}
 	}
 	for k, i := range a {
 		if _, ok := b[k]; !ok {
@@ -385,8 +414,14 @@ func (d *issueDiff) changes() []model.Change { return grouped(d.groups) }
 func (d *issueDiff) ignoredChanges() []model.Change { return grouped(d.ignored) }
 
 // sortedNotes returns the warnings for the pages whose changes were put
-// aside.
-func (d *issueDiff) sortedNotes() []string { return sortedKeys(d.notes) }
+// aside, then the one naming the rules the snapshot didn't apply.
+func (d *issueDiff) sortedNotes() []string {
+	notes := sortedKeys(d.notes)
+	if n := rulesNote(d.rules, d.moved); n != "" {
+		notes = append(notes, n)
+	}
+	return notes
+}
 
 func grouped(groups map[string]*issueGroup) []model.Change {
 	out := make([]model.Change, 0, len(groups))

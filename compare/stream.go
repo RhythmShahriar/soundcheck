@@ -79,8 +79,8 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 		return nil, err
 	}
 
-	d := newIssueDiff()
 	ran, listed := ranInBoth(cc.Before, cc.After), func(m string) bool { return slices.Contains(cc.After.Options.Modules, m) }
+	d := newIssueDiff(rulesOf(cc.Before, cc.After, ran))
 	diffed := map[string]bool{}
 	for i := range after.Len() {
 		if after.Canceled(i) {
@@ -109,7 +109,7 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 			if err != nil {
 				return nil, err
 			}
-			d.page(path, bi, ai, gaps(path, baud, aaud, ran, listed))
+			d.page(path, bi, ai, gaps(path, baud, aaud, ran, listed), d.guard(bi, baud, aaud))
 		}
 		for _, s := range sinks {
 			if s.s == nil {
