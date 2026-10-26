@@ -306,13 +306,20 @@ func storedPages(dir string, run *model.Run) func(func(*model.Page) bool) {
 
 // notAudited counts the pages of an --eaa run whose a11y or keyboard
 // audit didn't finish. Their evidence is missing, so the run exits 3.
-// An interrupted run is partial anyway and exits 130.
+// An interrupted run is partial anyway and exits 130. A page that
+// answered with an HTTP error has no content of its own to test: the
+// health module reports it, and the draft still lists it as not
+// tested, but it doesn't make the evidence of the other pages
+// incomplete.
 func notAudited(run *model.Run) int {
 	if run == nil || !run.Options.EAA || run.Interrupted {
 		return 0
 	}
 	n := 0
 	for _, p := range run.Pages {
+		if p.Status >= 400 && p.Error == "" {
+			continue
+		}
 		for _, m := range eaaNeeds {
 			if a, ok := p.Audits[m]; ok && !a.Finished() {
 				n++

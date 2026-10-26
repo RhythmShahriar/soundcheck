@@ -249,6 +249,17 @@ func TestEAANotAuditedExits3(t *testing.T) {
 	if code != exitOK || strings.Contains(errOut, "incomplete") {
 		t.Errorf("run without --eaa: exit %d\n%s", code, errOut)
 	}
+	// A page that answered 404 isn't evidence that went missing.
+	f.pages = func(int) []model.Page {
+		pages := clean(0)
+		pages[1].Status = 404
+		pages[1].Audits["a11y"] = model.Audit{Status: model.AuditSkipped, Reason: "status 404"}
+		pages[1].Audits["keyboard"] = model.Audit{Status: model.AuditSkipped, Reason: "HTTP 404"}
+		return pages
+	}
+	if code, out, errOut := runCLI(t, "run", "127.0.0.1:20260", "--eaa", "--fail-on", "none", "--plain"); code != exitOK || strings.Contains(errOut, "incomplete") {
+		t.Errorf("run with a 404 page: exit %d\n%s\n%s", code, out, errOut)
+	}
 }
 
 // An interrupted --eaa run exits 130 and writes the evidence pack,
