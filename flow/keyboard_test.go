@@ -21,12 +21,12 @@ import (
 	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
-// listen serves h on a free port of 37040-37059, the ports this
+// listen serves h on a free port of 20360-20379, the ports this
 // package's key flow tests use, so they don't take another suite's.
 func listen(t *testing.T, h http.Handler) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(h)
-	for port := 37040; port <= 37059; port++ {
+	for port := 20360; port <= 20379; port++ {
 		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
@@ -36,7 +36,7 @@ func listen(t *testing.T, h http.Handler) *httptest.Server {
 		t.Cleanup(srv.Close)
 		return srv
 	}
-	t.Fatal("ports 37040-37059 are all taken")
+	t.Fatal("ports 20360-20379 are all taken")
 	return nil
 }
 
@@ -289,5 +289,57 @@ steps:
 	}
 	if res, err := page.Eval(`() => document.getElementById('terms').checked`); err != nil || !res.Value.Bool() {
 		t.Errorf("Space didn't check the box: %v %v", res, err)
+	}
+}
+
+// targetsPage has click targets a mouse flow names by what it clicks: a
+// label tied to its checkbox, a span inside a button and a label whose
+// checkbox Tab can't reach.
+const targetsPage = `<!doctype html><html lang="en"><body>
+<form onsubmit="return false">
+<input type="checkbox" id="terms"><label for="terms">I accept the terms</label>
+<button type="button" id="b" onclick="document.getElementById('note').textContent = 'Pressed'"><span class="t">Go</span></button>
+<input type="checkbox" id="hid" tabindex="-1"><label for="hid">Mouse only box</label>
+</form>
+<p id="note"></p>
+</body></html>`
+
+// A key flow reaches the control a click target stands for: the
+// checkbox of a label and the button a span sits in. A control Tab
+// can't reach still fails.
+func TestKeyFlowClickTargets(t *testing.T) {
+	needChrome(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/{$}", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, targetsPage) })
+	srv := listen(t, mux)
+	play := func(steps string) (Result, *rod.Page) {
+		t.Helper()
+		f, err := Parse([]byte("name: Targets\nstart: /\nkeyboard: true\nsteps:\n" + steps))
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := isolatedTab(t, srv.URL+"/")
+		return Play(context.Background(), page, f, keyOptions(srv.URL)), page
+	}
+	checked := func(page *rod.Page, id string) bool {
+		t.Helper()
+		res, err := page.Eval(`id => document.getElementById(id).checked`, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Value.Bool()
+	}
+
+	res, page := play("  - click: {text: I accept the terms}\n")
+	if len(res.Failures) != 0 || !checked(page, "terms") {
+		t.Errorf("label: checked %v, failures:\n%s", checked(page, "terms"), describe(res))
+	}
+	res, _ = play("  - click: \"#b .t\"\n  - expect: {text: Pressed}\n")
+	if len(res.Failures) != 0 {
+		t.Errorf("span in a button:\n%s", describe(res))
+	}
+	res, page = play("  - click: {text: Mouse only box}\n")
+	if len(res.Failures) != 1 || res.Failures[0].Key == nil || !strings.HasPrefix(res.Failures[0].Key.Reason, "not reached after") || checked(page, "hid") {
+		t.Errorf("unreachable checkbox:\n%s", describe(res))
 	}
 }

@@ -271,8 +271,30 @@ func (r *runner) reach(n int, kind string, t Target) (target, active *rod.Elemen
 	if err != nil {
 		return nil, nil, err
 	}
+	el = r.focusable(el)
 	active, err = r.reachEl(n, kind, t, el)
 	return el, active, err
+}
+
+// focusTargetJS returns the element that takes focus for this one: the
+// control of a label (a click on <label for=terms> ticks #terms), the
+// focusable control an element sits in (a span inside a button) or the
+// element itself.
+const focusTargetJS = `function() {
+  if (this.localName === 'label' && this.control) return this.control;
+  const f = this.closest && this.closest('a[href],button,input,select,textarea,summary,[tabindex]:not([tabindex="-1"]),[contenteditable=""],[contenteditable="true"]');
+  return f || this;
+}`
+
+// focusable is the element Tab has to reach to operate el (see
+// focusTargetJS). The mouse flow clicks a label or a node inside a
+// button and the browser passes the click on; by keyboard that control
+// is what takes focus and the key. el itself when that can't be read.
+func (r *runner) focusable(el *rod.Element) *rod.Element {
+	if f, err := el.ElementByJS(rod.Eval(focusTargetJS)); err == nil {
+		return f
+	}
+	return el
 }
 
 // reachEl moves focus to el with Tab, up to MaxTabs presses, then with
@@ -415,6 +437,7 @@ func (r *runner) keyActivate(n int, kind string, t Target, submit bool) error {
 			el = btn
 		}
 	}
+	el = r.focusable(el)
 	active, err := r.reachEl(n, kind, t, el)
 	if err != nil {
 		return err
