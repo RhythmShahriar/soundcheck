@@ -1098,6 +1098,9 @@ func cmdReport(s *session) int {
 	if err := cmp.Or(s.failOn(res.Compared()), s.only("report", "confirm", "resume", "eaa", "wcag", "staging")); err != nil {
 		return s.fail(err)
 	}
+	// The accessibility summary isn't stored: the client report and
+	// --serve need it as much as finish does.
+	eaaSummary(&res)
 	switch {
 	case s.o.serve && s.o.client:
 		return s.fail(cli.Usagef("pick --serve or --client, not both"))

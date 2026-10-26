@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -509,5 +510,49 @@ func TestColumnsNotATerminal(t *testing.T) {
 	defer func() { _ = f.Close() }()
 	if got := columns(f); got != 0 {
 		t.Errorf("a file: %d", got)
+	}
+}
+
+// report --client of a stored --eaa snapshot or comparison carries the
+// accessibility evidence and its note: the summary isn't in run.json,
+// so report has to make it again before the client page is written.
+func TestReportClientEAA(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	writeConfig(t, "")
+	f := &fakeEAA{pages: clean}
+	f.install(t)
+	if code, out, errOut := runCLI(t, "snapshot", "127.0.0.1:20260", "--eaa", "--name", "eaa-1", "-q"); code != exitOK {
+		t.Fatalf("snapshot: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if err := os.WriteFile("b.yaml", []byte("name: Acme Web\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	note := []byte("Automated and keyboard tests")
+	for _, args := range [][]string{
+		{"report", "eaa-1", "--client", "--brand", "b.yaml", "-o", "snap.html"},
+		{"compare", "eaa-1", "--confirm=off", "-q"},
+		{"report", "--client", "--brand", "b.yaml", "-o", "cmp.html"},
+	} {
+		if code, out, errOut := runCLI(t, args...); code != exitOK {
+			t.Fatalf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	for _, name := range []string{"snap.html", "cmp.html"} {
+		data, err := os.ReadFile(name)
+		if err != nil || !bytes.Contains(data, note) {
+			t.Errorf("%s: no evidence note (%v)\n%.600s", name, err, data)
+		}
+	}
+	// Negative: a run made without --eaa gets no note.
+	if code, _, errOut := runCLI(t, "snapshot", "127.0.0.1:20260", "--name", "plain", "-q"); code != exitOK {
+		t.Fatalf("plain snapshot: exit %d %s", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "report", "plain", "--client", "--brand", "b.yaml", "-o", "plain.html"); code != exitOK {
+		t.Fatalf("plain report: exit %d %s", code, errOut)
+	}
+	if data, _ := os.ReadFile("plain.html"); bytes.Contains(data, note) {
+		t.Error("a run without --eaa got the evidence note")
 	}
 }

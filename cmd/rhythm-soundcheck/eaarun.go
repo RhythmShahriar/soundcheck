@@ -157,19 +157,14 @@ func keyFlows(dir string) []string {
 // statement draft and the evidence pack into the run's folder and
 // returns the hint that points at the draft.
 func (s *session) eaaResult(res *report.Result) string {
-	run := res.Run
-	if run == nil || !run.Options.EAA {
+	pages, sum, ok := eaaSummary(res)
+	if !ok {
 		return ""
 	}
+	run := res.Run
 	var ignored []model.Change
 	if res.Comparison != nil {
 		ignored = res.Comparison.Ignored
-	}
-	pages := storedPages(res.Dir, run)
-	sum := wcag.Summarize(run, pages, run.Issues, ignored)
-	run.EAA = &sum
-	if res.Comparison != nil {
-		res.Comparison.EAA = &sum
 	}
 	if !s.checked {
 		return ""
@@ -195,6 +190,28 @@ func (s *session) eaaResult(res *report.Result) string {
 		return ""
 	}
 	return fmt.Sprintf("statement: %s (a draft for you to finish:\n           %s statement -o %s)", rel(path), cmdName(), statementHint)
+}
+
+// eaaSummary fills the accessibility summary of an --eaa run (run.EAA
+// and the comparison's EAA) from its stored pages. It isn't kept in
+// run.json, so report fills it again before any report is written. ok
+// is false for a run made without --eaa.
+func eaaSummary(res *report.Result) (pages func(func(*model.Page) bool), sum model.EAASummary, ok bool) {
+	run := res.Run
+	if run == nil || !run.Options.EAA {
+		return nil, sum, false
+	}
+	var ignored []model.Change
+	if res.Comparison != nil {
+		ignored = res.Comparison.Ignored
+	}
+	pages = storedPages(res.Dir, run)
+	sum = wcag.Summarize(run, pages, run.Issues, ignored)
+	run.EAA = &sum
+	if res.Comparison != nil {
+		res.Comparison.EAA = &sum
+	}
+	return pages, sum, true
 }
 
 // staleNotes names the ignore rules that matched nothing in the run:
