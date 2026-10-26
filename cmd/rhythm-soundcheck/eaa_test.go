@@ -44,6 +44,10 @@ func TestEAAUsageErrors(t *testing.T) {
 			"--eaa needs Chrome: the keyboard walkthrough and axe use the Chrome DevTools protocol. Drop --browser webkit, or use --modules +a11y without --eaa"},
 		{"", "1", []string{"--eaa"},
 			"--eaa won't turn off Chrome's sandbox from SOUNDCHECK_NO_SANDBOX alone; add --no-sandbox to the command if you mean it"},
+		// The flag set to false asks for the sandbox the variable would
+		// still turn off.
+		{"", "1", []string{"--eaa", "--no-sandbox=false"},
+			"--eaa won't turn off Chrome's sandbox from SOUNDCHECK_NO_SANDBOX alone; add --no-sandbox to the command if you mean it"},
 	} {
 		writeConfig(t, tc.config)
 		t.Setenv("SOUNDCHECK_NO_SANDBOX", tc.env)
