@@ -6,6 +6,7 @@ package a11y
 import (
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
@@ -67,9 +68,17 @@ func overlayScript(resources []model.Resource) (source, what string, ok bool) {
 // whether a name exists without calling anything of the page's.
 const overlayGlobalJS = `(typeof acsbJS !== "undefined" ? 1 : 0) | (typeof UserWay !== "undefined" ? 2 : 0) | (typeof AudioEye !== "undefined" ? 4 : 0)`
 
-// overlayGlobal returns the overlay global the page defines, if any.
+// overlayBudget bounds the globals check. typeof on a global the page
+// defined with a getter runs that getter, which can loop; Chrome stops
+// the script at the budget and the context's deadline backs that up, so
+// a hostile page can't stall the audit before axe's own budget starts.
+const overlayBudget = 2 * time.Second
+
+// overlayGlobal returns the overlay global the page defines, if any. A
+// check that throws or runs out of time finds none.
 func overlayGlobal(tab *rod.Page) (source, what string, ok bool) {
-	res, err := proto.RuntimeEvaluate{Expression: overlayGlobalJS, ReturnByValue: true}.Call(tab)
+	res, err := proto.RuntimeEvaluate{Expression: overlayGlobalJS, ReturnByValue: true,
+		Timeout: proto.RuntimeTimeDelta(overlayBudget.Milliseconds())}.Call(tab.Timeout(overlayBudget + time.Second))
 	if err != nil || res.ExceptionDetails != nil || res.Result == nil {
 		return "", "", false
 	}
