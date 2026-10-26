@@ -1,5 +1,5 @@
 Usage:
-  rhythm-soundcheck evidence verify [run folder|snapshot]
+  rhythm-soundcheck evidence verify [run folder|snapshot] [--pub <key>]
   rhythm-soundcheck evidence sign [run folder|snapshot] --key <file>
   rhythm-soundcheck evidence keygen -o <file>
 
@@ -9,6 +9,11 @@ site. verify checks the files and the chain (default: the latest --eaa
 run or snapshot). sign signs the pack with an ed25519 key from keygen, which
 prints the public key to give whoever checks it. A run made with -k can't
 be signed: its TLS certificates weren't verified.
+
+verify prints the key a signed pack was signed with. Anyone who changes a
+pack can sign it again with their own key, so compare it with the key the
+owner published, or pass that key with --pub and verify fails when the
+pack wasn't signed with it.
 
 A signed evidence pack proves who produced it and that it wasn't changed
 afterwards. It doesn't prove the site was in that state for every visitor.
