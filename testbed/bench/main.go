@@ -67,7 +67,7 @@ func main() {
 	flag.StringVar(&o.out, "out", "docs/benchmark.md", "where to write the scoreboard")
 	flag.StringVar(&o.work, "work", "", "working folder for runs (default testbed/bench/work)")
 	flag.StringVar(&only, "only", "", "comma-separated scenario IDs to run (default all)")
-	flag.StringVar(&o.tools, "tools", "auto", "third-party tools: auto (those installed), none, all, or a list: backstop,lychee,unlighthouse")
+	flag.StringVar(&o.tools, "tools", "auto", "third-party tools: auto (those installed), none, all, or a list: backstop,lychee,unlighthouse,axe,pa11y")
 	flag.DurationVar(&o.timeout, "timeout", 5*time.Minute, "time limit for each command")
 	flag.StringVar(&wp, "wp", "", "WordPress testbed URL (default from scenarios.yaml)")
 	flag.StringVar(&php, "php", "", "plain-PHP testbed URL (default from scenarios.yaml)")
@@ -78,10 +78,11 @@ func main() {
 	flag.Parse()
 	if only != "" {
 		o.only = strings.Split(only, ",")
-		// A partial run skips the control pass unless -control was given.
+		// A partial run skips the control pass unless -control was given;
+		// -only eaa is EAA mode's whole benchmark and keeps it.
 		set := false
 		flag.Visit(func(f *flag.Flag) { set = set || f.Name == "control" })
-		if !set {
+		if !set && !slices.Contains(o.only, "eaa") {
 			o.control = 0
 		}
 	}
@@ -100,6 +101,7 @@ func main() {
 type Results struct {
 	Scenarios []Outcome      `json:"scenarios"`
 	Control   []ControlRound `json:"control,omitempty"`
+	Cost      *Cost          `json:"cost,omitempty"` // EAA mode's cost pass
 }
 
 // Outcome is everything recorded for one scenario.
@@ -167,31 +169,51 @@ func run(ctx context.Context, o options) error {
 		out.Seconds = time.Since(start).Seconds()
 		fmt.Fprintf(os.Stderr, "    soundcheck: %s %s\n", out.Soundcheck.Outcome, out.Soundcheck.Found+out.Soundcheck.Detail)
 		for _, t := range tools {
-			fmt.Fprintf(os.Stderr, "    %s: %s %s\n", t.Key, out.Tools[t.Key].Outcome, out.Tools[t.Key].Found+out.Tools[t.Key].Detail)
+			if r, ok := out.Tools[t.Key]; ok {
+				fmt.Fprintf(os.Stderr, "    %s: %s %s\n", t.Key, r.Outcome, r.Found+r.Detail)
+			}
 		}
 		outcomes = append(outcomes, out)
 	}
 
+	plain := slices.ContainsFunc(scenarios, func(s Scenario) bool { return !s.EAA() })
+	eaa := slices.ContainsFunc(scenarios, Scenario.EAA)
 	var rounds []ControlRound
 	if binErr == nil && o.control > 0 {
-		if rounds, err = controlPass(ctx, o, dir, m, bin); err != nil {
+		if rounds, err = controlPass(ctx, o, dir, m, bin, plain, eaa); err != nil {
+			return err
+		}
+	}
+	// The cost pass belongs to EAA mode's whole benchmark (a full run or
+	// -only eaa), not to a few scenarios picked by id.
+	var cost *Cost
+	if binErr == nil && eaa && (len(o.only) == 0 || slices.Contains(o.only, "eaa")) {
+		if cost, err = costPass(ctx, o, dir, m, bin); err != nil {
 			return err
 		}
 	}
 
-	data, err := json.MarshalIndent(Results{Scenarios: outcomes, Control: rounds}, "", "  ")
+	data, err := json.MarshalIndent(Results{Scenarios: outcomes, Control: rounds, Cost: cost}, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(o.work, "results.json"), data, 0o600); err != nil {
 		return err
 	}
-	md := scoreboard(m, outcomes, rounds, version, binErr, tools, len(o.only) > 0)
-	if err := os.MkdirAll(filepath.Dir(o.out), 0o750); err != nil {
+	board := Board{Manifest: m, Outcomes: outcomes, Rounds: rounds, Cost: cost, Version: version, BinErr: binErr, Tools: tools,
+		Partial: len(o.only) > 0, Date: time.Now().UTC().Format("2006-01-02")}
+	if err := writeBoard(o.out, board, !plain); err != nil {
 		return err
 	}
-	if err := os.WriteFile(o.out, []byte(md), 0o600); err != nil {
-		return err
+	if eaa {
+		e := eaaScore(outcomes)
+		fmt.Fprintf(os.Stderr, "EAA mode: caught %d of %d broken scenarios (pending: %d); %d false alarms in good scenarios, %d in %d --eaa control compares.\n",
+			e.caught, e.broken, e.pending, e.goodAlarms, falseAlarmCount(eaaRounds(rounds)), 2*len(eaaRounds(rounds)))
+	}
+	outcomes = classicOutcomes(outcomes)
+	rounds = classicRounds(rounds)
+	if len(outcomes) == 0 {
+		return nil
 	}
 	sc := score(outcomes)
 	if len(sc.notRun) > 0 {
@@ -268,6 +290,7 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		}
 	}
 	baselines := map[string]*Observation{}
+	tools = slices.DeleteFunc(slices.Clone(tools), func(t *Tool) bool { return !t.Runs(s) })
 	for _, t := range tools {
 		obs, err := t.Observe(ctx, o.timeout, "good", url, filepath.Join(wd, t.Key))
 		if err != nil {
@@ -275,6 +298,11 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 			continue
 		}
 		baselines[t.Key] = obs
+		if s.EAA() {
+			// The good state's own violations: the tool's noise on a page
+			// the testbed made clean (step zero).
+			results[t.Key] = Result{Outcome: NotRun, Good: len(obs.Violations)}
+		}
 	}
 
 	// Broken state (the good one again for a scenario marked same).
@@ -298,7 +326,9 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 			results[t.Key] = Result{Outcome: Failed, Detail: err.Error()}
 			continue
 		}
-		results[t.Key] = t.Judge(base, obs)
+		r := t.Judge(base, obs)
+		r.Good = len(base.Violations)
+		results[t.Key] = r
 	}
 	return sc
 }

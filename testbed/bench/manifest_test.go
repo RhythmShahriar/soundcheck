@@ -159,7 +159,7 @@ func TestScoreboardNotRun(t *testing.T) {
 	if sc := score(outcomes); sc.caught != 1 || sc.total != 1 || !slices.Equal(sc.notRun, []string{"s33"}) {
 		t.Errorf("score = %+v", sc)
 	}
-	md := scoreboard(m, outcomes, nil, "rhythm-soundcheck 1.2.3", nil, nil, false)
+	md := scoreboard(Board{Manifest: m, Outcomes: outcomes, Version: "rhythm-soundcheck 1.2.3"})
 	for _, want := range []string{"**Soundcheck caught 1 of 1 scenarios.**", "Not run and not counted: s33 (needs Echo)", "| s33 | mail |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("scoreboard lacks %q:\n%s", want, md)
@@ -177,7 +177,7 @@ func TestScoreboardPendingAndControl(t *testing.T) {
 		{Site: "php", Round: 1, Pages: 9, Alarms: []string{"NEW health/js-error: JS error: x (/)"}},
 		{Site: "php", Round: 2, Pages: 9},
 	}
-	md := scoreboard(m, outcomes, rounds, "rhythm-soundcheck 1.2.3", nil, nil, false)
+	md := scoreboard(Board{Manifest: m, Outcomes: outcomes, Rounds: rounds, Version: "rhythm-soundcheck 1.2.3"})
 	for _, want := range []string{
 		"**Soundcheck caught 1 of 1 scenarios.** **False alarms: 1** in 4 compares of an unchanged site.",
 		"1 more scenarios wait for detectors",

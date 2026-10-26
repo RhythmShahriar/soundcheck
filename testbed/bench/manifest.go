@@ -438,6 +438,9 @@ type Result struct {
 	Found   string   `json:"found,omitempty"`  // the change that matched, or the tool's evidence
 	Detail  string   `json:"detail,omitempty"` // why it errored or wasn't run
 	Others  []string `json:"others,omitempty"` // other changes the comparison reported
+	// Good counts the violations an accessibility tool listed in the
+	// good state (EAA scenarios only).
+	Good int `json:"good_violations,omitempty"`
 }
 
 // Observed is what one Soundcheck compare produced.

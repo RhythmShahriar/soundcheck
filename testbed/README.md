@@ -57,6 +57,7 @@ TESTBED_STATE=/tmp/s php -S 127.0.0.1:18812 -t testbed/php
 | `make wp ARGS="post list --post_type=page"` | run WP-CLI against the site |
 | `make wp-update-reset` | put the ten testbed-update plugins back at 1.0 (s47, s48) |
 | `make wp-updates` | list the plugin updates WordPress offers |
+| `make bench-eaa` | EAA mode's benchmark (`-only eaa`) from the module root; `make build` first, `ARGS="-tools axe,pa11y"` adds flags |
 
 ## Switching a scenario
 
@@ -249,14 +250,22 @@ For each scenario, the harness in [`bench/`](bench/) does the following:
 
 A scenario with `fixture` copies that snapshot folder in instead of step 2, `flows` are copied into `.soundcheck/flows/` first, `same: true` skips step 3 and `within` fails a compare that takes longer.
 
-Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and of each scenario marked `control: true` (its pages and flags, s89) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm; the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given.
+6. runs the EAA harnesses the scenario lists, after the compare. Any problem makes the scenario missed, even when its expectation held:
+   - `statement`: the config the bench writes gets a `statement:` block (owner "Testbed Coffee Roasters", the site's address, a contact at example.test); the bench runs `rhythm-soundcheck statement -o statement.md` and checks the draft says the evidence note, `not tested: needs a person` and the scenario's `says`. It must never say `complian`, `conform`, `certif`, `passes WCAG`, `fully accessible` or `guarantee` outside the fixed disclaimer (the evidence note and PRD 15's sentences) and the "fully / partially / not compliant" choice inside a `[TO DO]` or hold a canary
+   - `requests`: reads every run under the run's `.soundcheck/` and fails on a page URL, final URL, redirect, resource or failed request whose host isn't `localhost`, `127.0.0.1`, `::1` or a service of `docker-compose.yml`
+   - `orders`: `state/orders.txt` and `state/sidefx.txt` read the same before the good snapshot and after the compare
+   - `canaries`: before the good state the bench writes `state/canaries` (`email`, `phone`, `token`, `data`, `field`, `aria`, `query`, `text`), made from parts and random bytes at run time. It removes the file afterwards and searches every file under the run's `.soundcheck/` and every file it wrote next to it (`good.json`, `compare.json`, `statement.md`) for the random part of each and names the canary and the file, never the value
+
+Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm; the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given or the list has `eaa`.
+
+**EAA mode** (`make -C testbed bench-eaa`, the same as `go run -tags testbed ./testbed/bench -only eaa`) runs s49 to s89, then the control pass with `--eaa` on both sites plus the pages of each scenario marked `control: true` (s89, with its flags), then a cost pass: on each control site a default snapshot, one with `--modules health`, one with `--modules health,a11y` and one with `--eaa`. On the checkout it times s70's key flow with and without `--level flows`. It writes only the `EAA mode` section of `docs/benchmark.md` (between `<!-- eaa:begin -->` and `<!-- eaa:end -->`) and keeps the rest; a full run writes the whole file with the section at its end. The section has the scoreboard of s49 to s89 (caught, missed or pending with the lane), the false alarms of the good scenarios and of the `--eaa` control rounds, determinism (the issue keys of each round's snapshot against the first round's), the cost table with PRD 16.3's targets beside it (median and p95 seconds per page with and without `--eaa`, the a11y audit and the keyboard walk per page, one key flow, the whole run against a default one, with core count, OS, Chrome, axe-core and its tags), the coverage table made from the WCAG catalog (`wcag.Criteria`), the other accessibility tools and the framing of PRD 15 item 10 with the evidence note.
 
 Scenarios with `login: true` get `SOUNDCHECK_USER=soundcheck` and `SOUNDCHECK_PASSWORD=soundcheck-testbed` unless you set them yourself.
 
-BackstopJS, lychee and Unlighthouse run on the same states when they're available:
+BackstopJS, lychee and Unlighthouse run on the same states when they're available; on the EAA scenarios the axe-core CLI, pa11y and Unlighthouse do instead (caught means a violation in the broken state that the good state lacks; Unlighthouse a drop in a category score):
 
 - `-tools auto` (the default) uses the tools that are already installed and lychee's Docker image if it has been pulled.
-- `-tools all` (or e.g. `-tools lychee,unlighthouse`) fetches them through npx and Docker.
+- `-tools all` (or e.g. `-tools lychee,unlighthouse` or `-tools axe,pa11y`) fetches them through npx and Docker.
 - `-tools none` skips them.
 
 Tools that don't run show "not run" in the scoreboard, which says how to include them.
@@ -266,12 +275,12 @@ Flags:
 | Flag | Default | |
 |---|---|---|
 | `-bin` | `bin/rhythm-soundcheck` | the binary to benchmark |
-| `-only` | all | `s01,s05`: some scenarios; `eaa` for s49 to s89 |
+| `-only` | all | `s01,s05`: some scenarios; `eaa` for s49 to s89 (with the `--eaa` control pass and the cost pass) |
 | `-tools` | `auto` | `auto`, `none`, `all`, or a list |
 | `-out` | `docs/benchmark.md` | the scoreboard |
 | `-work` | `testbed/bench/work` | runs and `results.json` |
 | `-wp`, `-php`, `-php-https` | from `scenarios.yaml` | site URLs |
-| `-control` | `10` | control pass rounds; `0` skips it (and so does `-only`, unless `-control` is set) |
+| `-control` | `10` | control pass rounds; `0` skips it (and so does `-only` without `eaa`, unless `-control` is set) |
 | `-echo` | none | Echo's URL, for the scenarios that need it (s33) |
 | `-compose` | `docker compose -f testbed/docker-compose.yml` | the compose command for the stack's WP-CLI (s47, s48), split at spaces; set `COMPOSE_PROJECT_NAME` for a stack started under another name |
 | `-timeout` | `5m` | per command |
@@ -290,6 +299,8 @@ go test -tags testbed -v ./testbed/bench/
 - `TestManifest`, `TestLoadManifestRejects`, `TestEvaluate`, `TestExpectString`, `TestScoreboardPendingAndControl`: the manifest, its validation and the scoring, without the testbed.
 - `TestWPUpdateTestbed`: through the stack's WP-CLI, checks that all ten plugin updates are offered after a reset, that testbed-update-07 1.1 breaks `/contact/` and nothing else and that the rollback fixes it. It needs Docker and the stack, not Chrome. Set `TESTBED_WP_PORT` (and `COMPOSE_PROJECT_NAME`) for a stack started with them.
 - `TestParseWPUpdate`, `TestEvaluateWPUpdate`: reading and scoring wp-update's output, without the testbed.
+- `TestCheckStatement`, `TestNewCanaries`, `TestStartHarnesses`, `TestOutsideHosts`, `TestComposeServices`, `TestSweepCanaries`, `TestWithHarnesses`: the EAA harnesses on fake run folders, without the testbed.
+- `TestEAASectionGolden` (`-update` rewrites `bench/testdata/eaa-section.golden.md`), `TestScoreboardKeepsEAAApart`, `TestWriteBoard`, `TestEAAScore`, `TestPercentile`, `TestSymmetricDiff`, `TestIssueKeys`, `TestA11yToolOutput`, `TestToolRuns`, `TestCostSectionWithoutCost`: the EAA section and its numbers from a fixed result, without the testbed.
 - `TestStateFromEnv`: serves the plain-PHP site with `php -S` and a `TESTBED_STATE` folder and toggles s03 on and off. It needs only `php` (skipped without it), not Docker or Chrome.
 
 ## Adding a scenario

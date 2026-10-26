@@ -8,7 +8,7 @@ WP_URL   := http://localhost:$(or $(TESTBED_WP_PORT),18800)
 PHP_URL  := http://localhost:$(or $(TESTBED_PHP_PORT),18810)
 PHPS_URL := https://localhost:$(or $(TESTBED_PHP_HTTPS_PORT),18811)
 
-.PHONY: up down reset good broken status logs wp wp-update-reset wp-updates
+.PHONY: up down reset good broken status logs wp wp-update-reset wp-updates bench-eaa
 
 up: ## start and seed the sites (a fresh install every time)
 	@mkdir -p state
@@ -46,3 +46,6 @@ wp-update-reset: ## put the ten testbed-update plugins back at 1.0 (s47, s48)
 
 wp-updates: ## list the plugin updates WordPress offers
 	$(COMPOSE) run --rm --no-deps -T --entrypoint wp cli plugin list --update=available --fields=name,version,update_version
+
+bench-eaa: ## run EAA mode's benchmark (s49 to s89, the --eaa control pass and the cost pass); needs make build first
+	cd .. && go run -tags testbed ./testbed/bench -bin bin/rhythm-soundcheck -only eaa $(ARGS)
