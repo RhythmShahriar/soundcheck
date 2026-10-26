@@ -66,6 +66,9 @@ func Classify(t Trace, o model.KeyboardOptions, wcag string) []model.Issue {
 	for _, i := range skipLinks(t, o.SkipLink, wcag) {
 		set.add(i)
 	}
+	for _, i := range noRings(t, wcag) {
+		set.add(i)
+	}
 	return set.out
 }
 
@@ -234,4 +237,30 @@ func plural(n int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+// noRings reports the stops whose focus changed fewer than ringPixels
+// pixels on screen. An unstable picture gives no verdict; a stop
+// focus-invisible covers (it is hidden) isn't reported twice.
+func noRings(t Trace, wcag string) []model.Issue {
+	hidden := map[string]bool{}
+	for _, s := range t.Forward {
+		if s.Hidden != "" {
+			hidden[s.Selector] = true
+		}
+	}
+	var out []model.Issue
+	for _, r := range t.Rings {
+		if r.Unstable || r.Changed >= ringPixels || r.Selector == "" || hidden[r.Selector] {
+			continue
+		}
+		what := orUnknown(r.Tag)
+		if name := clip(pii.Redact(r.Name), maxName); name != "" {
+			what = fmt.Sprintf("%q", name)
+		}
+		out = append(out, newIssue(ids.NoFocusRing, wcag, r.Selector, fmt.Sprintf(
+			"Tab focus on %s changes %d %s around it; people using a keyboard can't see where they are.",
+			what, r.Changed, plural(r.Changed, "pixel", "pixels"))))
+	}
+	return out
 }

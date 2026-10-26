@@ -46,6 +46,8 @@ type Module struct {
 	mu   sync.Mutex
 	opts model.KeyboardOptions
 	set  Settings
+	// rings keeps focus indicator results across the run's pages.
+	rings ringCache
 
 	// limit and walk are pageLimit and record unless a test sets them,
 	// to time a page out in a second or make the recorder fail.
@@ -85,7 +87,7 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	start := time.Now()
 	pctx, cancel := context.WithTimeout(ctx, m.pageLimit())
 	defer cancel()
-	w := &walker{cc: cc, tab: tab, page: p, set: s, start: start}
+	w := &walker{cc: cc, tab: tab, page: p, set: s, start: start, ringSeen: &m.rings}
 	t, err := m.safeWalk(pctx, w)
 	if ctx.Err() != nil {
 		return // the run stopped: the runner records the page as canceled
@@ -114,10 +116,11 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	if !audit.Finished() {
 		t.Capped = true
 	}
-	for _, i := range Classify(*t, s.options(), wcagVersion(cc)) {
+	issues := Classify(*t, s.options(), wcagVersion(cc))
+	for _, i := range issues {
 		check.Page(p, i)
 	}
-	sum := summary(t, w)
+	sum := summary(t, issues)
 	sum.MS = int(time.Since(start).Milliseconds())
 	if err := w.save(t); err != nil {
 		cc.Warn(fmt.Sprintf("keyboard: %s: can't save the trace: %v", p.Path, err))
@@ -189,8 +192,8 @@ func wcagVersion(cc *check.Context) string {
 	return "2.1"
 }
 
-// summary is what p.Keyboard records of a trace.
-func summary(t *Trace, w *walker) *model.KeyboardSummary {
+// summary is what p.Keyboard records of a trace and the issues it gave.
+func summary(t *Trace, issues []model.Issue) *model.KeyboardSummary {
 	sum := &model.KeyboardSummary{Stops: t.Stops(), Wrapped: t.Wrapped(), Capped: t.Capped, Widgets: len(t.Widgets)}
 	if t.SkipLink != nil {
 		sum.SkipLink = t.SkipLink.Selector
@@ -206,8 +209,19 @@ func summary(t *Trace, w *walker) *model.KeyboardSummary {
 		sum.WidgetKinds = append(sum.WidgetKinds, k)
 	}
 	slices.Sort(sum.WidgetKinds)
-	if len(w.crops) > 0 {
-		sum.Crops = w.crops
+	for _, i := range issues {
+		if i.Check != ids.NoFocusRing {
+			continue
+		}
+		for _, r := range t.Rings {
+			if r.Selector == i.Source && r.Crop != "" {
+				if sum.Crops == nil {
+					sum.Crops = map[string]string{}
+				}
+				sum.Crops[i.Key] = r.Crop
+				break
+			}
+		}
 	}
 	return sum
 }

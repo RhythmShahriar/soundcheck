@@ -40,14 +40,16 @@ type walker struct {
 	set   Settings
 	start time.Time
 
-	reader  *focus.Reader
-	guard   *guard
-	trace   *Trace
-	aux     []stepResult      // what the probe found at each forward stop, besides the Step
-	probed  []int             // the forward index of each stop stepJS handed the guard
-	crops   map[string]string // issue key → picture, for the summary
-	reloads int
-	loaded  time.Time // when the page walked was loaded
+	reader *focus.Reader
+	guard  *guard
+	trace  *Trace
+	aux    []stepResult // what the probe found at each forward stop, besides the Step
+	probed []int        // the forward index of each stop stepJS handed the guard
+	// ringSeen keeps focus indicator results across the run's pages;
+	// nil measures every page afresh.
+	ringSeen *ringCache
+	reloads  int
+	loaded   time.Time // when the page walked was loaded
 }
 
 // partial is the trace recorded so far, or nil before the walk began.
@@ -56,7 +58,8 @@ func (w *walker) partial() *Trace { return w.trace }
 // begin starts the page's trace.
 func (w *walker) begin() *Trace {
 	w.trace = &Trace{Schema: Schema, Page: tracePage(w.page), Viewport: "desktop", MainIndex: -1,
-		Forward: []Step{}, Backward: []Step{}, Widgets: []WidgetResult{}, Listeners: []Candidate{}, Held: []string{}, Events: []string{}}
+		Forward: []Step{}, Backward: []Step{}, Widgets: []WidgetResult{}, Listeners: []Candidate{}, Rings: []Ring{},
+		Held: []string{}, Events: []string{}}
 	w.loaded = w.start
 	return w.trace
 }
@@ -295,9 +298,18 @@ func orNone(s string) string {
 	return s
 }
 
-// caret hides the text caret on the page for the rest of the visit,
-// through a style sheet of the inspector's own: a blinking caret in a
-// focused field changes pixels the focus indicator check compares.
+// caretRules hide the text caret and the selection highlight: Tab
+// into a field selects its text. Neither a caret nor a selection
+// is a focus indicator.
+var caretRules = []string{
+	"* { caret-color: transparent !important; }",
+	"*::selection { background: transparent !important; color: inherit !important; }",
+}
+
+// caret hides the text caret and selection on the page for the rest of
+// the visit, through a style sheet of the inspector's own: a blinking
+// caret in a focused field changes pixels the focus indicator check
+// compares.
 func (w *walker) caret(ctx context.Context) error {
 	p := w.tab.Context(ctx)
 	if err := (proto.DOMEnable{}).Call(p); err != nil {
@@ -310,9 +322,12 @@ func (w *walker) caret(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = proto.CSSAddRule{StyleSheetID: sheet.StyleSheetID, RuleText: "* { caret-color: transparent !important; }",
-		Location: &proto.CSSSourceRange{}}.Call(p)
-	return err
+	for _, rule := range caretRules {
+		if _, err := (proto.CSSAddRule{StyleSheetID: sheet.StyleSheetID, RuleText: rule, Location: &proto.CSSSourceRange{}}).Call(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // record walks the page by keyboard and returns its trace: Tab up to
@@ -356,7 +371,10 @@ func record(ctx context.Context, w *walker) (*Trace, error) {
 			t.MainIndex = i
 		}
 	}
-	return t, w.skipLink(ctx, t)
+	if err := w.skipLink(ctx, t); err != nil {
+		return t, err
+	}
+	return t, w.rings(ctx, t)
 }
 
 // finish copies what the guard saw into the trace.

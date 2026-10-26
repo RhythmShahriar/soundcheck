@@ -37,6 +37,7 @@ const Schema = "rhythm-soundcheck/keyboard-trace/v1"
 //	  "main_index": n,                  index in forward of the first stop in the main landmark, -1 without one
 //	  "widgets":    [WidgetResult, ...],
 //	  "listeners":  [Candidate, ...],
+//	  "rings":      [Ring, ...],        focus indicators measured by pixel difference
 //	  "held":       ["POST /cart/"],    requests held while keys were pressed
 //	  "events":     ["download blocked"], what else the safety envelope stopped
 //	  "capped":     false,              the walk hit max_tabs, ran out of time or stopped early
@@ -60,6 +61,7 @@ type Trace struct {
 	MainIndex int            `json:"main_index"`
 	Widgets   []WidgetResult `json:"widgets"`
 	Listeners []Candidate    `json:"listeners"`
+	Rings     []Ring         `json:"rings"`
 	Held      []string       `json:"held"`
 	Events    []string       `json:"events"`
 	Capped    bool           `json:"capped"`
@@ -221,6 +223,12 @@ func (t *Trace) clamp() {
 		c.Selector = clip(c.Selector, maxSelectorRunes)
 		c.Events = clipAll(c.Events[:min(len(c.Events), 5)], maxText)
 	}
+	t.Rings = t.Rings[:min(len(t.Rings), maxRings)]
+	for i := range t.Rings {
+		r := &t.Rings[i]
+		r.Selector, r.Name, r.Tag, r.Crop = clip(r.Selector, maxSelectorRunes), clip(r.Name, maxName), clip(r.Tag, maxText), clip(r.Crop, maxText)
+		r.Changed, r.Stop = max(r.Changed, 0), max(r.Stop, 0)
+	}
 	t.Held = clipAll(t.Held[:min(len(t.Held), maxList)], maxText)
 	t.Events = clipAll(t.Events[:min(len(t.Events), maxList)], maxText)
 }
@@ -277,7 +285,7 @@ func (t *Trace) Encode() ([]byte, error) {
 				t.MainIndex = -1
 			}
 		default:
-			t.Events, t.Held, t.Listeners, t.Widgets = nil, nil, nil, nil
+			t.Events, t.Held, t.Listeners, t.Widgets, t.Rings = nil, nil, nil, nil, nil
 			if data, err = json.MarshalIndent(t, "", "  "); err != nil || len(data) <= MaxTraceBytes {
 				return data, err
 			}
