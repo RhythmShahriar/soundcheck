@@ -124,6 +124,9 @@ type Hooks struct {
 	// Progress gets a module's progress through a long step, from
 	// check.Context.Progress.
 	Progress func(label string, done, total int)
+	// Browser gets Chrome's version once it is running, for the
+	// evidence pack of an --eaa run. Other engines don't call it.
+	Browser func(version string)
 }
 
 // Run checks the site. When ctx is canceled it starts no more pages and
@@ -257,6 +260,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			return nil, err
 		}
 		cc.Browser, cc.NewSession = sess, b.Session
+		if opts.Hooks.Browser != nil && b.Version != "" {
+			emit(func() { opts.Hooks.Browser(b.Version) })
+		}
 	} else {
 		d, err := launchDriver(ctx, engine, withLog(opts.Browser, log))
 		if err != nil {

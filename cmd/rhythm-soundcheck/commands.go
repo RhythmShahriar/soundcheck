@@ -79,6 +79,7 @@ type session struct {
 	resume         *resumed       // snapshot --resume: the pages kept and the journal
 	checked        bool           // the command checked a site, so --eaa writes its files
 	discovered     atomic.Int64   // the pages the last check set out to visit, for an interrupted --eaa run
+	chrome         string         // the browser's version, from runner.Hooks.Browser, for the evidence pack
 }
 
 func (p *plan) begin(stdout, stderr io.Writer) *session {
@@ -351,7 +352,8 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
 			Visible: s.o.show, Log: browserLog(s.view.Log)},
-		Hooks: runner.Hooks{Discovered: s.discover, Skipped: s.view.Skipped, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress},
+		Hooks: runner.Hooks{Discovered: s.discover, Skipped: s.view.Skipped, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress,
+			Browser: func(v string) { s.chrome = v }},
 	}, nil
 }
 

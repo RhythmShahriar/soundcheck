@@ -45,13 +45,10 @@ type evidenceExtra struct {
 	Insecure bool
 }
 
-// writePack writes the evidence pack of run with extra.
-//
-// The evidence package of this branch has Write only; with WriteWith
-// this is evidence.WriteWith(dir, run, prev, evidence.Extra(extra)), so
-// a pack of a run made with -k says so and evidence sign refuses it.
-func writePack(dir string, run *model.Run, prev *evidence.Ref, _ evidenceExtra) error {
-	return evidence.Write(dir, run, prev)
+// writePack writes the evidence pack of run with extra, so a pack of a
+// run made with -k says so and evidence sign refuses it.
+func writePack(dir string, run *model.Run, prev *evidence.Ref, extra evidenceExtra) error {
+	return evidence.WriteWith(dir, run, prev, evidence.Extra(extra))
 }
 
 // axeVersion is the axe-core release checks/a11y vendors, for the
@@ -237,7 +234,7 @@ func (s *session) writeEvidence(dir string, run *model.Run, interrupted bool) er
 	}
 	r := *run
 	r.Interrupted = r.Interrupted || interrupted
-	return writeEvidence(dir, &r, prev, evidenceExtra{Insecure: s.o.insecure})
+	return writeEvidence(dir, &r, prev, evidenceExtra{Chrome: s.chrome, Insecure: s.o.insecure})
 }
 
 // progress is eaa/progress.json: how many pages an interrupted run set
