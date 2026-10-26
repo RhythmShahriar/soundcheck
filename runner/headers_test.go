@@ -120,7 +120,7 @@ func TestHeaderTransportScope(t *testing.T) {
 	defer srv.Close()
 	defer other.Close()
 	site, _ := url.Parse(srv.URL)
-	c := httpClient(Options{Headers: map[string]string{"Authorization": "Bearer t", "Cookie": "a=1"}}, site)
+	c := httpClient(Options{Headers: map[string]string{"Authorization": "Bearer t", "Cookie": "a=1"}}, site, loopback)
 	for _, raw := range []string{srv.URL + "/mine", other.URL + "/theirs"} {
 		resp, err := c.Get(raw)
 		if err != nil {
@@ -139,7 +139,7 @@ func TestHeaderTransportScope(t *testing.T) {
 	// the network in cleartext.
 	secure := *site
 	secure.Scheme = "https"
-	c = httpClient(Options{Headers: map[string]string{"Authorization": "Bearer t", "Cookie": "a=1"}}, &secure)
+	c = httpClient(Options{Headers: map[string]string{"Authorization": "Bearer t", "Cookie": "a=1"}}, &secure, loopback)
 	resp, err := c.Get(srv.URL + "/plain")
 	if err != nil {
 		t.Fatal(err)

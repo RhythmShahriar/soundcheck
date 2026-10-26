@@ -55,6 +55,9 @@ type Options struct {
 	// Engine is the browser engine the tab runs in, which names the
 	// screenshots; empty is Chrome.
 	Engine Engine
+	// Scope keeps the tab's requests on the site's networks; nil lets
+	// it request any address.
+	Scope *Scope
 }
 
 // Recorder collects browser events for one page.
@@ -69,7 +72,11 @@ type Recorder struct {
 	chain   []string
 	console []string
 	stop    func()
-	release func() // removes the header handler
+	release func() // removes the header and scope handlers
+	scope   *Scope
+	// blocked are the URLs the scope blocked, for onFailed to tell them
+	// from other blocked requests.
+	blocked map[string]bool
 	// Requests still under way and when the network was last busy, for
 	// StartTab's recorders to wait for the network to go quiet.
 	inflight map[string]bool
@@ -83,6 +90,9 @@ type req struct {
 	bytes                                             int64
 	failed                                            string
 	done                                              bool
+	// outside is an answer from an address the scope doesn't allow (see
+	// Scope.Response), left out of the page's resources.
+	outside bool
 }
 
 // metricsJS runs before any page script and keeps Web Vitals in
@@ -172,7 +182,13 @@ func Start(ctx context.Context, page *rod.Page, opts Options) (*Recorder, error)
 	if err != nil {
 		return nil, err
 	}
-	r.release = release
+	r.scope = opts.Scope
+	unscope, err := opts.Scope.Guard(page, r.block)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	r.release = func() { unscope(); release() }
 	ectx, cancel := context.WithCancel(ctx)
 	r.stop = cancel
 	wait := page.Context(ectx).EachEvent(
@@ -341,6 +357,16 @@ func (r *Recorder) request(id string) *req {
 	return q
 }
 
+// block notes a URL the scope blocked.
+func (r *Recorder) block(raw string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.blocked == nil {
+		r.blocked = map[string]bool{}
+	}
+	r.blocked[raw] = true
+}
+
 func (r *Recorder) onResponse(e *proto.NetworkResponseReceived) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -349,6 +375,12 @@ func (r *Recorder) onResponse(e *proto.NetworkResponseReceived) {
 		return
 	}
 	res := e.Response
+	if u, err := url.Parse(res.URL); err == nil && r.scope.Response(u, res.RemoteIPAddress) {
+		// A name that resolved to a private address after all (DNS
+		// rebinding). The page has the answer by now; the record doesn't.
+		q.outside, q.failed = true, ScopeError
+		return
+	}
 	q.status, q.protocol, q.mime, q.typ = res.Status, res.Protocol, res.MIMEType, string(e.Type)
 	q.headers = map[string]string{}
 	for k, v := range res.Headers {
@@ -368,8 +400,13 @@ func (r *Recorder) onFinished(e *proto.NetworkLoadingFinished) {
 func (r *Recorder) onFailed(e *proto.NetworkLoadingFailed) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if q := r.reqs[string(e.RequestID)]; q != nil && !e.Canceled {
-		q.failed = e.ErrorText
+	q := r.reqs[string(e.RequestID)]
+	if q == nil || e.Canceled || q.outside {
+		return
+	}
+	q.failed = e.ErrorText
+	if u, err := url.Parse(q.url); err == nil && intercept.IsBlocked(e.ErrorText) && r.blocked[u.String()] {
+		q.failed = ScopeError
 	}
 }
 
@@ -699,7 +736,7 @@ func (r *Recorder) fill(p *model.Page, f pageFacts) {
 			failed[key] = true
 			p.Failed = append(p.Failed, model.Request{URL: q.url, Method: q.method, Type: q.typ, Status: q.status, Error: q.failed})
 		}
-		if q.done || q.status > 0 {
+		if (q.done || q.status > 0) && !q.outside {
 			p.Resources = append(p.Resources, model.Resource{URL: q.url, Type: q.typ, Status: q.status, Bytes: q.bytes,
 				Protocol: q.protocol, Encoding: q.encoding, Cache: q.cache, Mime: q.mime})
 		}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -104,6 +105,8 @@ type Options struct {
 	// noChrome names the modules Run left out because they need Chrome
 	// (check.ChromeOnly), for the pages' Audits.
 	noChrome []string
+	// scope is the browser's network scope, set by Run.
+	scope *capture.Scope
 }
 
 // Hooks report progress. Calls are serialized.
@@ -136,7 +139,8 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := httpClient(opts, target)
+	addrs := targetAddrs(ctx, target)
+	client := httpClient(opts, target, addrs)
 	var mu sync.Mutex // serializes hooks
 	emit := func(fn func()) {
 		mu.Lock()
@@ -156,8 +160,12 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		return nil, err
 	}
 	// With FollowHost the start page may be on another site, which is
-	// now the one the headers belong to.
-	client = httpClient(opts, startURL)
+	// now the one the headers belong to and whose networks the run may
+	// reach.
+	if !strings.EqualFold(startURL.Hostname(), target.Hostname()) {
+		addrs = targetAddrs(ctx, startURL)
+	}
+	client = httpClient(opts, startURL, addrs)
 	// Modules get the start page without its query: production URLs
 	// (config) and flows match and resolve against scheme, host and path.
 	base := &url.URL{Scheme: startURL.Scheme, Host: startURL.Host, Path: startURL.Path, RawPath: startURL.RawPath}
@@ -225,7 +233,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		Ctx:    ctx,
 		Config: cfg, Base: base, Run: run, Dir: opts.Dir, Snapshot: opts.Snapshot, HTTP: client,
 		UserAgent: opts.UserAgent, Hosts: hosts, Save: store.Saver(opts.Dir),
+		TargetPublic: capture.Public(addrs),
 	}
+	opts.scope = &capture.Scope{Site: base, Target: addrs, Allow: cfg.Trust.AllowHosts, Warn: cc.Warn}
 	for _, note := range capture.HeaderNotes(opts.Headers) {
 		cc.Warn(note)
 	}
@@ -543,6 +553,7 @@ func visit(ctx context.Context, cc *check.Context, opts Options, hosts *ratelimi
 	copts := capture.Options{
 		Timeout: time.Duration(cfg.Timeout) * time.Second, Ignore: cfg.Visual.Ignore, Twice: twice,
 		UserAgent: opts.UserAgent, Headers: opts.Headers, Site: cc.Base, Engine: cmpEngine(opts.Engine),
+		Scope: opts.scope,
 	}
 	if shots {
 		copts.Save = cc.Save
@@ -785,12 +796,16 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // httpClient is the client for requests outside the browser; it adds
-// the run's headers to requests to site only.
-func httpClient(opts Options, site *url.URL) *http.Client {
+// the run's headers to requests to site only and stays on the networks
+// of site's addresses (see guard).
+func httpClient(opts Options, site *url.URL, addrs []netip.Addr) *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	g := newGuard(site, addrs)
+	tr.Proxy = g.proxy(http.ProxyFromEnvironment)
 	if opts.Proxy != nil {
-		tr.Proxy = http.ProxyURL(opts.Proxy)
+		tr.Proxy = g.proxy(http.ProxyURL(opts.Proxy))
 	}
+	tr.DialContext = g.dial
 	if opts.Insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // the user asked for --insecure
 	}

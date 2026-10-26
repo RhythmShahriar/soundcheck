@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -264,5 +266,105 @@ func TestAddRemoveRace(t *testing.T) {
 	_ = tab.WaitLoad()
 	if text, err := tab.Eval(`() => document.body.innerText`); err != nil || text.Value.Str() != "1" {
 		t.Errorf("after the race: %v %v", text, err)
+	}
+}
+
+// A handler that asks for some URLs gets only those paused while it is
+// alone. Once a handler for every URL joins, it sees every request.
+func TestAddForPausesOnlyItsURLs(t *testing.T) {
+	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
+		t.Skip("no Chrome or Chromium installed: ", err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:37005")
+	if err != nil {
+		t.Skip("port in use: ", err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			fmt.Fprint(w, `<!doctype html><title>t</title><script>fetch('/plain'); fetch('/held');</script>`)
+		}
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+	base := "http://" + ln.Addr().String()
+
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := sess.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab = tab.Timeout(testenv.Timeout(20 * time.Second))
+	var mu sync.Mutex
+	var some, all []string
+	note := func(list *[]string) Handler {
+		return func(r *Request) {
+			mu.Lock()
+			*list = append(*list, r.URL.Path)
+			mu.Unlock()
+		}
+	}
+	got := func(list *[]string) []string {
+		mu.Lock()
+		defer mu.Unlock()
+		// Chrome asks for the favicon when it likes.
+		out := slices.DeleteFunc(slices.Clone(*list), func(p string) bool { return p == "/favicon.ico" })
+		slices.Sort(out)
+		*list = nil
+		return out
+	}
+	visit := func() {
+		t.Helper()
+		_ = tab.Navigate(base + "/")
+		_ = tab.WaitLoad()
+		_ = tab.WaitIdle(time.Second)
+	}
+
+	removeSome, err := AddFor(tab, []string{"*/held*"}, note(&some))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer removeSome()
+	visit()
+	if g := got(&some); !slices.Equal(g, []string{"/held"}) {
+		t.Errorf("alone, the handler saw %q", g)
+	}
+
+	removeAll, err := Add(tab, note(&all))
+	if err != nil {
+		t.Fatal(err)
+	}
+	visit()
+	removeAll()
+	if g := got(&all); !slices.Equal(g, []string{"/", "/held", "/plain"}) {
+		t.Errorf("the handler for every URL saw %q", g)
+	}
+	if g := got(&some); !slices.Equal(g, []string{"/", "/held", "/plain"}) {
+		t.Errorf("with a handler for every URL, the other saw %q", g)
+	}
+}
+
+func TestUnion(t *testing.T) {
+	some := []entry{{id: 1, patterns: []string{"*://10.*"}}}
+	for _, c := range []struct {
+		handlers []entry
+		more     []string
+		want     []string
+	}{
+		{nil, nil, []string{"*"}},
+		{some, nil, []string{"*"}},
+		{some, []string{"*://10.*", "*://127.*"}, []string{"*://10.*", "*://127.*"}},
+		{append(slices.Clone(some), entry{id: 2}), []string{"*://127.*"}, []string{"*"}},
+	} {
+		if got := union(c.handlers, c.more); !slices.Equal(got, c.want) {
+			t.Errorf("union(%v, %v) = %q, want %q", c.handlers, c.more, got, c.want)
+		}
 	}
 }
