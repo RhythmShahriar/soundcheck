@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RhythmShahriar/soundcheck/blob/main/model/schema/evidence.v1.json",
+  "title": "Soundcheck evidence pack",
+  "description": "eaa/evidence.json in the folder of an --eaa run or snapshot: the SHA-256 of every file the run recorded, chained to the previous --eaa run of the same target. rhythm soundcheck evidence verify checks it; evidence sign adds eaa/evidence.sig (ed25519 over these bytes, base64) and eaa/evidence.pub (the public key, base64). Fields are only added within rhythm-soundcheck/evidence/v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tool", "version", "run", "axe", "chrome", "options", "started", "finished", "interrupted", "insecure", "pages", "files", "eaa", "previous"],
+  "properties": {
+    "schema": {"const": "rhythm-soundcheck/evidence/v1"},
+    "tool": {"const": "rhythm-soundcheck"},
+    "version": {"type": "string", "description": "Soundcheck's version."},
+    "run": {"$ref": "#/$defs/runId"},
+    "axe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "sha256"],
+      "properties": {
+        "version": {"type": "string"},
+        "sha256": {"type": "string", "description": "Of the vendored axe.min.js the run used."}
+      }
+    },
+    "chrome": {"type": "string", "description": "The browser's version; empty when the caller didn't record it."},
+    "options": {"type": "object", "description": "The run's options as run.json records them (run.v1.json): the flags the run was made with."},
+    "started": {"type": "string", "format": "date-time"},
+    "finished": {"type": "string", "format": "date-time"},
+    "interrupted": {"type": "boolean", "description": "The run was stopped before it finished; its results are partial."},
+    "insecure": {"type": "boolean", "description": "TLS certificates weren't verified (-k). Such a pack can't be signed."},
+    "pages": {
+      "type": "array",
+      "description": "Whether each module's audit of each page finished.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path"],
+        "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string", "description": "Without its query string."},
+          "audits": {"type": "object", "additionalProperties": {"enum": ["ok", "capped", "timeout", "error", "skipped"]}}
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "description": "Every recorded file, sorted by path: run.json (hashed as encoding/json writes it again: keys sorted, no spacing), the pages file, keyboard/ traces and eaa/focus/ crops.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^(run\\.json|pages[^/]*\\.jsonl|keyboard/.+|eaa/focus/.+)$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "eaa": {"type": "object", "description": "The run's accessibility summary, as the eaa block of run --json (run.v1.json)."},
+    "previous": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["run", "sha256"],
+      "description": "The pack of the previous --eaa run of the same target, null for the first.",
+      "properties": {
+        "run": {"$ref": "#/$defs/runId"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Of that run's eaa/evidence.json."}
+      }
+    }
+  },
+  "$defs": {
+    "runId": {"type": "string", "pattern": "^(runs|snapshots)/[^/]+$", "description": "The run's folder in .soundcheck/, such as runs/2026-10-26T09-00-00 or snapshots/eaa-1."}
+  }
+}
