@@ -144,7 +144,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s65 | `:18810/a11y/consent.php` | the cookie banner grabs focus and keeps it | BROKE keyboard/trap |
 | s66 | `:18810/a11y/zoom.php` | `user-scalable=no, maximum-scale=1` | NEW a11y/meta-viewport |
 | s67 | `:18810/a11y/widget.php` | a web component's shadow root drops its label | NEW a11y/label with ` >>> ` in the source |
-| s68 | `/my-account/` (login) | the phone field loses its label; the form shows runtime canaries; key flow `flows/keyboard-account.yaml` (`login: true`) | NEW a11y/label; no canary in any file (harness canaries). Soundcheck visits pages anonymously, so the label waits for --eaa to audit logged-in pages |
+| s68 | `/my-account/` (login) | the phone field loses its label; the form shows runtime canaries; key flow `flows/keyboard-account.yaml` (`login: true`) | NEW a11y/label; no canary in any file (harness canaries); no host outside the testbed while logged in (harness requests). Soundcheck visits pages anonymously, so the label waits for --eaa to audit logged-in pages |
 | s69 | `:18810/a11y/promo.php` | a fixed 600 px promo bar | NEW a11y/reflow |
 | s70 | `/checkout/` | key flow `flows/keyboard-checkout.yaml` (`--level flows`): Place order only by mouse | BROKE keyboard/flow; no order placed (harness orders) |
 | s71 | `:18810/a11y/autonav.php` | a select loads another view when it gets focus | NEW keyboard/context-change |
@@ -204,6 +204,7 @@ s47 and s48 are the target for `rhythm-soundcheck wp-update`, which updates plug
 
 - `wp/updates/` holds the plugins' sources. `reset.sh` builds a 1.0 and a 1.1 zip of each in `wp-content/testbed-updates/` and installs every plugin at 1.0. `make up` runs it once and `make wp-update-reset` runs it again.
 - `wp/mu-plugins/testbed-updates.php` is the update server. It adds each plugin's newest zip to the `update_plugins` transient (the `pre_set_site_transient_update_plugins` and `site_transient_update_plugins` filters) and answers `plugins_api` and the downloads, so `wp plugin update` and the rollback `wp plugin install <slug> --version=1.0 --force` work the way they do with WordPress.org. Nothing leaves the containers: requests to WordPress.org get an empty update check or an error.
+- `wp/mu-plugins/testbed-local.php` keeps logged-in pages local: it turns off avatars and the front-end admin bar, which would otherwise load Gravatar images from `secure.gravatar.com`. The seed hides the admin bar for the `soundcheck` user as well.
 - The page cache keys on the installed versions of these plugins too, so an update is seen at once.
 
 The WordPress image has no WP-CLI, so wp-update drives the `cli` container:
