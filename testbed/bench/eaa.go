@@ -272,7 +272,10 @@ func eaaSection(b Board) string {
 		for _, o := range outcomes {
 			r := o.Soundcheck
 			text := r.Found
-			if r.Outcome != Caught && r.Detail != "" {
+			switch {
+			case r.Outcome == FalseAlarm && r.Detail != "":
+				text = r.Found + "; " + r.Detail
+			case r.Outcome != Caught && r.Detail != "":
 				text = r.Detail
 			}
 			if text != "" {

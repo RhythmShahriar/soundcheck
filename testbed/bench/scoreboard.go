@@ -98,6 +98,8 @@ func scoreboard(bd Board) string {
 		w("**%s %s** (`%s` on %s). Broken state: %s.\n", s.ID, s.Name, s.Path, s.Site, s.Toggle)
 		r := o.Soundcheck
 		switch {
+		case r.Outcome == FalseAlarm && r.Detail != "":
+			w("Soundcheck: false alarm, %s; %s.", r.Found, r.Detail)
 		case r.Outcome == FalseAlarm:
 			w("Soundcheck: false alarm, %s.", r.Found)
 		case r.Found != "":

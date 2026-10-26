@@ -114,7 +114,15 @@ func TestEvaluate(t *testing.T) {
 		{"interrupted", Scenario{Expect: []Expect{{Interrupted: true}}}, Observed{Comparison: cmp(nil), Interrupted: true}, Caught},
 		{"not interrupted", Scenario{Expect: []Expect{{Interrupted: true}}}, Observed{Comparison: cmp(nil)}, Missed},
 		{"clean", Scenario{Expect: []Expect{{Clean: true}}}, Observed{Comparison: cmp(nil, visual)}, Caught},
-		{"not clean", Scenario{Expect: []Expect{{Clean: true}}}, Observed{Comparison: cmp(nil, broke)}, Missed},
+		{"not clean", Scenario{Expect: []Expect{{Clean: true}}}, Observed{Comparison: cmp(nil, broke)}, FalseAlarm},
+		// A clean scenario whose forbid list doesn't name the change still
+		// counts it as a false alarm.
+		{"not clean, not forbidden", Scenario{Same: true, Expect: []Expect{{Clean: true}}, Forbid: []Expect{{Check: "keyboard/trap"}}},
+			Observed{Comparison: cmp(nil, label("#email"))}, FalseAlarm},
+		{"not clean, only CHANGED", Scenario{Same: true, Expect: []Expect{{Clean: true}}, Forbid: []Expect{{Check: "keyboard/trap"}}},
+			Observed{Comparison: cmp(nil, visual)}, Caught},
+		{"all, clean fails", Scenario{All: true, Same: true, Expect: []Expect{{Warning: "WCAG 2.0"}, {Clean: true}}},
+			Observed{Comparison: cmp([]string{"used the WCAG 2.0 rules"}, label("#email"))}, FalseAlarm},
 		{"exit", Scenario{Expect: []Expect{{Exit: intp(3)}}}, Observed{Exit: 3}, Caught},
 		{"other exit", Scenario{Expect: []Expect{{Exit: intp(3)}}}, Observed{Exit: 0, Comparison: cmp(nil)}, Missed},
 		{"forbidden change", Scenario{Expect: []Expect{{Interrupted: true}}, Forbid: []Expect{{Class: model.Broke}}},
@@ -144,6 +152,11 @@ func TestEvaluate(t *testing.T) {
 		if got := Evaluate(c.s, c.obs).Outcome; got != c.want {
 			t.Errorf("%s: %s, want %s", c.name, got, c.want)
 		}
+	}
+	// The false alarm names what reached NEW so the scoreboard can say it.
+	r := Evaluate(Scenario{Expect: []Expect{{Clean: true}}}, Observed{Comparison: cmp(nil, label("#email"))})
+	if !strings.Contains(r.Found, "a11y/label") {
+		t.Errorf("not clean: Found = %q", r.Found)
 	}
 }
 

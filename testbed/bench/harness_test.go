@@ -286,6 +286,11 @@ func TestWithHarnesses(t *testing.T) {
 	if got.Outcome != Missed || got.Detail != "compare wrote no comparison; harness: requests: x" {
 		t.Errorf("missed with a problem: %+v", got)
 	}
+	// A false alarm stays one, with the harness problem in its detail.
+	got = withHarnesses(Result{Outcome: FalseAlarm, Found: "NEW a11y/label: x"}, []string{"orders: x"})
+	if got.Outcome != FalseAlarm || got.Found != "NEW a11y/label: x" || got.Detail != "harness: orders: x" {
+		t.Errorf("false alarm with a problem: %+v", got)
+	}
 	// A compare that failed or never ran keeps its own reason.
 	for _, r := range []Result{{Outcome: Failed, Detail: "boom"}, {Outcome: NotRun, Detail: "needs Echo"}} {
 		if got := withHarnesses(r, []string{"statement: x"}); got.Outcome != r.Outcome || got.Detail != r.Detail {

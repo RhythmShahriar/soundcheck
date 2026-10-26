@@ -112,7 +112,7 @@ func (h *harnessRun) check(ctx context.Context, o options, testbed string, s Sce
 }
 
 // withHarnesses folds harness problems into a scenario's result: any
-// problem makes it missed.
+// problem makes it missed, except that a false alarm stays one.
 func withHarnesses(r Result, problems []string) Result {
 	if len(problems) == 0 || r.Outcome == NotRun || r.Outcome == Failed {
 		return r
@@ -122,6 +122,11 @@ func withHarnesses(r Result, problems []string) Result {
 		detail = "the expectation held (" + r.Found + ") but " + detail
 	} else if r.Detail != "" {
 		detail = r.Detail + "; " + detail
+	}
+	if r.Outcome == FalseAlarm {
+		// Keep the false alarm so a good scenario still counts as one; the
+		// harness problem goes in the detail.
+		return Result{Outcome: FalseAlarm, Found: r.Found, Detail: detail, Others: r.Others}
 	}
 	return Result{Outcome: Missed, Detail: detail, Others: r.Others}
 }

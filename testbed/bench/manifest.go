@@ -497,7 +497,7 @@ func Evaluate(s Scenario, obs Observed) Result {
 				held[j] = "the comparison is marked interrupted"
 			}
 		case kindClean:
-			if alarms := FalseAlarms(cmp); len(alarms) == 0 {
+			if len(FalseAlarms(cmp)) == 0 {
 				held[j] = "nothing at or above NEW"
 			}
 		case kindExit:
@@ -525,6 +525,7 @@ func Evaluate(s Scenario, obs Observed) Result {
 	case s.All && len(found) > 0:
 		r.Detail = "still missing: " + strings.Join(missing, ", ")
 	}
+	alarms := FalseAlarms(cmp)
 	for _, c := range cmp.Changes {
 		for _, f := range s.Forbid {
 			if f.Match(c) {
@@ -534,6 +535,10 @@ func Evaluate(s Scenario, obs Observed) Result {
 	}
 	switch {
 	case r.Outcome == Caught:
+	case len(alarms) > 0 && slices.ContainsFunc(s.Expect, func(e Expect) bool { return e.kind() == kindClean }):
+		// A clean expectation failed: whatever reached NEW is a false
+		// alarm, even when the forbid list doesn't name it.
+		r.Outcome, r.Found = FalseAlarm, strings.Join(alarms, "; ")
 	case about != nil:
 		r.Outcome, r.Found = OtherClass, describe(*about)
 	default:

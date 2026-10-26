@@ -212,6 +212,29 @@ func TestWriteBoard(t *testing.T) {
 	}
 }
 
+// A good scenario that got a NEW change its forbid list doesn't name is
+// still a false alarm in the headline.
+func TestEAAScoreUnforbiddenAlarm(t *testing.T) {
+	s77 := Scenario{ID: "s77", Args: []string{"--eaa"}, Same: true, Expect: []Expect{{Clean: true}}, Forbid: []Expect{{Check: "keyboard/trap"}}}
+	cmp := &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "keyboard/no-focus-ring", Title: "No focus ring"}}}
+	r := withHarnesses(Evaluate(s77, Observed{Comparison: cmp}), nil)
+	if got := eaaScore([]Outcome{{Scenario: s77, Soundcheck: r}}); got.good != 1 || got.goodAlarms != 1 {
+		t.Errorf("eaaScore = %+v (result %+v)", got, r)
+	}
+	// The same with a harness problem on top.
+	s88 := s77
+	s88.ID = "s88"
+	r = withHarnesses(Evaluate(s88, Observed{Comparison: cmp}), []string{"orders: x"})
+	if got := eaaScore([]Outcome{{Scenario: s88, Soundcheck: r}}); got.goodAlarms != 1 {
+		t.Errorf("with a harness problem: eaaScore = %+v (result %+v)", got, r)
+	}
+	// A clean run of the good scenario isn't one.
+	r = Evaluate(s77, Observed{Comparison: &model.Comparison{}})
+	if got := eaaScore([]Outcome{{Scenario: s77, Soundcheck: r}}); got.good != 1 || got.goodAlarms != 0 {
+		t.Errorf("clean: eaaScore = %+v", got)
+	}
+}
+
 func TestEAAScore(t *testing.T) {
 	got := eaaScore(append(fakeBoard().Outcomes, Outcome{Scenario: Scenario{ID: "s90", Args: []string{"--eaa"}}, Soundcheck: Result{Outcome: NotRun}}))
 	want := eaaTally{broken: 2, caught: 1, pending: 1, pendingCaught: 1, pendingGood: 2, pendingGoodAlarms: 1, notRun: []string{"s90"}}
