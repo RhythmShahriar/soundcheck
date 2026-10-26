@@ -16,7 +16,7 @@ import (
 )
 
 // ownTab is a module that opens a tab of its own after the pages, as the
-// cache leak test and the flows do, and loads url in it, guarded with
+// cache leak test and the flows do. It loads url in it, guarded with
 // check.GuardTab when guard is set.
 type ownTab struct {
 	url   string

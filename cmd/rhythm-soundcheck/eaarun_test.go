@@ -475,7 +475,7 @@ func TestStatementHidesTheLoginUser(t *testing.T) {
 	}
 }
 
-// accept says when the snapshot it changed has an evidence pack, and
+// accept says when the snapshot it changed has an evidence pack. It
 // stays quiet for one without.
 func TestAcceptEvidenceNote(t *testing.T) {
 	dir := t.TempDir()

@@ -187,8 +187,8 @@ func identify(lists ...[]Change) {
 }
 
 // Schemas holds the JSON Schemas of the rhythm-soundcheck/v1 output:
-// schema/run.v1.json and schema/comparison.v1.json, and those of the EAA
-// files: schema/statement.v1.json (statement --json) and
+// schema/run.v1.json and schema/comparison.v1.json. It also holds those
+// of the EAA files: schema/statement.v1.json (statement --json) and
 // schema/evidence.v1.json (eaa/evidence.json). Fields are only ever
 // added within v1, so a reader written for it keeps working.
 //

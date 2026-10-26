@@ -153,7 +153,7 @@ func noteLoadError(cc *check.Context, err error) {
 // URL listed under production: its owner said it is safe on the live
 // site. Without production: true a flow that starts on a production URL
 // runs dry too: the flow runner refuses its steps only on production
-// pages, and production entries can name one path (example.com/shop),
+// pages and production entries can name one path (example.com/shop),
 // so a later step on another page would otherwise send for real.
 func options(ctx context.Context, cc *check.Context, f flow.Flow, ko model.KeyboardOptions) flow.Options {
 	t := cc.Config.Trust

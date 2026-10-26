@@ -29,8 +29,8 @@ function testbedDialog(openerId, dialogId, closeId, options) {
 	var hide = function () {
 		if (o.removeClose) {
 			// The 2.0 close routine, behind Escape and the close button
-			// alike, replaces the dialog's content, the focused control
-			// included, and forgets to put focus anywhere.
+			// alike, replaces the dialog's content (the focused control
+			// included) and forgets to put focus anywhere.
 			if (dialog.contains(document.activeElement)) document.activeElement.remove();
 			dialog.hidden = true;
 			opener.setAttribute('aria-expanded', 'false');

@@ -319,8 +319,8 @@ func storedPages(dir string, run *model.Run) func(func(*model.Page) bool) {
 // audit didn't finish. Their evidence is missing, so the run exits 3.
 // An interrupted run is partial anyway and exits 130. A page that
 // answered with an HTTP error has no content of its own to test: the
-// health module reports it, and the draft still lists it as not
-// tested, but it doesn't make the evidence of the other pages
+// health module reports it and the draft still lists it as not
+// tested. It doesn't make the evidence of the other pages
 // incomplete.
 func notAudited(run *model.Run) int {
 	if run == nil || !run.Options.EAA || run.Interrupted {

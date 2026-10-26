@@ -253,7 +253,7 @@ runs:
         WCAG: ${{ inputs.wcag }}
       run: '"$GITHUB_ACTION_PATH/scripts/action-run.sh" run'
 
-    # A snapshot with issues (exit 1) is still the baseline, and so is an
+    # A snapshot with issues (exit 1) is still the baseline. So is an
     # --eaa one whose audits didn't finish on some pages (incomplete): a
     # comparison keeps those pages' issues out of FIXED. One that couldn't
     # be taken (2 or 3) is not saved.
