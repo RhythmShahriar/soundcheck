@@ -134,6 +134,16 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	setAudit(p, audit)
 }
 
+// Plan gives the module the paths the run plans to visit, before it
+// visits them, so each URL group's widgets are tested on the group's
+// first page by path instead of the first page the parallel walks
+// reach. The runner calls it through
+//
+//	interface{ Plan(paths []string) }
+//
+// A run that never calls it keeps the first-walked rule.
+func (m *Module) Plan(paths []string) { m.groups.plan(paths) }
+
 // safeWalk runs the walk, turning a panic in it (a probe that broke on
 // a page nobody foresaw) into an error, so the page is recorded as not
 // walked instead of losing its audit status to the runner's recover.

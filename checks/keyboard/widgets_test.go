@@ -267,6 +267,27 @@ func TestWidgetGroups(t *testing.T) {
 	}
 }
 
+// With the run's plan, a group's widgets are tested on its first page
+// by path, whichever page is walked first; a group the plan lacks still
+// takes its first walked page.
+func TestWidgetGroupsPlanned(t *testing.T) {
+	var g widgetGroups
+	pages := DefaultSettings().Pages
+	New().Plan(nil) // a module with no pages planned is fine
+	g.plan([]string{"/product/c/", "/product/b/", "/product/d/", "/blog/x"})
+	for _, c := range []struct {
+		path string
+		want bool
+	}{
+		{"/product/d/", false}, {"/product/c/", false}, {"/product/b/", true}, {"/product/b/", true},
+		{"/blog/x", true}, {"/news/a", true}, {"/news/b", false}, {"/cart/", true},
+	} {
+		if got := g.claim(c.path, pages); got != c.want {
+			t.Errorf("claim(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
 // The destructive list keeps its words in every language it has;
 // leaves ordinary widgets alone.
 func TestDestructiveWidget(t *testing.T) {

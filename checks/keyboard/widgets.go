@@ -52,12 +52,34 @@ var destructiveWidget = regexp.MustCompile(`(?i)delete|remove|unsubscribe|log ?o
 type widgetGroups struct {
 	mu   sync.Mutex
 	seen map[string]bool
+	// first is, by URL group, the planned page that comes first by
+	// path (plan); nil until the run's page list is known.
+	first map[string]string
+}
+
+// plan records the run's planned pages, so each URL group's widgets
+// are tested on the group's first page by path, whichever page the
+// parallel walks reach first.
+func (g *widgetGroups) plan(paths []string) {
+	first := map[string]string{}
+	for _, p := range paths {
+		group := urlGroup(p)
+		if f, ok := first[group]; !ok || p < f {
+			first[group] = p
+		}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.first = first
 }
 
 // claim reports whether the page's widgets are tested: the page matches
-// keyboard.pages or is the first page of its URL group to be walked.
-// Pages are walked as the run visits them, several at once, so "first"
-// is the first to get here.
+// keyboard.pages or is the first page of its URL group. With a plan
+// (Module.Plan) that is the group's first planned page by path, so the
+// same page is tested from run to run. A group the plan doesn't have,
+// or a run with no plan, takes the first page walked: pages are walked
+// as the run visits them, several at once, so that is the first to get
+// here.
 func (g *widgetGroups) claim(path string, pages []string) bool {
 	if slices.ContainsFunc(pages, func(p string) bool { return model.Glob(p, path) }) {
 		return true
@@ -65,6 +87,9 @@ func (g *widgetGroups) claim(path string, pages []string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	group := urlGroup(path)
+	if f, ok := g.first[group]; ok {
+		return path == f
+	}
 	if g.seen[group] {
 		return false
 	}
