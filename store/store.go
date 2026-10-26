@@ -71,8 +71,8 @@ func (s Store) NewDir(kind, name string) (string, error) {
 	if err := os.MkdirAll(parent, dirMode); err != nil {
 		return "", err
 	}
-	// A linked runs/ or snapshots/ would put every new folder, and so
-	// every write into it, wherever the link points.
+	// A linked runs/ or snapshots/ would put every new folder (with
+	// every write into it) wherever the link points.
 	if err := refuseLinks(parent); err != nil {
 		return "", err
 	}
@@ -137,7 +137,7 @@ func Saver(dir string) func(name string, data []byte) error {
 // .soundcheck/ (runs/x/keyboard pointing at ~/.ssh), must not turn a
 // screenshot into a write anywhere on the machine. The folders are
 // checked one by one, from just below .soundcheck/ down to the file (see
-// refuseLinks), and the write goes through an os.Root of dir, so a link
+// refuseLinks). The write goes through an os.Root of dir, so a link
 // swapped in between can't lead out of it either.
 func writeIn(dir, rel string, data []byte) (err error) {
 	rel = filepath.Clean(filepath.FromSlash(rel))
