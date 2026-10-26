@@ -245,6 +245,15 @@ func hashFiles(dir string) ([]FileHash, error) {
 
 // hashFile is the SHA-256 of the run's file rel, hex.
 func hashFile(dir, rel string) (string, error) {
+	// A listed path swapped for a FIFO or device would block the open
+	// or the read, so only a regular file is opened.
+	fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(rel)))
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("evidence: %s isn't a regular file", rel)
+	}
 	f, err := os.Open(filepath.Join(dir, filepath.FromSlash(rel))) //nolint:gosec // rel is checked by local or found by WalkDir
 	if err != nil {
 		return "", err
