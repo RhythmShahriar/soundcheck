@@ -232,7 +232,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Manifest, scoring, rules and TESTBED_STATE
-        run: go test -tags testbed -run 'TestManifest|TestLoadManifestRejects|TestEvaluate|TestExpectString|TestScoreboardPendingAndControl|TestStateFromEnv|TestTestbedRules' -v ./testbed/bench/
+        run: go test -tags testbed -run 'TestManifest|TestLoadManifestRejects|TestEvaluate|TestExpectString|TestScoreboardPendingAndControl|TestScoreboardNotRun|TestStateFromEnv|TestTestbedRules|TestCheckStatement|TestNewCanaries|TestStartHarnesses|TestOutsideHosts|TestComposeServices|TestSweepCanaries|TestWithHarnesses|TestHarnessesYAML|TestPending|TestPickEAA|TestCopyFixture|TestEAASectionGolden|TestScoreboardKeepsEAAApart|TestWriteBoard|TestEAAScore|TestPercentile|TestSymmetricDiff|TestIssueKeys|TestA11yToolOutput|TestToolRuns|TestCostSectionWithoutCost|TestShellJoin|TestParseWPUpdate' -v ./testbed/bench/
 
   verify:
     runs-on: ubuntu-latest
