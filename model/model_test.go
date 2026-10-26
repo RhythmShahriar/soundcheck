@@ -76,17 +76,29 @@ func TestPageCanceled(t *testing.T) {
 	}
 }
 
-// An issue's key is its check, title and source, except an a11y one's,
-// whose title is axe's wording of the rule: check and source alone.
+// An issue's key is its check, title and source. An a11y issue, whose
+// title is axe's wording of the rule, is keyed by check and source
+// alone, as is a keyboard one.
 func TestIssueKey(t *testing.T) {
 	for _, tc := range []struct{ check, title, source, want string }{
 		{"health/php-error", "PHP Warning: x", "lib.php:6", "health/php-error|PHP Warning: x|lib.php:6"},
 		{"a11y/label", "Form elements must have labels", "#email", "a11y/label|#email"},
 		{"exec/a11y/label", "Label", "#email", "exec/a11y/label|Label|#email"},
+		{"keyboard/trap", "Keyboard focus is trapped", "#date", "keyboard/trap|#date"},
+		{"exec/keyboard/trap", "Trap", "#date", "exec/keyboard/trap|Trap|#date"},
 	} {
 		i := Issue{Check: tc.check, Title: tc.title, Source: tc.source}
 		if i.Identify(); i.Key != tc.want || IssueKey(tc.check, tc.title, tc.source) != tc.want {
 			t.Errorf("%s: key %q, want %q", tc.check, i.Key, tc.want)
+		}
+	}
+}
+
+// An audit finished when it ran to the end, capped or not.
+func TestAuditFinished(t *testing.T) {
+	for status, want := range map[string]bool{AuditOK: true, AuditCapped: true, AuditTimeout: false, AuditError: false, AuditSkipped: false, "": false} {
+		if got := (Audit{Status: status}).Finished(); got != want {
+			t.Errorf("Audit{%q}.Finished() = %v, want %v", status, got, want)
 		}
 	}
 }

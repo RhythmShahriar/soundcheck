@@ -190,7 +190,7 @@ func cmdFleet(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
 	defer stop()
-	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, stdout)
+	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, nil, stdout)
 	if err != nil {
 		if code == 0 { // the file was refused before any site ran
 			return failed(stderr, cli.UsageError{Msg: err.Error()})

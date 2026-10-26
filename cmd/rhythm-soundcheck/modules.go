@@ -26,6 +26,7 @@ import (
 	execmod "github.com/RhythmShahriar/soundcheck/checks/exec"
 	"github.com/RhythmShahriar/soundcheck/checks/health"
 	"github.com/RhythmShahriar/soundcheck/checks/interact"
+	"github.com/RhythmShahriar/soundcheck/checks/keyboard"
 	"github.com/RhythmShahriar/soundcheck/checks/seo"
 	"github.com/RhythmShahriar/soundcheck/checks/speed"
 	"github.com/RhythmShahriar/soundcheck/checks/visual"
@@ -33,6 +34,9 @@ import (
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/lighthouse"
 	"github.com/RhythmShahriar/soundcheck/login"
+	// The statement package registers the statement: block of the
+	// config file.
+	_ "github.com/RhythmShahriar/soundcheck/statement"
 )
 
 // speedModule keeps per-run state between its hooks; one per process.
@@ -48,6 +52,7 @@ var builders = map[string]func(p *plan) check.Module{
 	"cache":    func(*plan) check.Module { return cache.Module{} },
 	"speed":    func(*plan) check.Module { return speedModule },
 	"a11y":     func(*plan) check.Module { return a11y.Module{} },
+	"keyboard": func(*plan) check.Module { return keyboard.New() },
 	"seo":      func(*plan) check.Module { return seo.Module{} },
 	"echo":     func(*plan) check.Module { return echomod.Module{} },
 	"exec": func(p *plan) check.Module {

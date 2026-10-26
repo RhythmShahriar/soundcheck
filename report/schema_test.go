@@ -330,3 +330,104 @@ func TestChangeIDsStable(t *testing.T) {
 		t.Errorf("different changes share an id: %v", first)
 	}
 }
+
+// eaaSummary is the accessibility summary of an --eaa run, with every
+// field set.
+func eaaSummary() *model.EAASummary {
+	return &model.EAASummary{
+		WCAG: "2.1", EN301549: "V3.2.1", Axe: "4.14.0",
+		Criteria: model.EAACriteria{
+			Failed:          []model.CriterionCount{{ID: "2.1.2", Issues: 1, Pages: 1}},
+			NoFailuresFound: []string{"1.1.1"},
+			NotTested:       []string{"1.2.3"},
+		},
+		Keyboard: model.EAAKeyboard{PagesWalked: 2, WidgetsTested: 3, FlowsRun: 0,
+			FlowsSkipped: []model.SkippedFlow{{File: "keyboard-checkout.yaml", Reason: "needs --level flows"}}},
+		NotAudited:   []model.NotAudited{{Path: "/catalog/", Module: "a11y", Status: model.AuditTimeout, Reason: "axe-core timed out after 45s"}},
+		Open:         3,
+		EvidenceNote: model.EvidenceNote,
+	}
+}
+
+// eaaRun is sampleRun made with --eaa: every field EAA mode adds is set.
+func eaaRun() *model.Run {
+	run := sampleRun()
+	run.Options.EAA, run.Options.WCAG = true, "2.1"
+	run.Options.A11y = &model.A11yRules{Axe: "4.14.0", AxeSHA256: strings.Repeat("ab", 32), Tags: []string{"wcag2a", "wcag2aa", "wcag21a", "wcag21aa"},
+		Rules: []string{"color-contrast", "label"}, MaxElements: 20}
+	run.Options.Keyboard = &model.KeyboardOptions{MaxTabs: 150, Widgets: 10, TrapAfter: 4, SkipLink: "expected"}
+	run.KeyFlows = &model.KeyFlows{Skipped: []model.SkippedFlow{{File: "keyboard-checkout.yaml", Reason: "needs --level flows"}}}
+	trap := model.Issue{Check: "keyboard/trap", Level: model.Error, Title: "Keyboard focus is trapped", Source: "#date",
+		WCAG: []string{"2.1.2"}, EN301549: []string{"9.2.1.2"}, Impact: "critical", FocusPath: []string{"#name", "#date", "#date"}}
+	trap.Identify()
+	p := &run.Pages[0]
+	p.Issues = append(p.Issues, trap)
+	p.Audits = map[string]model.Audit{
+		"a11y":     {Status: model.AuditCapped, Frames: []string{"pay.example"}, CappedRules: map[string]int{"color-contrast": 12}},
+		"keyboard": {Status: model.AuditOK},
+	}
+	p.Keyboard = &model.KeyboardSummary{Stops: 23, Wrapped: true, SkipLink: "a.skip-link", Widgets: 3, Frames: []string{"pay.example: 2 stops, trap no"},
+		Evidence: "keyboard/" + model.PageID(p.URL) + ".json", Crops: map[string]string{trap.Key: "eaa/focus/x-1.png"},
+		WidgetKinds: []string{"details", "dialog", "menu"}, MS: 900}
+	run.EAA = eaaSummary()
+	return run
+}
+
+// Output of an --eaa run and comparison matches the schemas. run.json
+// keeps the run's EAA options and page records. It leaves out the
+// summary, which is for output only.
+func TestEAAJSONMatchesSchemas(t *testing.T) {
+	cmpSchema, runSchema := loadSchema(t, "comparison.v1.json"), loadSchema(t, "run.v1.json")
+	doc := jsonOf(t, Result{Run: eaaRun(), FailOn: "error"})
+	if p := validate(runSchema, doc); len(p) != 0 {
+		t.Errorf("EAA run doesn't match its schema:\n%s", strings.Join(p, "\n"))
+	}
+	if eaa, ok := doc["eaa"].(map[string]any); !ok || eaa["evidence_note"] != model.EvidenceNote {
+		t.Errorf("EAA run output has no eaa summary: %v", doc["eaa"])
+	}
+
+	c := sampleComparison("")
+	c.Changes = append(c.Changes, model.Change{Class: model.Broke, Check: "keyboard/trap", Title: "Keyboard focus is trapped", Source: "#date",
+		Pages: []string{"/"}, WCAG: []string{"2.1.2"}, EN301549: []string{"9.2.1.2"}, Impact: "critical", FocusPath: []string{"#date"}})
+	c.EAA = eaaSummary()
+	if p := validate(cmpSchema, jsonOf(t, Result{Run: eaaRun(), Comparison: c})); len(p) != 0 {
+		t.Errorf("EAA comparison doesn't match its schema:\n%s", strings.Join(p, "\n"))
+	}
+
+	// A wrong audit status or impact is caught.
+	bad := jsonOf(t, Result{Run: eaaRun()})
+	page := bad["pages"].([]any)[0].(map[string]any)
+	page["audits"].(map[string]any)["a11y"].(map[string]any)["status"] = "done"
+	page["issues"].([]any)[2].(map[string]any)["impact"] = "huge"
+	got := strings.Join(validate(runSchema, bad), "\n")
+	for _, want := range []string{"$.pages[0].audits.a11y.status: done isn't one of", "$.pages[0].issues[2].impact: huge isn't one of"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("validator missed %q; got:\n%s", want, got)
+		}
+	}
+
+	dir := t.TempDir()
+	if err := store.SaveRun(dir, eaaRun()); err != nil {
+		t.Fatal(err)
+	}
+	stored := decode(t, must(os.ReadFile(filepath.Join(dir, "run.json"))))
+	if p := validate(runSchema, stored); len(p) != 0 {
+		t.Errorf("EAA run.json doesn't match its schema:\n%s", strings.Join(p, "\n"))
+	}
+	if _, ok := stored["eaa"]; ok {
+		t.Error("run.json stores the eaa summary, which is for output only")
+	}
+	if opts := stored["options"].(map[string]any); opts["eaa"] != true || opts["wcag"] != "2.1" || opts["a11y"] == nil || opts["keyboard"] == nil {
+		t.Errorf("run.json options lost the EAA settings: %v", opts)
+	}
+	if stored["key_flows"] == nil {
+		t.Error("run.json lost key_flows")
+	}
+	back, err := store.LoadRun(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bp := back.Pages[0]; bp.Keyboard == nil || bp.Keyboard.Stops != 23 || !bp.Audits["a11y"].Finished() || bp.Issues[2].Impact != "critical" {
+		t.Errorf("stored page lost its EAA records: %+v", bp)
+	}
+}

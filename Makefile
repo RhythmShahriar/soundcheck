@@ -1,6 +1,6 @@
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
-.PHONY: build test test-short lint fmt check hooks testbed testbed-down bench
+.PHONY: build test test-short fuzz lint fmt check hooks testbed testbed-down bench
 
 build: ## build bin/rhythm-soundcheck
 	go build -o bin/rhythm-soundcheck ./cmd/rhythm-soundcheck
@@ -12,6 +12,9 @@ test: ## run tests (browser tests need Chrome)
 
 test-short: ## quick pass: tests that honour -short skip slow browser work
 	go test -short -race -timeout 10m ./...
+
+fuzz: ## run every fuzz target for FUZZTIME each (default 30s)
+	scripts/fuzz.sh
 
 lint:
 	$(GOLANGCI) run ./...

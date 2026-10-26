@@ -204,7 +204,7 @@ func TestRunCompare(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	code, err := Run(context.Background(), os.Args[0], p, Compare, 3, &out)
+	code, err := Run(context.Background(), os.Args[0], p, Compare, 3, nil, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestRunCompare(t *testing.T) {
 
 func TestRunSnapshot(t *testing.T) {
 	p := writeSites(t, "- {name: one, url: http://ok.test/}\n- {name: two, url: http://errors.test/}\n")
-	code, err := Run(context.Background(), os.Args[0], p, Snapshot, 0, &bytes.Buffer{})
+	code, err := Run(context.Background(), os.Args[0], p, Snapshot, 0, nil, &bytes.Buffer{})
 	if err != nil || code != 0 {
 		t.Fatalf("Run = %d, %v", code, err)
 	}
@@ -295,7 +295,7 @@ func TestRunCanceled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	code, err := Run(ctx, os.Args[0], p, Compare, 1, &bytes.Buffer{})
+	code, err := Run(ctx, os.Args[0], p, Compare, 1, nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,13 +306,13 @@ func TestRunCanceled(t *testing.T) {
 
 func TestRunBadInput(t *testing.T) {
 	p := writeSites(t, "- {name: one, url: http://ok.test/}\n")
-	if _, err := Run(context.Background(), os.Args[0], p, "check", 1, &bytes.Buffer{}); err == nil {
+	if _, err := Run(context.Background(), os.Args[0], p, "check", 1, nil, &bytes.Buffer{}); err == nil {
 		t.Error("an unknown mode was accepted")
 	}
-	if _, err := Run(context.Background(), os.Args[0], writeSites(t, "- {name: '..'}"), Compare, 1, &bytes.Buffer{}); err == nil {
+	if _, err := Run(context.Background(), os.Args[0], writeSites(t, "- {name: '..'}"), Compare, 1, nil, &bytes.Buffer{}); err == nil {
 		t.Error("a bad sites file was accepted")
 	}
-	code, err := Run(context.Background(), filepath.Join(t.TempDir(), "nosuch"), p, Compare, 1, &bytes.Buffer{})
+	code, err := Run(context.Background(), filepath.Join(t.TempDir(), "nosuch"), p, Compare, 1, nil, &bytes.Buffer{})
 	if err != nil || code != exitError {
 		t.Errorf("missing binary: %d, %v; want exit 3", code, err)
 	}
@@ -328,7 +328,7 @@ func TestRunShowsTrend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := Run(context.Background(), os.Args[0], p, Compare, 2, &bytes.Buffer{}); err != nil {
+	if _, err := Run(context.Background(), os.Args[0], p, Compare, 2, nil, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var page Page
@@ -353,7 +353,7 @@ func TestRunShowsTrend(t *testing.T) {
 
 func TestRunInterrupted(t *testing.T) {
 	p := writeSites(t, "- {name: one, url: http://stopped.test/}\n- {name: two, url: http://clean.test/}\n")
-	code, err := Run(context.Background(), os.Args[0], p, Compare, 2, &bytes.Buffer{})
+	code, err := Run(context.Background(), os.Args[0], p, Compare, 2, nil, &bytes.Buffer{})
 	if err != nil || code != exitCanceled {
 		t.Fatalf("Run = %d, %v; want 130", code, err)
 	}
@@ -386,6 +386,24 @@ func TestParseSummary(t *testing.T) {
 		}
 		if r.Kind != "comparison" || r.Verdict != Broke || r.Counts[model.Broke] != 1 || r.Counts[model.New] != 1 || r.Pages != 2 {
 			t.Errorf("complete %v: %+v", complete, r)
+		}
+	}
+}
+
+// Flags for every site go after the site's own args; a flag the fleet
+// sets itself is refused there too.
+func TestRunExtraArgs(t *testing.T) {
+	p := writeSites(t, `- {name: one, url: "http://clean.test/", args: ["--limit", "5"]}`+"\n")
+	if _, err := Run(context.Background(), os.Args[0], p, Snapshot, 1, []string{"--eaa", "--wcag", "2.2"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	args := readFile(t, filepath.Join(filepath.Dir(p), Folder, "one", "args.txt"))
+	if want := strings.Join([]string{"snapshot", "--json", "--limit", "5", "--eaa", "--wcag", "2.2", "http://clean.test/"}, "\n"); args != want {
+		t.Errorf("args =\n%s\nwant\n%s", args, want)
+	}
+	for _, bad := range [][]string{{"--json"}, {"--eaa", "-o=x.html"}} {
+		if _, err := Run(context.Background(), os.Args[0], p, Snapshot, 1, bad, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "the fleet sets it itself") {
+			t.Errorf("extra %v: %v", bad, err)
 		}
 	}
 }

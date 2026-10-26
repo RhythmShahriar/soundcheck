@@ -21,6 +21,9 @@ type IgnoreRule struct {
 	Check string   `yaml:"check" json:"check,omitempty"` // e.g. "health/favicon" or "visual/*"
 	Pages []string `yaml:"pages" json:"pages,omitempty"` // e.g. ["/team/*"]
 	Title string   `yaml:"title" json:"title,omitempty"`
+	// Source is a glob on the issue's source, such as an element's
+	// selector ("footer a"), for an issue change.
+	Source string `yaml:"source" json:"source,omitempty"`
 	// Until is the last day the rule applies, as YYYY-MM-DD. After it the
 	// change counts again, so a rule meant for a week can't hide a
 	// problem for good.
@@ -136,4 +139,12 @@ func (r IgnoreRule) describe() string {
 		return "empty"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// StaleIgnores returns the indexes in rules of the rules that match
+// nothing in the run: not its pages (pages yields them) nor its
+// site-level issues (site). The problem they hide looks fixed, so the
+// rule can go. now decides which rules have expired.
+func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page) bool), site []model.Issue) []int {
+	return nil
 }

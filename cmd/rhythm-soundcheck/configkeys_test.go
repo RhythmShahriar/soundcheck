@@ -185,10 +185,10 @@ func TestFlagValueErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"--modules", "helth"}, `--modules (modules): "helth" isn't one of health, visual, interact, cache, speed, a11y, seo, echo, exec (did you mean "health"?)`},
+		{[]string{"--modules", "helth"}, `--modules (modules): "helth" isn't one of health, visual, interact, cache, speed, a11y, keyboard, seo, echo, exec (did you mean "health"?)`},
 		{[]string{"--level", "clik"}, `--level (interactions.levels): "clik" isn't one of inspect, click, submit, flows (did you mean "click"?)`},
 		{[]string{"--viewport", "moble"}, `--viewport (viewports): "moble" isn't one of desktop, mobile (did you mean "mobile"?)`},
-		{[]string{"--skip", "sped"}, `--skip: "sped" isn't one of health, visual, interact, cache, speed, a11y, seo, echo, exec (did you mean "speed"?)`},
+		{[]string{"--skip", "sped"}, `--skip: "sped" isn't one of health, visual, interact, cache, speed, a11y, keyboard, seo, echo, exec (did you mean "speed"?)`},
 		{[]string{"--tabs", "0"}, `--tabs (tabs): must be between 1 and 16`},
 		{[]string{"--limit", "0"}, `--limit (pages.limit): must be at least 1`},
 	} {

@@ -290,7 +290,7 @@ func TestRenderPlain(t *testing.T) {
 }
 
 func TestRenderErrors(t *testing.T) {
-	if err := Render(io.Discard, sampleEntries(), "", "cls", false); err == nil || !strings.Contains(err.Error(), "want lcp, tbt or ttfb") {
+	if err := Render(io.Discard, sampleEntries(), "", "cls", false); err == nil || !strings.Contains(err.Error(), "want lcp, tbt, ttfb, a11y or keyboard") {
 		t.Errorf("unknown metric: %v", err)
 	}
 	if err := Render(io.Discard, sampleEntries(), "/nosuch/", "lcp", false); err == nil || !strings.Contains(err.Error(), "/nosuch/") {
@@ -344,6 +344,20 @@ func TestSVG(t *testing.T) {
 		}
 		if len(in) == 5 && (elems["polyline"] != 2 || elems["circle"] != 1) {
 			t.Errorf("SVG with a gap: %v elements, want 2 polylines and a dot", elems)
+		}
+	}
+}
+
+// The a11y and keyboard metrics are accepted; entries without them
+// show an empty column.
+func TestRenderEAAMetrics(t *testing.T) {
+	for _, metric := range []string{"a11y", "keyboard"} {
+		var b bytes.Buffer
+		if err := Render(&b, sampleEntries(), "", metric, true); err != nil {
+			t.Fatalf("%s: %v", metric, err)
+		}
+		if !strings.Contains(b.String(), strings.ToUpper(metric)) || !strings.Contains(b.String(), " -\n") {
+			t.Errorf("%s:\n%s", metric, b.String())
 		}
 	}
 }

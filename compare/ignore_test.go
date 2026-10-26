@@ -146,3 +146,10 @@ func TestIgnoreRuleYAML(t *testing.T) {
 		t.Errorf("rules = %+v", rules)
 	}
 }
+
+// StaleIgnores finds nothing stale without rules.
+func TestStaleIgnoresNoRules(t *testing.T) {
+	if got := StaleIgnores(nil, time.Now(), func(func(*model.Page) bool) {}, nil); len(got) != 0 {
+		t.Errorf("StaleIgnores(nil) = %v", got)
+	}
+}

@@ -31,6 +31,11 @@ import (
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
+// Metrics are the metrics Render and Value accept, as --metric names
+// them: the timings, then the open accessibility (a11y) and keyboard
+// problems of --eaa runs.
+var Metrics = []string{"lcp", "tbt", "ttfb", "a11y", "keyboard"}
+
 // File is the history's name inside the store folder.
 const File = "history.jsonl"
 

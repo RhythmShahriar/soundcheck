@@ -14,9 +14,6 @@ import (
 	"unicode/utf8"
 )
 
-// Metrics Render and Value accept.
-var Metrics = []string{"lcp", "tbt", "ttfb"}
-
 // Value is an entry's metric in milliseconds: the site median, or one
 // page's value when page is set. It's NaN when the entry has no value:
 // the page wasn't among the ones recorded, or the metric wasn't
@@ -68,7 +65,7 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 		metric = "lcp"
 	}
 	if !slices.Contains(Metrics, metric) {
-		return fmt.Errorf("metric %q: want lcp, tbt or ttfb", metric)
+		return fmt.Errorf("metric %q: want %s or %s", metric, strings.Join(Metrics[:len(Metrics)-1], ", "), Metrics[len(Metrics)-1])
 	}
 	if len(entries) == 0 {
 		fmt.Fprintln(w, "No history yet: it grows with every snapshot, run and comparison.")

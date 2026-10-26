@@ -176,10 +176,10 @@ func SaveRun(dir string, r *model.Run) error {
 	if err := writePages(filepath.Join(dir, name), r.Pages); err != nil {
 		return err
 	}
-	// The summary and groups are for command output; run.json keeps
-	// what was recorded.
+	// The summary, groups and EAA summary are for command output;
+	// run.json keeps what was recorded.
 	stored := *r
-	stored.Summary, stored.Groups = nil, nil
+	stored.Summary, stored.Groups, stored.EAA = nil, nil, nil
 	stored.Pages = []model.Page{}
 	if stored.Schema == model.Schema {
 		// A run of another schema keeps it and reads back as such.

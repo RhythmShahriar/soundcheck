@@ -22,6 +22,16 @@
     "cache": {"type": "object", "additionalProperties": {"type": "string"}},
     "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}, "description": "Messages each flow made the site send."},
     "interrupted": {"type": "boolean", "description": "Stopped before it finished; left out when false."},
+    "key_flows": {
+      "type": "object",
+      "description": "Key flows (run by keyboard only) that ran and that were skipped, when the keyboard module ran.",
+      "required": ["run"],
+      "properties": {
+        "run": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedFlow"}}
+      }
+    },
+    "eaa": {"$ref": "#/$defs/eaa"},
     "pages_file": {"type": "string", "description": "In run.json only: the file next to it that holds the pages, one per line (pages.jsonl or pages.1.jsonl)."},
     "page_count": {"type": "integer", "minimum": 0, "description": "In run.json only: how many lines pages_file has."},
     "summary": {"$ref": "#/$defs/summary"},
@@ -43,6 +53,66 @@
   },
   "$defs": {
     "level": {"enum": ["error", "warning", "notice"]},
+    "eaa": {
+      "type": "object",
+      "description": "The accessibility summary of an --eaa run, in command output only. Counts are of the WCAG criteria of the version run; no_failures_found means these tests found nothing, not that the criterion is met.",
+      "required": ["wcag", "en301549", "axe", "criteria", "keyboard", "open", "interrupted", "evidence_note"],
+      "properties": {
+        "wcag": {"type": "string", "description": "2.1 or 2.2."},
+        "en301549": {"type": "string", "description": "The matching EN 301 549 version, such as V3.2.1."},
+        "axe": {"type": "string", "description": "axe-core's version."},
+        "criteria": {
+          "type": "object",
+          "required": ["failed", "no_failures_found", "not_tested"],
+          "properties": {
+            "failed": {"type": ["array", "null"], "items": {"$ref": "#/$defs/criterionCount"}},
+            "no_failures_found": {"type": ["array", "null"], "items": {"type": "string"}},
+            "not_tested": {"type": ["array", "null"], "items": {"type": "string"}}
+          }
+        },
+        "keyboard": {
+          "type": "object",
+          "required": ["pages_walked", "widgets_tested", "flows_run"],
+          "properties": {
+            "pages_walked": {"type": "integer", "minimum": 0},
+            "widgets_tested": {"type": "integer", "minimum": 0},
+            "flows_run": {"type": "integer", "minimum": 0},
+            "flows_skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedFlow"}}
+          }
+        },
+        "not_audited": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "module", "status"],
+            "properties": {
+              "path": {"type": "string"},
+              "module": {"type": "string"},
+              "status": {"$ref": "#/$defs/auditStatus"},
+              "reason": {"type": "string"}
+            }
+          }
+        },
+        "open": {"type": "integer", "minimum": 0},
+        "interrupted": {"type": "boolean"},
+        "evidence_note": {"type": "string"}
+      }
+    },
+    "criterionCount": {
+      "type": "object",
+      "required": ["id", "issues", "pages"],
+      "properties": {
+        "id": {"type": "string"},
+        "issues": {"type": "integer", "minimum": 0},
+        "pages": {"type": "integer", "minimum": 0}
+      }
+    },
+    "skippedFlow": {
+      "type": "object",
+      "required": ["file", "reason"],
+      "properties": {"file": {"type": "string"}, "reason": {"type": "string"}}
+    },
+    "auditStatus": {"enum": ["ok", "capped", "timeout", "error", "skipped"]},
     "summary": {
       "type": "object",
       "required": ["errors", "warnings", "notices", "verdict"],
@@ -66,7 +136,30 @@
         "echo": {"type": "boolean"},
         "echo_mode": {"type": "string"},
         "echo_url": {"type": "string"},
-        "engine": {"enum": ["firefox", "webkit"], "description": "The browser engine the pages were captured in. Absent for Chrome."}
+        "engine": {"enum": ["firefox", "webkit"], "description": "The browser engine the pages were captured in. Absent for Chrome."},
+        "eaa": {"type": "boolean", "description": "The run was made with --eaa."},
+        "wcag": {"enum": ["2.0", "2.1", "2.2"], "description": "The WCAG version of the accessibility checks. Absent before 1.3, which used 2.0."},
+        "a11y": {
+          "type": "object",
+          "required": ["axe", "axe_sha256", "tags", "rules", "max_elements"],
+          "properties": {
+            "axe": {"type": "string"},
+            "axe_sha256": {"type": "string"},
+            "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+            "rules": {"type": ["array", "null"], "items": {"type": "string"}},
+            "max_elements": {"type": "integer", "minimum": 0}
+          }
+        },
+        "keyboard": {
+          "type": "object",
+          "required": ["max_tabs", "widgets", "trap_after", "skip_link"],
+          "properties": {
+            "max_tabs": {"type": "integer", "minimum": 0},
+            "widgets": {"type": "integer", "minimum": 0},
+            "trap_after": {"type": "integer", "minimum": 0},
+            "skip_link": {"type": "string"}
+          }
+        }
       }
     },
     "issue": {
@@ -80,7 +173,11 @@
         "source": {"type": "string"},
         "fix": {"type": "string"},
         "key": {"type": "string", "description": "check|title|source: the issue's identity across runs."},
-        "pages": {"type": "array", "items": {"type": "string"}}
+        "pages": {"type": "array", "items": {"type": "string"}},
+        "wcag": {"type": "array", "items": {"type": "string"}, "description": "WCAG success criteria the issue fails, such as 2.1.2."},
+        "en301549": {"type": "array", "items": {"type": "string"}, "description": "EN 301 549 clauses: 9. plus each WCAG criterion."},
+        "impact": {"enum": ["critical", "serious", "moderate", "minor"]},
+        "focus_path": {"type": "array", "items": {"type": "string"}, "description": "Selectors of the last keyboard focus stops before the problem."}
       }
     },
     "request": {
@@ -189,7 +286,38 @@
         "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
         "error": {"type": "string", "description": "Why the page couldn't be visited."},
         "duration_ms": {"type": "number"},
-        "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}}
+        "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}},
+        "audits": {
+          "type": "object",
+          "description": "By module (a11y, keyboard): whether its audit of the page finished.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {"$ref": "#/$defs/auditStatus"},
+              "reason": {"type": "string"},
+              "frames": {"type": "array", "items": {"type": "string"}},
+              "capped_rules": {"type": "object", "additionalProperties": {"type": "integer"}}
+            }
+          }
+        },
+        "keyboard": {
+          "type": "object",
+          "description": "The keyboard walk of the page; its trace is in evidence.",
+          "required": ["stops", "wrapped"],
+          "properties": {
+            "stops": {"type": "integer", "minimum": 0},
+            "wrapped": {"type": "boolean"},
+            "capped": {"type": "boolean"},
+            "skip_link": {"type": "string"},
+            "widgets": {"type": "integer", "minimum": 0},
+            "frames": {"type": "array", "items": {"type": "string"}},
+            "evidence": {"type": "string", "description": "The trace file, relative to the run's folder."},
+            "crops": {"type": "object", "additionalProperties": {"type": "string"}},
+            "widget_kinds": {"type": "array", "items": {"type": "string"}},
+            "ms": {"type": "integer", "minimum": 0}
+          }
+        }
       }
     }
   }

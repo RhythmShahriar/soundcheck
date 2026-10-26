@@ -108,6 +108,11 @@ type Context struct {
 	// Hooks without a context of their own, such as CheckPage, read it
 	// through RunContext so the work they start stops with the run.
 	Ctx context.Context
+	// TargetPublic says the site's address resolves to a public network
+	// address, not a loopback or private one. A key flow with
+	// keyboard: send submits for real only off public addresses or with
+	// --staging. The runner sets it.
+	TargetPublic bool
 
 	mu sync.Mutex
 }

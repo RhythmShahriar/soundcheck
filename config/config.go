@@ -29,11 +29,11 @@ import (
 const Dir = ".soundcheck"
 
 // Modules Soundcheck can run, in order. DefaultModules run unless a flag
-// or the file says otherwise. a11y and seo are off until asked for
-// (+a11y, +seo). echo runs only when Echo is configured (Echo.URL) and
+// or the file says otherwise. a11y, keyboard and seo are off until asked
+// for (+a11y, +keyboard, +seo; --eaa adds a11y and keyboard). echo runs only when Echo is configured (Echo.URL) and
 // exec only when the file lists commands under exec: the CLI adds them.
 // A test in the CLI keeps this list in step with the registered modules.
-var Modules = []string{"health", "visual", "interact", "cache", "speed", "a11y", "seo", "echo", "exec"}
+var Modules = []string{"health", "visual", "interact", "cache", "speed", "a11y", "keyboard", "seo", "echo", "exec"}
 
 // DefaultModules are the modules a run uses when nothing chooses.
 var DefaultModules = []string{"health", "visual", "interact", "cache", "speed"}
@@ -80,6 +80,9 @@ type Config struct {
 	// Exec lists programs the exec module runs on every page. They run
 	// only with --allow-exec: a committed file can't run programs alone.
 	Exec []ExecCommand `yaml:"exec"`
+	// EAA is --eaa on every snapshot, run and compare: the accessibility
+	// and keyboard checks for an accessibility statement draft.
+	EAA bool `yaml:"eaa"`
 
 	// Trust is set by command-line flags only, never by the file.
 	Trust Trust `yaml:"-"`
@@ -128,15 +131,20 @@ type Trust struct {
 	AllowEnv      []string // --allow-env: variables flows may read besides SOUNDCHECK_*
 	AllowHosts    []string // --allow-host: hosts flows may open besides the target, as HostKey gives them
 	InsecureLogin bool     // --insecure-login: type the password over plain http to a public host
+	// Staging (--staging) says a public target is a staging site, so a
+	// key flow with keyboard: send may really submit there.
+	Staging bool
 }
 
 // IgnoreRule names changes that shouldn't count. It has the fields of
-// compare.IgnoreRule, which the CLI converts it to: Check and Title are
-// globs, Pages page globs, Until the last day it applies (YYYY-MM-DD).
+// compare.IgnoreRule, which the CLI converts it to: Check, Title and
+// Source are globs, Pages page globs, Until the last day it applies
+// (YYYY-MM-DD).
 type IgnoreRule struct {
 	Check  string   `yaml:"check" json:"check,omitempty"`
 	Pages  []string `yaml:"pages" json:"pages,omitempty"`
 	Title  string   `yaml:"title" json:"title,omitempty"`
+	Source string   `yaml:"source" json:"source,omitempty"`
 	Until  string   `yaml:"until" json:"until,omitempty"`
 	Reason string   `yaml:"reason" json:"reason,omitempty"`
 }

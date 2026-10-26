@@ -84,6 +84,11 @@ const (
 	// their hooks run after every other module's, which must see the
 	// page as it loaded.
 	PhaseMutate = 100
+	// PhaseKeyboard is for the keyboard walk, which presses keys on the
+	// page. It comes after the clicks and submits, so it walks the page
+	// the visitor would be left with. Being last also means no other
+	// module measures a page it moved focus around in.
+	PhaseKeyboard = 150
 )
 
 // Phaser is a module that runs in a phase other than PhaseInspect. The

@@ -521,6 +521,16 @@ func TestAppendIgnore(t *testing.T) {
 	}
 }
 
+// An ignore rule's source glob reaches compare.
+func TestIgnoreRulesCarrySource(t *testing.T) {
+	cfg := config.Default()
+	cfg.Ignore = []config.IgnoreRule{{Check: "a11y/color-contrast", Pages: []string{"/legal/*"}, Source: "footer a", Until: "2026-12-31", Reason: "new theme"}}
+	got := ignoreRules(cfg)
+	if len(got) != 1 || got[0].Source != "footer a" || got[0].Until != "2026-12-31" || got[0].Reason != "new theme" {
+		t.Errorf("ignoreRules = %+v", got)
+	}
+}
+
 // The view's accept hint names this command.
 func TestAcceptHintName(t *testing.T) {
 	t.Chdir(t.TempDir())

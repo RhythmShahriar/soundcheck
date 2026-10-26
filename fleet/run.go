@@ -101,12 +101,18 @@ func worse(a, b Result) int {
 }
 
 // Run checks every site in the sites file with the Soundcheck binary bin,
-// mode "snapshot" or "compare", at most parallel at a time. It prints a
-// line per finished site to out, writes fleet.html and fleet.json into
-// the fleet folder and returns the worst exit code of all the sites.
-func Run(ctx context.Context, bin, file, mode string, parallel int, out io.Writer) (int, error) {
+// mode "snapshot" or "compare", at most parallel at a time. extra are
+// flags for every site, such as --eaa, added after the site's own args;
+// like a site's args they can't set a flag the fleet sets itself. It
+// prints a line per finished site to out, writes fleet.html and
+// fleet.json into the fleet folder and returns the worst exit code of
+// all the sites.
+func Run(ctx context.Context, bin, file, mode string, parallel int, extra []string, out io.Writer) (int, error) {
 	if mode != Snapshot && mode != Compare {
 		return 0, fmt.Errorf("fleet: mode %q: want snapshot or compare", mode)
+	}
+	if a, ok := reservedArg(extra); ok {
+		return 0, fmt.Errorf("fleet: can't set %s for every site; the fleet sets it itself", a)
 	}
 	sites, err := Load(file)
 	if err != nil {
@@ -133,7 +139,7 @@ func Run(ctx context.Context, bin, file, mode string, parallel int, out io.Write
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			r := runSite(ctx, bin, base, root, mode, s)
+			r := runSite(ctx, bin, base, root, mode, s, extra)
 			mu.Lock()
 			defer mu.Unlock()
 			results[i] = r
@@ -203,7 +209,7 @@ func countName(k string, n int) string {
 }
 
 // runSite runs Soundcheck for one site in its own folder.
-func runSite(ctx context.Context, bin, base, root, mode string, s Site) Result {
+func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []string) Result {
 	dir := filepath.Join(root, s.Name)
 	r := Result{Site: s.Name, URL: s.URL, Dir: s.Name, Counts: map[string]int{}}
 	start := time.Now()
@@ -222,7 +228,7 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site) Result {
 	if s.Config != "" {
 		args = append(args, "--config", filepath.Join(base, s.Config))
 	}
-	args = append(append(args, s.Args...), s.URL)
+	args = append(append(append(args, s.Args...), extra...), s.URL)
 	logf, err := os.Create(filepath.Join(dir, "soundcheck.log")) //nolint:gosec // inside our own fleet folder
 	if err != nil {
 		return fail(exitError, err.Error())

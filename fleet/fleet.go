@@ -149,11 +149,11 @@ func validate(sites []Site, dir string) error {
 			return fmt.Errorf("%s: env_prefix %s is already used by site %q; give each site its own", where, s.EnvPrefix, other)
 		}
 		prefixes[s.EnvPrefix] = s.Name
+		if a, ok := reservedArg(s.Args); ok {
+			return fmt.Errorf("%s: args can't set %s; the fleet sets it for every site", where, a)
+		}
 		for j, a := range s.Args {
 			name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
-			if strings.HasPrefix(a, "-") && slices.Contains(reserved, name) {
-				return fmt.Errorf("%s: args can't set %s; the fleet sets it for every site", where, a)
-			}
 			// The file can't let a site run programs: only the person
 			// running the fleet may, through the site's variables.
 			if strings.HasPrefix(a, "-") && name == "allow-exec" {
@@ -176,6 +176,18 @@ func validate(sites []Site, dir string) error {
 		}
 	}
 	return nil
+}
+
+// reservedArg returns the first of args that sets a flag the fleet sets
+// itself (reserved) and whether there is one.
+func reservedArg(args []string) (string, bool) {
+	for _, a := range args {
+		name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if strings.HasPrefix(a, "-") && slices.Contains(reserved, name) {
+			return a, true
+		}
+	}
+	return "", false
 }
 
 // engineName reports whether v names a browser engine, not a program:

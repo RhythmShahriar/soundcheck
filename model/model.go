@@ -52,6 +52,20 @@ type Issue struct {
 	Fix    string   `json:"fix,omitempty"`
 	Key    string   `json:"key"`             // stable identity used to compare runs; see Identify
 	Pages  []string `json:"pages,omitempty"` // set on site-level issues
+	// WCAG lists the WCAG success criteria the issue fails, such as
+	// "2.1.2", for the run's WCAG version. Checks that map to none leave
+	// it empty.
+	WCAG []string `json:"wcag,omitempty"`
+	// EN301549 lists the matching EN 301 549 clauses: "9." plus each
+	// WCAG criterion.
+	EN301549 []string `json:"en301549,omitempty"`
+	// Impact is how much the problem stops a disabled visitor: critical,
+	// serious, moderate or minor, as axe-core rates its rules.
+	Impact string `json:"impact,omitempty"`
+	// FocusPath lists the selectors of the last keyboard focus stops
+	// before the problem, for keyboard issues. Selectors only: never
+	// names or text.
+	FocusPath []string `json:"focus_path,omitempty"`
 	// FromSite says a site-wide check (check.SiteChecker) put the issue
 	// on its page, such as the page cache tests, which fetch the page
 	// again outside the browser. The runner sets it. A re-visit of the
@@ -75,9 +89,11 @@ func (i *Issue) Identify() {
 //
 // An accessibility issue (a11y/<rule>) is keyed by its check and source
 // alone: its title is axe-core's help text for the rule, which a new
-// axe release can reword without the violation being new.
+// axe release can reword without the violation being new. A keyboard
+// issue (keyboard/<check>) is keyed the same way, so a clearer title in
+// a later release doesn't turn a known problem into a new one.
 func IssueKey(check, title, source string) string {
-	if strings.HasPrefix(check, "a11y/") {
+	if strings.HasPrefix(check, "a11y/") || strings.HasPrefix(check, "keyboard/") {
 		return check + "|" + source
 	}
 	return check + "|" + KeyTitle(title) + "|" + source
@@ -191,6 +207,14 @@ type Page struct {
 	// made the site send, when Echo ran (the echo module).
 	Echo []EchoAction `json:"echo,omitempty"`
 
+	// Audits says, by module (a11y, keyboard), whether the module's audit
+	// of the page finished. A comparison doesn't call an issue fixed or
+	// new on a page whose audit didn't finish on both sides.
+	Audits map[string]Audit `json:"audits,omitempty"`
+	// Keyboard summarizes the keyboard walk of the page, when the
+	// keyboard module ran.
+	Keyboard *KeyboardSummary `json:"keyboard,omitempty"`
+
 	// Text is the rendered page's visible text, for checks during this
 	// run. It isn't stored: snapshots keep TextHash and TextLength.
 	Text string `json:"-"`
@@ -242,6 +266,13 @@ type Run struct {
 	// Interrupted says the run was stopped before it finished, so it
 	// holds partial results; see Page.Canceled.
 	Interrupted bool `json:"interrupted,omitempty"`
+	// KeyFlows records the key flows (flows run by keyboard only) the run
+	// ran and the ones it skipped, when the keyboard module ran.
+	KeyFlows *KeyFlows `json:"key_flows,omitempty"`
+
+	// EAA is the accessibility summary of an --eaa run, filled for output
+	// like Summary and not stored in run.json.
+	EAA *EAASummary `json:"eaa,omitempty"`
 
 	// Summary and Groups are filled for JSON output (report.JSON), not
 	// stored in run.json: the counts and grouped list the terminal shows,
@@ -266,6 +297,139 @@ type Options struct {
 	// Engine is the browser engine pages were captured in: firefox or
 	// webkit. Empty is Chrome, which every run before engines had.
 	Engine string `json:"engine,omitempty"`
+	// EAA says the run was made with --eaa: the accessibility and
+	// keyboard modules ran for an accessibility statement draft.
+	EAA bool `json:"eaa,omitempty"`
+	// WCAG is the WCAG version the accessibility checks used: 2.0, 2.1
+	// or 2.2. Empty is a run made before 1.3, which used the 2.0 rules.
+	WCAG string `json:"wcag,omitempty"`
+	// A11y records the axe-core rules the run applied, so a comparison
+	// can tell a rule the snapshot never ran from a new problem.
+	A11y *A11yRules `json:"a11y,omitempty"`
+	// Keyboard records the keyboard walk's limits.
+	Keyboard *KeyboardOptions `json:"keyboard,omitempty"`
+}
+
+// A11yRules is the axe-core build and rule set an accessibility audit
+// used.
+type A11yRules struct {
+	Axe         string   `json:"axe"`          // axe-core's version
+	AxeSHA256   string   `json:"axe_sha256"`   // of the vendored axe.min.js
+	Tags        []string `json:"tags"`         // the axe tags run, such as wcag21aa
+	Rules       []string `json:"rules"`        // every rule id run, sorted
+	MaxElements int      `json:"max_elements"` // elements kept per rule per page
+}
+
+// KeyboardOptions are the keyboard walk's limits, from the keyboard
+// block of the config file.
+type KeyboardOptions struct {
+	MaxTabs   int    `json:"max_tabs"`   // Tab presses per page before the walk stops
+	Widgets   int    `json:"widgets"`    // menus, dialogs and disclosures tested per page
+	TrapAfter int    `json:"trap_after"` // presses on one element or region that count as a trap
+	SkipLink  string `json:"skip_link"`  // expected, required or off
+}
+
+// Statuses of a module's audit of a page (Audit.Status).
+const (
+	AuditOK      = "ok"      // finished
+	AuditCapped  = "capped"  // finished at a limit such as max_tabs
+	AuditTimeout = "timeout" // ran out of time
+	AuditError   = "error"   // failed
+	AuditSkipped = "skipped" // not run on this page
+)
+
+// Audit is whether a module's audit of a page finished.
+type Audit struct {
+	Status string   `json:"status"`           // one of the Audit* statuses
+	Reason string   `json:"reason,omitempty"` // why it didn't finish, or what capped it
+	Frames []string `json:"frames,omitempty"` // frames audited besides the page, by host
+	// CappedRules counts, by rule, the elements found beyond the ones
+	// kept, for rules that hit the per-rule limit on this page.
+	CappedRules map[string]int `json:"capped_rules,omitempty"`
+}
+
+// Finished reports whether the audit ran to the end: ok, or capped at
+// a limit it records.
+func (a Audit) Finished() bool { return a.Status == AuditOK || a.Status == AuditCapped }
+
+// KeyboardSummary is what the keyboard walk of a page found, besides
+// its issues. The full trace is in keyboard/<pageid>.json.
+type KeyboardSummary struct {
+	Stops    int      `json:"stops"`               // Tab stops the walk passed
+	Wrapped  bool     `json:"wrapped"`             // the walk came back to its first stop
+	Capped   bool     `json:"capped,omitempty"`    // the walk stopped at max_tabs
+	SkipLink string   `json:"skip_link,omitempty"` // the skip link's selector, when there is one
+	Widgets  int      `json:"widgets,omitempty"`   // menus, dialogs and disclosures tested
+	Frames   []string `json:"frames,omitempty"`    // cross-origin frames walked, by host
+	Evidence string   `json:"evidence,omitempty"`  // the trace file, relative to the run's folder
+	// Crops maps an issue key to a picture of the element, relative to
+	// the run's folder.
+	Crops map[string]string `json:"crops,omitempty"`
+	// WidgetKinds lists the kinds of widget tested (menu, dialog,
+	// details, disclosure), sorted.
+	WidgetKinds []string `json:"widget_kinds,omitempty"`
+	MS          int      `json:"ms,omitempty"` // how long the walk took, in milliseconds
+}
+
+// KeyFlows is what became of a run's key flows.
+type KeyFlows struct {
+	Run     int           `json:"run"` // key flows that ran
+	Skipped []SkippedFlow `json:"skipped,omitempty"`
+}
+
+// SkippedFlow is a key flow that didn't run and why.
+type SkippedFlow struct {
+	File   string `json:"file"`
+	Reason string `json:"reason"`
+}
+
+// EvidenceNote is said with every accessibility result, in every
+// output: the tests are evidence, not a verdict on the site.
+const EvidenceNote = "Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act."
+
+// EAASummary sums up an --eaa run against the WCAG criteria. It is
+// filled for output (wcag.Summarize) and never stored.
+type EAASummary struct {
+	WCAG         string       `json:"wcag"`     // 2.1 or 2.2
+	EN301549     string       `json:"en301549"` // the matching EN 301 549 version, such as V3.2.1
+	Axe          string       `json:"axe"`      // axe-core's version
+	Criteria     EAACriteria  `json:"criteria"`
+	Keyboard     EAAKeyboard  `json:"keyboard"`
+	NotAudited   []NotAudited `json:"not_audited,omitempty"`
+	Open         int          `json:"open"` // accessibility and keyboard problems found
+	Interrupted  bool         `json:"interrupted"`
+	EvidenceNote string       `json:"evidence_note"` // always EvidenceNote
+}
+
+// EAACriteria sorts the criteria of the WCAG version by what the tests
+// found.
+type EAACriteria struct {
+	Failed          []CriterionCount `json:"failed"`
+	NoFailuresFound []string         `json:"no_failures_found"` // tested, nothing found: not a pass
+	NotTested       []string         `json:"not_tested"`        // the tests can't judge it; a person must
+}
+
+// CriterionCount is a criterion with failures and how many.
+type CriterionCount struct {
+	ID     string `json:"id"`
+	Issues int    `json:"issues"`
+	Pages  int    `json:"pages"`
+}
+
+// EAAKeyboard counts what the keyboard tests covered.
+type EAAKeyboard struct {
+	PagesWalked   int           `json:"pages_walked"`
+	WidgetsTested int           `json:"widgets_tested"`
+	FlowsRun      int           `json:"flows_run"`
+	FlowsSkipped  []SkippedFlow `json:"flows_skipped,omitempty"`
+}
+
+// NotAudited is a page a module couldn't audit and why.
+type NotAudited struct {
+	Path   string `json:"path"`
+	Module string `json:"module"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // EngineName is the run's browser engine, with Chrome for empty.
@@ -422,6 +586,12 @@ type Change struct {
 	// Reason says why an ignored change was ignored: the reason its
 	// ignore rule gives. Changes that count leave it empty.
 	Reason string `json:"reason,omitempty"`
+	// WCAG, EN301549, Impact and FocusPath are the issue's (see Issue),
+	// for a change grouped from issues.
+	WCAG      []string `json:"wcag,omitempty"`
+	EN301549  []string `json:"en301549,omitempty"`
+	Impact    string   `json:"impact,omitempty"`
+	FocusPath []string `json:"focus_path,omitempty"`
 	// FromPageIssue says the change is a page issue that appeared or went
 	// away (compare.Issues sets it), so checking the page again tells
 	// whether it's real. It isn't stored: Confirm runs on a fresh
@@ -454,6 +624,9 @@ type Comparison struct {
 	// pages it didn't finish weren't compared, so the comparison is
 	// partial and must not pass or fail a build.
 	Interrupted bool `json:"interrupted,omitempty"`
+	// EAA is the accessibility summary of the current run, when it was
+	// made with --eaa. It is filled for output and not stored.
+	EAA *EAASummary `json:"eaa,omitempty"`
 }
 
 // RunRef points at a stored run.
