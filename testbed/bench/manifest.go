@@ -401,7 +401,8 @@ func (m *Manifest) URL(s Scenario) string {
 }
 
 // Pick returns the scenarios whose IDs are in only (all when empty).
-// The name eaa picks every EAA mode scenario (s49 to s89).
+// The name eaa picks every EAA mode scenario (s49 to s89). Each scenario
+// comes back once, however often only names it.
 func (m *Manifest) Pick(only []string) ([]Scenario, error) {
 	if len(only) == 0 {
 		return m.Scenarios, nil
@@ -420,7 +421,9 @@ func (m *Manifest) Pick(only []string) ([]Scenario, error) {
 		if i < 0 {
 			return nil, fmt.Errorf("unknown scenario %q", id)
 		}
-		out = append(out, m.Scenarios[i])
+		if !slices.ContainsFunc(out, func(o Scenario) bool { return o.ID == id }) {
+			out = append(out, m.Scenarios[i])
+		}
 	}
 	return out, nil
 }
