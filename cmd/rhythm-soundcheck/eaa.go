@@ -138,7 +138,8 @@ func (p *plan) eaaSettle() error {
 
 // eaaEnvironment refuses what EAA mode can't run with besides its
 // modules: WCAG 2.0, which no EN 301 549 version maps to, another engine
-// than Chrome and SOUNDCHECK_NO_SANDBOX=1 without --no-sandbox. A key
+// than Chrome and SOUNDCHECK_NO_SANDBOX=1 without --no-sandbox
+// (or with --no-sandbox=false, which the variable would override). A key
 // press on a hostile page is more than a page load, so turning the
 // sandbox off takes the command line.
 func (p *plan) eaaEnvironment() error {
@@ -151,7 +152,7 @@ func (p *plan) eaaEnvironment() error {
 	if p.engine != "" && p.engine != capture.Chrome {
 		return cli.Usagef("--eaa needs Chrome: the keyboard walkthrough and axe use the Chrome DevTools protocol. Drop --browser %s, or use --modules +a11y without --eaa", p.engine)
 	}
-	if os.Getenv(browser.NoSandboxEnv) == "1" && !p.set["no-sandbox"] {
+	if os.Getenv(browser.NoSandboxEnv) == "1" && !p.o.noSandbox {
 		return cli.Usagef("--eaa won't turn off Chrome's sandbox from %s alone; add --no-sandbox to the command if you mean it", browser.NoSandboxEnv)
 	}
 	return nil

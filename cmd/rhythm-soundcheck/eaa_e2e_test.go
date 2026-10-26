@@ -178,6 +178,14 @@ func TestEAAEndToEnd(t *testing.T) {
 	default:
 		t.Errorf("want BROKE keyboard/trap on / and exit 1, got exit %d: %s", code, changeList(c))
 	}
+	// The dialog that drops focus is a warning, so NEW, not BROKE.
+	switch {
+	case has(model.New, "keyboard/focus-lost", "/about/"):
+	case pendingKeyboard:
+		t.Logf("pending: keyboard (no focus-lost on /about/: %s)", changeList(c))
+	default:
+		t.Errorf("want NEW keyboard/focus-lost on /about/: %s", changeList(c))
+	}
 }
 
 // changeList shows the changes of c one per line, for a failure message.

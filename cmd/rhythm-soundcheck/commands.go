@@ -745,7 +745,6 @@ func (s *session) loginHost(sites ...string) error {
 	return nil
 }
 
-// only refuses flags that belong to another command.
 // hostHeader refuses -H Host naming another host than each site: the
 // browser can't send it, so that's a usage error (exit 2) found before
 // anything starts, not a site that couldn't be checked.
@@ -762,6 +761,7 @@ func (s *session) hostHeader(sites ...string) error {
 	return nil
 }
 
+// only refuses flags that belong to another command.
 func (s *session) only(cmd string, flags ...string) error {
 	for _, f := range flags {
 		if s.set[f] {

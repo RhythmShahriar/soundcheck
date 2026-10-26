@@ -208,7 +208,11 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 		if i < 0 {
 			return failed(stderr, cli.Usagef("no change %q in this comparison", id))
 		}
-		rules = append(rules, ignoreRule(sc.c.Changes[i], reason, until))
+		r, err := ignoreRule(sc.c.Changes[i], reason, until)
+		if err != nil {
+			return failed(stderr, err)
+		}
+		rules = append(rules, r)
 	}
 	for i, r := range rules {
 		if err := appendIgnore(path, r); err != nil {
@@ -227,13 +231,21 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 // ignoreRule is the rule that ignores ch from now on. Its source is a
 // glob (path.Match), so a selector's own brackets and stars are escaped
 // to match only themselves; a change without a source is matched by its
-// title instead, so the rule doesn't cover the whole check.
-func ignoreRule(ch model.Change, reason, until string) config.IgnoreRule {
+// title instead, so the rule doesn't cover the whole check. Its pages are
+// globs too (model.Glob), where only * is special and can't be escaped:
+// a page with a * in its path would ignore more pages than the change, so
+// it is refused and the rule is left to be written by hand.
+func ignoreRule(ch model.Change, reason, until string) (config.IgnoreRule, error) {
+	for _, p := range ch.Pages {
+		if strings.Contains(p, "*") {
+			return config.IgnoreRule{}, fmt.Errorf("can't ignore %s: page %q has a *, which an ignore rule reads as any text; add the rule to config.yaml by hand", ch.ID, p)
+		}
+	}
 	r := config.IgnoreRule{Check: ch.Check, Pages: slices.Clone(ch.Pages), Source: globEscape(ch.Source), Until: until, Reason: reason}
 	if r.Source == "" {
 		r.Title = ch.Title
 	}
-	return r
+	return r, nil
 }
 
 // globEscape makes s a path.Match pattern that matches s alone.

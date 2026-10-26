@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -43,13 +44,24 @@ func TestEAAUsageErrors(t *testing.T) {
 			"--eaa needs Chrome: the keyboard walkthrough and axe use the Chrome DevTools protocol. Drop --browser webkit, or use --modules +a11y without --eaa"},
 		{"", "1", []string{"--eaa"},
 			"--eaa won't turn off Chrome's sandbox from SOUNDCHECK_NO_SANDBOX alone; add --no-sandbox to the command if you mean it"},
+		// The flag set to false asks for the sandbox the variable would
+		// still turn off.
+		{"", "1", []string{"--eaa", "--no-sandbox=false"},
+			"--eaa won't turn off Chrome's sandbox from SOUNDCHECK_NO_SANDBOX alone; add --no-sandbox to the command if you mean it"},
 	} {
 		writeConfig(t, tc.config)
 		t.Setenv("SOUNDCHECK_NO_SANDBOX", tc.env)
-		for _, cmd := range []string{"run", "snapshot"} {
-			code, out, errOut := runCLI(t, append([]string{cmd, "127.0.0.1:20260"}, tc.args...)...)
+		// compare and --against are refused before they read a snapshot
+		// or start a browser, like run and snapshot.
+		for _, cmd := range [][]string{
+			{"run", "127.0.0.1:20260"},
+			{"snapshot", "127.0.0.1:20260"},
+			{"compare"},
+			{"127.0.0.1:20260", "--against", "127.0.0.1:20261"},
+		} {
+			code, out, errOut := runCLI(t, append(cmd, tc.args...)...)
 			if want := "rhythm-soundcheck: " + tc.want + "\n"; code != exitUsage || errOut != want || out != "" {
-				t.Errorf("%s %v (config %q): exit %d\n%s\nwant\n%s", cmd, tc.args, tc.config, code, errOut, want)
+				t.Errorf("%v %v (config %q): exit %d\n%s\nwant\n%s", cmd, tc.args, tc.config, code, errOut, want)
 			}
 		}
 	}
@@ -66,6 +78,32 @@ func TestEAAUsageErrors(t *testing.T) {
 		if _, err := parse(append([]string{"a.test"}, args...)); err != nil {
 			t.Errorf("%v: %v", args, err)
 		}
+	}
+}
+
+// report shows a stored run as it was made, so the flags that choose how
+// a site is checked are refused there; without them it shows the run.
+func TestReportRefusesEAAFlags(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	writeConfig(t, "")
+	storeRun(t, time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC), model.Options{EAA: true, WCAG: "2.1"})
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--eaa"}, "--eaa doesn't apply to report"},
+		{[]string{"--wcag", "2.1"}, "--wcag doesn't apply to report"},
+		{[]string{"--staging"}, "--staging doesn't apply to report"},
+	} {
+		code, out, errOut := runCLI(t, append([]string{"report"}, tc.args...)...)
+		if code != exitUsage || errOut != "rhythm-soundcheck: "+tc.want+"\n" || out != "" {
+			t.Errorf("report %v: exit %d %q %q", tc.args, code, out, errOut)
+		}
+	}
+	if code, _, errOut := runCLI(t, "report", "--plain"); code == exitUsage {
+		t.Errorf("plain report: exit %d %q", code, errOut)
 	}
 }
 

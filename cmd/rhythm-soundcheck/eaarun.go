@@ -176,6 +176,10 @@ func (s *session) eaaResult(res *report.Result) string {
 		return ""
 	}
 	interrupted := run.Interrupted || s.ctx.Err() != nil || (res.Comparison != nil && res.Comparison.Interrupted)
+	if err := eaaFolder(res.Dir); err != nil {
+		fmt.Fprintf(s.stderr, "%s %v\n", prefix(), err)
+		return ""
+	}
 	if err := s.writeEvidence(res.Dir, run, interrupted); err != nil {
 		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), filepath.Join(res.Dir, eaaDir, evidenceFile), err)
 	}
@@ -345,6 +349,18 @@ func writePrivate(path string, write func(io.Writer) error) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path) //nolint:gosec // as above
+}
+
+// eaaFolder refuses a run folder whose eaa/ is a symbolic link, for
+// example one planted in a restored CI cache: the evidence pack and the
+// draft would land wherever it points. MkdirAll follows such a link and
+// writePrivate only replaces a linked file, not a linked folder.
+func eaaFolder(dir string) error {
+	path := filepath.Join(dir, eaaDir)
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 { //nolint:gosec // a run folder of the store
+		return fmt.Errorf("%s is a symbolic link; not writing the EAA files through it", path)
+	}
+	return nil
 }
 
 // errNotAudited words the exit 3 of an --eaa run with pages its tests
