@@ -180,6 +180,20 @@ func TestIgnoreBySource(t *testing.T) {
 	if len(c.Ignored) != 1 || len(c.Warnings) != 0 {
 		t.Errorf("a source-only rule is a rule: ignored %+v, warnings %q", c.Ignored, c.Warnings)
 	}
+
+	// A selector copied from a report matches itself: brackets aren't a
+	// character class.
+	sel := `form > input[name="email"]`
+	for _, c := range []struct {
+		source string
+		want   int
+	}{{sel, 1}, {`form > input[name="email"] *`, 0}, {`form > input[name="*"]`, 1}, {`form > input[name=email]`, 0}} {
+		cmp := &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "a11y/label", Source: sel, Pages: []string{"/"}}}}
+		ApplyIgnore(cmp, []IgnoreRule{{Source: c.source}}, day)
+		if len(cmp.Ignored) != c.want {
+			t.Errorf("source %q ignored %d changes, want %d", c.source, len(cmp.Ignored), c.want)
+		}
+	}
 }
 
 func TestEmptyRuleNamesSource(t *testing.T) {
