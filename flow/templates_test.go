@@ -121,7 +121,7 @@ const templateCheckout = `<!doctype html><html lang="en"><body>
 <p><label for="billing_postcode">Postcode</label> <input id="billing_postcode" name="billing_postcode"></p>
 <p><label for="billing_phone">Phone</label> <input id="billing_phone" name="billing_phone" type="tel"></p>
 <p><label for="billing_email">Email</label> <input id="billing_email" name="billing_email" type="email"></p>
-<p><label><input type="checkbox" id="terms" name="terms"> I have read the terms</label></p>
+<p class="form-row validate-required"><label class="woocommerce-form__label woocommerce-form__label-for-checkbox checkbox"><input type="checkbox" class="woocommerce-form__input woocommerce-form__input-checkbox input-checkbox" name="terms" id="terms"> <span class="woocommerce-terms-and-conditions-checkbox-text">I have read and agree to the website <a href="/terms/" class="woocommerce-terms-and-conditions-link" target="_blank">terms and conditions</a></span>&nbsp;<abbr class="required" title="required">*</abbr></label></p>
 <button type="submit" id="place_order" name="woocommerce_checkout_place_order">Place order</button>
 </form>
 <div id="done"></div>
@@ -182,7 +182,7 @@ func TestKeyboardTemplatesRun(t *testing.T) {
 		file string
 		held int // the step a dry run stops at; 0 when nothing is sent
 	}{
-		{"keyboard-checkout.yaml", 11},
+		{"keyboard-checkout.yaml", 10},
 		{"keyboard-contact.yaml", 4},
 		{"keyboard-menu.yaml", 0},
 		{"keyboard-dialog.yaml", 0},

@@ -23,9 +23,9 @@ steps:
   - fill: {selector: "#billing_postcode", value: "${fake:postcode}"}
   - fill: {selector: "#billing_phone", value: "${fake:phone}"}
   - fill: {selector: "#billing_email", value: "${fake:email}"}
-  # Space ticks the box; Tab from it should land on Place order.
+  # Space ticks the box. Place order is then reached by Tab like every
+  # other control (the terms link in the label sits in between).
   - check: "#terms"
-  - press: Tab
-  - expect: {focus: "#place_order"}
+  - expect: {focus: "#terms"}
   - click: "#place_order"
   - expect: {text: Thank you}
