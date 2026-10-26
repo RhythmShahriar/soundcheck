@@ -253,6 +253,54 @@ func TestCapGuardOnlyThatRuleAndPage(t *testing.T) {
 	}
 }
 
+// legacyPage is a 1.2 snapshot's page: the first 20 elements of total
+// failing rule, each with the detail 1.2 gave a capped rule (none when
+// total is 20 or less). 1.2 didn't record CappedRules.
+func legacyPage(rule string, total int) model.Page {
+	p := capped(rule, 1, min(total, 20), 0)
+	p.Audits = nil
+	for i := range p.Issues {
+		if total > 20 {
+			p.Issues[i].Detail = fmt.Sprintf("Contrast too low.\nThe first 20 of %d elements that fail this rule on the page are reported.", total)
+		}
+	}
+	return p
+}
+
+// A 1.2 snapshot capped rules at 20 without saying so. A 1.3 run that
+// keeps 50 per rule sees elements 21 to 50, which were there all along:
+// not NEW. The detail says the rule was capped; so does a rule that
+// kept exactly 20. Under 20 it wasn't capped and a NEW is NEW.
+func TestCapGuardLegacySnapshot(t *testing.T) {
+	legacy := func(p model.Page) *model.Run {
+		return &model.Run{Options: model.Options{Modules: []string{"a11y"}}, Pages: []model.Page{p}}
+	}
+	opts := model.Options{Modules: []string{"a11y"}, A11y: rules21()}
+	opts.A11y.MaxElements = 50
+	for _, c := range []struct {
+		name          string
+		before        model.Page
+		after         model.Page
+		changes, kept int
+	}{
+		{"detail says 300", legacyPage("color-contrast", 300), capped("color-contrast", 1, 50, 300), 0, 30},
+		{"exactly 20 kept", legacyPage("color-contrast", 20), capped("color-contrast", 1, 25, 25), 0, 5},
+		{"19 kept", legacyPage("color-contrast", 19), capped("color-contrast", 1, 25, 25), 6, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cmp := both(t, legacy(c.before), &model.Run{Options: opts, Pages: []model.Page{c.after}})
+			if len(cmp.Changes) != c.changes || len(cmp.Ignored) != c.kept {
+				t.Errorf("changes %q ignored %q", changeLines(cmp.Changes), changeLines(cmp.Ignored))
+			}
+			for _, ch := range cmp.Ignored {
+				if ch.Reason != reasonBeyondCap {
+					t.Errorf("ignored %q", changeLines([]model.Change{ch}))
+				}
+			}
+		})
+	}
+}
+
 // Soundcheck before 1.3 dropped the violations of <html> and <body>
 // themselves. A missing lang the 1.2 snapshot never reported isn't NEW;
 // against a 1.3 snapshot, which reports them, it is.

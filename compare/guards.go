@@ -6,7 +6,9 @@ package compare
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -26,6 +28,14 @@ const (
 // about the rules axe ran. A 1.2 snapshot compared with a clean
 // 1.3 run shouldn't list checks that found nothing.
 var ownChecks = map[string]bool{"overlay": true, "placeholder-label": true, "reflow": true}
+
+// legacyMax is the elements a snapshot made before 1.3 kept per rule
+// and page. It didn't record which rules hit it (Audit.CappedRules).
+const legacyMax = 20
+
+// legacyCapped matches the detail a snapshot made before 1.3 gave each
+// issue of a rule it capped, with the rule's total on the page.
+var legacyCapped = regexp.MustCompile(`The first \d+ of (\d+) elements that fail this rule`)
 
 // ruleSets are the a11y rules each run applied, which decide whether an
 // a11y change can be a real one. A rule the snapshot didn't run found
@@ -107,6 +117,9 @@ func newPageGuard(rs *ruleSets, before []model.Issue, b, a map[string]model.Audi
 		return nil
 	}
 	g := &pageGuard{rules: rs, beforeCapped: b["a11y"].CappedRules, afterCapped: a["a11y"].CappedRules}
+	if rs.legacy {
+		g.beforeCapped = legacyCaps(before)
+	}
 	if len(g.afterCapped) > 0 {
 		g.beforeCount = map[string]int{}
 		seen := map[string]bool{}
@@ -118,6 +131,39 @@ func newPageGuard(rs *ruleSets, before []model.Issue, b, a map[string]model.Audi
 		}
 	}
 	return g
+}
+
+// legacyCaps works out the rules a snapshot made before 1.3 capped on a
+// page, which it didn't record: those whose issues say "The first 20 of
+// N", or that kept 20 elements. Their kept elements shift when a 1.3
+// run keeps more per rule or one early in the page is fixed. The
+// ones shifted in would look NEW.
+func legacyCaps(before []model.Issue) map[string]int {
+	var caps map[string]int
+	kept := map[string]int{}
+	seen := map[string]bool{}
+	for _, i := range before {
+		r, ok := a11yRule(i.Check)
+		if !ok || seen[i.Key] {
+			continue
+		}
+		seen[i.Key] = true
+		kept[r]++
+		total := 0
+		if m := legacyCapped.FindStringSubmatch(i.Detail); m != nil {
+			total, _ = strconv.Atoi(m[1])
+		}
+		if total == 0 && kept[r] >= legacyMax {
+			total = kept[r]
+		}
+		if total > 0 {
+			if caps == nil {
+				caps = map[string]int{}
+			}
+			caps[r] = max(caps[r], total)
+		}
+	}
+	return caps
 }
 
 // counts reports whether the guard has to count the page's FIXED
