@@ -143,9 +143,10 @@ func render(t testing.TB, d *Draft) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 	for ext, write := range map[string]func(*bytes.Buffer, *Draft) error{
-		"md":   func(b *bytes.Buffer, d *Draft) error { return Markdown(b, d) },
-		"html": func(b *bytes.Buffer, d *Draft) error { return HTML(b, d) },
-		"json": func(b *bytes.Buffer, d *Draft) error { return JSON(b, d) },
+		"md":     func(b *bytes.Buffer, d *Draft) error { return Markdown(b, d) },
+		"html":   func(b *bytes.Buffer, d *Draft) error { return HTML(b, d) },
+		"json":   func(b *bytes.Buffer, d *Draft) error { return JSON(b, d) },
+		"jsonld": func(b *bytes.Buffer, d *Draft) error { return EARL(b, d) },
 	} {
 		var b bytes.Buffer
 		if err := write(&b, d); err != nil {
@@ -168,7 +169,12 @@ func TestGoldens(t *testing.T) {
 				if strings.Contains(got, "\r") {
 					t.Errorf("%s.%s has CR", name, ext)
 				}
-				golden(t, name+"-"+layout+"."+ext, got)
+				switch {
+				case ext != "jsonld":
+					golden(t, name+"-"+layout+"."+ext, got)
+				case layout == LayoutModel: // EARL has no layout
+					golden(t, name+".jsonld", got)
+				}
 			}
 		}
 	}

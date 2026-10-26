@@ -1,0 +1,4 @@
+# statement test data
+
+- `<fixture>-<layout>.md`, `.html`, `.json`: goldens of the statement draft for the fixtures in `render_test.go` (clean, findings, gaps, hostile) in both layouts. `<fixture>.jsonld`: the EARL export of each. Rewrite them with `go test ./statement -update` and read the diff.
+- `wcagem-empty.jsonld`: an empty evaluation saved by the W3C WCAG-EM Report Tool 4.1.0 (https://www.w3.org/WAI/eval/report-tool/, "Download report (JSON)" on the View report step) on 2026-10-26, byte for byte. `TestEARLHasTheReportToolShape` checks that the EARL export has its keys and context. It is a W3C document: Copyright © 2026 World Wide Web Consortium, used under the W3C Software and Document License (https://www.w3.org/copyright/software-license/). The tool's source is https://github.com/w3c/wai-wcag-em-report-tool.

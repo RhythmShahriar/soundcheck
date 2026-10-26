@@ -4,7 +4,6 @@
 package statement
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,12 +30,8 @@ func TestBlockRegistered(t *testing.T) {
 	}
 }
 
-func TestStubs(t *testing.T) {
-	if _, err := Build(Input{}); err == nil {
-		t.Error("Build of nothing succeeded")
-	}
-	var b bytes.Buffer
-	if err := EARL(&b, &Draft{}); !errors.Is(err, ErrNotBuilt) {
-		t.Errorf("EARL = %v", err)
+func TestBuildOfNothing(t *testing.T) {
+	if _, err := Build(Input{}); !errors.Is(err, ErrMissingOwner) {
+		t.Errorf("Build of nothing = %v", err)
 	}
 }

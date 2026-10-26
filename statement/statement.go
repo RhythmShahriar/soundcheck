@@ -15,7 +15,6 @@ package statement
 
 import (
 	"errors"
-	"io"
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -25,7 +24,8 @@ import (
 
 func init() { config.RegisterBlock("statement") }
 
-// ErrNotBuilt is what the parts of the package not written yet return.
+// ErrNotBuilt was returned by the parts of the package not written yet.
+// Nothing returns it now; it stays for callers that checked for it.
 var ErrNotBuilt = errors.New("not built yet")
 
 // Build's refusals. The CLI words them for the person running it.
@@ -199,6 +199,3 @@ type Ignored struct {
 	Pages    []string // up to 3 pages, when they may be listed
 	Reason   string
 }
-
-// EARL writes d as JSON-LD that the W3C WCAG-EM Report Tool imports.
-func EARL(w io.Writer, d *Draft) error { return ErrNotBuilt }
