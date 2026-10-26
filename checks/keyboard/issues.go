@@ -20,3 +20,29 @@ func newIssue(id, version, source, detail string) model.Issue {
 		Source: source, Detail: detail, Fix: info.Doc,
 		WCAG: info.WCAG(version), EN301549: info.Clauses(version)}
 }
+
+// maxPerCheck caps the issues one check reports on a page, like the
+// a11y module's per-rule cap: a theme that hides every focus ring would
+// otherwise add an issue per link.
+const maxPerCheck = 20
+
+// issueSet collects a page's issues, keeping the first maxPerCheck of
+// each check and one issue per key.
+type issueSet struct {
+	out  []model.Issue
+	n    map[string]int
+	seen map[string]bool
+}
+
+func (s *issueSet) add(i model.Issue) {
+	if s.n == nil {
+		s.n, s.seen = map[string]int{}, map[string]bool{}
+	}
+	i.Identify()
+	if s.seen[i.Key] || s.n[i.Check] >= maxPerCheck {
+		return
+	}
+	s.seen[i.Key] = true
+	s.n[i.Check]++
+	s.out = append(s.out, i)
+}

@@ -1,0 +1,29 @@
+{
+ "schema": "rhythm-soundcheck/keyboard-trace/v1",
+ "page": "/",
+ "viewport": "desktop",
+ "forward": [
+  {"selector": "a", "backend_node_id": 10, "tag": "a", "role": "", "name_len": 15, "name": "Skip to content", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n0", "backend_node_id": 20, "tag": "a", "role": "", "name_len": 5, "name": "Nav 0", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n1", "backend_node_id": 21, "tag": "a", "role": "", "name_len": 5, "name": "Nav 1", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n2", "backend_node_id": 22, "tag": "a", "role": "", "name_len": 5, "name": "Nav 2", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n3", "backend_node_id": 23, "tag": "a", "role": "", "name_len": 5, "name": "Nav 3", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n4", "backend_node_id": 24, "tag": "a", "role": "", "name_len": 5, "name": "Nav 4", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n5", "backend_node_id": 25, "tag": "a", "role": "", "name_len": 5, "name": "Nav 5", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n6", "backend_node_id": 26, "tag": "a", "role": "", "name_len": 5, "name": "Nav 6", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n7", "backend_node_id": 27, "tag": "a", "role": "", "name_len": 5, "name": "Nav 7", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n8", "backend_node_id": 28, "tag": "a", "role": "", "name_len": 5, "name": "Nav 8", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#n9", "backend_node_id": 29, "tag": "a", "role": "", "name_len": 5, "name": "Nav 9", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#in", "backend_node_id": 40, "tag": "a", "role": "", "name_len": 14, "name": "In the content", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "a", "backend_node_id": 10, "tag": "a", "role": "", "name_len": 15, "name": "Skip to content", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "backward": [],
+ "main_index": 11,
+ "widgets": [],
+ "listeners": [],
+ "held": [],
+ "events": [],
+ "capped": false,
+ "skip_link": {"selector": "a", "name": "Skip to content", "target_id": "main", "target_found": true, "next_stop": "#in", "next_inside_or_after_target": true, "scrolled": false}
+}

@@ -314,3 +314,30 @@ func TestWCAGVersion(t *testing.T) {
 		t.Errorf("2.1 issue %+v", i)
 	}
 }
+
+// The walk and the classifier together: the date picker's trap is an
+// error on its page, keyed by check and element; the clean page has no
+// keyboard issue.
+func TestLiveReportsTrap(t *testing.T) {
+	srv := serve(t, &pages{html: map[string]string{"/": datePicker, "/clean": links(3, "")}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	cc := withSaver(runContext(t))
+	cc.Run.Options.WCAG = "2.2"
+	live(t, New(), cc, tab, p)
+	if len(p.Issues) != 1 {
+		t.Fatalf("issues %+v", p.Issues)
+	}
+	i := p.Issues[0]
+	if i.Key != "keyboard/trap|#date" || i.Level != model.Error || len(i.FocusPath) == 0 || i.WCAG[0] != "2.1.2" {
+		t.Errorf("issue %+v", i)
+	}
+	if p.Audits["keyboard"].Status != model.AuditOK {
+		t.Errorf("audit %+v", p.Audits)
+	}
+	tab, p = c.open(srv.URL + "/clean")
+	live(t, New(), withSaver(runContext(t)), tab, p)
+	if len(p.Issues) != 0 {
+		t.Errorf("clean page issues %+v", p.Issues)
+	}
+}

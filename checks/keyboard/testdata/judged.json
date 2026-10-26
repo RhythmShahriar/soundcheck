@@ -1,0 +1,27 @@
+{
+ "schema": "rhythm-soundcheck/keyboard-trace/v1",
+ "page": "/",
+ "viewport": "desktop",
+ "forward": [
+  {"selector": "#ok", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 4, "name": "Fine", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#off", "backend_node_id": 2, "tag": "a", "role": "", "name_len": 10, "name": "Off screen", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "hidden": "offscreen"},
+  {"selector": "#clear", "backend_node_id": 3, "tag": "a", "role": "", "name_len": 0, "name": "", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "hidden": "opacity"},
+  {"selector": "#sr", "backend_node_id": 4, "tag": "a", "role": "", "name_len": 7, "name": "Clipped", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "hidden": "clip"},
+  {"selector": "#vis", "backend_node_id": 5, "tag": "a", "role": "", "name_len": 4, "name": "Gone", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "hidden": "visibility"},
+  {"selector": "#consent", "backend_node_id": 6, "tag": "button", "role": "", "name_len": 2, "name": "OK", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "hidden": "offscreen", "ignored": true},
+  {"selector": "#under", "backend_node_id": 7, "tag": "a", "role": "", "name_len": 13, "name": "Under the bar", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "obscured": true, "obscured_by": "#bar"},
+  {"selector": "#auto", "backend_node_id": 8, "tag": "input", "role": "", "name_len": 4, "name": "Auto", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "effect": "form"},
+  {"selector": "#go", "backend_node_id": 9, "tag": "a", "role": "", "name_len": 29, "name": "Signed in as jane@example.com", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "effect": "navigation"},
+  {"selector": "#pop", "backend_node_id": 11, "tag": "button", "role": "", "name_len": 4, "name": "Help", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000, "effect": "target"},
+  {"selector": "#early", "backend_node_id": 12, "tag": "a", "role": "", "name_len": 5, "name": "Early", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 1500, "effect": "navigation"},
+  {"selector": "body", "backend_node_id": 0, "tag": "body", "role": "", "name_len": 0, "name": "", "box": [0, 0, 0, 0], "in_viewport": false, "in_dialog": false, "connected": true, "is_body": true, "is_frame": false, "frame_host": "", "at_ms": 3000},
+  {"selector": "#ok", "backend_node_id": 1, "tag": "a", "role": "", "name_len": 4, "name": "Fine", "box": [10, 10, 80, 20], "in_viewport": true, "in_dialog": false, "connected": true, "is_body": false, "is_frame": false, "frame_host": "", "at_ms": 3000}
+ ],
+ "backward": [],
+ "main_index": 0,
+ "widgets": [],
+ "listeners": [],
+ "held": [],
+ "events": [],
+ "capped": false
+}
