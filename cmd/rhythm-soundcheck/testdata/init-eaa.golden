@@ -1,0 +1,111 @@
+# Soundcheck settings. Everything here is optional: delete what you don't
+# change. Reference: https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Configuration
+# Commit this file (and flows/) to share them with your team; snapshots and
+# runs are kept out of git automatically.
+
+site: ""                # checked by snapshot and run when no URL is given, e.g. staging.example.com
+
+eaa: true               # same as --eaa on every snapshot, run and compare (rhythm soundcheck help eaa)
+
+# The a11y module (axe-core).
+# a11y:
+#   wcag: "2.1"           # 2.0, 2.1 or 2.2 (--wcag)
+#   max_elements: 20      # per rule per page, 1-200
+#   iframes: false        # true audits same-origin iframes too
+
+# The keyboard walk (rhythm soundcheck help keyboard).
+# keyboard:
+#   max_tabs: 150         # Tab presses per page before the walk stops, 10-2000
+#   widgets: 10           # menus, dialogs, disclosures tested per page, 0-200
+#   trap_after: 4         # presses on the same element or region that count as a trap, 3-20
+#   skip_link: expected   # expected (missing is a notice), required (warning) or off
+#   pages: ["/cart*", "/checkout*", "/my-account*", "/contact*"]  # widget tests run here and on the first page of each URL group
+#   ignore: ["#cookie-banner"]  # selectors the walk steps over
+
+# The accessibility statement draft (rhythm soundcheck statement). owner,
+# website and contact.email are required. Everything here is published in
+# the statement: give a role address such as accessibility@ rather than a
+# person's own email or phone.
+# statement:
+#   owner: "[your organisation]"
+#   website: "https://[your public address]"
+#   contact:
+#     email: "accessibility@[your domain]"
+#     phone: ""
+#     address: ""
+#   response_days: 10
+#   country: ""           # ISO 3166 alpha-2, e.g. DE
+#   enforcement: ""       # the authority visitors can turn to
+#   scope: []             # e.g. [/, /shop/*, /checkout/*]
+#   service: ""           # what the service is, for --layout service
+#   known_issues: []      # e.g. [{criterion: 1.2.2, text: "Product videos have no captions yet.", until: 2027-03-31}]
+#   manual: []            # what a person checked: [{criterion: 1.4.11, result: no failures found, by: Jane Doe, date: 2026-10-20}]
+#   list_private_paths: false  # list paths behind login in the draft (default: count only)
+
+pages:
+  limit: 300            # most pages to check
+  per_group: 3          # pages checked per URL pattern (/blog/{slug}/ …); -1 checks all
+  include: []           # only pages matching these globs, e.g. ["/shop/*"]
+  exclude: []           # skip pages matching, e.g. ["/tag/*", "/author/*"]
+  ignore_robots: false  # crawl pages robots.txt disallows (your own site)
+  extra: []             # always check these, even if no link points to them, e.g. ["/checkout/"]
+
+viewports: [desktop, mobile]
+# modules: [health, visual, interact, cache, speed]  # with eaa: true the modules are health, a11y, keyboard; a list here gains a11y and keyboard
+
+visual:
+  threshold: 0.5        # % of a page's pixels that must change to report it
+  ignore: []            # CSS selectors hidden before screenshots, e.g. [".ad", "#live-chat"]
+
+interactions:
+  levels: [inspect, click]  # submit (which also clicks) sends test data through forms; flows runs flows/ too
+  max_clicks: 15            # per page
+  allow: []                 # selectors to click even if they look destructive
+  forms: []                 # forms that may be submitted on production sites, by CSS selector
+
+# Live sites. Form submits are refused on these unless the form is in
+# interactions.forms. A host covers http and https, www and any port;
+# *.example.com covers subdomains, example.com/shop only that path.
+production: []          # e.g. ["example.com", "*.example.com"]
+
+login:
+  url: ""               # login page on the site; default /wp-login.php on WordPress
+  flow: ""              # or a flow file that logs in, for other sites
+# Credentials come only from SOUNDCHECK_USER and SOUNDCHECK_PASSWORD.
+
+flows: .soundcheck/flows  # folder of YAML flows (the flows init command writes one)
+
+speed:
+  slower: 25            # % slower before a page is reported SLOWER
+
+# Echo (rhythm echo up) records the emails, SMS and webhooks each form submit
+# and flow sends, so comparisons catch lost or changed messages. Off while url
+# is empty; --echo or SOUNDCHECK_ECHO turn it on too.
+echo:
+  url: ""               # e.g. http://127.0.0.1:8025
+  token_env: RHYTHM_ECHO_TOKEN  # variable with Echo's token, if it has one (RHYTHM_ECHO_*)
+  quiet: 1500ms         # after a submit, wait until nothing new arrives for this long
+  timeout: 10s          # but no longer than this
+
+rate: 5                 # page loads per second per site, 0.01 to 1000
+tabs: 8                 # pages checked at once; politeness comes from rate
+timeout: 30s            # per page: 30s, 1m or a number of seconds
+
+# Extra request headers, each read from an environment variable so no
+# secret is committed: {X-Staging-Auth: SOUNDCHECK_STAGING_AUTH}. Only
+# SOUNDCHECK_* variables, unless --allow-env names another.
+headers: {}
+
+# Exit 1 at or above this, when --fail-on isn't given: broke, new, changed
+# or slower for compare; error, warning or notice for run and snapshot;
+# none never fails.
+fail_on: ""
+
+# Changes that are known and shouldn't count: listed as ignored, never
+# failing a build. Every field given must match (check and title are globs
+# with *); until is the last day the rule applies. review adds rules here.
+ignore: []              # e.g. [{check: "visual/page", pages: ["/team/*"], until: "2026-12-31", reason: "weekly photos"}]
+
+# Programs that check every page: each gets the page as JSON on stdin and
+# answers {"issues": [...]}. They run only with --allow-exec.
+exec: []                # e.g. [{name: laravel-log, run: ["./bin/check-log"], timeout: 10s}]

@@ -14,10 +14,14 @@ import (
 	"github.com/RhythmShahriar/soundcheck/wcag"
 )
 
+// testdata is the package's testdata folder, found before a test
+// changes the working directory.
+var testdata, _ = filepath.Abs("testdata")
+
 // golden compares out with testdata/<name>, rewriting it with -update.
 func golden(t *testing.T, name, out string) {
 	t.Helper()
-	path := filepath.Join("testdata", name)
+	path := filepath.Join(testdata, name)
 	if *updateGolden {
 		if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
 			t.Fatal(err)

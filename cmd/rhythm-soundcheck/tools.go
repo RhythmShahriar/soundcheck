@@ -122,11 +122,12 @@ func listChecks(w io.Writer) {
 }
 
 const historyUsage = `Usage:
-  rhythm soundcheck history [--page <path>] [--metric lcp|tbt|ttfb] [--backfill]
+  rhythm soundcheck history [--page <path>] [--metric <name>] [--backfill]
 
 Shows every snapshot, run and comparison in .soundcheck/history.jsonl,
 oldest first, with the site's median LCP (or --metric) and a sparkline.
---page shows that page's timing instead. --backfill adds the runs and
+--metric takes lcp, tbt, ttfb, a11y (open accessibility issues) or keyboard
+(open keyboard issues). --page shows that page's figures instead. --backfill adds the runs and
 snapshots still in .soundcheck that the history doesn't have.
 `
 
@@ -143,6 +144,9 @@ func cmdHistory(args []string, stdout, stderr io.Writer) int {
 	if len(pos) > 0 {
 		fmt.Fprint(stderr, named(historyUsage))
 		return exitUsage
+	}
+	if *metric != "" && !slices.Contains(history.Metrics, *metric) {
+		return failed(stderr, cli.Usagef("--metric: %v", config.OneOf(*metric, history.Metrics)))
 	}
 	root := config.Dir
 	if _, err := os.Stat(filepath.Join(root, history.File)); *backfill || errors.Is(err, os.ErrNotExist) {
@@ -472,18 +476,24 @@ for scripts. delete removes one.
 `
 
 const initUsage = `Usage:
-  rhythm soundcheck init [--force]
+  rhythm soundcheck init [--eaa] [--force]
 
 Writes .soundcheck/config.yaml with every setting described and asks git to
 ignore the snapshot folders. --force replaces a config that's already there.
+--eaa turns EAA mode on (eaa: true), adds the a11y, keyboard and statement:
+blocks as comments to fill in and writes the key flow
+.soundcheck/flows/keyboard-checkout.yaml.
 `
 
 const flowsUsage = `Usage:
-  rhythm soundcheck flows init
+  rhythm soundcheck flows init [--keyboard]
 
 Writes an example flow to the flows folder (.soundcheck/flows unless the
 config sets flows:). Edit it, then run flows with --level flows, which
-submits forms too.
+submits forms too. --keyboard writes four key flows instead, which the
+keyboard module runs by keyboard alone: keyboard-checkout.yaml,
+keyboard-contact.yaml, keyboard-menu.yaml and keyboard-dialog.yaml. A file
+that's already there is never replaced.
 `
 
 const updateUsage = `Usage:

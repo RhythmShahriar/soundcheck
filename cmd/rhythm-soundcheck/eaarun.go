@@ -15,6 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/RhythmShahriar/soundcheck/compare"
+	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/evidence"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/report"
@@ -31,6 +33,7 @@ var (
 	statementMD      = statement.Markdown
 	writeEvidence    = evidence.Write
 	previousEvidence = evidence.Previous
+	staleIgnores     = compare.StaleIgnores
 )
 
 // axeVersion is the axe-core release checks/a11y vendors, for the
@@ -157,16 +160,46 @@ func (s *session) eaaResult(res *report.Result) string {
 	if err := s.writeEvidence(res.Dir, run, interrupted); err != nil {
 		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), filepath.Join(res.Dir, eaaDir, evidenceFile), err)
 	}
-	// A draft from part of the site would leave problems out.
+	// A draft from part of the site would leave problems out; a rule
+	// may match a page the run didn't reach.
 	if interrupted {
 		return ""
 	}
+	s.staleNotes(pages, run.Issues)
 	path := filepath.Join(res.Dir, eaaDir, draftFile)
 	if err := s.writeDraft(path, pages, run, sum, ignored); err != nil {
 		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), path, err)
 		return ""
 	}
 	return fmt.Sprintf("statement: %s (a draft for you to finish:\n           %s statement -o %s)", rel(path), cmdName(), statementHint)
+}
+
+// staleNotes names the ignore rules that matched nothing in the run:
+// the problem they hide looks fixed, so the committed baseline should
+// lose them.
+func (s *session) staleNotes(pages func(func(*model.Page) bool), site []model.Issue) {
+	if s.o.quiet {
+		return
+	}
+	for _, i := range staleIgnores(ignoreRules(s.cfg), time.Now(), pages, site) {
+		if i < 0 || i >= len(s.cfg.Ignore) {
+			continue
+		}
+		fmt.Fprintf(s.stderr, "note: ignore rule %d (%s) matched nothing; the problem looks fixed: remove it\n", i+1, report.Term(ruleText(s.cfg.Ignore[i])))
+	}
+}
+
+// ruleText names an ignore rule by what it matches: "a11y/color-contrast
+// on /legal/*".
+func ruleText(r config.IgnoreRule) string {
+	what := r.Check
+	if what == "" {
+		what = fmt.Sprintf("%q", r.Title)
+	}
+	if len(r.Pages) == 0 {
+		return what + " on every page"
+	}
+	return what + " on " + strings.Join(r.Pages, ", ")
 }
 
 // writeEvidence writes the evidence pack, chained to the last --eaa run

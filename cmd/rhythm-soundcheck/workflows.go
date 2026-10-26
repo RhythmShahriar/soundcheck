@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -89,11 +90,19 @@ func who() string {
 const acceptUsage = `Usage:
   rhythm soundcheck accept <id>...                    accept changes by id
   rhythm soundcheck accept --page <glob> --check <glob>
+  rhythm soundcheck accept <id>... --ignore --reason <text> [--until <date>]
 
 Accept makes changes of the latest comparison part of its snapshot, so the
 next compare doesn't report them. Ids are shown next to each change (in
---json as "id"). --page /team/* --check visual/* accepts every visual
-change on the team pages; either glob alone matches everything else.
+--json as "id"), BROKE and NEW ones too. --page /team/* --check visual/*
+accepts every visual change on the team pages; either glob alone matches
+everything else. --page '*' --check 'a11y/*' takes a whole accessibility
+backlog and prints how many changes it accepted.
+
+--ignore writes an ignore: rule into .soundcheck/config.yaml instead, with
+the change's check, pages and source and your --reason: a known problem
+kept in the committed config, where it is reviewed with the code. --until
+2026-12-31 ends the rule after that day.
 `
 
 // cmdAccept accepts changes of the latest comparison into its snapshot.
@@ -102,6 +111,9 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(io.Discard)
 	page := fs.String("page", "", "")
 	check := fs.String("check", "", "")
+	ignore := fs.Bool("ignore", false, "")
+	reason := fs.String("reason", "", "")
+	until := fs.String("until", "", "")
 	apply := colorFlags(fs)
 	ids, err := cli.ParseInterspersed(fs, args)
 	apply()
@@ -120,16 +132,30 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, prefix(), "give change ids or --page and --check, not both")
 		return exitUsage
 	}
+	if err := ignoreFlags(*ignore, *reason, *until, len(ids) > 0); err != nil {
+		return failed(stderr, err)
+	}
 	st := store.Store{Root: config.Dir}
 	sc, err := latestComparison(st, "accept")
 	if err != nil {
 		return failed(stderr, err)
 	}
+	if *ignore {
+		return ignoreChanges(sc, ids, strings.TrimSpace(*reason), *until, stdout, stderr)
+	}
 	accepted, err := store.Accept(sc.snapDir, sc.runDir, sc.c, store.Selector{IDs: ids, Page: *page, Check: *check}, who())
 	if err != nil {
 		return failed(stderr, cli.UsageError{Msg: err.Error()})
 	}
+	// By id each change is named; a --page and --check backlog may be
+	// hundreds, so it is counted.
+	if len(ids) == 0 {
+		fmt.Fprintf(stdout, "Accepted %s\n", plural(distinctIDs(accepted), "change"))
+	}
 	for _, a := range accepted {
+		if len(ids) == 0 {
+			break
+		}
 		where := a.Page
 		if where == "" {
 			where = "site-wide"
@@ -138,6 +164,88 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "Snapshot %q now holds %s. Run %s compare to check again.\n", sc.c.Before.Name, plural(len(accepted), "accepted change"), cmdName())
 	return exitOK
+}
+
+// distinctIDs counts the changes among accepted entries, which are one
+// per page.
+func distinctIDs(accepted []store.Accepted) int {
+	seen := map[string]bool{}
+	for _, a := range accepted {
+		seen[a.ID] = true
+	}
+	return len(seen)
+}
+
+// ignoreFlags checks --ignore, --reason and --until: --ignore needs a
+// reason and change ids, the other two need --ignore.
+func ignoreFlags(ignore bool, reason, until string, byID bool) error {
+	switch {
+	case !ignore && (reason != "" || until != ""):
+		return cli.Usagef("--reason and --until go with --ignore")
+	case !ignore:
+		return nil
+	case strings.TrimSpace(reason) == "":
+		return cli.Usagef("--ignore needs --reason: say why this is known")
+	case !byID:
+		return cli.Usagef("--ignore takes change ids, not --page and --check")
+	}
+	if until != "" {
+		if _, err := time.Parse("2006-01-02", until); err != nil {
+			return cli.Usagef("--until: %q isn't a date like 2026-12-31", until)
+		}
+	}
+	return nil
+}
+
+// ignoreChanges writes an ignore rule for each change id into the config
+// file: the change's check, pages and source (its title when it has no
+// source), with the reason and end date given.
+func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr io.Writer) int {
+	path := filepath.Join(config.Dir, "config.yaml")
+	var rules []config.IgnoreRule
+	for _, id := range ids {
+		i := slices.IndexFunc(sc.c.Changes, func(ch model.Change) bool { return ch.ID == id })
+		if i < 0 {
+			return failed(stderr, cli.Usagef("no change %q in this comparison", id))
+		}
+		rules = append(rules, ignoreRule(sc.c.Changes[i], reason, until))
+	}
+	for i, r := range rules {
+		if err := appendIgnore(path, r); err != nil {
+			return failed(stderr, err)
+		}
+		where := strings.Join(r.Pages, ", ")
+		if where == "" {
+			where = "site-wide"
+		}
+		fmt.Fprintf(stdout, "Ignored %s %s (%s): rule added to %s\n", ids[i], report.Term(r.Check), report.Term(where), path)
+	}
+	fmt.Fprintf(stdout, "Commit %s to share the rules; the snapshot is unchanged.\n", path)
+	return exitOK
+}
+
+// ignoreRule is the rule that ignores ch from now on. Its source is a
+// glob (path.Match), so a selector's own brackets and stars are escaped
+// to match only themselves; a change without a source is matched by its
+// title instead, so the rule doesn't cover the whole check.
+func ignoreRule(ch model.Change, reason, until string) config.IgnoreRule {
+	r := config.IgnoreRule{Check: ch.Check, Pages: slices.Clone(ch.Pages), Source: globEscape(ch.Source), Until: until, Reason: reason}
+	if r.Source == "" {
+		r.Title = ch.Title
+	}
+	return r
+}
+
+// globEscape makes s a path.Match pattern that matches s alone.
+func globEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(`*?[]\`, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // failed prints err and returns its exit code: 2 for a usage error.
