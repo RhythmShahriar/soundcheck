@@ -19,6 +19,7 @@ package keyflows
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -98,7 +99,7 @@ func Run(ctx context.Context, cc *check.Context, o model.KeyboardOptions) {
 			skipAll(keyed[i:], SkipStopped)
 			return
 		}
-		res, skip := play(ctx, cc, f, options(cc, f, o))
+		res, skip := play(ctx, cc, f, options(ctx, cc, f, o))
 		if skip != "" {
 			kf.Skipped = append(kf.Skipped, model.SkippedFlow{File: filepath.Base(f.File), Reason: skip})
 			cc.Warn(fmt.Sprintf("keyboard: %s not run: %s", filepath.Base(f.File), skip))
@@ -115,17 +116,63 @@ func Run(ctx context.Context, cc *check.Context, o model.KeyboardOptions) {
 // keyboard: send on a public address that isn't listed under production
 // without --staging, with a note. On a production URL the flow runner's
 // refusal applies instead.
-func options(cc *check.Context, f flow.Flow, ko model.KeyboardOptions) flow.Options {
+func options(ctx context.Context, cc *check.Context, f flow.Flow, ko model.KeyboardOptions) flow.Options {
 	t := cc.Config.Trust
 	o := flow.Options{Base: cc.Base, Timeout: time.Duration(cc.Config.Timeout) * time.Second, Save: cc.Save,
 		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction,
 		AllowEnv: t.AllowEnv, AllowHosts: t.AllowHosts, PlainHTTP: t.InsecureLogin,
 		MaxTabs: ko.MaxTabs, Dry: f.Keyboard == flow.KeyboardDry}
-	if f.Keyboard == flow.KeyboardSend && cc.TargetPublic && !t.Staging && !cc.Config.IsProduction(startURL(cc, f)) {
+	if f.Keyboard == flow.KeyboardSend && public(ctx, cc) && !t.Staging && !cc.Config.IsProduction(startURL(cc, f)) {
 		o.Dry = true
 		cc.Warn(fmt.Sprintf("keyboard: send runs only on a loopback or private address, or with --staging; %s ran dry", filepath.Base(f.File)))
 	}
 	return o
+}
+
+// public says whether the site may be on a public address. The runner's
+// TargetPublic is a plain bool, so a run that didn't classify the target
+// looks private; checking the base host here as well keeps keyboard:
+// send from submitting to a public site when that happens. A host that
+// can't be resolved counts as public.
+func public(ctx context.Context, cc *check.Context) bool {
+	if cc.TargetPublic {
+		return true
+	}
+	if cc.Base == nil {
+		return true
+	}
+	return !localHost(ctx, cc.Base.Hostname())
+}
+
+// localHost says whether host is localhost or resolves only to loopback,
+// private or link-local addresses. It looks the name up with the local
+// resolver; the site itself isn't contacted.
+func localHost(ctx context.Context, host string) bool {
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return localIP(ip)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, a := range addrs {
+		if !localIP(a.IP) {
+			return false
+		}
+	}
+	return true
+}
+
+func localIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 // startURL is f's start page as a URL on the site.

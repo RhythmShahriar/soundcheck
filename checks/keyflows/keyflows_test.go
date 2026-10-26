@@ -157,9 +157,14 @@ func TestSendNeedsPrivateOrStaging(t *testing.T) {
 		{"public", true, false, nil, true, []string{note}},
 		{"public with --staging", true, true, nil, false, nil},
 		{"public production", true, false, []string{"127.0.0.1"}, false, nil},
+		// The runner left the target unclassified: the base host decides.
+		{"unclassified public", false, false, nil, true, []string{note}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cc := fakeContext(t, map[string]string{"c-contact.yaml": sendFlow})
+			if tc.name == "unclassified public" {
+				cc.Base, _ = url.Parse("http://203.0.113.7/")
+			}
 			cc.TargetPublic = tc.public
 			cc.Config.Trust.Staging = tc.staging
 			cc.Config.Production = tc.production
@@ -286,5 +291,19 @@ func TestReportUnlinked(t *testing.T) {
 	}
 	if d := page.Issues[1].Detail; d != "After Checkout dry step 3, 1 field shows errors but focus stayed on body and the errors aren't linked with aria-describedby or aria-errormessage." {
 		t.Errorf("detail %q", d)
+	}
+}
+
+// A target counts as local only when its host is localhost or a
+// loopback, private or link-local address.
+func TestLocalHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"localhost": true, "shop.localhost": true, "127.0.0.1": true, "::1": true,
+		"10.0.0.5": true, "192.168.1.20": true, "172.16.0.1": true, "169.254.1.1": true, "fd00::1": true,
+		"203.0.113.7": false, "8.8.8.8": false, "2001:db8::1": false, "": false,
+	} {
+		if got := localHost(context.Background(), host); got != want {
+			t.Errorf("localHost(%q) = %v, want %v", host, got, want)
+		}
 	}
 }
