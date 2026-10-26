@@ -29,6 +29,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/RhythmShahriar/soundcheck/browser"
+	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/flow"
 )
@@ -105,6 +106,11 @@ func viaFlow(ctx context.Context, sess *rod.Browser, o Options, env func(string)
 		return err
 	}
 	defer func() { _ = page.Close() }()
+	release, err := check.GuardTab(ctx, page)
+	if err != nil {
+		return err
+	}
+	defer release()
 	fails := flow.Run(ctx, page, f, flow.Options{Base: o.Base, Env: env, Timeout: 15 * time.Second,
 		AllowEnv: o.Config.Trust.AllowEnv, AllowHosts: o.Config.Trust.AllowHosts, PlainHTTP: o.Config.Trust.InsecureLogin})
 	if len(fails) > 0 {
@@ -143,6 +149,11 @@ func wordPress(ctx context.Context, sess *rod.Browser, base *url.URL, loginPath,
 		return err
 	}
 	defer func() { _ = page.Close() }()
+	release, err := check.GuardTab(ctx, page)
+	if err != nil {
+		return err
+	}
+	defer release()
 	page = page.Context(ctx)
 	if err := page.Navigate(loginURL); err != nil {
 		return fmt.Errorf("opening %s: %w", loginURL, err)
@@ -286,6 +297,11 @@ func WhoAmI(ctx context.Context, sess *rod.Browser, base *url.URL) (User, error)
 		return User{}, err
 	}
 	defer func() { _ = page.Close() }()
+	release, err := check.GuardTab(ctx, page)
+	if err != nil {
+		return User{}, err
+	}
+	defer release()
 	page = page.Context(ctx).Timeout(30 * time.Second)
 	if err := page.Navigate(base.String()); err != nil {
 		return User{}, err

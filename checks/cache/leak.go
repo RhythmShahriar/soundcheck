@@ -71,6 +71,11 @@ func identify(ctx context.Context, sess *rod.Browser, base string) (Identity, er
 		return Identity{}, err
 	}
 	defer func() { _ = tab.Close() }()
+	release, err := check.GuardTab(ctx, tab)
+	if err != nil {
+		return Identity{}, err
+	}
+	defer release()
 	tab = tab.Context(ctx).Timeout(45 * time.Second)
 	if err := tab.Navigate(base + "wp-admin/profile.php"); err != nil {
 		return Identity{}, err
@@ -257,6 +262,11 @@ func visitAs(ctx context.Context, sess *rod.Browser, raw string, timeout time.Du
 		return "", err
 	}
 	defer func() { _ = tab.Close() }()
+	release, err := check.GuardTab(ctx, tab)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	tab = tab.Context(ctx).Timeout(timeout)
 	if err := tab.Navigate(raw); err != nil {
 		return "", err

@@ -100,6 +100,12 @@ func (m *Module) runFlow(ctx context.Context, cc *check.Context, f flow.Flow) {
 		return
 	}
 	defer func() { _ = page.Close() }()
+	release, err := check.GuardTab(ctx, page)
+	if err != nil {
+		cc.Warn(fmt.Sprintf("flow %q: %v", f.Name, err))
+		return
+	}
+	defer release()
 	timeout := time.Duration(cc.Config.Timeout) * time.Second
 	opts := flowOptions(cc, timeout)
 	start := orDefault(f.Start, "/")

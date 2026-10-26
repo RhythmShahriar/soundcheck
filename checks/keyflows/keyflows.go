@@ -262,6 +262,11 @@ func playInSession(ctx context.Context, cc *check.Context, f flow.Flow, o flow.O
 		return flow.Result{}, err.Error()
 	}
 	defer func() { _ = page.Close() }()
+	release, err := check.GuardTab(ctx, page)
+	if err != nil {
+		return flow.Result{}, err.Error()
+	}
+	defer release()
 	if cc.Echo != nil {
 		// Tagged as interact tags a flow, so expect: {message: …} works in
 		// a key flow too.
