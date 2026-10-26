@@ -27,7 +27,7 @@ var limits = []string{
 	"The keyboard walkthrough uses Chrome's keyboard events. It is not a screen reader test, not a voice control test and not a test with disabled users.",
 	"The site decides what Soundcheck sees. A site that serves headless browsers a different page can pass while visitors fail. Overlay widgets don't make a site accessible.",
 	"EAA mode presses keys on your pages. It holds requests that would change data, blocks downloads and follows no links except skip links. A site that changes data on a GET or on focus can still change. Run it on staging and list your live site under production.",
-	"Reports contain what your pages showed. Soundcheck masks form values, credentials and tokens it recognises and emails, phone numbers and card numbers in text it writes. Masking is pattern-based: it is pseudonymised, not anonymised. Screenshots are not masked.",
+	"Reports contain what your pages showed. Soundcheck masks form values, credentials and tokens it recognises and emails, phone numbers and card numbers in text it writes. Masking is pattern-based: it is pseudonymised, not anonymised. Screenshots are not masked.", //nolint:misspell // fixed text the docs quote
 	"A signed evidence pack proves who produced it and that it wasn't changed afterwards. It doesn't prove the site was in that state for every visitor.",
 	"Nothing leaves your machine except requests to your own site and hosts you allow. No telemetry, no hosted service, no AI.",
 }
@@ -69,7 +69,7 @@ func para(text string) string { return wrap(text, "", "", helpWidth) }
 func item(text string) string { return wrap(text, "  - ", "    ", helpWidth) }
 
 // coverage counts the criteria of a WCAG version that Soundcheck's tests
-// can find failures of (coverage partly in the catalogue) and those
+// can find failures of (coverage partly in the catalog) and those
 // that need a person.
 func coverage(version string) (tested, person, all int) {
 	for _, c := range wcag.Criteria(version) {
@@ -100,7 +100,7 @@ func eaaHelp() string {
 		"and an evidence pack (eaa/evidence.json) into its folder."))
 	b.WriteString("\nWhat the tests do:\n")
 	b.WriteString(item("a11y: axe-core " + axeVersion + " on every page with the rules of the WCAG version, " +
-		"plus fields labelled only by a placeholder, sideways scrolling at 320 px wide and known overlay widgets."))
+		"plus fields labeled only by a placeholder, sideways scrolling at 320 px wide and known overlay widgets."))
 	b.WriteString(item("keyboard: Tab and Shift+Tab through every page; menus, dialogs and disclosures " +
 		"opened and closed by keyboard; your key flows at --level flows (help keyboard)."))
 	b.WriteString(item("statement: the draft lists what the tests found per criterion, " +
@@ -198,7 +198,7 @@ func keyboardHelp() string {
 	return b.String()
 }
 
-// generatedTopics are the help topics built from the catalogues, so
+// generatedTopics are the help topics built from the catalogs, so
 // their counts and check lists can't drift from the code.
 var generatedTopics = map[string]func() string{"eaa": eaaHelp, "keyboard": keyboardHelp}
 

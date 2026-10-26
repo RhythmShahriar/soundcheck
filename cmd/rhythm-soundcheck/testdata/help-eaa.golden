@@ -12,7 +12,7 @@ a statement draft (eaa/statement-draft.md) and an evidence pack
 
 What the tests do:
   - a11y: axe-core 4.14.0 on every page with the rules of the WCAG version,
-    plus fields labelled only by a placeholder, sideways scrolling at 320 px
+    plus fields labeled only by a placeholder, sideways scrolling at 320 px
     wide and known overlay widgets.
   - keyboard: Tab and Shift+Tab through every page; menus, dialogs and
     disclosures opened and closed by keyboard; your key flows at --level

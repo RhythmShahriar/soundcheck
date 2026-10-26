@@ -167,7 +167,7 @@ func TestFlowsInitKeyboard(t *testing.T) {
 	if code, out, _ := runCLI(t, "flows", "init"); code != exitOK || !strings.Contains(out, "example.yaml") {
 		t.Errorf("flows init: exit %d %s", code, out)
 	}
-	if code, _, errOut := runCLI(t, "flows", "init", "--keybaord"); code != exitUsage || !strings.Contains(errOut, "did you mean --keyboard?") {
+	if code, _, errOut := runCLI(t, "flows", "init", "--keybaord"); code != exitUsage || !strings.Contains(errOut, "did you mean --keyboard?") { //nolint:misspell // the typo is the test
 		t.Errorf("typo: exit %d %s", code, errOut)
 	}
 }

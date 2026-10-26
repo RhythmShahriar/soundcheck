@@ -27,7 +27,7 @@ eaa: true               # same as --eaa on every snapshot, run and compare (rhyt
 # the statement: give a role address such as accessibility@ rather than a
 # person's own email or phone.
 # statement:
-#   owner: "[your organisation]"
+#   owner: "[your organization]"
 #   website: "https://[your public address]"
 #   contact:
 #     email: "accessibility@[your domain]"
