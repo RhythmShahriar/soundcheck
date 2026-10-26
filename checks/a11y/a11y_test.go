@@ -410,3 +410,20 @@ func TestNamedBy(t *testing.T) {
 		}
 	}
 }
+
+// The reflow issue names up to three offenders and the one that reaches
+// furthest right as its source.
+func TestReflowIssue(t *testing.T) {
+	off := func(name string, right int) offender {
+		return offender{Path: [][]Elem{{{Tag: "div", ID: name}}}, Right: right}
+	}
+	if i := reflowIssue(reflowReport{Width: 400}); i != nil {
+		t.Errorf("no offenders: %+v", i)
+	}
+	rep := reflowReport{Width: 900}
+	rep.Offenders = append(rep.Offenders, off("a", 400), off("b", 900), off("a", 400), off("c", 500), off("d", 600))
+	i := reflowIssue(rep)
+	if i == nil || i.Source != "#b" || i.Detail != "At 320 CSS px the page is 900 px wide; #a, #b, #c stick out." || i.Key == "" {
+		t.Errorf("issue = %+v", i)
+	}
+}

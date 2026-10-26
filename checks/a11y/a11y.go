@@ -120,7 +120,20 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 	setAudit(p, a)
 	p.Issues = append(p.Issues, found...)
 	p.Issues = append(p.Issues, placeholder...)
+	if reflows(version) {
+		i, err := reflow(ctx, tab)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			cc.Warn(fmt.Sprintf("a11y: %s: reflow check at 320 px: %s", p.Path, secrets.Redact(err.Error())))
+		case i != nil:
+			p.Issues = append(p.Issues, *i)
+		}
+	}
 }
+
+// reflows reports whether the WCAG version has 1.4.10 Reflow, which 2.1
+// added.
+func reflows(version string) bool { return version == "2.1" || version == "2.2" }
 
 // runVersion is the WCAG version run's rules are for. A run made before
 // 1.3 recorded none and used the 2.0 rules. So does a compare of it.
@@ -162,7 +175,11 @@ func recordRules(cc *check.Context, opts auditOptions, rules []string) {
 // comparison with a snapshot made before a check existed doesn't call
 // everything it finds NEW (compare's rule-set guard).
 func ownRules(tags []string) []string {
-	return []string{"placeholder-label"}
+	out := []string{"placeholder-label"}
+	if slices.Contains(tags, "wcag21aa") {
+		out = append(out, "reflow")
+	}
+	return out
 }
 
 func setAudit(p *model.Page, a model.Audit) {
