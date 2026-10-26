@@ -32,8 +32,8 @@ button { background: #eee; border: 1px solid #999; }
 #fade { box-shadow: 0 0 0 0 transparent; transition: box-shadow 200ms; }
 #fade:focus { box-shadow: 0 0 0 4px #1a73e8; }
 #field { border: 1px solid #999; }
-#spin { outline: none; animation: blink 120ms steps(2) infinite; }
-@keyframes blink { from { background: #000; color: #fff; } to { background: #fff; color: #000; } }
+#spin { outline: none; animation: blink 1s linear infinite; }
+@keyframes blink { from { background: #000; } to { background: #fff; } }
 </style></head><body><main>
 <a id="none" href="#1">No ring</a>
 <a id="white" href="#2">White on white</a>
@@ -71,7 +71,9 @@ func TestRingsByPixels(t *testing.T) {
 	for _, r := range tr.Rings {
 		got[r.Selector] = r
 	}
-	// Something that moves by itself gives no verdict.
+	// Something that moves by itself gives no verdict. #spin fades from
+	// black to white each second, so any two pictures 0.1 to 0.9 s apart
+	// differ; a stepped blink could be caught twice in one state.
 	if r := got["#spin"]; !r.Unstable {
 		t.Errorf("#spin %+v, want unstable", r)
 	}
