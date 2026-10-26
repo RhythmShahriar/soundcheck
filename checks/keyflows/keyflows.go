@@ -148,16 +148,20 @@ func noteLoadError(cc *check.Context, err error) {
 // options are the flow options of key flow f: the run's, as interact
 // gives a flow (--allow-env, --allow-host, --insecure-login), with the
 // keyboard walk's max_tabs. Dry is set for keyboard: true. It is set for
-// keyboard: send on a public address that isn't listed under production
-// without --staging, with a note. On a production URL the flow runner's
-// refusal applies instead.
+// keyboard: send on a public address without --staging, with a note.
+// The one exception is a flow that sets production: true and starts on a
+// URL listed under production: its owner said it is safe on the live
+// site. Without production: true a flow that starts on a production URL
+// runs dry too: the flow runner refuses its steps only on production
+// pages, and production entries can name one path (example.com/shop),
+// so a later step on another page would otherwise send for real.
 func options(ctx context.Context, cc *check.Context, f flow.Flow, ko model.KeyboardOptions) flow.Options {
 	t := cc.Config.Trust
 	o := flow.Options{Base: cc.Base, Timeout: time.Duration(cc.Config.Timeout) * time.Second, Save: cc.Save,
 		Fake: flow.Fake{Seed: cc.Run.Started.String()}, Production: cc.Config.IsProduction,
 		AllowEnv: t.AllowEnv, AllowHosts: t.AllowHosts, PlainHTTP: t.InsecureLogin,
 		MaxTabs: ko.MaxTabs, Dry: f.Keyboard == flow.KeyboardDry}
-	if f.Keyboard == flow.KeyboardSend && public(ctx, cc) && !t.Staging && !cc.Config.IsProduction(startURL(cc, f)) {
+	if f.Keyboard == flow.KeyboardSend && public(ctx, cc) && !t.Staging && !(f.Production && cc.Config.IsProduction(startURL(cc, f))) {
 		o.Dry = true
 		cc.Warn(fmt.Sprintf("keyboard: send runs only on a loopback or private address, or with --staging; %s ran dry", filepath.Base(f.File)))
 	}

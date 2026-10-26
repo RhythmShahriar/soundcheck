@@ -182,9 +182,8 @@ func TestRunNotesBrokenFlowFiles(t *testing.T) {
 }
 
 // keyboard: send sends only off public addresses, or with --staging. A
-// public target without --staging runs it dry with a note. On a URL
-// listed under production the flow runner's refusal applies, so it gets
-// no note.
+// public target without --staging runs it dry with a note. Only a flow
+// that sets production: true and starts on a production URL sends there.
 func TestSendNeedsPrivateOrStaging(t *testing.T) {
 	note := "keyboard: send runs only on a loopback or private address, or with --staging; c-contact.yaml ran dry"
 	for _, tc := range []struct {
@@ -197,12 +196,20 @@ func TestSendNeedsPrivateOrStaging(t *testing.T) {
 		{"loopback", false, false, nil, false, nil},
 		{"public", true, false, nil, true, []string{note}},
 		{"public with --staging", true, true, nil, false, nil},
-		{"public production", true, false, []string{"127.0.0.1"}, false, nil},
+		// Listed under production, a flow without production: true
+		// still runs dry: a production entry can name one path and the
+		// flow may go on to an unlisted page.
+		{"public production", true, false, []string{"127.0.0.1"}, true, []string{note}},
+		{"public production, flow allows it", true, false, []string{"127.0.0.1"}, false, nil},
 		// The runner left the target unclassified: the base host decides.
 		{"unclassified public", false, false, nil, true, []string{note}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := fakeContext(t, map[string]string{"c-contact.yaml": sendFlow})
+			body := sendFlow
+			if strings.HasSuffix(tc.name, "flow allows it") {
+				body = strings.Replace(sendFlow, "keyboard: send\n", "keyboard: send\nproduction: true\n", 1)
+			}
+			cc := fakeContext(t, map[string]string{"c-contact.yaml": body})
 			if tc.name == "unclassified public" {
 				cc.Base, _ = url.Parse("http://203.0.113.7/")
 			}
