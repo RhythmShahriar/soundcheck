@@ -15,3 +15,18 @@ func SetTimeout(d time.Duration) (restore func()) {
 
 // OwnRules is ownRules for the WCAG version's tags.
 func OwnRules(version string) []string { return ownRules(tags(version)) }
+
+// SetReflowTimeout bounds the reflow test at d until restore runs.
+func SetReflowTimeout(d time.Duration) (restore func()) {
+	old := reflowTimeout
+	reflowTimeout = d
+	return func() { reflowTimeout = old }
+}
+
+// SetFieldsJS replaces the placeholder check's script until restore
+// runs, so a test can make it fail.
+func SetFieldsJS(js string) (restore func()) {
+	old := fieldsJS
+	fieldsJS = js
+	return func() { fieldsJS = old }
+}

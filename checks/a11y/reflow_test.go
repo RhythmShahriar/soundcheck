@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-rod/rod"
 
@@ -112,5 +114,55 @@ func TestReflow(t *testing.T) {
 	r20, _ := run("2.0")
 	if got := reflowOn(r20.Page("/promo/")); len(got) > 0 || slices.Contains(r20.Options.A11y.Rules, "reflow") {
 		t.Errorf("2.0: %+v, rules %v", got, r20.Options.A11y.Rules)
+	}
+}
+
+// When one of the module's own checks can't finish, the page's audit
+// isn't ok: its problems may be missing, so a comparison mustn't call
+// them FIXED. What axe found is kept.
+func TestOwnCheckFailureLeavesAuditUnfinished(t *testing.T) {
+	needBrowser(t)
+	srv := pages(t, map[string]string{
+		"/promo/": fmt.Sprintf(narrow, `<div id="promo" style="width:600px">Free delivery</div><input id="q" type="text">`),
+	})
+	run := func() *model.Run {
+		t.Helper()
+		cfg := config.Default()
+		cfg.Rate, cfg.Tabs = 0, 1
+		cfg.Viewports = []string{"desktop"}
+		cfg.Modules = []string{"a11y"}
+		r, err := runner.Run(context.Background(), runner.Options{Config: cfg, Target: srv.URL, Dir: t.TempDir(), Version: "test",
+			Paths: []string{"/promo/"}, WCAG: "2.1", Modules: []check.Module{a11y.Module{}}, Browser: browser.Options{NoDownload: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	hasLabel := func(p *model.Page) bool {
+		return slices.ContainsFunc(p.Issues, func(i model.Issue) bool { return i.Check == "a11y/label" })
+	}
+
+	// Positive: the run finishes and the audit is ok.
+	r := run()
+	if a := r.Page("/promo/").Audits["a11y"]; a.Status != model.AuditOK {
+		t.Fatalf("clean run: audit %+v", a)
+	}
+
+	restore := a11y.SetReflowTimeout(time.Nanosecond)
+	r = run()
+	restore()
+	p := r.Page("/promo/")
+	if a := p.Audits["a11y"]; a.Status != model.AuditError || !strings.HasPrefix(a.Reason, "reflow check at 320 px: ") {
+		t.Errorf("reflow failed: audit %+v", a)
+	}
+	if !hasLabel(p) {
+		t.Errorf("axe's issues were dropped: %+v", p.Issues)
+	}
+
+	restore = a11y.SetFieldsJS(`() => { throw new Error("fields broke"); }`)
+	r = run()
+	restore()
+	if a := r.Page("/promo/").Audits["a11y"]; a.Status != model.AuditError || !strings.Contains(a.Reason, "placeholder check: ") {
+		t.Errorf("placeholder check failed: audit %+v", a)
 	}
 }

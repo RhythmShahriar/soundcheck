@@ -122,7 +122,7 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 	for _, n := range rep.Notes {
 		cc.Warn(fmt.Sprintf("a11y: %s: %s", p.Path, secrets.Redact(n)))
 	}
-	setAudit(p, a)
+	unfinished := slices.Clone(rep.Unfinished)
 	p.Issues = append(p.Issues, found...)
 	p.Issues = append(p.Issues, placeholder...)
 	if reflows(version) {
@@ -130,10 +130,19 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 		switch {
 		case err != nil && ctx.Err() == nil:
 			cc.Warn(fmt.Sprintf("a11y: %s: reflow check at 320 px: %s", p.Path, secrets.Redact(err.Error())))
+			unfinished = append(unfinished, "reflow check at 320 px: "+err.Error())
 		case i != nil:
 			p.Issues = append(p.Issues, *i)
 		}
 	}
+	// One of the module's own checks didn't finish: its problems may be
+	// missing from this page, so a comparison mustn't call them FIXED
+	// and the draft mustn't count the page for its criterion. The issues
+	// found are kept.
+	if len(unfinished) > 0 {
+		a.Status, a.Reason = model.AuditError, shorten(secrets.Redact(strings.Join(unfinished, "; ")))
+	}
+	setAudit(p, a)
 }
 
 // reflows reports whether the WCAG version has 1.4.10 Reflow, which 2.1
@@ -204,11 +213,15 @@ func failed(ctx context.Context, err error) model.Audit {
 	if ctx.Err() == nil && isTimeout(err) {
 		return model.Audit{Status: model.AuditTimeout, Reason: "axe-core timed out after " + timeout.String()}
 	}
-	reason := secrets.Redact(err.Error())
+	return model.Audit{Status: model.AuditError, Reason: shorten(secrets.Redact(err.Error()))}
+}
+
+// shorten caps a reason at maxReason characters.
+func shorten(reason string) string {
 	if r := []rune(reason); len(r) > maxReason {
-		reason = string(r[:maxReason-1]) + "…"
+		return string(r[:maxReason-1]) + "…"
 	}
-	return model.Audit{Status: model.AuditError, Reason: reason}
+	return reason
 }
 
 // issues turns axe's violations into page issues, one per rule and

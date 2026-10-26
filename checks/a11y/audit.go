@@ -55,6 +55,10 @@ type docReport struct {
 	FieldsBeyond beyond `json:"-"`
 	// Notes are warnings about the module's own checks in the document.
 	Notes []string `json:"-"`
+	// Unfinished names the module's own checks that couldn't finish in
+	// the document, with why. Their findings are missing, so the audit
+	// isn't complete even though axe's part is.
+	Unfinished []string `json:"-"`
 }
 
 // report is the audit of a page and its frames.
@@ -65,6 +69,7 @@ type report struct {
 	Fields     []field  // as in docReport, from every document audited
 	Beyond     beyond   // docReport.FieldsBeyond, from every document audited
 	Notes      []string // as in docReport
+	Unfinished []string // as in docReport, from the page's own document
 }
 
 // auditOptions are runJS's argument.
@@ -184,7 +189,8 @@ func audit(parent context.Context, tab *rod.Page, opts auditOptions, iframes boo
 		}
 		return report{}, err
 	}
-	rep := report{Violations: main.Violations, Rules: main.Rules, Fields: main.Fields, Beyond: main.FieldsBeyond, Notes: main.Notes}
+	rep := report{Violations: main.Violations, Rules: main.Rules, Fields: main.Fields, Beyond: main.FieldsBeyond, Notes: main.Notes,
+		Unfinished: main.Unfinished}
 	hosts := map[string]bool{}
 	for _, f := range main.Frames {
 		if !iframes || !f.Same {
@@ -250,6 +256,11 @@ func (fa *frameAudit) walk(t *proto.PageFrameTree, world proto.RuntimeExecutionC
 		fa.rep.Fields = append(fa.rep.Fields, doc.Fields...)
 		fa.rep.Beyond.add(doc.FieldsBeyond)
 		fa.rep.Notes = append(fa.rep.Notes, doc.Notes...)
+		if len(doc.Unfinished) > 0 {
+			// Its findings are kept; the frame is listed as one whose
+			// audit isn't whole, as a frame axe couldn't reach is.
+			fa.hosts[host] = true
+		}
 		fa.walk(c, inner, path, depth+1)
 	}
 }
@@ -319,6 +330,7 @@ func auditFrame(page *rod.Page, frame proto.PageFrameID, opts auditOptions, pref
 		return docReport{}, 0, page.GetContext().Err()
 	case err != nil:
 		doc.Notes = append(doc.Notes, "placeholder check: "+err.Error())
+		doc.Unfinished = append(doc.Unfinished, "placeholder check: "+err.Error())
 	default:
 		doc.Fields, doc.FieldsBeyond = found, more
 	}
