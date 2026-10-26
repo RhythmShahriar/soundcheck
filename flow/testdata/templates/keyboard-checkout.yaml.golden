@@ -10,8 +10,8 @@
 # address or with --staging, never on a URL listed under production.
 #
 # WooCommerce checkout: put a product in the cart first (a goto to
-# /?add-to-cart=<product id> works), and drop the terms step when the
-# shop has no terms checkbox.
+# /?add-to-cart=<product id> works). Drop the terms step when the shop
+# has no terms checkbox.
 name: Checkout by keyboard
 start: /checkout/
 keyboard: true

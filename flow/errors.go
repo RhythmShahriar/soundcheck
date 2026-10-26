@@ -29,7 +29,7 @@ type Unlinked struct {
 const errorWait = time.Second
 
 // errorWatch is what a submit or click step on a form knew before its
-// key press: the form, and in window[name] the errors already shown and
+// key press: the form. window[name] holds the errors already shown and
 // the fields already invalid.
 type errorWatch struct {
 	form string
@@ -45,8 +45,8 @@ const errorSel = `[role=alert],[aria-live],.error,.woocommerce-error,.invalid-fe
 // form of a button-like control in it. A checkbox, field or link in a
 // form isn't one: a click on it doesn't submit. It returns the form's
 // path the way focus.Active builds a stop's, so a11y.Selector names it
-// the same way, and remembers the errors already shown and the fields
-// already invalid in window[name].
+// the same way. It keeps the errors already shown and the fields already
+// invalid in window[name].
 const formOfJS = `function(submit, name, errorSel) {
   let form = null;
   if (this.localName === 'form') form = this;
