@@ -389,3 +389,27 @@ func TestClassifyKeyIgnoresPII(t *testing.T) {
 		}
 	}
 }
+
+// A navigation soon after the load may be the page's own timer, unless
+// it started in the stop's focus handler: then the Tab press caused it.
+func TestContextChangeByFocus(t *testing.T) {
+	step := func(byFocus bool, at int) Trace {
+		s := Step{Effect: EffectNavigation, AtMS: at, ByFocus: byFocus}
+		s.Selector, s.Tag, s.Connected = "#view", "select", true
+		return Trace{Forward: []Step{s}, MainIndex: -1}
+	}
+	for _, c := range []struct {
+		name string
+		t    Trace
+		want bool
+	}{
+		{"focus handler, early", step(true, 500), true},
+		{"timer, early", step(false, 500), false},
+		{"late", step(false, timerGrace), true},
+	} {
+		_, got := find(Classify(c.t, defaults(), "2.1"), ids.ContextChange)
+		if got != c.want {
+			t.Errorf("%s: context-change %v, want %v", c.name, got, c.want)
+		}
+	}
+}

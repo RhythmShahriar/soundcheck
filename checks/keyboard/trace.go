@@ -86,6 +86,11 @@ type Step struct {
 	// navigation (the page started to leave), target (a new window or
 	// tab) or form (a form or other write was sent).
 	Effect string `json:"effect,omitempty"`
+	// ByFocus is true when the navigation Effect names started while the
+	// page handled this stop's focus event: the Tab press caused it,
+	// whenever it happened. Without it a navigation soon after the load
+	// may be the page's own timer.
+	ByFocus bool `json:"by_focus,omitempty"`
 	// AtMS is the time of the press since the page loaded, in
 	// milliseconds.
 	AtMS int `json:"at_ms"`
@@ -140,6 +145,10 @@ type SkipLink struct {
 	NextInsideOrAfterTarget bool `json:"next_inside_or_after_target"`
 	// Scrolled is true when following the link scrolled the page.
 	Scrolled bool `json:"scrolled"`
+	// NothingAfter is true when no tabbable element is inside the
+	// target or after it, so the next Tab can't show where the link
+	// went: the link isn't judged by it.
+	NothingAfter bool `json:"nothing_after,omitempty"`
 }
 
 // WidgetResult is one menu, dialog or disclosure the walk tested by

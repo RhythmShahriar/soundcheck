@@ -164,6 +164,7 @@ type guard struct {
 	marks   []mark
 	since   func() float64 // page time now, in milliseconds since the load
 	effects map[int]string
+	byFocus map[int]bool // presses whose navigation a focus handler started
 	held    []string
 	events  []string
 	// requests counts every request the page made while the walk had
@@ -216,18 +217,18 @@ func (g *guard) at(press int) {
 // effect records kind for the press under way. g.mu is held.
 func (g *guard) effect(kind string) { g.effectOf(g.press, kind) }
 
-// effectAt records kind for the press sent last before page time ms:
-// a form a script submits starts its navigation a moment after the key
+// pressAt is the press sent last before page time ms, -1 for none: a
+// form a script submits starts its navigation a moment after the key
 // press that focused the field, when the walk may have read the stop
 // already. g.mu is held.
-func (g *guard) effectAt(ms float64, kind string) {
+func (g *guard) pressAt(ms float64) int {
 	press := -1
 	for _, m := range g.marks {
 		if m.at <= ms+1 { // a millisecond for the clocks' rounding
 			press = m.press
 		}
 	}
-	g.effectOf(press, kind)
+	return press
 }
 
 func (g *guard) effectOf(press int, kind string) {
@@ -268,7 +269,7 @@ func pathOf(method string, u *url.URL) string {
 // arm starts watching the tab and installs the walk's in-page guard and
 // caret style. The function it returns undoes all of it.
 func (w *walker) arm(ctx context.Context) (func(), error) {
-	g := &guard{press: -1, effects: map[int]string{},
+	g := &guard{press: -1, effects: map[int]string{}, byFocus: map[int]bool{},
 		since: func() float64 { return float64(time.Since(w.loaded).Microseconds()) / 1000 }}
 	w.guard = g
 	remove, err := intercept.Add(w.tab, func(r *intercept.Request) {
@@ -491,6 +492,7 @@ func (w *walker) finish(t *Trace) {
 	for i, e := range g.effects {
 		if i < len(t.Forward) {
 			t.Forward[i].Effect = e
+			t.Forward[i].ByFocus = e == EffectNavigation && g.byFocus[i]
 		}
 	}
 	t.Held = append(t.Held, g.held...)
@@ -587,6 +589,7 @@ func (w *walker) navigations(ctx context.Context) error {
 		Stopped bool    `json:"stopped"`
 		At      float64 `json:"at"` // performance.now() when it started
 		El      int     `json:"el"` // the forward stop it came from, by probe; -1 when unknown
+		Focus   bool    `json:"focus"` // it started in a focus handler
 	}
 	if err := json.Unmarshal([]byte(raw), &log); err != nil {
 		return fmt.Errorf("navigation log: %w", err)
@@ -621,10 +624,15 @@ func (w *walker) navigations(ctx context.Context) error {
 			kind = EffectForm
 			g.hold(n.What)
 		}
+		press := -1
 		if n.El >= 0 && n.El < len(w.probed) {
-			g.effectOf(w.probed[n.El], kind)
+			press = w.probed[n.El]
 		} else {
-			g.effectAt(n.At, kind)
+			press = g.pressAt(n.At)
+		}
+		g.effectOf(press, kind)
+		if n.Focus && press >= 0 {
+			g.byFocus[press] = true
 		}
 		if n.Stopped {
 			g.event("navigation stopped: " + n.What)
@@ -808,6 +816,13 @@ func (w *walker) skipLink(ctx context.Context, t *Trace) error {
 		return err
 	}
 	sl.TargetFound, sl.Scrolled = found == "true", after != before
+	if sl.TargetFound {
+		n, err := w.reader.Eval(ctx, afterTargetJS(id))
+		if err != nil {
+			return err
+		}
+		sl.NothingAfter = n == "0"
+	}
 	if err := focus.Press(ctx, w.tab, focus.Tab); err != nil {
 		return err
 	}

@@ -59,7 +59,7 @@ func Classify(t Trace, o model.KeyboardOptions, wcag string) []model.Issue {
 			set.add(newIssue(ids.FocusObscured, wcag, s.Selector,
 				fmt.Sprintf("Tab stop %d (%s) is fully covered by %s.", n+1, describe(s), orUnknown(s.ObscuredBy))))
 		}
-		if words, ok := effectWords[s.Effect]; ok && (s.Effect != EffectNavigation || s.AtMS >= timerGrace) {
+		if words, ok := effectWords[s.Effect]; ok && (s.Effect != EffectNavigation || s.ByFocus || s.AtMS >= timerGrace) {
 			set.add(newIssue(ids.ContextChange, wcag, s.Selector,
 				fmt.Sprintf("Moving focus to %s with Tab %s without Enter.", describe(s), words)))
 		}
@@ -272,7 +272,7 @@ func skipLinks(t Trace, mode, wcag string) []model.Issue {
 		switch {
 		case !sl.TargetFound:
 			why = "doesn't exist"
-		case !sl.NextInsideOrAfterTarget && !sl.Scrolled:
+		case !sl.NextInsideOrAfterTarget && !sl.Scrolled && !sl.NothingAfter:
 			why = "isn't where the next Tab goes"
 		}
 		if why == "" {

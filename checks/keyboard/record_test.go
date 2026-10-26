@@ -220,7 +220,8 @@ func skipPage(href string) string {
 // The skip link is followed with Enter and the next Tab lands in the
 // main content; one pointing at a missing id is recorded as such.
 func TestRecordSkipLink(t *testing.T) {
-	srv := serve(t, &pages{html: map[string]string{"/": skipPage("#main"), "/broken": skipPage("#content")}})
+	empty := strings.Replace(skipPage("#main"), `<a id="in" href="/in">In the content</a>`, "<p>Text only.</p>", 1)
+	srv := serve(t, &pages{html: map[string]string{"/": skipPage("#main"), "/broken": skipPage("#content"), "/empty": empty}})
 	c := launch(t)
 	tab, p := c.open(srv.URL + "/")
 	tr := walkPage(t, tab, p, DefaultSettings())
@@ -234,8 +235,18 @@ func TestRecordSkipLink(t *testing.T) {
 	}
 	tab, p = c.open(srv.URL + "/broken")
 	tr = walkPage(t, tab, p, DefaultSettings())
-	if sl := tr.SkipLink; sl == nil || sl.TargetFound || sl.TargetID != "content" || sl.NextInsideOrAfterTarget {
+	if sl := tr.SkipLink; sl == nil || sl.TargetFound || sl.TargetID != "content" || sl.NextInsideOrAfterTarget || sl.NothingAfter {
 		t.Errorf("broken skip link %+v", sl)
+	}
+	// Nothing to focus in or after the main content: the next Tab goes
+	// back to the top, which says nothing about the link.
+	tab, p = c.open(srv.URL + "/empty")
+	tr = walkPage(t, tab, p, DefaultSettings())
+	if sl := tr.SkipLink; sl == nil || !sl.TargetFound || !sl.NothingAfter {
+		t.Errorf("skip link with nothing after its target %+v", sl)
+	}
+	if issues := skipLinks(*tr, SkipLinkExpected, "2.1"); len(issues) != 0 {
+		t.Errorf("issues %+v", issues)
 	}
 }
 
@@ -361,5 +372,39 @@ func TestPathOfMasksTokens(t *testing.T) {
 	u, _ := url.Parse("http://h/password/reset/" + token)
 	if got := pathOf("GET", u); strings.Contains(got, token) || !strings.HasPrefix(got, "GET /password/reset/") {
 		t.Errorf("pathOf %q", got)
+	}
+}
+
+// autoNavPage loads another view as soon as its select gets focus.
+const autoNavPage = `<!doctype html><html lang="en"><body><main>
+<label for="view">Show</label> <select id="view"><option>month</option><option>year</option></select>
+<a id="plain" href="/other">Other</a>
+<script>document.getElementById('view').addEventListener('focus', function () { location.assign('/?view=year'); });</script>
+</main></body></html>`
+
+// A navigation a focus handler starts is the Tab press's doing, however
+// soon after the load: the stop says so and gets context-change.
+func TestRecordNavigationByFocus(t *testing.T) {
+	srv := serve(t, &pages{html: map[string]string{"/": autoNavPage}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	tr := walkPage(t, tab, p, DefaultSettings())
+	var view, plain *Step
+	for i := range tr.Forward {
+		switch tr.Forward[i].Selector {
+		case "#view":
+			view = &tr.Forward[i]
+		case "#plain":
+			plain = &tr.Forward[i]
+		}
+	}
+	if view == nil || view.Effect != EffectNavigation || !view.ByFocus {
+		t.Fatalf("select stop %+v", view)
+	}
+	if plain == nil || plain.Effect != "" || plain.ByFocus {
+		t.Errorf("plain link stop %+v", plain)
+	}
+	if _, ok := find(Classify(*tr, defaults(), "2.1"), "keyboard/context-change"); !ok {
+		t.Error("no context-change")
 	}
 }

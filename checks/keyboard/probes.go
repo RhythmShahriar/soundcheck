@@ -73,8 +73,12 @@ const startJS = `(() => {
 // won't let be canceled is logged all the same.
 const guardJS = `(() => {
   if (window.__scKbNav) return 'ok';
-  const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: []};
+  const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: [], inFocus: false};
   if (!window.navigation) return 'no navigation API';
+  // Set while the page handles a focus event (a window capture listener
+  // runs before the element's own), so a navigation a focus handler
+  // starts is told from one a timer starts.
+  addEventListener('focus', () => { g.inFocus = true; setTimeout(() => { g.inFocus = false; }, 0); }, true);
   navigation.addEventListener('navigate', e => {
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;
     let p = '';
@@ -85,7 +89,7 @@ const guardJS = `(() => {
     let el = -1;
     const src = e.sourceElement;
     if (src) for (let i = g.els.length - 1; i >= 0; i--) { const x = g.els[i]; if (x === src || src.contains(x)) { el = i; break; } }
-    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el});
+    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el, focus: g.inFocus});
     if (e.cancelable) e.preventDefault();
   });
   return 'ok';
@@ -235,6 +239,22 @@ const scrollJS = `JSON.stringify([scrollX, scrollY])`
 func targetJS(id string) string {
 	lit, _ := json.Marshal(id)
 	return `String(!!(document.getElementById(` + string(lit) + `) || document.getElementsByName(` + string(lit) + `)[0]))`
+}
+
+// afterTargetJS counts the tabbable elements inside the skip link's
+// target or after it in document order. With none, the Tab after the
+// link can only go back to the top of the page, which says nothing
+// about the link.
+func afterTargetJS(id string) string {
+	lit, _ := json.Marshal(id)
+	return `String((() => {
+  const t = document.getElementById(` + string(lit) + `) || document.getElementsByName(` + string(lit) + `)[0];
+  if (!t) return 0;
+  return Array.from(document.querySelectorAll('a[href], area[href], button, input, select, textarea, iframe, summary, [tabindex], [contenteditable="true"], [contenteditable=""]'))
+    .filter(n => n.tabIndex >= 0 && !n.disabled && !(n.localName === 'input' && n.type === 'hidden') &&
+      (n.checkVisibility ? n.checkVisibility({visibilityProperty: true}) : n.getClientRects().length > 0) &&
+      !n.closest('[inert]') && (t.contains(n) || !!(t.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING))).length;
+})())`
 }
 
 // nextJS returns the probe run on the stop one Tab after the skip link
