@@ -345,3 +345,85 @@ func TestWrap(t *testing.T) {
 		}
 	}
 }
+
+// The Markdown of an --eaa snapshot and comparison matches its golden
+// file: criteria after accessibility titles and the Accessibility
+// section with its table, not-checked list and evidence note.
+func TestEAAMarkdownGolden(t *testing.T) {
+	snap := eaaSnapshot()
+	snap.EAA.NotAudited = []model.NotAudited{{Path: "/catalog/", Module: "a11y", Status: model.AuditTimeout, Reason: "axe-core timed out after 45s"}}
+	for name, r := range map[string]Result{"eaa-snapshot.md.golden": {Run: snap}, "eaa-compare.md.golden": eaaComparison()} {
+		var b bytes.Buffer
+		if err := Markdown(&b, r); err != nil {
+			t.Fatal(err)
+		}
+		out := b.String()
+		for _, want := range []string{"### Accessibility (WCAG 2.1 A and AA)\n", "<details><summary>Criteria with failures</summary>",
+			"| 2.1.2 No Keyboard Trap | 9.2.1.2 |", "> " + model.EvidenceNote, "- `/catalog/` (a11y: timeout)",
+			"Keyboard focus is trapped: Card number (2.1.2)"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s lacks %q:\n%s", name, want, out)
+			}
+		}
+		golden(t, name, out)
+	}
+	var b bytes.Buffer
+	if err := Markdown(&b, eaaComparison()); err != nil {
+		t.Fatal(err)
+	}
+	if out := b.String(); !strings.Contains(out, "| 2.1.2 No Keyboard Trap | 9.2.1.2 | 1 (new) | 1 |") || strings.Contains(out, "| 1.3.1 Info and Relationships | 9.1.3.1 | 2 (new)") {
+		t.Errorf("only the trap's criterion is new:\n%s", out)
+	}
+	b.Reset()
+	if err := Markdown(&b, Result{Run: sampleRun()}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "Accessibility") {
+		t.Errorf("a run without --eaa has an Accessibility section:\n%s", b.String())
+	}
+}
+
+// The Accessibility section is what a PR comment shows everyone with
+// access to the repository: what a page showed (titles with names,
+// details, selectors, reasons) never reaches it, only counts, check
+// ids, criteria and paths.
+func TestEAAMarkdownSectionHasNoPageText(t *testing.T) {
+	canary := "canary-" + "7f3a"
+	r := eaaComparison()
+	for i := range r.Comparison.Changes {
+		ch := &r.Comparison.Changes[i]
+		ch.Title += " " + canary + "-title"
+		ch.Detail = canary + "-detail jane@example.test"
+		ch.Source = "#" + canary + "-source"
+		ch.Files = map[string]string{"after": canary + "-shot.png"}
+	}
+	r.Comparison.EAA.NotAudited[0].Reason = canary + "-reason"
+	for i := range r.Run.Pages {
+		for j := range r.Run.Pages[i].Issues {
+			r.Run.Pages[i].Issues[j].Detail = canary + "-issue"
+		}
+	}
+	snap := Result{Run: eaaSnapshot()}
+	for i := range snap.Run.Pages {
+		for j := range snap.Run.Pages[i].Issues {
+			is := &snap.Run.Pages[i].Issues[j]
+			is.Title, is.Detail, is.Source = canary+"-title", canary+"-detail", canary+"-source"
+		}
+	}
+	for name, res := range map[string]Result{"comparison": r, "snapshot": snap} {
+		var b bytes.Buffer
+		if err := Markdown(&b, res); err != nil {
+			t.Fatal(err)
+		}
+		out := b.String()
+		start := strings.Index(out, "### Accessibility")
+		if start < 0 {
+			t.Fatalf("%s: no Accessibility section:\n%s", name, out)
+		}
+		end := strings.Index(out[start:], "<sub>rhythm-soundcheck")
+		section := out[start : start+end]
+		if strings.Contains(section, "canary") || strings.Contains(section, "jane") || strings.Contains(section, ".png") {
+			t.Errorf("%s: the Accessibility section holds page text:\n%s", name, section)
+		}
+	}
+}

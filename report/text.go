@@ -119,7 +119,7 @@ func Markdown(w io.Writer, r Result) error {
 			fmt.Fprintf(&b, "### %s %s (%d)\n\n_%s._\n\n", classes[class].Glyph, classes[class].Label, len(cs), capitalize(classes[class].Blurb))
 			b.WriteString("| Change | Where | Before → after | Fix |\n|---|---|---|---|\n")
 			for _, ch := range cs {
-				title := mdCell(ch.Title)
+				title := mdCell(ch.Title) + mdCriteria(ch.Check, ch.WCAG)
 				if ch.Source != "" {
 					title += "<br><sub>" + mdCell(ch.Source) + "</sub>"
 				}
@@ -131,6 +131,7 @@ func Markdown(w io.Writer, r Result) error {
 			}
 			b.WriteString("\n")
 		}
+		writeAccessibility(&b, r)
 		writeNotes(&b, c.Warnings)
 	} else {
 		issues := Issues(run)
@@ -141,7 +142,7 @@ func Markdown(w io.Writer, r Result) error {
 		if len(issues) > 0 {
 			b.WriteString("| Level | Issue | Where | Fix |\n|---|---|---|---|\n")
 			for _, i := range issues {
-				title := mdCell(i.Title)
+				title := mdCell(i.Title) + mdCriteria(i.Check, i.WCAG)
 				if i.Source != "" {
 					title += "<br><sub>" + mdCell(i.Source) + "</sub>"
 				}
@@ -149,6 +150,7 @@ func Markdown(w io.Writer, r Result) error {
 			}
 			b.WriteString("\n")
 		}
+		writeAccessibility(&b, r)
 		writeNotes(&b, run.Warnings)
 	}
 	fmt.Fprintf(&b, "<sub>rhythm-soundcheck %s · %s · %s</sub>\n", MarkdownText(run.Version), r.stats(), run.Started.Format("2006-01-02 15:04 MST"))

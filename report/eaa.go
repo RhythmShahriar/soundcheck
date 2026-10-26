@@ -5,6 +5,7 @@ package report
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -254,4 +255,69 @@ func wrap(s string, cols int) []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// mdCriteria is " (1.3.1, 4.1.2)" after the title of an accessibility
+// or keyboard row of a Markdown table, or "" for other rows.
+func mdCriteria(check string, ids []string) string {
+	if !accessibilityCheck(check) || len(ids) == 0 {
+		return ""
+	}
+	return " (" + mdCell(strings.Join(ids, ", ")) + ")"
+}
+
+// writeAccessibility writes the Accessibility section of an --eaa
+// result's Markdown. It may be posted as a PR comment, where anyone
+// with access to the repository reads it, so it holds counts, check
+// ids, criteria and paths only: never an issue's title, detail, source
+// or a screenshot, which can carry what a visitor typed or a name.
+func writeAccessibility(b *strings.Builder, r Result) {
+	e := eaaOf(r)
+	if e == nil {
+		return
+	}
+	version := eaaVersion(e)
+	fmt.Fprintf(b, "### Accessibility (WCAG %s A and AA)\n\n", mdCell(version))
+	fmt.Fprintf(b, "%d of %d criteria have failures · %d had none found by these tests · %d need a person · %s\n\n",
+		len(e.Criteria.Failed), eaaTotal(e), len(e.Criteria.NoFailuresFound), len(e.Criteria.NotTested), plural(e.Open, "open issue", "open issues"))
+	if len(e.Criteria.Failed) > 0 {
+		var fresh []string
+		if r.Comparison != nil {
+			fresh = newCriteria(r.Comparison, e)
+		}
+		titles := criteriaTitles(version)
+		b.WriteString("<details><summary>Criteria with failures</summary>\n\n")
+		b.WriteString("| Criterion | EN 301 549 | Issues | Pages |\n|---|---|---:|---:|\n")
+		for _, f := range e.Criteria.Failed {
+			name := f.ID
+			if t := titles[f.ID]; t != "" {
+				name += " " + t
+			}
+			issues := fmt.Sprint(f.Issues)
+			if slices.Contains(fresh, f.ID) {
+				issues += " (new)"
+			}
+			fmt.Fprintf(b, "| %s | %s | %s | %d |\n", mdCell(name), mdCell("9."+f.ID), issues, f.Pages)
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+	if len(e.NotAudited) > 0 {
+		// The status, not the reason: a reason can quote the page.
+		b.WriteString("Not checked, so their issues are kept from the snapshot and not counted as fixed:\n\n")
+		for _, n := range e.NotAudited {
+			fmt.Fprintf(b, "- %s (%s: %s)\n", mdPages([]string{n.Path}), mdCell(n.Module), mdCell(n.Status))
+		}
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(b, "> %s\n\n", mdCell(model.EvidenceNote))
+}
+
+// criteriaTitles maps each criterion of a WCAG version to its short
+// title.
+func criteriaTitles(version string) map[string]string {
+	m := map[string]string{}
+	for _, c := range wcag.Criteria(version) {
+		m[c.ID] = c.Title
+	}
+	return m
 }
