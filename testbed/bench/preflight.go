@@ -9,7 +9,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -240,4 +243,45 @@ func wpLogin(base string) func(*rod.Page) error {
 		wait()
 		return nil
 	}
+}
+
+// localOnly makes tab fail every request to a host other than the
+// testbed's sites and localHosts. Its stop function lists the hosts it
+// blocked. The probes must never reach a real
+// outside service: a logged-in WordPress page that pulls in one (the
+// admin bar's Gravatar, say) would hang them wherever that host can't
+// be reached and contact it wherever it can.
+func localOnly(tab *rod.Page, sites map[string]string) (stop func() ([]string, error), err error) {
+	allowed := slices.Clone(localHosts)
+	for _, s := range sites {
+		if u, err := url.Parse(s); err == nil && u.Hostname() != "" {
+			allowed = append(allowed, strings.ToLower(u.Hostname()))
+		}
+	}
+	var mu sync.Mutex
+	var blocked []string
+	router := tab.HijackRequests()
+	err = router.Add("*", "", func(h *rod.Hijack) {
+		host := strings.ToLower(h.Request.URL().Hostname())
+		if slices.Contains(allowed, host) {
+			h.ContinueRequest(&proto.FetchContinueRequest{})
+			return
+		}
+		mu.Lock()
+		if !slices.Contains(blocked, host) {
+			blocked = append(blocked, host)
+		}
+		mu.Unlock()
+		h.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
+	})
+	if err != nil {
+		return nil, err
+	}
+	go router.Run()
+	return func() ([]string, error) {
+		err := router.Stop()
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(blocked), err
+	}, nil
 }

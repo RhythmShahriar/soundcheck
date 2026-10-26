@@ -7,7 +7,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"maps"
+	"net"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -158,9 +161,16 @@ func TestPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tab.Close() }()
+	stop, err := localOnly(tab, m.Sites)
+	if err != nil {
+		t.Fatal(err)
+	}
 	results, err := preflight(context.Background(), dir, m.Sites, tab, wpLogin(m.Sites["wp"]))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if blocked, err := stop(); err != nil || len(blocked) > 0 {
+		t.Errorf("a probe's page asked hosts outside the testbed: %v, %v", blocked, err)
 	}
 	for _, r := range results {
 		if !r.OK() {
@@ -168,6 +178,56 @@ func TestPreflight(t *testing.T) {
 		} else {
 			t.Log(r)
 		}
+	}
+}
+
+// TestLocalOnly shows the preflight's guard lets the testbed's own
+// requests through. A request to an outside host fails without
+// contacting it and is reported. It needs Chrome, not the stack.
+func TestLocalOnly(t *testing.T) {
+	// The first free port of the lane's own range.
+	var ln net.Listener
+	for port := 37124; port < 37130 && ln == nil; port++ {
+		ln, _ = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	}
+	if ln == nil {
+		t.Skip("ports 37124 to 37129 are busy")
+	}
+	base := "http://" + ln.Addr().String()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/dot.png", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<!doctype html><title>t</title><img src="/dot.png"><img src="http://outside.invalid/avatar.png">`))
+	})
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	sess, err := b.Session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := browser.NewTab(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tab.Close() }()
+	stop, err := localOnly(tab, map[string]string{"php": base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := runProbe(context.Background(), tab, base+"/", `() => fetch('/dot.png').then(r => r.status)`)
+	if err != nil || got != "204" {
+		t.Errorf("local page = %q, %v; want it loaded", got, err)
+	}
+	blocked, err := stop()
+	if err != nil || !slices.Equal(blocked, []string{"outside.invalid"}) {
+		t.Errorf("blocked = %v, %v; want [outside.invalid] and the local image let through", blocked, err)
 	}
 }
 
