@@ -70,3 +70,45 @@ func TestModuleBlocks(t *testing.T) {
 		}
 	}
 }
+
+// SetBlockValue sets one key of a block, keeps the block's other keys
+// and leaves copies made before alone.
+func TestSetBlockValue(t *testing.T) {
+	RegisterBlock("widget")
+	t.Cleanup(func() {
+		blockMu.Lock()
+		delete(blockNames, "widget")
+		blockMu.Unlock()
+	})
+	c, err := Load(write(t, "widget:\n  level: 3\n  name: big\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c
+	c.SetBlockValue("widget", "name", "2.1")
+	c.SetBlockValue("other", "wcag", "2.2")
+	var w struct {
+		Level int    `yaml:"level"`
+		Name  string `yaml:"name"`
+	}
+	if err := DecodeBlock("widget", c.Block("widget"), &w); err != nil || w.Level != 3 || w.Name != "2.1" {
+		t.Errorf("after SetBlockValue: %+v, %v", w, err)
+	}
+	var o struct {
+		WCAG string `yaml:"wcag"`
+	}
+	if err := DecodeBlock("other", c.Block("other"), &o); err != nil || o.WCAG != "2.2" {
+		t.Errorf("a new block: %+v, %v", o, err)
+	}
+	w.Name = ""
+	if err := DecodeBlock("widget", before.Block("widget"), &w); err != nil || w.Name != "big" {
+		t.Errorf("the copy made before changed: %+v, %v", w, err)
+	}
+	if n := before.Block("other"); n.Kind != 0 {
+		t.Errorf("the copy made before got the new block: %+v", n)
+	}
+	// Not set in the file: InFile still says so.
+	if c.InFile("other") {
+		t.Error("InFile(other) after SetBlockValue")
+	}
+}

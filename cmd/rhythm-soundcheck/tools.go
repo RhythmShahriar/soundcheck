@@ -29,6 +29,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/review"
 	"github.com/RhythmShahriar/soundcheck/rules"
+	"github.com/RhythmShahriar/soundcheck/wcag"
 	"github.com/RhythmShahriar/soundcheck/wpupdate"
 )
 
@@ -165,6 +166,7 @@ them worst first in .soundcheck-fleet/fleet.html. A site's variables come
 from <PREFIX>_SOUNDCHECK_* (env_prefix, default from its name). A site's
 args can't run programs: set <PREFIX>_SOUNDCHECK_ALLOW_EXEC=1 or
 <PREFIX>_SOUNDCHECK_LIGHTHOUSE=1 for --allow-exec or --lighthouse.
+--eaa and --wcag <version> go to every site's command.
 `
 
 // cmdFleet runs snapshot or compare for every site in a sites file.
@@ -172,9 +174,22 @@ func cmdFleet(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("fleet", flag.ContinueOnError)
 	tabs := fs.Int("tabs", 3, "")
 	open := fs.Bool("open", false, "")
+	eaa := fs.Bool("eaa", false, "")
+	version := fs.String("wcag", "", "")
 	pos, code, ok := subFlags(fs, args, fleetUsage, stdout, stderr)
 	if !ok {
 		return code
+	}
+	// --eaa and --wcag go to every site, after the site's own args.
+	var extra []string
+	if *eaa {
+		extra = append(extra, "--eaa")
+	}
+	if *version != "" {
+		if !slices.Contains(wcag.Versions, *version) {
+			return failed(stderr, cli.Usagef("--wcag (a11y.wcag): %q isn't one of %s", *version, strings.Join(wcag.Versions, ", ")))
+		}
+		extra = append(extra, "--wcag", *version)
 	}
 	if len(pos) != 2 || (pos[1] != fleet.Snapshot && pos[1] != fleet.Compare) {
 		fmt.Fprint(stderr, named(fleetUsage))
@@ -190,7 +205,7 @@ func cmdFleet(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
 	defer stop()
-	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, nil, stdout)
+	code, err = fleet.Run(ctx, bin, pos[0], pos[1], *tabs, extra, stdout)
 	if err != nil {
 		if code == 0 { // the file was refused before any site ran
 			return failed(stderr, cli.UsageError{Msg: err.Error()})

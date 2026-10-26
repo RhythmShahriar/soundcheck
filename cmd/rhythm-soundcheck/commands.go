@@ -176,6 +176,9 @@ func (s *session) start(target string) {
 	if s.quick != "" {
 		s.view.Step("Preset", s.quick)
 	}
+	if h := s.eaaHeader(); h != "" {
+		s.view.Step("Preset", h)
+	}
 	s.view.Step("Modules", strings.Join(s.cfg.Modules, ", "))
 	s.view.Step("Levels", levels(s.cfg))
 	s.view.Step("Viewports", strings.Join(s.cfg.Viewports, ", "))
@@ -291,6 +294,7 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 		opts.Done, opts.OnPage = s.resume.done, s.resume.add
 	}
 	run, err := runner.Run(s.ctx, opts)
+	s.recordEAA(run)
 	if s.o.verbose && run != nil {
 		s.view.Step("Timing", timing(run))
 	}
@@ -780,6 +784,9 @@ func cmdCompare(s *session) int {
 	if c := inheritEngine(&s.engine, before.Options, s.chosen); c != nil {
 		changes = append(changes, *c)
 	}
+	if changes, err = s.inheritEAA(before, changes); err != nil {
+		return s.fail(err)
+	}
 	if len(s.cfg.Modules) == 0 {
 		return s.fail(cli.Usagef("no modules left to run: the snapshot ran %s", list(before.Options.Modules)))
 	}
@@ -1023,7 +1030,7 @@ func cmdReport(s *session) int {
 	if c, err := store.LoadComparison(dir); err == nil {
 		res.Comparison = c
 	}
-	if err := cmp.Or(s.failOn(res.Compared()), s.only("report", "confirm", "resume")); err != nil {
+	if err := cmp.Or(s.failOn(res.Compared()), s.only("report", "confirm", "resume", "eaa", "wcag", "staging")); err != nil {
 		return s.fail(err)
 	}
 	switch {
