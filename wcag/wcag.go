@@ -16,103 +16,119 @@ import (
 type Criterion struct {
 	ID        string // "1.4.3"
 	Title     string // "Contrast (Minimum)"
+	Slug      string // its anchor in the WCAG recommendation: "contrast-minimum"
 	Level     string // A or AA
 	Principle string // Perceivable, Operable, Understandable or Robust
 	Since     string // the WCAG version that added it: 2.0, 2.1 or 2.2
 	EN        string // the EN 301 549 clause: "9." plus ID
 	// Coverage says how far Soundcheck's tests can judge the criterion
-	// and TestedBy lists the checks that test it.
+	// under the version Criteria was asked for: CoveragePartly or
+	// CoverageNone. TestedBy lists the checks that test it: Soundcheck's
+	// own check ids and "axe:<rule>" for each axe-core rule the version
+	// runs.
 	Coverage string
 	TestedBy []string
+	// Note is a fixed result to print instead of the tests' one, such as
+	// why 4.1.1 Parsing isn't tested.
+	Note string
 }
 
-// catalog is every WCAG 2.2 A and AA criterion plus 4.1.1 Parsing,
-// which 2.2 removed. Removed says which version dropped a criterion.
-var catalog = []struct {
-	id, title, level, since, removed string
-}{
-	{"1.1.1", "Non-text Content", "A", "2.0", ""},
-	{"1.2.1", "Audio-only and Video-only (Prerecorded)", "A", "2.0", ""},
-	{"1.2.2", "Captions (Prerecorded)", "A", "2.0", ""},
-	{"1.2.3", "Audio Description or Media Alternative (Prerecorded)", "A", "2.0", ""},
-	{"1.2.4", "Captions (Live)", "AA", "2.0", ""},
-	{"1.2.5", "Audio Description (Prerecorded)", "AA", "2.0", ""},
-	{"1.3.1", "Info and Relationships", "A", "2.0", ""},
-	{"1.3.2", "Meaningful Sequence", "A", "2.0", ""},
-	{"1.3.3", "Sensory Characteristics", "A", "2.0", ""},
-	{"1.3.4", "Orientation", "AA", "2.1", ""},
-	{"1.3.5", "Identify Input Purpose", "AA", "2.1", ""},
-	{"1.4.1", "Use of Color", "A", "2.0", ""},
-	{"1.4.2", "Audio Control", "A", "2.0", ""},
-	{"1.4.3", "Contrast (Minimum)", "AA", "2.0", ""},
-	{"1.4.4", "Resize Text", "AA", "2.0", ""},
-	{"1.4.5", "Images of Text", "AA", "2.0", ""},
-	{"1.4.10", "Reflow", "AA", "2.1", ""},
-	{"1.4.11", "Non-text Contrast", "AA", "2.1", ""},
-	{"1.4.12", "Text Spacing", "AA", "2.1", ""},
-	{"1.4.13", "Content on Hover or Focus", "AA", "2.1", ""},
-	{"2.1.1", "Keyboard", "A", "2.0", ""},
-	{"2.1.2", "No Keyboard Trap", "A", "2.0", ""},
-	{"2.1.4", "Character Key Shortcuts", "A", "2.1", ""},
-	{"2.2.1", "Timing Adjustable", "A", "2.0", ""},
-	{"2.2.2", "Pause, Stop, Hide", "A", "2.0", ""},
-	{"2.3.1", "Three Flashes or Below Threshold", "A", "2.0", ""},
-	{"2.4.1", "Bypass Blocks", "A", "2.0", ""},
-	{"2.4.2", "Page Titled", "A", "2.0", ""},
-	{"2.4.3", "Focus Order", "A", "2.0", ""},
-	{"2.4.4", "Link Purpose (In Context)", "A", "2.0", ""},
-	{"2.4.5", "Multiple Ways", "AA", "2.0", ""},
-	{"2.4.6", "Headings and Labels", "AA", "2.0", ""},
-	{"2.4.7", "Focus Visible", "AA", "2.0", ""},
-	{"2.4.11", "Focus Not Obscured (Minimum)", "AA", "2.2", ""},
-	{"2.5.1", "Pointer Gestures", "A", "2.1", ""},
-	{"2.5.2", "Pointer Cancellation", "A", "2.1", ""},
-	{"2.5.3", "Label in Name", "A", "2.1", ""},
-	{"2.5.4", "Motion Actuation", "A", "2.1", ""},
-	{"2.5.7", "Dragging Movements", "AA", "2.2", ""},
-	{"2.5.8", "Target Size (Minimum)", "AA", "2.2", ""},
-	{"3.1.1", "Language of Page", "A", "2.0", ""},
-	{"3.1.2", "Language of Parts", "AA", "2.0", ""},
-	{"3.2.1", "On Focus", "A", "2.0", ""},
-	{"3.2.2", "On Input", "A", "2.0", ""},
-	{"3.2.3", "Consistent Navigation", "AA", "2.0", ""},
-	{"3.2.4", "Consistent Identification", "AA", "2.0", ""},
-	{"3.2.6", "Consistent Help", "A", "2.2", ""},
-	{"3.3.1", "Error Identification", "A", "2.0", ""},
-	{"3.3.2", "Labels or Instructions", "A", "2.0", ""},
-	{"3.3.3", "Error Suggestion", "AA", "2.0", ""},
-	{"3.3.4", "Error Prevention (Legal, Financial, Data)", "AA", "2.0", ""},
-	{"3.3.7", "Redundant Entry", "A", "2.2", ""},
-	{"3.3.8", "Accessible Authentication (Minimum)", "AA", "2.2", ""},
-	{"4.1.1", "Parsing", "A", "2.0", "2.2"},
-	{"4.1.2", "Name, Role, Value", "A", "2.0", ""},
-	{"4.1.3", "Status Messages", "AA", "2.1", ""},
-}
-
-// principles names each guideline's principle by its first digit.
-var principles = map[byte]string{'1': "Perceivable", '2': "Operable", '3': "Understandable", '4': "Robust"}
+// Coverage values.
+const (
+	CoveragePartly = "partly" // some tests can find failures of it, never all
+	CoverageNone   = "none"   // a person must check it
+)
 
 // Versions are the WCAG versions Criteria knows, oldest first.
 var Versions = []string{"2.0", "2.1", "2.2"}
 
 // Criteria returns the A and AA criteria of a WCAG version in number
 // order: 38 for 2.0, 50 for 2.1 and 55 for 2.2. Empty is 2.0, the rules
-// of a run made before 1.3. An unknown version has none.
+// of a run made before 1.3. An unknown version has none. The slice is
+// the caller's to change.
 func Criteria(version string) []Criterion {
-	if version == "" {
-		version = "2.0"
+	out := slices.Clone(tables()[orDefault(version)].criteria)
+	for i := range out {
+		out[i].TestedBy = slices.Clone(out[i].TestedBy)
 	}
-	if !slices.Contains(Versions, version) {
-		return nil
-	}
-	var out []Criterion
-	for _, c := range catalog {
-		if older(version, c.since) || (c.removed != "" && !older(version, c.removed)) {
-			continue
+	return out
+}
+
+// Lookup returns the criterion id of any version Criteria knows, with
+// the coverage of the newest version that has it.
+func Lookup(id string) (Criterion, bool) {
+	for _, v := range slices.Backward(Versions) {
+		for _, c := range Criteria(v) {
+			if c.ID == id {
+				return c, true
+			}
 		}
-		out = append(out, Criterion{ID: c.id, Title: c.title, Level: c.level, Principle: principles[c.id[0]], Since: c.since, EN: "9." + c.id})
 	}
-	slices.SortFunc(out, func(a, b Criterion) int { return Compare(a.ID, b.ID) })
+	return Criterion{}, false
+}
+
+// HowTested says in words how Soundcheck tests the criterion, for the
+// criteria table: "partly: axe image-alt, role-img-alt; keyboard/trap",
+// "not tested: needs a person" or the criterion's Note.
+func (c Criterion) HowTested() string {
+	if c.Note != "" {
+		return c.Note
+	}
+	if c.Coverage != CoveragePartly {
+		return "not tested: needs a person"
+	}
+	var axe, own []string
+	for _, t := range c.TestedBy {
+		if rule, ok := strings.CutPrefix(t, "axe:"); ok {
+			axe = append(axe, rule)
+		} else {
+			own = append(own, t)
+		}
+	}
+	var parts []string
+	if len(axe) > 0 {
+		parts = append(parts, "axe "+strings.Join(axe, ", "))
+	}
+	if len(own) > 0 {
+		parts = append(parts, strings.Join(own, ", "))
+	}
+	return "partly: " + strings.Join(parts, "; ")
+}
+
+// ForCheck returns the criteria of a WCAG version an issue of check
+// fails, sorted: for an axe rule (a11y/<rule>) the criteria its tags
+// name, for Soundcheck's own checks the criteria criteria.yaml lists it
+// under. Checks that map to none, and criteria outside the version, are
+// left out.
+func ForCheck(check, version string) []string {
+	t := tables()[orDefault(version)]
+	if rule, ok := strings.CutPrefix(check, "a11y/"); ok {
+		if r, ok := AxeRules[rule]; ok {
+			var out []string
+			for _, c := range t.criteria {
+				if slices.Contains(r.WCAG, c.ID) {
+					out = append(out, c.ID)
+				}
+			}
+			return out
+		}
+	}
+	return slices.Clone(t.byCheck[check])
+}
+
+// IssueCriteria returns the criteria of a WCAG version an issue fails:
+// the ones it carries (Issue.WCAG) that the version has, else ForCheck
+// of its check.
+func IssueCriteria(i model.Issue, version string) []string {
+	if len(i.WCAG) == 0 {
+		return ForCheck(i.Check, version)
+	}
+	var out []string
+	for _, c := range tables()[orDefault(version)].criteria {
+		if slices.Contains(i.WCAG, c.ID) {
+			out = append(out, c.ID)
+		}
+	}
 	return out
 }
 
@@ -156,19 +172,3 @@ func Standard(version string) string {
 	}
 	return "WCAG " + version + " level AA"
 }
-
-// Summarize sums up an --eaa run against the criteria of its WCAG
-// version: pages yields the run's pages (they may come from disk one by
-// one), site its site-level issues and ignored the changes ignore rules
-// and accepts left out. For a comparison, run is the current run.
-func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.Issue, ignored []model.Change) model.EAASummary {
-	version := run.Options.WCAG
-	if version == "" {
-		version = "2.0"
-	}
-	return model.EAASummary{WCAG: version, EN301549: EN301549(version), EvidenceNote: model.EvidenceNote}
-}
-
-// ForCheck returns the criteria an issue of check fails under a WCAG
-// version, for checks whose issues don't carry their own.
-func ForCheck(check, version string) []string { return nil }
