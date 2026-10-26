@@ -69,6 +69,9 @@ func TestLoadManifestRejects(t *testing.T) {
 		"count":                {"  - id: s01\n" + ok + "    expect: [{class: new, check: a11y/label, count: 3}]\n", ""},
 		"count without change": {"  - id: s01\n" + ok + "    expect: [{exit: 3, count: 2}]\n", "count"},
 		"negative count":       {"  - id: s01\n" + ok + "    expect: [{check: a11y/, count: -1}]\n", "count"},
+		"widgets":              {"  - id: s01\n" + ok + "    all: true\n    expect: [{clean: true}, {widgets: 1}]\n", ""},
+		"widgets and clean":    {"  - id: s01\n" + ok + "    expect: [{clean: true, widgets: 1}]\n", "exactly one"},
+		"negative widgets":     {"  - id: s01\n" + ok + "    expect: [{widgets: -1}]\n", "widgets is a positive number"},
 		"negative within":      {"  - id: s01\n" + ok + "    within: -1s\n    expect: [{clean: true}]\n", "negative"},
 	}
 	for name, c := range cases {
@@ -143,6 +146,12 @@ func TestEvaluate(t *testing.T) {
 			Observed{Comparison: cmp(nil), Exit: 3}, Missed},
 		{"all, both", Scenario{All: true, Expect: []Expect{{Exit: intp(3)}, {Warning: "not checked"}}},
 			Observed{Comparison: cmp([]string{"not checked: /a11y/big.php (a11y: axe-core timed out after 45s); its issues are kept from the snapshot, not counted as fixed"}), Exit: 3}, Caught},
+		// A hard-good scenario passes only when its widget was tested.
+		{"all, widget tested", Scenario{All: true, Same: true, Expect: []Expect{{Clean: true}, {Widgets: 1}}},
+			Observed{Comparison: &model.Comparison{EAA: &model.EAASummary{Keyboard: model.EAAKeyboard{WidgetsTested: 1}}}}, Caught},
+		{"all, no widget tested", Scenario{All: true, Same: true, Expect: []Expect{{Clean: true}, {Widgets: 1}}},
+			Observed{Comparison: &model.Comparison{EAA: &model.EAASummary{}}}, Missed},
+		{"widgets without --eaa", Scenario{Expect: []Expect{{Widgets: 1}}}, Observed{Comparison: cmp(nil)}, Missed},
 		{"forbidden source", Scenario{Expect: []Expect{{Check: "keyboard/trap"}}, Forbid: []Expect{{Check: "keyboard/trap", Source: "#news"}}},
 			Observed{Comparison: cmp(nil, trap("#news-email"))}, FalseAlarm},
 		{"other source allowed", Scenario{Expect: []Expect{{Check: "keyboard/trap"}}, Forbid: []Expect{{Check: "keyboard/trap", Source: "#news"}}},

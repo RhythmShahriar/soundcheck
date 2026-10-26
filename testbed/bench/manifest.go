@@ -210,6 +210,10 @@ type Expect struct {
 	Exit        *int   `yaml:"exit"`
 	Culprit     string `yaml:"culprit"`
 	Compares    int    `yaml:"compares"`
+	// Widgets is the least number of menus, dialogs and disclosures
+	// the --eaa compare's keyboard walk must have tested, so a hard-good
+	// scenario can't pass by never testing its widget.
+	Widgets int `yaml:"widgets"`
 }
 
 // Kinds of Expect.
@@ -220,6 +224,7 @@ const (
 	kindClean       = "clean"
 	kindExit        = "exit"
 	kindCulprit     = "culprit"
+	kindWidgets     = "widgets"
 )
 
 // kind says which kind of expectation e is; "" when it sets none or more
@@ -243,6 +248,9 @@ func (e Expect) kind() string {
 	}
 	if e.Culprit != "" || e.Compares != 0 {
 		kinds = append(kinds, kindCulprit)
+	}
+	if e.Widgets != 0 {
+		kinds = append(kinds, kindWidgets)
 	}
 	if len(kinds) != 1 {
 		return ""
@@ -272,6 +280,8 @@ func (e Expect) String() string {
 		return "nothing at or above NEW"
 	case kindExit:
 		return fmt.Sprintf("exit %d", *e.Exit)
+	case kindWidgets:
+		return fmt.Sprintf("at least %d %s tested", e.Widgets, plural(e.Widgets, "widget"))
 	case kindCulprit:
 		if e.Compares > 0 {
 			return fmt.Sprintf("culprit %s in at most %d %s", e.Culprit, e.Compares, plural(e.Compares, "compare"))
@@ -378,7 +388,9 @@ func checkExpect(s Scenario, e Expect, forbid bool) error {
 	kind := e.kind()
 	switch {
 	case kind == "":
-		return fmt.Errorf("%s: expect %+v must set exactly one of class/check/title, warning, interrupted, clean, exit or culprit", s.ID, e)
+		return fmt.Errorf("%s: expect %+v must set exactly one of class/check/title, warning, interrupted, clean, exit, culprit or widgets", s.ID, e)
+	case kind == kindWidgets && e.Widgets < 0:
+		return fmt.Errorf("%s: widgets is a positive number", s.ID)
 	case (kind == kindCulprit) != s.Harness.Has("wp-update"):
 		return fmt.Errorf("%s: only harness wp-update expects culprits and it expects nothing else", s.ID)
 	case kind == kindCulprit && (e.Culprit == "" || e.Compares < 0):
@@ -506,6 +518,10 @@ func Evaluate(s Scenario, obs Observed) Result {
 		case kindExit:
 			if obs.Exit == *e.Exit {
 				held[j] = fmt.Sprintf("exit %d", obs.Exit)
+			}
+		case kindWidgets:
+			if cmp.EAA != nil && cmp.EAA.Keyboard.WidgetsTested >= e.Widgets {
+				held[j] = fmt.Sprintf("%d %s tested", cmp.EAA.Keyboard.WidgetsTested, plural(cmp.EAA.Keyboard.WidgetsTested, "widget"))
 			}
 		}
 	}

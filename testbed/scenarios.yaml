@@ -81,6 +81,8 @@
 #   {exit: N}                         compare exited with N
 #   {culprit: slug, compares: N}      wp-update named this plugin, in at most N
 #                                     compares (wp-update harness only)
+#   {widgets: N}                      the --eaa compare's keyboard walk tested
+#                                     at least N menus, dialogs or disclosures
 #
 # Checks for modules that aren't merged yet are matched by module prefix
 # only, e.g. "interact/". The EAA scenarios (args: [--eaa], s49 to s89)
@@ -1086,8 +1088,10 @@ scenarios:
     module: keyboard
     args: [--eaa]
     toggle: "a correct native <dialog> says something else and gains a link (php/a11y/dialog.php)"
+    all: true
     expect:
       - {clean: true}
+      - {widgets: 1}
     forbid:
       - {check: keyboard/trap}
       - {check: keyboard/focus-lost}
@@ -1281,8 +1285,10 @@ scenarios:
     control: true
     harness: [statement, requests]
     toggle: "none: a site with a skip link, landmarks, a native dialog, visible focus and a labelled checkout (php/a11y/index.php)"
+    all: true
     expect:
       - {clean: true}
+      - {widgets: 1}
     forbid:
       - {check: a11y/}
       - {check: keyboard/}
