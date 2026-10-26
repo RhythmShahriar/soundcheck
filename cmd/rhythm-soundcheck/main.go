@@ -152,6 +152,10 @@ Usage:
                                              (--serve to review it in the
                                              browser, --client --brand
                                              <agency.yaml> for a client)
+  rhythm soundcheck statement [run] [flags]  draft an accessibility statement
+                                             from an --eaa run
+  rhythm soundcheck evidence verify [run]    check an --eaa run's evidence
+                                             pack (sign and keygen sign it)
   rhythm soundcheck accept <id>...           make changes part of the snapshot
   rhythm soundcheck review                   accept or ignore changes one by one
   rhythm soundcheck snapshots [--json]       list (delete <name> removes one)
@@ -159,16 +163,17 @@ Usage:
   rhythm soundcheck fleet <sites.yaml> <cmd> snapshot or compare many sites
   rhythm soundcheck wp-update <url> --wp ... update plugins, find the culprit
   rhythm soundcheck rules list|test [dir]    your own error rules
-  rhythm soundcheck init                     write a config file to edit
+  rhythm soundcheck init [--eaa]             write a config file to edit
   rhythm soundcheck import <file>            settings from backstop.json or
                                              lostpixel.config.ts --pages-only
-  rhythm soundcheck flows init               write an example flow to edit
+  rhythm soundcheck flows init [--keyboard]  write an example flow to edit
   rhythm soundcheck update [--clear]         install or refresh its browser
-  rhythm soundcheck demo [--keep]            try it on a built-in site
+  rhythm soundcheck demo [--keep] [--eaa]    try it on a built-in site
   rhythm soundcheck --list-checks            every check each module makes
   rhythm soundcheck help <command>           more on snapshot, compare, report,
                                              import, accept, review, history,
-                                             fleet, wp-update or rules
+                                             fleet, wp-update, rules, eaa,
+                                             keyboard, statement or evidence
 
 Snapshots:
       --name <name>          snapshot name (default: date and time); compare
@@ -218,10 +223,10 @@ What to check:
       --page <path>          always check this page too (repeatable)
       --ignore-robots        crawl pages robots.txt disallows (your own site)
       --modules <list>       health, visual, interact, cache, speed (default),
-                             a11y, seo (off unless asked for), echo (on with
-                             --echo), exec (on when the config lists exec:
-                             commands); +<list> adds to the default or config
-                             list, e.g. +a11y,seo
+                             a11y, keyboard, seo (off unless asked for), echo
+                             (on with --echo), exec (on when the config lists
+                             exec: commands); +<list> adds to the default or
+                             config list, e.g. +a11y,seo
       --skip <list>          leave these modules out
       --level <list>         interactions: inspect, click, submit, flows
                              (default inspect,click; submit sends test data).
@@ -230,12 +235,22 @@ What to check:
       --viewport <list>      desktop, mobile (default both)
       --quick                a fast pass: --viewport desktop and --modules
                              health,interact, unless you set those flags
+      --eaa                  accessibility evidence for the European
+                             Accessibility Act: modules health, a11y, keyboard
+                             unless --modules or the config set them (then
+                             a11y and keyboard are added), WCAG 2.1 rules and
+                             a statement draft in the run folder. Evidence,
+                             not a compliance guarantee (help eaa)
+      --wcag <version>       a11y rules: 2.0, 2.1 or 2.2 (default 2.1; a
+                             compare uses its snapshot's)
       --no-login             skip the login (leak test, login flows) even if
                              SOUNDCHECK_USER is set
       --allow-env <name>     let flows read this variable too (repeatable);
                              otherwise ${env:...} reads only SOUNDCHECK_* ones
       --allow-host <host>    let flows open this host too, e.g. a payment
                              page (repeatable); otherwise only the site
+      --staging              this target is a staging site: key flows marked
+                             keyboard: send may submit on a public address
       --insecure-login       type the test password over plain http to a
                              site that isn't this machine
       --allow-exec           let the exec module run the commands the config
@@ -309,7 +324,8 @@ read from a SOUNDCHECK_* variable), ignore (changes that don't count) and exec
 (programs that check every page). Your own error rules go in
 .soundcheck/rules (rhythm soundcheck help rules).
 Exit codes: 0 ok · 1 --fail-on hit · 2 usage error · 3 couldn't check the
-site · 130 interrupted
+site (with --eaa also: a page's a11y or keyboard tests didn't finish) · 130
+interrupted
 
 Examples:
   rhythm soundcheck snapshot staging.example.com --name before-update
@@ -317,4 +333,5 @@ Examples:
   rhythm soundcheck staging.example.com --against example.com --fail-on broke
   rhythm soundcheck run example.test -k --level submit --md -o check.md
   rhythm soundcheck snapshot staging.shop.test --level submit --echo
+  rhythm soundcheck snapshot staging.shop.test --eaa
 `

@@ -82,7 +82,8 @@ func boolFlag(fs *flag.FlagSet, name string) bool {
 }
 
 // listChecks prints every check of every module, in config.Modules
-// order, for --list-checks.
+// order, for --list-checks. The a11y and keyboard checks also name the
+// WCAG criteria they fail, or say they are advisory.
 func listChecks(w io.Writer) {
 	mods := check.Registered()
 	slices.SortStableFunc(mods, func(a, b check.Module) int {
@@ -97,6 +98,8 @@ func listChecks(w io.Writer) {
 		switch {
 		case slices.Contains(config.DefaultModules, m.Name()):
 			state = "on by default"
+		case slices.Contains(eaaNeeds, m.Name()):
+			state += "; on with --eaa"
 		case m.Name() == "echo":
 			state = "on with --echo"
 		case m.Name() == "exec":
@@ -108,6 +111,10 @@ func listChecks(w io.Writer) {
 			continue
 		}
 		for _, c := range d.Checks() {
+			if listedCriteria(m.Name()) {
+				fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", c.ID, c.Level, c.Title, criteriaText(c.ID))
+				continue
+			}
 			fmt.Fprintf(tw, "  %s\t%s\t%s\n", c.ID, c.Level, c.Title)
 		}
 	}
@@ -544,6 +551,10 @@ there.
 
 // topic returns a command's own usage, for `help <command>`.
 func topic(name string) (string, bool) {
-	u, ok := helpTopics[strings.TrimSpace(name)]
+	name = strings.TrimSpace(name)
+	if gen, ok := generatedTopics[name]; ok {
+		return gen(), true
+	}
+	u, ok := helpTopics[name]
 	return u, ok
 }

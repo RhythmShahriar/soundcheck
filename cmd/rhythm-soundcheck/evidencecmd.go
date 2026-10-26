@@ -30,6 +30,12 @@ site. verify checks the files and the chain (default: the latest --eaa
 run or snapshot). sign signs the pack with an ed25519 key from keygen, which
 prints the public key to give whoever checks it. A run made with -k can't
 be signed: its TLS certificates weren't verified.
+
+A signed evidence pack proves who produced it and that it wasn't changed
+afterwards. It doesn't prove the site was in that state for every visitor.
+To sign without a key file, with your identity through Sigstore, run this
+in the run folder:
+  cosign sign-blob eaa/evidence.json
 Exit codes: 0 verified or signed · 1 verification failed (names the file or the gap) · 2 usage · 3 can't read
 `
 

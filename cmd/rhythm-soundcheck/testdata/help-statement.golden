@@ -1,0 +1,21 @@
+Usage:
+  rhythm-soundcheck statement [run folder|snapshot] [flags]
+
+Drafts an accessibility statement from an --eaa run (default: the latest
+--eaa run or snapshot), with every place you have to fill in marked
+[TO DO]. Who you are and how visitors reach you come from statement: in
+.soundcheck/config.yaml (rhythm-soundcheck init --eaa writes it).
+
+      --md                 Markdown (default on a terminal and for .md)
+      --html               standalone HTML, printable
+      --json               JSON (schema rhythm-soundcheck/statement/v1)
+      --earl               EARL JSON-LD for the W3C WCAG-EM Report Tool (.jsonld)
+  -o, --output <file>      write to a file (format from the extension); repeatable
+      --layout <name>      model (EU 2018/1523 model statement, default) or
+                           service (EAA Annex V service information)
+      --wcag <version>     2.1 or 2.2; a 2.2 run can be drawn as 2.1, not
+                           the other way round
+      --config <file>      read statement: (owner, contact, dates) from this file
+      --lang <code>        en (only en in 1.3)
+      --force              replace a draft file you have edited
+Exit codes: 0 written · 2 usage error · 3 no --eaa data, interrupted run, or a file couldn't be read or written
