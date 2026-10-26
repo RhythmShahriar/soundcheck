@@ -184,7 +184,9 @@ func Play(ctx context.Context, page *rod.Page, f Flow, o Options) (res Result) {
 			// A step that failed is reported even when its key press was
 			// held: a write fired while Tab looked for a target that was
 			// never reached isn't the target working.
-			if h := r.keys.end(); h != nil && err == nil {
+			h := r.keys.end(i + 1)
+			err = r.keys.noted(err)
+			if h != nil && err == nil {
 				// What the page shows after a held write is its answer to
 				// the hold, not to what was typed: no errors are read.
 				h.Step = i + 1

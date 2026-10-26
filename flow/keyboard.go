@@ -54,7 +54,14 @@ type keys struct {
 	// focus, such as an autosave on focusout, is held without ending it.
 	armed bool
 	held  *Held // the first write held while armed
-	trace []string
+	// offHost is the first write to another host held while armed, as
+	// "POST to pay.example.com". It doesn't end the flow; a later
+	// step that fails may fail because of it (see note).
+	offHost string
+	trace   []string
+	// note says what the dry run held off the site, for the failures
+	// of the steps after it. Only the flow's own goroutine uses it.
+	note string
 }
 
 // keyboard starts a key flow on tab: every request is counted, so a key
@@ -75,8 +82,13 @@ func (r *runner) keyboard(tab *rod.Page, dry bool) (remove func(), err error) {
 		// A beacon or a write to another host, such as analytics, is held
 		// without ending the flow: only the site's own writes count as the
 		// step's.
-		if !k.armed || k.held != nil || req.URL == nil || req.Type == proto.NetworkResourceTypePing ||
-			(r.o.Base != nil && config.HostKey(req.URL) != config.HostKey(r.o.Base)) {
+		if !k.armed || k.held != nil || req.URL == nil || req.Type == proto.NetworkResourceTypePing {
+			return
+		}
+		if r.o.Base != nil && config.HostKey(req.URL) != config.HostKey(r.o.Base) {
+			if k.offHost == "" {
+				k.offHost = req.Method + " to " + req.URL.Host
+			}
 			return
 		}
 		k.held = &Held{Method: req.Method, Path: orSlash(req.URL.Path)}
@@ -105,13 +117,33 @@ func (k *keys) arm() {
 	k.mu.Unlock()
 }
 
-// end finishes a step and returns what it would have sent, if anything.
-func (k *keys) end() *Held {
+// end finishes step n and returns what it would have sent, if
+// anything. A write to another host it held becomes the flow's note.
+func (k *keys) end(n int) *Held {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	h := k.held
-	k.armed, k.held = false, nil
+	if k.offHost != "" && k.note == "" {
+		k.note = fmt.Sprintf("the dry run held a %s at step %d", k.offHost, n)
+	}
+	k.armed, k.held, k.offHost = false, nil, ""
 	return h
+}
+
+// noted adds the flow's note to err, the failure of a step: an
+// expectation that fails after a payment gateway's write was held fails
+// because of the hold, not the site.
+func (k *keys) noted(err error) error {
+	if err == nil || k.note == "" {
+		return err
+	}
+	var kf *KeyFailure
+	if errors.As(err, &kf) {
+		c := *kf
+		c.Reason += " (" + k.note + ")"
+		return &c
+	}
+	return fmt.Errorf("%w (%s)", err, k.note)
 }
 
 func (k *keys) count() int {
