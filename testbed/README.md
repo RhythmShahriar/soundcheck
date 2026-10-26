@@ -127,7 +127,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s48 | `/contact/` | the same ten updates; `wp-update --one-by-one --rollback` | culprit testbed-update-07 in at most 10 compares |
 | s49 | `/checkout/` | the coupon field's script cancels Tab and Shift+Tab | BROKE keyboard/trap and exit 1 with `--fail-on broke`; not the newsletter dialog |
 | s50 | `/checkout/` | name, email and address lose their `<label for>` | NEW a11y/label on 3 fields; nothing BROKE |
-| s51 | `/s51-newsletter/` | the dialog's close button removes itself, focus falls to the page | NEW keyboard/focus-lost; no trap |
+| s51 | `/s51-newsletter/` | closing the dialog (Escape or its button) removes the focused control, focus falls to the page | NEW keyboard/focus-lost; no trap |
 | s52 | `/s52-modal/` | an `aria-modal` dialog stops containing focus | NEW keyboard/dialog-focus |
 | s53 | `:18810/a11y/dialog-nofocus.php` | a dialog opens with focus left behind it | NEW keyboard/dialog-focus |
 | s54 | `/s54-focus/` | the theme adds `*:focus{outline:none}` on every page | NEW keyboard/no-focus-ring |

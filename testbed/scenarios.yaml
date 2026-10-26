@@ -747,7 +747,7 @@ scenarios:
     include: ["/s51-newsletter*"]
     module: keyboard
     args: [--eaa]
-    toggle: "the dialog's 2.0 close button removes itself, so focus falls to the page (wp/themes/testbed/inc/eaa.php, js/dialog.js)"
+    toggle: "closing the dialog (Escape or its 2.0 close button) removes the focused control, so focus falls to the page (wp/themes/testbed/inc/eaa.php, js/dialog.js)"
     expect:
       - {class: new, check: keyboard/focus-lost}
     forbid:

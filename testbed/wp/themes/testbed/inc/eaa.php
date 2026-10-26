@@ -80,8 +80,8 @@ add_filter(
 
 // [testbed_newsletter] (s51): a newsletter sign-up dialog. Good: closing
 // it puts focus back on the button that opened it. Broken: its 2.0 close
-// button removes itself as it closes the dialog, so focus is left on
-// nothing (the document body).
+// routine (Escape or the button) removes the focused control as it
+// closes the dialog, so focus is left on nothing (the document body).
 add_shortcode(
 	'testbed_newsletter',
 	function () {

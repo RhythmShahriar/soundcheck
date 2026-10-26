@@ -10,8 +10,8 @@
 //   focusOnOpen: false   focus stays on the opener
 //   escape: false        Escape does nothing
 //   contain: false       Tab may leave the dialog (s52)
-//   removeClose: true    the close button removes itself, so focus is
-//                        left on nothing (s51)
+//   removeClose: true    closing (Escape or the button) removes the
+//                        focused control, so focus is left on nothing (s51)
 //
 // Elements are found with document.getElementById, never through id
 // globals: an id such as "open" or "close" names window.open there.
@@ -27,6 +27,15 @@ function testbedDialog(openerId, dialogId, closeId, options) {
 		);
 	};
 	var hide = function () {
+		if (o.removeClose) {
+			// The 2.0 close routine, behind Escape and the close button
+			// alike, replaces the dialog's content, the focused control
+			// included, and forgets to put focus anywhere.
+			if (dialog.contains(document.activeElement)) document.activeElement.remove();
+			dialog.hidden = true;
+			opener.setAttribute('aria-expanded', 'false');
+			return;
+		}
 		dialog.hidden = true;
 		opener.setAttribute('aria-expanded', 'false');
 		opener.focus();
@@ -36,17 +45,7 @@ function testbedDialog(openerId, dialogId, closeId, options) {
 		opener.setAttribute('aria-expanded', 'true');
 		if (o.focusOnOpen) focusable()[0].focus();
 	});
-	close.addEventListener('click', function () {
-		if (!o.removeClose) {
-			hide();
-			return;
-		}
-		// The 2.0 close button replaces the dialog's content, itself
-		// included. It forgets to put focus anywhere.
-		close.remove();
-		dialog.hidden = true;
-		opener.setAttribute('aria-expanded', 'false');
-	});
+	close.addEventListener('click', hide);
 	dialog.addEventListener('keydown', function (e) {
 		if (e.key === 'Escape' && o.escape) {
 			e.preventDefault();
