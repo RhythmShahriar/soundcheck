@@ -53,8 +53,9 @@ func writePack(dir string, run *model.Run, prev *evidence.Ref, extra evidenceExt
 
 // axeVersion is the axe-core release checks/a11y vendors, for the
 // header, which is printed before the a11y module records it in the
-// run's options.
-const axeVersion = "4.14.0"
+// run's options. wcag's table is generated from the vendored file and a
+// test keeps the two in step, so a bump can't leave the header behind.
+const axeVersion = wcag.AxeVersion
 
 // Files an --eaa run writes into its folder.
 const (
