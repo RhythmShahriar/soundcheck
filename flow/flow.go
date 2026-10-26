@@ -36,6 +36,22 @@
 //
 //	steps:
 //	  - expect: {message: {channel: email, to: "${fake:email}", subject: Thanks}}
+//
+// A key flow (keyboard: true or keyboard: send) is played by keyboard
+// only: each click, fill, select, check and submit reaches its target
+// with Tab and Shift+Tab, then presses Enter, Space or the arrow keys.
+// press steps press a key and expect: {focus: …} and
+// expect: {focus_within: …} check where focus is; both work in any flow.
+// keyboard: true holds what the flow would send and stops at the first
+// step that would send it, so a key flow proves a checkout can be done
+// without a mouse and places no order. keyboard: send sends for real.
+//
+//	keyboard: true
+//	steps:
+//	  - fill: {selector: "#email", value: "${fake:email}"}
+//	  - press: {key: Space, on: "#terms"}
+//	  - expect: {focus: "#terms"}
+//	  - click: {text: Place order}
 package flow
 
 import (
@@ -55,6 +71,8 @@ import (
 
 	echomodel "github.com/RhythmShahriar/echo/model"
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
+	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/focus"
 )
 
 // Flow is one scripted journey.
@@ -66,9 +84,61 @@ type Flow struct {
 	Login bool `yaml:"login"`
 	// Production lets the flow click and submit on URLs listed under
 	// production in the config. Without it those steps are refused there.
-	Production bool   `yaml:"production"`
-	Steps      []Step `yaml:"steps"`
-	File       string `yaml:"-"` // where it was loaded from
+	Production bool `yaml:"production"`
+	// Keyboard makes the flow a key flow, played by keyboard only:
+	// KeyboardDry (keyboard: true), KeyboardSend (keyboard: send) or ""
+	// (keyboard: false or not set) for a flow played by mouse.
+	Keyboard string `yaml:"-"`
+	Steps    []Step `yaml:"steps"`
+	File     string `yaml:"-"` // where it was loaded from
+}
+
+// The Keyboard modes of a key flow.
+const (
+	// KeyboardDry is keyboard: true. What the flow would send (any
+	// request but GET and HEAD) is held: the first click, submit or
+	// Enter or Space press that would send one passes and ends the flow.
+	KeyboardDry = "dry"
+	// KeyboardSend is keyboard: send. The flow sends for real, off
+	// public addresses or with --staging.
+	KeyboardSend = "send"
+)
+
+// keyboardMode decodes keyboard: true, false or send.
+type keyboardMode string
+
+func (k *keyboardMode) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		switch {
+		case n.Tag == "!!null":
+			*k = ""
+			return nil
+		case n.Tag == "!!bool":
+			var b bool
+			if err := n.Decode(&b); err == nil {
+				*k = ""
+				if b {
+					*k = KeyboardDry
+				}
+				return nil
+			}
+		case n.Value == KeyboardSend:
+			*k = KeyboardSend
+			return nil
+		}
+	}
+	v := n.Value
+	if n.Kind != yaml.ScalarNode {
+		v = "a list or mapping"
+	}
+	return fmt.Errorf("keyboard: %q isn't one of true, false, send", v)
+}
+
+// document is the flow file as YAML has it: Flow, with keyboard: read
+// into Flow.Keyboard by Parse.
+type document struct {
+	Flow     `yaml:",inline"`
+	Keyboard keyboardMode `yaml:"keyboard"`
 }
 
 // Step is one action. Exactly one field is set.
@@ -82,6 +152,69 @@ type Step struct {
 	Wait       *Wait
 	Expect     *Expect
 	Screenshot string
+	Press      *Press
+}
+
+// Press presses a key Times times: on the element On names, after
+// moving focus to it, or on whatever has focus.
+type Press struct {
+	Key   focus.Key // one of Keys
+	On    *Target   // nil presses on the focused element
+	Times int       // 1 to MaxTimes; Parse sets 1 when the step doesn't say
+}
+
+// MaxTimes is the most presses one press step makes.
+const MaxTimes = 50
+
+// Keys are the keys a press step can press, as flows write them.
+var Keys = []focus.Key{focus.Tab, focus.ShiftTab, focus.Enter, focus.Space, focus.Escape,
+	focus.ArrowUp, focus.ArrowDown, focus.ArrowLeft, focus.ArrowRight, focus.Home, focus.End}
+
+func (p Press) String() string {
+	out := "press " + string(p.Key)
+	if p.On != nil {
+		out += " on " + p.On.String()
+	}
+	if p.Times > 1 {
+		out += fmt.Sprintf(" %d times", p.Times)
+	}
+	return out
+}
+
+// decodePress reads `press: Tab` or `press: {key: Space, on: "#terms",
+// times: 2}`, where on is a selector or a {selector, text} target.
+func decodePress(val *yaml.Node) (*Press, error) {
+	if val.Kind == yaml.ScalarNode {
+		return &Press{Key: focus.Key(val.Value), Times: 1}, nil
+	}
+	var raw struct {
+		Key   string    `yaml:"key"`
+		On    yaml.Node `yaml:"on"`
+		Times *int      `yaml:"times"`
+	}
+	if err := decodeStrict(val, &raw); err != nil {
+		return nil, err
+	}
+	p := &Press{Key: focus.Key(raw.Key), Times: 1}
+	if raw.Times != nil {
+		p.Times = *raw.Times
+		if p.Times < 1 || p.Times > MaxTimes {
+			return nil, fmt.Errorf("line %d: press: times is 1 to %d, not %d", val.Line, MaxTimes, p.Times)
+		}
+	}
+	switch raw.On.Kind {
+	case 0:
+	case yaml.ScalarNode:
+		if raw.On.Tag != "!!null" {
+			p.On = &Target{Selector: raw.On.Value}
+		}
+	default:
+		p.On = &Target{}
+		if err := decodeStrict(&raw.On, p.On); err != nil {
+			return nil, fmt.Errorf("press: on: %w", err)
+		}
+	}
+	return p, nil
 }
 
 // Target finds an element by CSS selector, or by its visible text.
@@ -116,8 +249,12 @@ type Expect struct {
 	Selector string   `yaml:"selector"` // a visible element
 	URL      string   `yaml:"url"`      // the current URL contains this
 	Status   int      `yaml:"status"`   // the last page load's HTTP status
-	Absent   bool     `yaml:"absent"`   // text, selector and message must NOT be present
+	Absent   bool     `yaml:"absent"`   // text, selector, focus and message must NOT be present
 	Message  *Message `yaml:"message"`  // the flow made the site send this (needs Echo)
+	// Focus is a selector the focused element matches and FocusWithin
+	// one it is inside. Focus is read through open shadow roots.
+	Focus       string `yaml:"focus"`
+	FocusWithin string `yaml:"focus_within"`
 }
 
 // Message describes a message the flow should have made the site send, as
@@ -168,10 +305,11 @@ func (m Message) String() string {
 	return strings.Join(parts, " ")
 }
 
-var actions = []string{"goto", "click", "fill", "select", "check", "submit", "wait", "expect", "screenshot"}
+var actions = []string{"goto", "click", "fill", "select", "check", "submit", "press", "wait", "expect", "screenshot"}
 
 // UnmarshalYAML reads a step written as a one-key mapping, with scalar
-// shortcuts: `click: "#send"`, `wait: 500`, `wait: .done`, `check: "#terms"`.
+// shortcuts: `click: "#send"`, `wait: 500`, `wait: .done`, `check: "#terms"`,
+// `press: Escape`.
 func (s *Step) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind != yaml.MappingNode || len(n.Content) != 2 {
 		return fmt.Errorf("line %d: a step is one action, e.g. `- click: \"#send\"` (actions: %s)", n.Line, strings.Join(actions, ", "))
@@ -208,6 +346,10 @@ func (s *Step) UnmarshalYAML(n *yaml.Node) error {
 			s.Select = in
 		}
 		return nil
+	case "press":
+		p, err := decodePress(val)
+		s.Press = p
+		return err
 	case "check":
 		s.Check = &Toggle{}
 		if scalar {
@@ -269,12 +411,22 @@ func (s Step) Validate() error {
 		return errors.New("wait needs a selector or a number of milliseconds")
 	case s.Wait != nil && s.Wait.MS > 60000:
 		return errors.New("wait is limited to 60000 ms")
+	case s.Press != nil && s.Press.Key == "":
+		return errors.New("press needs a key, such as Tab, Enter or Escape")
+	case s.Press != nil && !slices.Contains(Keys, s.Press.Key):
+		names := make([]string, len(Keys))
+		for i, k := range Keys {
+			names[i] = string(k)
+		}
+		return fmt.Errorf("press: key %w", config.OneOf(string(s.Press.Key), names))
+	case s.Press != nil && s.Press.On != nil && s.Press.On.Selector == "" && s.Press.On.Text == "":
+		return errors.New("press: on needs a selector or text")
 	case s.Expect != nil && *s.Expect == (Expect{}):
-		return errors.New("expect needs text, selector, url, status or message")
+		return errors.New("expect needs text, selector, url, status, focus, focus_within or message")
 	case s.Expect != nil && s.Expect.Message != nil:
 		return s.Expect.Message.validate(s.Expect.Absent)
 	case s.Goto == "" && s.Click == nil && s.Fill == nil && s.Select == nil && s.Check == nil &&
-		s.Submit == nil && s.Wait == nil && s.Expect == nil && s.Screenshot == "":
+		s.Submit == nil && s.Wait == nil && s.Expect == nil && s.Screenshot == "" && s.Press == nil:
 		return errors.New("empty step")
 	}
 	return nil
@@ -308,6 +460,8 @@ func (s Step) String() string {
 		return "expect " + s.Expect.String()
 	case s.Screenshot != "":
 		return "screenshot " + s.Screenshot
+	case s.Press != nil:
+		return s.Press.String()
 	}
 	return "step"
 }
@@ -337,6 +491,12 @@ func (e Expect) String() string {
 	if e.Status != 0 {
 		parts = append(parts, "status "+strconv.Itoa(e.Status))
 	}
+	if e.Focus != "" {
+		parts = append(parts, not+"focus "+e.Focus)
+	}
+	if e.FocusWithin != "" {
+		parts = append(parts, not+"focus within "+e.FocusWithin)
+	}
 	if e.Message != nil {
 		parts = append(parts, not+e.Message.String())
 	}
@@ -345,10 +505,13 @@ func (e Expect) String() string {
 
 // Parse reads one flow.
 func Parse(data []byte) (Flow, error) {
-	var f Flow
+	var doc document
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
-	if err := dec.Decode(&f); err != nil {
+	err := dec.Decode(&doc)
+	f := doc.Flow
+	f.Keyboard = string(doc.Keyboard)
+	if err != nil {
 		return f, err
 	}
 	if strings.TrimSpace(f.Name) == "" {
@@ -511,7 +674,8 @@ func Load(dir string) ([]Flow, error) {
 const Example = `# A Soundcheck flow: a scripted journey checked on every run when
 # interactions.levels includes "flows". Each failed step is reported.
 #
-# Steps: goto, click, fill, select, check, submit, wait, expect, screenshot.
+# Steps: goto, click, fill, select, check, submit, press, wait, expect,
+# screenshot.
 # Values can use ${env:NAME} (read from the environment, never stored; only
 # SOUNDCHECK_* names unless you pass --allow-env NAME) and ${fake:email},
 # ${fake:name}, ${fake:phone}, ${fake:message}, ... goto and start stay on
@@ -520,6 +684,7 @@ name: Contact form sends
 start: /contact/
 # login: true        # run as SOUNDCHECK_USER / SOUNDCHECK_PASSWORD
 # production: true   # allow clicks and submits on production URLs (config: production)
+# keyboard: true     # play it by keyboard only and hold what it would send; send sends it
 steps:
   - fill: {selector: "input[type=email]", value: "${fake:email}"}
   - fill: {selector: textarea, value: "${fake:message}"}
