@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/history"
@@ -103,10 +104,25 @@ func HTML(w io.Writer, p Page) error {
 		}
 		d.Rows = append(d.Rows, row)
 	}
+	// A chip per verdict and wording: clean --eaa sites read "Nothing
+	// changed", not "Clean", so they get chips of their own.
 	for _, v := range verdictOrder {
-		if n[v] > 0 {
-			d.Chips = append(d.Chips, pageChip{v, verdictLabels[v], n[v]})
+		if n[v] == 0 {
+			continue
 		}
+		var chips []pageChip
+		for _, row := range d.Rows {
+			if row.Verdict != v {
+				continue
+			}
+			k := slices.IndexFunc(chips, func(c pageChip) bool { return c.Label == row.Label })
+			if k < 0 {
+				chips = append(chips, pageChip{v, row.Label, 0})
+				k = len(chips) - 1
+			}
+			chips[k].N++
+		}
+		d.Chips = append(d.Chips, chips...)
 	}
 	return pageTemplate.Execute(w, d)
 }

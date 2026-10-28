@@ -87,6 +87,9 @@ type Result struct {
 	// Statement is the site's accessibility statement draft, relative
 	// to the fleet folder, when its --eaa run wrote one.
 	Statement string `json:"statement,omitempty"`
+	// VerdictLabel is Label at the time the fleet ran, so a reader of
+	// fleet.json sees that a clean --eaa result isn't an all-clear.
+	VerdictLabel string `json:"label,omitempty"`
 }
 
 // Trends of EAAOpen against the previous fleet run.
@@ -96,8 +99,29 @@ const (
 	TrendSame = "same"
 )
 
-// Label is the verdict in words.
-func (r Result) Label() string { return verdictLabels[r.Verdict] }
+// Label is the verdict in words. A clean --eaa result never reads as an
+// all-clear, as the single-site verdicts don't: a comparison says
+// "Nothing changed" and adds what the tests found only when no
+// accessibility problem is open; a snapshot says what the tests found.
+func (r Result) Label() string {
+	if r.Verdict != Clean || r.EAAOpen == nil {
+		return verdictLabels[r.Verdict]
+	}
+	found := "no failures found by these tests"
+	if r.CriteriaFailed != nil && *r.CriteriaFailed > 0 {
+		found = fmt.Sprintf("%d WCAG criteria have failures", *r.CriteriaFailed)
+		if *r.CriteriaFailed == 1 {
+			found = "1 WCAG criterion has failures"
+		}
+	}
+	switch {
+	case r.Kind != "comparison":
+		return strings.ToUpper(found[:1]) + found[1:]
+	case *r.EAAOpen > 0:
+		return "Nothing changed"
+	}
+	return "Nothing changed; " + found
+}
 
 // countKeys lists the counts shown for a result, in order.
 func (r Result) countKeys() []string {
@@ -175,6 +199,9 @@ func Run(ctx context.Context, bin, file, mode string, parallel int, extra []stri
 
 	slices.SortStableFunc(results, worse)
 	a11yTrends(results, previous(filepath.Join(root, "fleet.json")))
+	for i := range results {
+		results[i].VerdictLabel = results[i].Label()
+	}
 	page := Page{Mode: mode, Created: time.Now(), Sites: results}
 	if err := cache.WriteJSON(filepath.Join(root, "fleet.json"), page); err != nil {
 		return 0, err

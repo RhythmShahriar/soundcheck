@@ -181,3 +181,44 @@ func TestEAAGolden(t *testing.T) {
 		t.Errorf("plain site row: want empty a11y cells:\n%s", row)
 	}
 }
+
+// A clean --eaa site never reads "Clean": a comparison with open
+// accessibility problems says only "Nothing changed", one without says
+// what the tests found. A snapshot says what the tests found. A
+// plain site still says "Clean".
+func TestLabelEAAClean(t *testing.T) {
+	n := func(v int) *int { return &v }
+	for _, tc := range []struct {
+		r    Result
+		want string
+	}{
+		{Result{Kind: "comparison", Verdict: Clean, EAAOpen: n(1), CriteriaFailed: n(1)}, "Nothing changed"},
+		{Result{Kind: "comparison", Verdict: Clean, EAAOpen: n(0), CriteriaFailed: n(0)}, "Nothing changed; no failures found by these tests"},
+		{Result{Kind: "comparison", Verdict: Clean, EAAOpen: n(0), CriteriaFailed: n(2)}, "Nothing changed; 2 WCAG criteria have failures"},
+		{Result{Kind: "run", Verdict: Clean, EAAOpen: n(0), CriteriaFailed: n(0)}, "No failures found by these tests"},
+		{Result{Kind: "run", Verdict: Clean, EAAOpen: n(1), CriteriaFailed: n(1)}, "1 WCAG criterion has failures"},
+		{Result{Kind: "comparison", Verdict: Clean}, "Clean"},
+		{Result{Kind: "comparison", Verdict: Changed, EAAOpen: n(1)}, "Changed"},
+	} {
+		if got := tc.r.Label(); got != tc.want {
+			t.Errorf("%+v: label %q, want %q", tc.r, got, tc.want)
+		}
+	}
+	var buf bytes.Buffer
+	page := Page{Mode: Compare, Created: time.Unix(0, 0), Sites: []Result{
+		{Site: "ledger", Kind: "comparison", Verdict: Clean, EAAOpen: n(1), CriteriaFailed: n(1)},
+		{Site: "blog", Kind: "comparison", Verdict: Clean},
+	}}
+	if err := HTML(&buf, page); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	for _, want := range []string{"<b>1</b> Nothing changed</span>", "<b>1</b> Clean</span>", `<span class="badge k-clean">Nothing changed</span>`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("fleet.html has no %q", want)
+		}
+	}
+	if strings.Contains(html, "<b>2</b> Clean") {
+		t.Errorf("fleet.html counts the --eaa site as Clean")
+	}
+}
