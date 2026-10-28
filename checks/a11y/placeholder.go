@@ -12,7 +12,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 
-	"github.com/RhythmShahriar/rhythm/kit/secrets"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -253,10 +253,11 @@ func placeholderIssues(found []field, more beyond, have []model.Issue, keep int)
 	return all, total
 }
 
-// shortText is site text for a Detail: on one line, credentials the kit
-// knows redacted and at most n runes.
+// shortText is site text for a Detail: on one line, credentials and
+// personal data (emails, phone, card and IBAN numbers) masked and at
+// most n runes.
 func shortText(s string, n int) string {
-	s = secrets.Redact(strings.TrimSpace(spaces.ReplaceAllString(s, " ")))
+	s = pii.Redact(strings.TrimSpace(spaces.ReplaceAllString(s, " ")))
 	if r := []rune(s); len(r) > n {
 		s = string(r[:n-1]) + "…"
 	}

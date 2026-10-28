@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RhythmShahriar/soundcheck/checks/a11y"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -137,5 +138,41 @@ func TestPlaceholderLabelCountsPastTheLimit(t *testing.T) {
 	}
 	if n := p.Audits["a11y"].CappedRules["placeholder-label"]; n != total {
 		t.Errorf("capped rules = %v, want %d", p.Audits["a11y"].CappedRules, total)
+	}
+}
+
+// A placeholder can hold a customer's email address or phone number:
+// the Detail masks them like any other text Soundcheck keeps.
+func TestPlaceholderLabelMasksPersonalData(t *testing.T) {
+	needBrowser(t)
+	canary := "ph" + "canary7731"
+	srv := pages(t, map[string]string{"/": fmt.Sprintf(form, `<form><input id="pl" placeholder="`+canary+`@example.org">
+<input name="tel" placeholder="Call +49 30 1234567"><button>Send</button></form>`)})
+	r := audited(t, srv, "2.1", "", "/")
+	got := placeholderOn(r.Page("/"))
+	if len(got) != 2 {
+		t.Fatalf("issues = %+v", got)
+	}
+	for _, i := range got {
+		if strings.Contains(i.Detail, canary) || strings.Contains(i.Detail, "example.org") || strings.Contains(i.Detail, "1234567") {
+			t.Errorf("Detail keeps personal data: %q", i.Detail)
+		}
+		if !strings.Contains(i.Detail, "***") {
+			t.Errorf("Detail not masked: %q", i.Detail)
+		}
+	}
+}
+
+func TestShortTextMasks(t *testing.T) {
+	for _, c := range []struct{ in, out string }{
+		{"Email address", "Email address"},
+		{"  jane.doe@example.org  ", "***@***"},
+		{"Call +49 30 1234567 now", "Call *** now"},
+		{"Card 4111 1111 1111 1111", "Card ***"},
+		{"IBAN DE89 3704 0044 0532 0130 00", "IBAN ***"},
+	} {
+		if got := a11y.ShortText(c.in, 60); got != c.out {
+			t.Errorf("ShortText(%q) = %q, want %q", c.in, got, c.out)
+		}
 	}
 }

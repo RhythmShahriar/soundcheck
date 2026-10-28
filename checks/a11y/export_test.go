@@ -30,3 +30,6 @@ func SetFieldsJS(js string) (restore func()) {
 	fieldsJS = js
 	return func() { fieldsJS = old }
 }
+
+// ShortText is shortText.
+func ShortText(s string, n int) string { return shortText(s, n) }
