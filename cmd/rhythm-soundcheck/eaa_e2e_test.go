@@ -223,8 +223,10 @@ func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) 
 
 // canarySite serves a site that hides a canary in each place a run could
 // pick one up: a field's value, a data-* attribute, a link's query
-// string, a frame from another site, a cookie, an aria-label and a field
-// on the page behind the login. The frame is served by the second
+// string, a frame from another site, a cookie, an aria-label, a field
+// on the page behind the login, and in elements axe reports: a
+// prefilled textarea with no label, the selected option of a select
+// with no name and an email address in text with too little contrast. The frame is served by the second
 // server, reached as localhost so it is another site, not only another
 // origin.
 func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, *canaryHits) {
@@ -259,7 +261,9 @@ func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, 
 		eaaPage(w, "Home", fmt.Sprintf(`<div data-user="%s"><p>Welcome.</p></div>
 <form action="/" method="get"><label for="q">Search</label> <input id="q" name="q" value="%s"></form>
 <p><a href="/account/?token=%s">Your account</a> <a href="/contact/">Contact</a></p>
-<iframe title="Widget" src="%s" width="300" height="120"></iframe>`, c["data"], c["value"], c["query"], frameURL))
+<iframe title="Widget" src="%s" width="300" height="120"></iframe>
+<textarea>ta-%s</textarea> <select><option>Pick one</option><option selected>opt-%s</option></select>
+<p style="color:#ccc">low contrast %s@example.org</p>`, c["data"], c["value"], c["query"], frameURL, c["textarea"], c["option"], c["email"]))
 	})
 	mux.HandleFunc("/contact/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -315,7 +319,8 @@ func TestEAACanarySweep(t *testing.T) {
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
 	c := newCanaries(t, "value", "data", "query", "frame-text", "frame-value", "frame-label",
-		"flow-password", "header", "cookie", "aria-label", "account-value", "login-password")
+		"flow-password", "header", "cookie", "aria-label", "account-value", "login-password",
+		"textarea", "option", "email")
 	user := "tester"
 	t.Setenv("SOUNDCHECK_USER", user)
 	t.Setenv("SOUNDCHECK_PASSWORD", c["login-password"])
@@ -364,6 +369,15 @@ steps:
 	if hits.headers.Load() == 0 || hits.frames.Load() == 0 || hits.accounts.Load() == 0 {
 		t.Errorf("canaries not reached: header %d, frame %d, account %d\n%s\n%s",
 			hits.headers.Load(), hits.frames.Load(), hits.accounts.Load(), printed["run stdout"], printed["run stderr"])
+	}
+	// axe reported the elements that hold the textarea, option and
+	// email canaries, so their details were written and swept.
+	if report, err := os.ReadFile(filepath.Join("out", "r.json")); err == nil {
+		for _, check := range []string{`"a11y/label"`, `"a11y/select-name"`, `"a11y/color-contrast"`} {
+			if !strings.Contains(string(report), check) {
+				t.Errorf("out/r.json has no %s issue, so its canary wasn't in play", check)
+			}
+		}
 	}
 	if !strings.Contains(printed["run stdout"]+printed["run stderr"], "Contact by passphrase") {
 		t.Errorf("the flow didn't run:\n%s\n%s", printed["run stdout"], printed["run stderr"])

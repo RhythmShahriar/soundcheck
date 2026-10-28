@@ -41,6 +41,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/secrets"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -397,13 +398,17 @@ var opaque = regexp.MustCompile(`/[A-Za-z0-9_-]{24,}`)
 // maxSnippet is the most runes of an element's HTML an issue shows.
 const maxSnippet = 160
 
-// snippet shortens the element's HTML to its opening tag. The values of
-// filled attributes become "***". So do the query of every link and any
-// long opaque path segment in it. Credentials the kit knows are redacted.
-// Running it on its own result changes nothing.
+// snippet shortens the element's HTML to its opening tag, which drops
+// what the element holds: the text of a prefilled textarea, a selected
+// option, an editable region or a paragraph. The values of filled
+// attributes become "***". So do the query of every link and any long
+// opaque path segment in it. Credentials the kit knows, email addresses,
+// phone, card and IBAN numbers are masked (internal/pii). Running it on
+// its own result changes nothing.
 func snippet(html string) string {
 	html = strings.ToValidUTF8(html, "\uFFFD")
 	html = strings.TrimSpace(spaces.ReplaceAllString(html, " "))
+	html = openingTag(html)
 	// Each step can make text another step matches again: the kit's
 	// redaction can leave "key=" in front of a quote that now reads as a
 	// value; cutting a long tag can open a quote. So the steps run
@@ -455,7 +460,34 @@ func maskAttrs(html string) string {
 		}
 		return name + v
 	})
-	return secrets.Redact(html)
+	return pii.Redact(html)
+}
+
+// openingTag cuts html after the ">" that ends its first tag, skipping
+// any ">" inside a quoted attribute value. HTML that isn't a tag, or
+// whose tag axe cut short, stays as it is.
+func openingTag(html string) string {
+	from := tagName(html)
+	if from == 0 {
+		return html
+	}
+	var quote byte
+	for i := from; i < len(html); i++ {
+		switch c := html[i]; {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			// A quote opens a value only after "=", maybe behind spaces.
+			if j := strings.TrimRight(html[from:i], " "); strings.HasSuffix(j, "=") {
+				quote = c
+			}
+		case c == '>':
+			return html[:i+1]
+		}
+	}
+	return html
 }
 
 // attrs replaces each attribute re matches in html (group 1 its name and

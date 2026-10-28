@@ -180,7 +180,7 @@ func TestSnippetMasksFilledValues(t *testing.T) {
 		`<input id="email" value="ana@example.com" data-user-id='4471'>`: `<input id="email" value="***" data-user-id="***">`,
 		`<input name=acct VALUE=12345678 type="text">`:                   `<input name=acct VALUE="***" type="text">`,
 		`<input id="q" value="" placeholder="Search">`:                   `<input id="q" value="" placeholder="Search">`,
-		`<button data-x = "a b">Go</button>`:                             `<button data-x = "***">Go</button>`,
+		`<button data-x = "a b">Go</button>`:                             `<button data-x = "***">`,
 		`<li aria-valuenow="5">`:                                         `<li aria-valuenow="5">`,
 	} {
 		if got := snippet(in); got != want {
@@ -193,8 +193,8 @@ func TestSnippetMasksFilledValues(t *testing.T) {
 // reach run.json; the path the link goes to stays readable.
 func TestSnippetMasksLinks(t *testing.T) {
 	for in, want := range map[string]string{
-		`<a href="/reset?token=9f8e7d6c5b4a&email=ana@example.com"></a>`: `<a href="/reset?***"></a>`,
-		`<a href='/password/reset/Zx81kQpL0aTnB4vRu7cWmE2s'></a>`:        `<a href="/password/reset/***"></a>`,
+		`<a href="/reset?token=9f8e7d6c5b4a&email=ana@example.com"></a>`: `<a href="/reset?***">`,
+		`<a href='/password/reset/Zx81kQpL0aTnB4vRu7cWmE2s'></a>`:        `<a href="/password/reset/***">`,
 		`<form action=/subscribe?key=abc123>`:                            `<form action="/subscribe?***">`,
 		`<img src="/logo.png">`:                                          `<img src="/logo.png">`,
 		`<a href="/shop/">`:                                              `<a href="/shop/">`,
@@ -202,6 +202,38 @@ func TestSnippetMasksLinks(t *testing.T) {
 		if got := snippet(in); got != want {
 			t.Errorf("snippet(%s) = %s, want %s", in, got, want)
 		}
+	}
+}
+
+// What an element holds never reaches an issue: the snippet stops at the
+// opening tag, so the text of a prefilled textarea, a selected option
+// or an editable region is dropped. An email, phone or card number in an
+// attribute or in axe's summary is masked.
+func TestSnippetDropsContentAndMasksPII(t *testing.T) {
+	canary := "CAN" + "ARY"
+	email := "jane" + canary + "@example.org"
+	card := "4111 1111 " + "1111 1111"
+	for in, want := range map[string]string{
+		`<textarea>ta-` + canary + `</textarea>`:                           `<textarea>`,
+		`<select><option selected="">opt-` + canary + `</option></select>`: `<select>`,
+		`<option selected="">opt-` + canary + `</option>`:                  `<option selected="">`,
+		`<div contenteditable="true">draft ` + canary + `</div>`:           `<div contenteditable="true">`,
+		`<p style="color:#ccc">low contrast ` + email + `</p>`:             `<p style="color:#ccc">`,
+		`<span title="` + email + `" class="a>b">x</span>`:                 `<span title="***@***" class="a>b">`,
+		`<button aria-label="Call +49 30 1234567">x</button>`:              `<button aria-label="Call ***">`,
+		`<div aria-label="Card ` + card + `">`:                             `<div aria-label="Card ***">`,
+	} {
+		got := snippet(in)
+		if got != want {
+			t.Errorf("snippet(%s) = %s, want %s", in, got, want)
+		}
+		if snippet(got) != got {
+			t.Errorf("snippet isn't stable on %s", got)
+		}
+	}
+	got := summary("Fix any of the following:\n  Element text " + email + " card " + card)
+	if strings.Contains(got, canary) || strings.Contains(got, "1111") {
+		t.Errorf("summary kept personal data: %q", got)
 	}
 }
 
