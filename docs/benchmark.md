@@ -315,7 +315,7 @@ Run on 2026-10-28 with rhythm-soundcheck dev (linux/amd64).
 - **s57**: NEW keyboard/not-operable: Control doesn't respond to Enter or Space [#save] (/a11y/wishlist.php)
 - **s58**: NEW keyboard/menu: Submenu doesn't open by keyboard [#menu-primary > li:nth-of-type(8) > a] (/s58-submenu/)
 - **s59**: NEW a11y/autocomplete-valid: autocomplete attribute must be used correctly [#tb_billing_address] (/checkout/)
-- **s60**: NEW a11y/placeholder-label: Form field is labelled only by its placeholder [#tb_billing_address] (/checkout/)
+- **s60**: NEW a11y/placeholder-label: Form field is labeled only by its placeholder [#tb_billing_address] (/checkout/)
 - **s61**: NEW a11y/color-contrast: Elements must meet minimum color contrast ratio thresholds [#place_order] (/checkout/)
 - **s62**: NEW a11y/html-has-lang: <html> element must have a lang attribute [html] (/s62-lang/)
 - **s63**: NEW a11y/image-alt: Images must have alternative text [#main > article > figure > img:nth-of-type(1)] (/s63-gallery/)

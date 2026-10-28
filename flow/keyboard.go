@@ -315,7 +315,7 @@ func (r *runner) reachEl(n int, kind string, t Target, el *rod.Element) (*rod.El
 				return nil, err
 			}
 			if inside[stop.BackendNodeID] && !stop.IsBody {
-				r.keys.log(fmt.Sprintf("step %d %s %q: on %s after %d key presses", n, kind, t.raw(), stopName(stop), tabs))
+				r.keys.log(fmt.Sprintf("step %d %s %q: on %s after %s", n, kind, t.raw(), stopName(stop), keyPresses(tabs)))
 				return r.page.ElementFromNode(&proto.DOMNode{BackendNodeID: proto.DOMBackendNodeID(stop.BackendNodeID)})
 			}
 			if i == r.o.MaxTabs {
@@ -706,4 +706,12 @@ func (r *runner) expectFocus(sel string, within, absent bool) error {
 		return fmt.Errorf("focus is on %s, not %s", on, sel)
 	}
 	return nil
+}
+
+// keyPresses is "1 key press" or "3 key presses" for the key-flow trace.
+func keyPresses(n int) string {
+	if n == 1 {
+		return "1 key press"
+	}
+	return fmt.Sprintf("%d key presses", n)
 }

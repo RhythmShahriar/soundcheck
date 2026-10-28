@@ -231,7 +231,7 @@ func placeholderIssues(found []field, more beyond, have []model.Issue, keep int)
 			continue
 		}
 		seen[sel] = true
-		i := model.Issue{Check: "a11y/placeholder-label", Level: model.Warning, Title: "Form field is labelled only by its placeholder",
+		i := model.Issue{Check: "a11y/placeholder-label", Level: model.Warning, Title: "Form field is labeled only by its placeholder",
 			Detail: fmt.Sprintf("The only name is the placeholder %q, which disappears when someone types.", shortText(f.Placeholder, 60)),
 			Source: sel, Fix: "Add a visible <label for> or aria-labelledby that points at visible text.",
 			WCAG: []string{"3.3.2"}, EN301549: []string{"9.3.3.2"}, Impact: "serious"}

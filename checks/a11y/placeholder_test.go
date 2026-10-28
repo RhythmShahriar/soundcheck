@@ -50,7 +50,7 @@ func TestPlaceholderLabel(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("/only/: %+v", got)
 	}
-	want := model.Issue{Check: "a11y/placeholder-label", Level: model.Warning, Title: "Form field is labelled only by its placeholder",
+	want := model.Issue{Check: "a11y/placeholder-label", Level: model.Warning, Title: "Form field is labeled only by its placeholder",
 		Detail: `The only name is the placeholder "Email address", which disappears when someone types.`,
 		Source: `input[name="email"]`, Fix: "Add a visible <label for> or aria-labelledby that points at visible text.",
 		WCAG: []string{"3.3.2"}, EN301549: []string{"9.3.3.2"}, Impact: "serious"}
