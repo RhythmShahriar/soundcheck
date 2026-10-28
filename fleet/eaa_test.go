@@ -324,3 +324,29 @@ func TestEAAOpenCapped(t *testing.T) {
 		t.Errorf("uncapped open found = %d", *plain.EAAOpenFound)
 	}
 }
+
+// The fleet header and page title count one site in the singular.
+func TestSiteCount(t *testing.T) {
+	p := writeSites(t, "- {name: one, url: http://ok.test/}\n")
+	var out bytes.Buffer
+	if _, err := Run(context.Background(), os.Args[0], p, Snapshot, 0, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Fleet: taking a snapshot of 1 site, 1 at a time") {
+		t.Errorf("header:\n%s", out.String())
+	}
+	var h bytes.Buffer
+	if err := HTML(&h, Page{Mode: Snapshot, Sites: []Result{{Site: "one", Verdict: Clean, Counts: map[string]int{}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.String(), "Soundcheck fleet · 1 site<") {
+		t.Errorf("title:\n%s", h.String()[:min(h.Len(), 400)])
+	}
+	h.Reset()
+	if err := HTML(&h, Page{Mode: Snapshot, Sites: []Result{{Site: "one"}, {Site: "two"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.String(), "Soundcheck fleet · 2 sites<") {
+		t.Errorf("title:\n%s", h.String()[:min(h.Len(), 400)])
+	}
+}

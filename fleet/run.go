@@ -195,7 +195,7 @@ func Run(ctx context.Context, bin, file, mode string, parallel int, extra []stri
 	}
 	root := filepath.Join(base, Folder)
 	parallel = max(1, min(parallel, len(sites)))
-	fmt.Fprintf(out, "Fleet: %s %d sites, %d at a time\n", verb(mode), len(sites), parallel)
+	fmt.Fprintf(out, "Fleet: %s %s, %d at a time\n", verb(mode), siteCount(len(sites)), parallel)
 
 	results := make([]Result, len(sites))
 	var (
@@ -631,4 +631,12 @@ func childEnv(environ []string, prefix string) []string {
 		}
 	}
 	return out
+}
+
+// siteCount is "1 site" or "n sites".
+func siteCount(n int) string {
+	if n == 1 {
+		return "1 site"
+	}
+	return fmt.Sprintf("%d sites", n)
 }

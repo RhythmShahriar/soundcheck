@@ -64,7 +64,7 @@ func HTML(w io.Writer, p Page) error {
 	if p.Mode == Compare {
 		d.Mode = "Comparisons"
 	}
-	d.Title = fmt.Sprintf("Soundcheck fleet · %d sites", len(p.Sites))
+	d.Title = "Soundcheck fleet · " + siteCount(len(p.Sites))
 	n := map[string]int{}
 	for i, r := range p.Sites {
 		n[r.Verdict]++
