@@ -178,18 +178,104 @@ func launchAgain(err error) bool {
 	return !strings.Contains(strings.ToLower(err.Error()), "sandbox")
 }
 
+// quietSwitches keep Chrome's own traffic off the network: the
+// component updater, push messaging, domain reliability reports, the
+// hyperlink auditing pings and the other services a browser profile
+// talks to by itself. A run then connects only to the site and the
+// hosts its pages request.
+var quietSwitches = []string{
+	"disable-background-networking",
+	"disable-component-update",
+	"disable-domain-reliability",
+	"disable-sync",
+	"disable-default-apps",
+	"disable-extensions",
+	"disable-client-side-phishing-detection",
+	"disable-breakpad",
+	"no-pings",
+	"no-service-autorun",
+	"metrics-recording-only",
+}
+
+// nowhere is where Chrome's own services are sent: port 9 is one of
+// the ports Chrome refuses to connect to, so their requests fail before
+// any connection is made, even to loopback.
+const nowhere = "http://127.0.0.1:9/"
+
+// serviceURLs point the Google services a branded Chrome reaches by
+// itself to nowhere. The switches above don't stop all of them: Google
+// Chrome still checks in with Google Cloud Messaging, lists the profile's
+// Google accounts, fetches components and asks the search service what
+// the browser may show.
+var serviceURLs = map[string]string{
+	"gcm-checkin-url":      nowhere,
+	"gcm-registration-url": nowhere,
+	"gcm-mcs-endpoint":     nowhere,
+	"gaia-url":             nowhere,
+	"google-base-url":      nowhere,
+	"component-updater":    "url-source=" + nowhere,
+}
+
+// serviceHosts are hosts only Chrome's own services use: updates,
+// Google Cloud Messaging, field trials, Safe Browsing and model
+// downloads. No page needs them, so the browser never resolves them.
+// This stops what no switch does, such as Google Chrome's activity
+// pings to its update service.
+var serviceHosts = []string{
+	"update.googleapis.com", "clientservices.googleapis.com",
+	"optimizationguide-pa.googleapis.com", "content-autofill.googleapis.com",
+	"safebrowsing.googleapis.com", "safebrowsingohttpgateway.googleapis.com",
+	"*.gvt1.com", "*.gvt2.com", "clients2.google.com",
+	"android.clients.google.com", "mtalk.google.com",
+}
+
+// resolverRules is the host-resolver-rules switch that keeps
+// serviceHosts unresolved, after the rules given in Options.Switches.
+func resolverRules(given string) string {
+	rules := make([]string, 0, len(serviceHosts)+1)
+	if given != "" {
+		rules = append(rules, given)
+	}
+	for _, h := range serviceHosts {
+		rules = append(rules, "MAP "+h+" ~NOTFOUND")
+	}
+	return strings.Join(rules, ", ")
+}
+
+// disabledFeatures are Chrome features turned off for every run. Most
+// fetch something in the background: models, hints, server data or the
+// certificate transparency lists. DnsOverHttps keeps name lookups on
+// the system's resolver.
+var disabledFeatures = []string{
+	"Translate", "TranslateUI",
+	"MediaRouter", "DialMediaRouteProvider", "GlobalMediaControls",
+	"OptimizationHints", "OptimizationHintsFetching", "OptimizationGuideModelDownloading",
+	"OptimizationTargetPrediction", "OptimizationGuideOnDeviceModel",
+	"PushMessaging",
+	"AutofillServerCommunication", "CertificateTransparencyComponentUpdater",
+	"DnsOverHttps", "InterestFeedContentSuggestions",
+	"NetworkTimeServiceQuerying", "PreconnectToSearch", "AimServerEligibility",
+	"SafeBrowsingHashPrefixRealTimeLookups", "HashPrefixRealTimeLookups",
+}
+
 // launchOnce is one try of Launch: it starts Chrome in a new profile and
 // connects to it.
 func launchOnce(ctx context.Context, opts Options, bin string, noSandbox bool) (*rod.Browser, *process, error) {
 	l := launcher.New().Context(ctx).Headless(!opts.Visible).
 		Set("disable-gpu").Set("hide-scrollbars").Set("mute-audio").
-		Set("disable-features", "Translate,MediaRouter,OptimizationHints").
-		Set("disable-background-networking").Set("no-first-run").Set("no-default-browser-check").
+		Set("disable-features", disabledFeatures...).
+		Set("no-first-run").Set("no-default-browser-check").
 		// Pages are checked in parallel tabs. All but one are in the
 		// background: without these Chrome throttles their timers and
 		// rendering so the tabs end up taking turns.
 		Set("disable-background-timer-throttling").Set("disable-backgrounding-occluded-windows").
 		Set("disable-renderer-backgrounding").Set("disable-ipc-flooding-protection")
+	for _, name := range quietSwitches {
+		l = l.Set(flags.Flag(name))
+	}
+	for name, value := range serviceURLs {
+		l = l.Set(flags.Flag(name), value)
+	}
 	// rod turns the sandbox off by itself inside containers; only the
 	// rule in sandbox decides here.
 	l = l.NoSandbox(noSandbox)
@@ -199,7 +285,11 @@ func launchOnce(ctx context.Context, opts Options, bin string, noSandbox bool) (
 	if opts.Insecure {
 		l = l.Set("ignore-certificate-errors")
 	}
+	l = l.Set("host-resolver-rules", resolverRules(opts.Switches["host-resolver-rules"]))
 	for name, value := range opts.Switches {
+		if name == "host-resolver-rules" {
+			continue
+		}
 		if value == "" {
 			l = l.Set(flags.Flag(name))
 		} else {

@@ -61,8 +61,8 @@ func TestLaunchSetsSwitches(t *testing.T) {
 		}
 		return res.Arguments
 	}
-	want := []string{"--proxy-bypass-list=<-loopback>;127.0.0.1/32", "--no-pings"}
-	got := args(Options{Switches: map[string]string{"proxy-bypass-list": "<-loopback>;127.0.0.1/32", "no-pings": ""}})
+	want := []string{"--proxy-bypass-list=<-loopback>;127.0.0.1/32", "--disable-notifications"}
+	got := args(Options{Switches: map[string]string{"proxy-bypass-list": "<-loopback>;127.0.0.1/32", "disable-notifications": ""}})
 	for _, w := range want {
 		if !slices.Contains(got, w) {
 			t.Errorf("%s isn't on the command line %q", w, got)
@@ -73,6 +73,58 @@ func TestLaunchSetsSwitches(t *testing.T) {
 		if slices.Contains(got, w) {
 			t.Errorf("%s is on the command line without the switch", w)
 		}
+	}
+}
+
+// Every launch carries the switches that keep Chrome's own services
+// off the network. Resolver rules given as a switch are kept ahead
+// of Soundcheck's own.
+func TestLaunchKeepsChromeQuiet(t *testing.T) {
+	needChrome(t)
+	b, err := Launch(context.Background(), Options{NoDownload: true,
+		Switches: map[string]string{"host-resolver-rules": "MAP example.test 127.0.0.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	res, err := proto.BrowserGetBrowserCommandLine{}.Call(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := res.Arguments
+	for _, w := range []string{"--disable-component-update", "--disable-domain-reliability", "--no-pings",
+		"--gcm-checkin-url=" + nowhere, "--gaia-url=" + nowhere, "--component-updater=url-source=" + nowhere} {
+		if !slices.Contains(got, w) {
+			t.Errorf("%s isn't on the command line %q", w, got)
+		}
+	}
+	var rules, features string
+	for _, a := range got {
+		if v, ok := strings.CutPrefix(a, "--host-resolver-rules="); ok {
+			rules = v
+		}
+		if v, ok := strings.CutPrefix(a, "--disable-features="); ok {
+			features = v
+		}
+	}
+	if !strings.HasPrefix(rules, "MAP example.test 127.0.0.1, ") || !strings.Contains(rules, "MAP update.googleapis.com ~NOTFOUND") {
+		t.Errorf("host-resolver-rules = %q", rules)
+	}
+	for _, f := range []string{"PushMessaging", "MediaRouter", "OptimizationGuideModelDownloading",
+		"AutofillServerCommunication", "CertificateTransparencyComponentUpdater", "DnsOverHttps"} {
+		if !slices.Contains(strings.Split(features, ","), f) {
+			t.Errorf("%s isn't in --disable-features=%s", f, features)
+		}
+	}
+}
+
+func TestResolverRules(t *testing.T) {
+	got := resolverRules("")
+	if !strings.HasPrefix(got, "MAP update.googleapis.com ~NOTFOUND, ") || strings.Count(got, "MAP ") != len(serviceHosts) {
+		t.Errorf("resolverRules(\"\") = %q", got)
+	}
+	if got := resolverRules("MAP a.test 127.0.0.1"); !strings.HasPrefix(got, "MAP a.test 127.0.0.1, MAP update.googleapis.com") {
+		t.Errorf("given rules aren't first: %q", got)
 	}
 }
 
