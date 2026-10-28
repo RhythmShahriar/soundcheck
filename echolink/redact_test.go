@@ -46,6 +46,23 @@ func TestRedact(t *testing.T) {
 	}
 }
 
+// A page path in an --eaa result has every query value masked, however
+// short and whatever its name. Its fragment is dropped.
+func TestRedactPage(t *testing.T) {
+	for in, want := range map[string]string{
+		"/a11y/embed.php?email=jane@example.org&sid=9f3ac2e81b7d": "/a11y/embed.php?email=•••••&sid=•••••",
+		"https://shop.test/p/?utm=abc&ref=abc#top":                "https://shop.test/p/?utm=•••••&ref=•••••",
+		"/reset/" + strings.Repeat("ab12cd34", 4) + "/?id=4":      "/reset/•••••/?id=•••••",
+		"/plain/":    "/plain/",
+		"/plain/?":   "/plain/?",
+		"/plain/#x1": "/plain/",
+	} {
+		if got := RedactPage(in); got != want {
+			t.Errorf("%q\n got %q\nwant %q", in, got, want)
+		}
+	}
+}
+
 func TestRedactURLAndHeaders(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://hooks.test/in?token=ab12&channel=sales":  "https://hooks.test/in?token=•••••&channel=sales",

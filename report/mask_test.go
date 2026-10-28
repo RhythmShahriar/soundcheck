@@ -56,6 +56,39 @@ func TestMaskedPaths(t *testing.T) {
 	}
 }
 
+// A page path's query value is masked in every --eaa output however
+// short it is and whatever its name: a session id like ?sid=9f3ac2e81b7d
+// looks like neither a credential nor a long token. The live page line
+// masks it too. The stored result keeps it.
+func TestMaskedShortQuery(t *testing.T) {
+	sid := "9f3ac2" + "e81b7d"
+	path := "/a11y/embed.php?email=jane@example.org&sid=" + sid
+	run := eaaClean()
+	run.Target = "https://shop.test" + path
+	run.Pages = append(run.Pages, model.Page{Path: path, URL: run.Target, FinalURL: run.Target, Group: path, Status: 200,
+		Issues: []model.Issue{{Check: "a11y/label", Level: model.Warning, Title: "Form elements must have labels", Source: "input", Pages: []string{path}}}})
+	res := Result{Run: run, Comparison: &model.Comparison{Changes: []model.Change{{Class: model.New, Check: "a11y/label", Title: "x", Pages: []string{path}}}}}
+	shown := Masked(res)
+	var all bytes.Buffer
+	pretty := NewPretty(&all, io.Discard, PrettyOptions{Plain: true, Verbose: true})
+	pretty.Summary(shown, "")
+	pretty.Page(MaskedPage(&run.Pages[len(run.Pages)-1]), 1, 1)
+	for _, f := range []func(io.Writer, Result) error{Markdown, JSON, HTML, func(w io.Writer, r Result) error { return JUnit(w, r, "") }} {
+		if err := f(&all, shown); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Contains(all.String(), sid) {
+		t.Error("an --eaa output shows a short query value of a page path")
+	}
+	if !strings.Contains(all.String(), "/a11y/embed.php?email=•••••&amp;sid=•••••") && !strings.Contains(all.String(), "/a11y/embed.php?email=•••••&sid=•••••") {
+		t.Error("the masked path isn't shown")
+	}
+	if run.Pages[len(run.Pages)-1].Path != path || res.Comparison.Changes[0].Pages[0] != path {
+		t.Error("Masked changed the stored result")
+	}
+}
+
 // An --eaa result's start URL is masked like its page paths, in every
 // format and in the comparison's run references: the target heads the
 // Markdown (posted as a PR comment), the HTML meta and the JSON. Its

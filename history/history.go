@@ -152,7 +152,7 @@ func New(run *model.Run, c *model.Comparison) Entry {
 		}
 		tbt = append(tbt, m.TBT)
 		if len(e.PageSet) < MaxPages {
-			e.PageSet = append(e.PageSet, PageMetrics{Path: pagePath(p.Path), LCP: m.LCP, TBT: m.TBT, TTFB: m.TTFB, CLS: m.CLS})
+			e.PageSet = append(e.PageSet, PageMetrics{Path: pagePath(run, p.Path), LCP: m.LCP, TBT: m.TBT, TTFB: m.TTFB, CLS: m.CLS})
 		}
 	}
 	e.LCP, e.TBT, e.TTFB = median(lcp), median(tbt), median(ttfb)
@@ -250,7 +250,7 @@ func pageAccessibility(e *Entry, run *model.Run, unstable model.UnstableSet) {
 		at[p.Path] = i
 	}
 	for _, p := range run.Pages {
-		path := pagePath(p.Path)
+		path := pagePath(run, p.Path)
 		i, ok := at[path]
 		if !ok || p.Error != "" {
 			continue
@@ -298,13 +298,20 @@ func Target(run *model.Run) string {
 // pagePath is a page path as the history keeps it: a token in the path
 // (/reset/<token>/) or a one-time code masked the way statement drafts
 // and keyboard traces mask them, as history.jsonl ends up in CI caches.
-func pagePath(p string) string { return echolink.RedactURL(p) }
+// An --eaa run's paths also have every query value masked, as its
+// reports show them (echolink.RedactPage).
+func pagePath(run *model.Run, p string) string {
+	if run.Options.EAA {
+		return echolink.RedactPage(p)
+	}
+	return echolink.RedactURL(p)
+}
 
 // samePage reports whether a recorded path is the page asked for, which
 // is given as the visitor sees it and masked the way the history keeps
 // it. Lines written before paths were masked hold it as it was.
 func samePage(recorded, page string) bool {
-	return recorded == page || recorded == pagePath(page)
+	return recorded == page || recorded == echolink.RedactURL(page) || recorded == echolink.RedactPage(page)
 }
 
 // groupIssues returns the level of each distinct issue in a run, the

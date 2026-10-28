@@ -94,12 +94,28 @@ func TestNewCanaries(t *testing.T) {
 			t.Errorf("%s: two runs made the same canary", c.name)
 		}
 	}
-	if !slices.Equal(names, canaryNames) {
-		t.Errorf("names %v, want %v", names, canaryNames)
+	if want := append(slices.Clone(canaryNames), startCanary); !slices.Equal(names, want) {
+		t.Errorf("names %v, want %v", names, want)
+	}
+	// The start canary is short and named like no credential, so only
+	// masking every query value of an --eaa result keeps it out.
+	sid := a[len(a)-1]
+	if !sid.start || len(sid.value) != 12 || sid.value != sid.needle {
+		t.Errorf("start canary %+v", sid)
 	}
 	file := string(canaryFile(a))
-	if !strings.HasPrefix(file, "email="+a[0].value+"\n") || strings.Count(file, "\n") != len(a) {
+	if !strings.HasPrefix(file, "email="+a[0].value+"\n") || strings.Count(file, "\n") != len(canaryNames) || strings.Contains(file, sid.value) {
 		t.Errorf("canary file:\n%s", file)
+	}
+	h := &harnessRun{canaries: a}
+	if got, want := h.startURL("http://php/a11y/embed.php"), "http://php/a11y/embed.php?sid="+sid.value; got != want {
+		t.Errorf("startURL = %q, want %q", got, want)
+	}
+	if got, want := h.startURL("http://php/?p=1"), "http://php/?p=1&sid="+sid.value; got != want {
+		t.Errorf("startURL = %q, want %q", got, want)
+	}
+	if got := (&harnessRun{}).startURL("http://php/"); got != "http://php/" {
+		t.Errorf("no canaries: startURL = %q", got)
 	}
 }
 
@@ -118,7 +134,7 @@ func TestStartHarnesses(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(state, "canaries"))
-	if err != nil || !strings.Contains(string(data), "token=sk_live_") || len(h.canaries) != len(canaryNames) {
+	if err != nil || !strings.Contains(string(data), "token=sk_live_") || len(h.canaries) != len(canaryNames)+1 {
 		t.Errorf("state/canaries = %q, %v", data, err)
 	}
 	if got := changedCounters(h.before, readCounters(state)); len(got) != 0 {
@@ -242,7 +258,10 @@ func TestSweepCanaries(t *testing.T) {
 		}
 	}
 	write("compare.json", `{"changes":[{"source":"#acc_phone","detail":"value=\"[masked]\""}]}`)
-	write(".soundcheck/runs/x/pages.jsonl", `{"path":"/my-account/","links":["/my-account/?token=[masked]"]}`)
+	sid := cs[len(cs)-1]
+	write(".soundcheck/runs/x/pages.jsonl", `{"path":"/my-account/?sid=`+sid.value+`","links":["/my-account/?token=[masked]"]}`)
+	// The stored run keeps the start URL as typed.
+	write(".soundcheck/runs/x/run.json", `{"target":"http://wp/my-account/?sid=`+sid.value+`"}`)
 	// The third-party tools' own folders may show the page as it is.
 	write("axe/broken.json", cs[2].value)
 	if got, err := sweepCanaries(wd, cs); err != nil || len(got) != 0 {
@@ -257,6 +276,9 @@ func TestSweepCanaries(t *testing.T) {
 	write(".soundcheck/runs/x/pages.jsonl", `{"links":["/my-account/?token=sk%5Flive%5F`+cs[2].needle+`"]}`)
 	write(".soundcheck/runs/x/keyboard/p1.json", `{"steps":[{"label":"`+cs[1].value+`"}]}`)
 	write("statement.md", "Contact "+cs[0].value)
+	// The start canary in a page path of a report or the history.
+	write("good.json", `{"pages":[{"path":"/my-account/?sid=`+sid.value+`"}]}`)
+	write(".soundcheck/history.jsonl", `{"page_metrics":[{"path":"/my-account/?sid=`+sid.value+`"}]}`)
 	got, err := sweepCanaries(wd, cs)
 	if err != nil {
 		t.Fatal(err)
@@ -265,6 +287,8 @@ func TestSweepCanaries(t *testing.T) {
 		"canaries: the token canary is in .soundcheck/runs/x/pages.jsonl",
 		"canaries: the phone canary is in .soundcheck/runs/x/keyboard/p1.json",
 		"canaries: the email canary is in statement.md",
+		"canaries: the sid canary is in good.json",
+		"canaries: the sid canary is in .soundcheck/history.jsonl",
 	}
 	slices.Sort(got)
 	slices.Sort(want)

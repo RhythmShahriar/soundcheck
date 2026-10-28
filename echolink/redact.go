@@ -114,6 +114,19 @@ func RedactTarget(u string) string {
 	return RedactURL(u)
 }
 
+// RedactPage is a page path or URL as an --eaa result shows it: every
+// query value masked, however short and whatever its name (a session id
+// such as ?sid=9f3ac2e81b7d looks like neither a credential nor a long
+// token), the fragment dropped and a token in the path masked the way
+// RedactURL masks it. The query names stay, so two pages that differ
+// only in a parameter still read as different pages.
+func RedactPage(u string) string {
+	if i := strings.IndexByte(u, '#'); i >= 0 {
+		u = u[:i]
+	}
+	return anyQuery.ReplaceAllString(RedactURL(u), "${1}"+masked)
+}
+
 // redactHeader masks a header value: all of it when the name says it's a
 // credential, otherwise what Redact would mask in text.
 func redactHeader(name, value string) string {

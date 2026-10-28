@@ -320,6 +320,38 @@ func TestHistoryMasksTokenPaths(t *testing.T) {
 	}
 }
 
+// A short query value under a name that sounds like no credential (a
+// session id) never reaches history.jsonl from an --eaa run either; a
+// run without --eaa keeps it.
+func TestHistoryMasksShortQuery(t *testing.T) {
+	sid := "9f3ac2" + "e81b7d"
+	path := "/a11y/embed.php?email=x&sid=" + sid
+	for _, eaa := range []bool{true, false} {
+		root := t.TempDir()
+		run := eaaRun(t0, "eaa-1", 0)
+		run.Options.EAA = eaa
+		run.Pages[0].Path = path
+		run.Pages[0].Metrics.LCP = 1234
+		if err := Append(root, run, nil); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(root, File))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), sid) != !eaa {
+			t.Errorf("eaa %t: history.jsonl holding the sid is %t", eaa, !eaa)
+		}
+		entries, err := Read(root)
+		if err != nil || len(entries) != 1 {
+			t.Fatalf("read %d entries: %v", len(entries), err)
+		}
+		if v := entries[0].Value("lcp", path); v != run.Pages[0].Metrics.LCP {
+			t.Errorf("eaa %t: Value by the unmasked path = %v, want %v", eaa, v, run.Pages[0].Metrics.LCP)
+		}
+	}
+}
+
 // A clean --eaa entry never reads as clean in the table: a snapshot or
 // run says no failures found and a comparison unchanged. Without --eaa
 // clean stays clean.

@@ -165,7 +165,21 @@ func orZero(s string) string {
 // escaping or prefix masking changes.
 type canary struct {
 	name, value, needle string
+	// start marks the canary on the start URL's query (startCanary): the
+	// pages don't read it. The stored run (run.json and pages.jsonl)
+	// keeps the URL as typed, so compare and resume visit it again.
+	start bool
 }
+
+// startCanary is the query parameter the canaries harness adds to the
+// start URL: a short value under a name that sounds like no credential,
+// the kind only a rule that masks every query value of an --eaa result
+// keeps out of its outputs (security M3).
+const startCanary = "sid"
+
+// storedRun lists the files that hold the run as stored (store's
+// run.json and its pages files), where a start canary may stay.
+var storedRun = []string{"run.json", "pages.jsonl", "pages.1.jsonl"}
 
 // canaryNames are the canaries the pages read: s68's account form
 // (email, phone, token) and s84's payment frame (data, field, aria,
@@ -202,13 +216,36 @@ func newCanaries() ([]canary, error) {
 		}
 		out = append(out, canary{name: name, value: value, needle: core})
 	}
-	return out, nil
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	sid := hex.EncodeToString(b)
+	return append(out, canary{name: startCanary, value: sid, needle: sid, start: true}), nil
+}
+
+// startURL is u with the start canary added to its query, or u when
+// the scenario has no canaries.
+func (h *harnessRun) startURL(u string) string {
+	for _, c := range h.canaries {
+		if c.start {
+			sep := "?"
+			if strings.Contains(u, "?") {
+				sep = "&"
+			}
+			return u + sep + c.name + "=" + c.value
+		}
+	}
+	return u
 }
 
 // canaryFile is state/canaries: name=value, one per line.
 func canaryFile(cs []canary) []byte {
 	var b bytes.Buffer
 	for _, c := range cs {
+		if c.start {
+			continue
+		}
 		fmt.Fprintf(&b, "%s=%s\n", c.name, c.value)
 	}
 	return b.Bytes()
@@ -216,7 +253,8 @@ func canaryFile(cs []canary) []byte {
 
 // sweepCanaries reads every file the run wrote (the run's .soundcheck
 // folder and the -o files next to it, not the third-party tools'
-// folders) and lists each canary found, by name: the value itself stays
+// folders) and lists each canary found, by name (a start canary may
+// stay in the stored run): the value itself stays
 // out of the scoreboard.
 func sweepCanaries(wd string, cs []canary) ([]string, error) {
 	if len(cs) == 0 {
@@ -229,7 +267,11 @@ func sweepCanaries(wd string, cs []canary) ([]string, error) {
 		if err != nil {
 			return err
 		}
+		stored := slices.Contains(storedRun, filepath.Base(path))
 		for _, c := range cs {
+			if c.start && stored {
+				continue
+			}
 			if bytes.Contains(data, []byte(c.needle)) {
 				rel, _ := filepath.Rel(wd, path)
 				if key := c.name + rel; !seen[key] {

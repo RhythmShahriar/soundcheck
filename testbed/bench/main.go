@@ -261,6 +261,7 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 	if err != nil {
 		return Result{Outcome: Failed, Detail: "harness: " + err.Error()}
 	}
+	url = h.startURL(url)
 
 	// Good state.
 	if err := Toggle(dir, s.ID, "good"); err != nil {

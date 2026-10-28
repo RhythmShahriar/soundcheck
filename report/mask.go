@@ -12,8 +12,8 @@ import (
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
-// Masked is r as an --eaa result shows it: the token-like segments of
-// its page paths and URLs masked (security M3), as the statement draft,
+// Masked is r as an --eaa result shows it: the token-like segments and
+// every query value of its page paths and URLs masked (security M3), as the statement draft,
 // the evidence pack and the history mask them. A link can carry a
 // reset key or a magic login token in its path while the terminal, the
 // Markdown posted as a PR comment, the HTML report, JUnit and JSON all
@@ -64,17 +64,17 @@ func Masked(r Result) Result {
 // Masked masks it for an --eaa run, as it is otherwise.
 func ShownTarget(run *model.Run) string { return history.Target(run) }
 
-// pathMasker replaces each page path and URL of r that has a token in
-// it with its masked form, or is nil when none has: the run's pages and
-// the pages its issues and changes name (a FIXED change can name a page
-// only the snapshot had). Longer ones go first, so a URL is replaced
+// pathMasker replaces each page path and URL of r that has a token or
+// a query value in it with its masked form (echolink.RedactPage), or is
+// nil when none has: the run's pages and the pages its issues and
+// changes name (a FIXED change can name a page only the snapshot had). Longer ones go first, so a URL is replaced
 // whole before the path inside it.
 func pathMasker(r Result) *strings.Replacer {
 	run := r.Run
 	seen := map[string]bool{}
 	var raw []string
 	add := func(s string) {
-		if s != "" && !seen[s] && echolink.RedactURL(s) != s {
+		if s != "" && !seen[s] && echolink.RedactPage(s) != s {
 			seen[s] = true
 			raw = append(raw, s)
 		}
@@ -114,7 +114,7 @@ func pathMasker(r Result) *strings.Replacer {
 	slices.SortFunc(raw, func(a, b string) int { return len(b) - len(a) })
 	pairs := make([]string, 0, 2*len(raw))
 	for _, s := range raw {
-		pairs = append(pairs, s, echolink.RedactURL(s))
+		pairs = append(pairs, s, echolink.RedactPage(s))
 	}
 	return strings.NewReplacer(pairs...)
 }
