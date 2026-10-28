@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick start</a> ·
   <a href="#check-a-change">Check a change</a> ·
   <a href="#what-it-catches">What it catches</a> ·
   <a href="#accessibility-evidence-for-the-eaa">EAA</a> ·
@@ -39,9 +40,12 @@
 
 | | Asks | Checks |
 |---|---|---|
+| [rhythm](https://github.com/RhythmShahriar/rhythm) | Which tools do I have? | installs, updates and runs the set as `rhythm <tool>` |
 | [Tuner](https://github.com/RhythmShahriar/tuner) | Is my site safe? | what an attacker can find |
-| **Soundcheck** | **Did my change break anything?** | **what visitors see and do** |
+| **Soundcheck** | **Did my change break anything?** | **what visitors see and do, by mouse and by keyboard** |
 | [Echo](https://github.com/RhythmShahriar/echo) | Is my site still saying what it should? | everything the site sends |
+| [Roadie](https://github.com/RhythmShahriar/roadie) | Is my staging a safe copy of production? | real people, live keys and side effects in the copy |
+| [Sightread](https://github.com/RhythmShahriar/sightread) | What will this update really change? | the code an update brings |
 
 ## Install
 
@@ -57,6 +61,13 @@ curl -fsSL https://rythm.sh/install | sh
 irm https://rythm.sh/install.ps1 | iex
 ```
 
+The installers set up `rhythm` with Soundcheck and the other default tools. Already have `rhythm`? Add Soundcheck, or bring it up to date:
+
+```sh
+rhythm install soundcheck
+rhythm update soundcheck
+```
+
 **Go**
 
 ```sh
@@ -67,9 +78,20 @@ go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 
 Soundcheck drives a real browser. It uses Chrome or Chromium if you have one. Otherwise it downloads Chrome for Testing once, on first use, into your cache folder. The download is checked against the SHA-256 pinned in the binary. `--browser firefox` or `--browser webkit` captures pages in those engines instead. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
-## Check a change
+More install options (pinning, mirrors, CI, offline) are in the [install guide](https://github.com/RhythmShahriar/rhythm/wiki/Install).
 
-No site handy? `rhythm-soundcheck demo` serves a small built-in site, snapshots it, breaks it and shows the comparison, in a few seconds and without touching your project folder.
+## Quick start
+
+No site needed: the demo serves a small built-in bakery site on 127.0.0.1, takes a snapshot, breaks it the way an update can and shows the comparison, in a few seconds and without touching your project folder.
+
+```sh
+rhythm soundcheck demo         # a PHP warning, a JS error, a dead button, a 404 and a form that answers 500
+rhythm soundcheck demo --eaa   # the same plus a keyboard trap and a dialog that loses focus, found by EAA mode
+```
+
+Then on your own staging site: `rhythm soundcheck snapshot staging.yoursite.com` before a change and `rhythm soundcheck compare` after it. The [first check tutorial](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-First-Check) walks through it.
+
+## Check a change
 
 ```sh
 rhythm-soundcheck snapshot staging.yoursite.com   # before: record how every page works
@@ -163,13 +185,15 @@ rhythm soundcheck compare --eaa --fail-on new           # after a change: new pr
 
 `rhythm soundcheck snapshot <url> --eaa` is the first command. The same mode works on `compare`, `run`, `--against` and `fleet`. The rest of this section uses `rhythm-soundcheck`; `rhythm soundcheck` runs the same commands through the router.
 
+A first run from start to finish, with real output, is on the wiki: [EAA mode](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-EAA).
+
 **What it checks.** On every page it visits, in Chrome:
 
 - axe-core's WCAG 2.1 A and AA rules (`--wcag 2.2` for 2.2), plus placeholder-only labels, reflow at narrow width and overlay widgets.
 - A real keyboard walk: Tab and Shift+Tab through the page, then menus, dialogs and disclosures. It reports keyboard traps, focus lost after a dialog closes, focus you can't see, skip links that go nowhere and controls only a mouse can use.
-- Key flows: a flow marked `keyboard: true` is replayed with keys only, so "checkout can be finished by keyboard" becomes a test (`rhythm-soundcheck flows init --keyboard` writes four to edit).
+- Key flows: a flow marked `keyboard: true` is replayed with keys only, so "checkout can be finished by keyboard" becomes a test (`rhythm-soundcheck flows init --keyboard` writes four to edit). See [Keyboard walkthrough](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Keyboard-Walkthrough).
 
-Each finding is a normal issue keyed by rule and element, with its WCAG success criterion and EN 301 549 clause. NEW, FIXED, UNSTABLE, `accept`, `ignore:` and `--fail-on` work on it as on any other change: a new trap is BROKE, so the default `--fail-on broke` already stops it.
+Each finding is a normal issue keyed by rule and element, with its WCAG success criterion and EN 301 549 clause. NEW, FIXED, UNSTABLE, `accept`, `ignore:` and `--fail-on` work on it as on any other change: a new trap is BROKE, so `--fail-on broke` (the GitHub Action's default when comparing) already stops it.
 
 **What it never does.** It never gives a verdict on a site and never picks the statement's status for you. During the walk it holds requests that would send data and follows no links except skip links. A key flow only really submits with `keyboard: send` on a staging or local address. A page whose audit timed out is never reported as fixed: the run exits 3, since the evidence is incomplete.
 
@@ -179,7 +203,7 @@ Each finding is a normal issue keyed by rule and element, with its WCAG success 
 rhythm-soundcheck statement -o accessibility-statement.md   # also .html, .json, .jsonld (EARL for WCAG-EM)
 ```
 
-drafts a statement in the layout of the EU model statement, with a table of every WCAG 2.1 A and AA success criterion: failures found, no failures found by these tests, or not tested: needs a person. Every place only you can fill in is marked `[TO DO]`.
+drafts a statement in the layout of the EU model statement, with a table of every WCAG 2.1 A and AA success criterion: failures found, no failures found by these tests, or not tested: needs a person. Every place only you can fill in is marked `[TO DO]`. See [Accessibility statement](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Accessibility-Statement).
 
 **The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool, Chrome and axe-core versions and a hash chain to the previous `--eaa` run of the same site. When `accept` changes a snapshot, or a snapshot is taken again or deleted, its pack is kept in `.soundcheck/evidence/` first, so the chain of later runs still verifies.
 
@@ -274,7 +298,7 @@ A live terminal view; a standalone HTML report with before/after sliders and fil
 - **Local and free.** One binary, your machine or your CI. No account, no cloud, no page limits. Snapshots stay in your project.
 - **Safe on real sites.** Polite rate limits, a destructive-click blocklist, form submits off by default and refused on production, credentials only from environment variables, typed only on the site being checked and never written to reports.
 
-How it compares with other tools is measured, not claimed: see the [benchmark](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Benchmark) of 20 deliberately broken sites.
+How it compares with other tools is measured, not claimed: see the [benchmark](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Benchmark) of 89 deliberately broken scenarios, 41 of them for EAA mode.
 
 ## CI
 
@@ -299,6 +323,9 @@ Containers may share one `.soundcheck` folder (a mounted volume) as long as each
 | [Interactions](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Interactions) | levels, dead clicks and safety rules |
 | [Forms and flows](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Forms-And-Flows) | form profiles, test data, YAML flows, logging in |
 | [Cache](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Cache) | hits, private pages, leaks, nonces |
+| [EAA mode](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-EAA) | accessibility evidence for the European Accessibility Act |
+| [Keyboard walkthrough](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Keyboard-Walkthrough) | the keyboard walk, its checks and key flows |
+| [Accessibility statement](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Accessibility-Statement) | the statement draft, EARL and the signed evidence pack |
 | [Configuration](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-Configuration) | `.soundcheck/config.yaml` |
 | [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-CLI-Reference) | every command, flag, exit code and file |
 
@@ -311,7 +338,7 @@ git clone https://github.com/RhythmShahriar/soundcheck && cd soundcheck
 make hooks   # Conventional Commits check
 make check   # lint + tests (browser tests need Chrome or Chromium)
 make test-short # the quick pass: tests that honour -short skip slow browser work
-make testbed # 20 broken sites in Docker, for end-to-end tests and the benchmark
+make testbed # 89 broken-site scenarios in Docker, for end-to-end tests and the benchmark
 ```
 
 See [CONTRIBUTING](https://github.com/RhythmShahriar/.github/blob/master/CONTRIBUTING.md) for the Rhythm-wide rules. Writing a check module? [CONTRIBUTING.md](CONTRIBUTING.md) in this repository covers how a module plugs into a run.
