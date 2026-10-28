@@ -10,8 +10,8 @@
 // the run's timeout is 5 s, so it never loads. Soundcheck must not take
 // it for a tested page with nothing found: both audits are recorded as
 // not run, the compare says "not checked" for a11y and keyboard, keeps
-// the snapshot's issues (never FIXED) and exits 3, and the statement
-// draft lists the page under "Not tested".
+// the snapshot's issues (never FIXED) and exits 3. The statement draft
+// lists the page under "Not tested".
 
 require __DIR__ . '/../layout.php';
 $search = '/search' === ( $_SERVER['PATH_INFO'] ?? '' );
