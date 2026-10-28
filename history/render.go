@@ -157,7 +157,7 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 }
 
 // Series is what history --json prints: the metric's value in each
-// entry, oldest first, and the entries themselves with every count
+// entry, oldest first, then the entries themselves with every count
 // (a11y_open, a11y_by_criterion, keyboard_open, the page timings).
 type Series struct {
 	Metric  string  `json:"metric"`

@@ -178,8 +178,8 @@ func TestRenderA11yPage(t *testing.T) {
 	if v := eaaEntries()[0].Value("a11y", "/p0/"); v != 31 {
 		t.Errorf("per-page a11y value = %v, want 31", v)
 	}
-	// Negative: a page the history doesn't have, and a run without the
-	// module, have no value.
+	// Negative: a page the history doesn't have and a run without the
+	// module have no value.
 	if v := eaaEntries()[2].Value("a11y", "/p0/"); !math.IsNaN(v) {
 		t.Errorf("run without a11y: %v, want NaN", v)
 	}
@@ -190,7 +190,7 @@ func TestRenderA11yPage(t *testing.T) {
 }
 
 // history --json carries the series: one point per entry, null where
-// the entry has no value, and the entries with their counts.
+// the entry has no value; then the entries with their counts.
 func TestJSONSeries(t *testing.T) {
 	var b bytes.Buffer
 	if err := JSON(&b, eaaEntries(), "", "a11y"); err != nil {
