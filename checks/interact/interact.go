@@ -30,6 +30,7 @@ import (
 	"github.com/go-rod/rod"
 
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -53,6 +54,9 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	if p.Error != "" || p.Status >= 400 || (!cfg.Level("inspect") && !cfg.Level("click") && !cfg.Level("submit")) {
 		return
 	}
+	// What the page's controls say lands in titles, labels and keys:
+	// a label can hold a signed-in visitor's email or card number.
+	defer mask(p, len(p.Issues), len(p.Interact))
 	tab = tab.Context(ctx)
 	f, err := collect(tab, cfg.Interactions.Allow, cfg.Interactions.Forms)
 	if err != nil {
@@ -127,6 +131,21 @@ func (m *Module) inspect(ctx context.Context, cc *check.Context, p *model.Page, 
 		}
 		p.Interact = append(p.Interact, model.Interaction{Kind: "form", Selector: fm.Sel, Label: fm.Name, Outcome: "ok",
 			Detail: strings.ToUpper(fm.Method) + " " + orDefault(shortURL(base, fm.Action), "(this page)")})
+	}
+}
+
+// mask masks personal data in the issues and interactions added to p
+// from index issues and interacts on. It keys the issues again so no
+// plain value stays in a key.
+func mask(p *model.Page, issues, interacts int) {
+	for k := issues; k < len(p.Issues); k++ {
+		i := &p.Issues[k]
+		i.Title, i.Detail = pii.Redact(i.Title), pii.Redact(i.Detail)
+		i.Identify()
+	}
+	for k := interacts; k < len(p.Interact); k++ {
+		x := &p.Interact[k]
+		x.Selector, x.Label, x.Detail = pii.Redact(x.Selector), pii.Redact(x.Label), pii.Redact(x.Detail)
 	}
 }
 
