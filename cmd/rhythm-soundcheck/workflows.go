@@ -177,6 +177,7 @@ type acceptedPack struct {
 	kept   string // the old pack's folder in the store, "" when it had none
 	signed bool   // the old pack was signed; the new one isn't yet
 	err    error  // recording the pack again failed after the accept
+	draft  error  // writing the statement draft again failed; the stale one is removed
 }
 
 // acceptInto accepts the selected changes into the snapshot. A snapshot
@@ -197,6 +198,9 @@ func acceptInto(sc stored, sel store.Selector) ([]store.Accepted, acceptedPack, 
 	if kept != "" {
 		pack.signed, pack.err = rerecordEvidence(sc.snapDir, "accept")
 	}
+	// The draft isn't in the pack; written again it lists what was
+	// accepted, as statement of the snapshot does.
+	pack.draft = refreshDraft(sc.snapDir)
 	return accepted, pack, nil
 }
 
@@ -270,6 +274,10 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 // later --eaa runs are chained to it. Evidence verify of them checks
 // that copy.
 func evidenceNote(pack acceptedPack, name string, stderr io.Writer) {
+	if pack.draft != nil {
+		fmt.Fprintf(stderr, "%s the statement draft of snapshot %q couldn't be written again: %v; it was removed. Draft one with %s statement %[2]s\n",
+			prefix(), name, pack.draft, cmdName())
+	}
 	if pack.kept == "" {
 		return
 	}

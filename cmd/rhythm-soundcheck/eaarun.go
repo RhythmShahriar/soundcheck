@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -305,19 +306,56 @@ func (s *session) writeProgress(dir string) {
 // writeDraft writes the statement draft to path, with [TO DO]s where
 // statement: in the config file lacks what the draft needs.
 func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change, unstable model.UnstableSet) error {
-	owner, err := decodeOwner(s.cfg)
+	return draftTo(path, s.cfg, statement.Input{Run: run, Pages: pages, Ignored: ignored, Unstable: unstable, Summary: sum,
+		Version: version, Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
+}
+
+// draftTo writes the Markdown statement draft of in to path in the
+// model layout, with the owner from statement: in cfg and [TO DO]s
+// where it lacks what the draft needs.
+func draftTo(path string, cfg config.Config, in statement.Input) error {
+	owner, err := decodeOwner(cfg)
 	if err != nil {
 		return err
 	}
 	owner.Owner = cmpOr(owner.Owner, todoOwner)
 	owner.Website = cmpOr(owner.Website, todoWebsite)
 	owner.Contact.Email = cmpOr(owner.Contact.Email, todoEmail)
-	d, err := buildStatement(statement.Input{Run: run, Pages: pages, Ignored: ignored, Unstable: unstable, Summary: sum, Owner: owner,
-		Version: version, Layout: "model", Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
+	in.Owner, in.Layout = owner, "model"
+	d, err := buildStatement(in)
 	if err != nil {
 		return err
 	}
 	return writePrivate(path, func(w io.Writer) error { return statementMD(w, d) })
+}
+
+// refreshDraft writes the statement draft of an --eaa snapshot again
+// after accept changed it, so the draft lists the accepted problems the
+// way statement does. A snapshot without a draft is left alone. When
+// the draft can't be written again the stale one is removed, so it
+// can't be mistaken for the snapshot's state.
+func refreshDraft(snapDir string) error {
+	path := filepath.Join(snapDir, eaaDir, draftFile)
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	err := func() error {
+		in, err := statementInput(snapDir, "")
+		if err != nil {
+			return err
+		}
+		cfg, err := config.Load(filepath.Join(config.Dir, "config.yaml"))
+		if err != nil {
+			return err
+		}
+		return draftTo(path, cfg, in)
+	}()
+	if err != nil {
+		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			return errors.Join(err, rmErr)
+		}
+	}
+	return err
 }
 
 // statementHide is what a draft must never show besides the site's own

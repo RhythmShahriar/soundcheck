@@ -4,6 +4,8 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -549,5 +551,54 @@ func TestStatementListsAcceptedChanges(t *testing.T) {
 	}
 	if in, err := statementInput(runDir, ""); err != nil || slices.ContainsFunc(in.Ignored, func(c model.Change) bool { return c.Check == "keyboard/trap" }) {
 		t.Errorf("fixed since: %+v %v", in.Ignored, err)
+	}
+}
+
+// Accept into an --eaa snapshot writes its statement draft again, so
+// the draft lists the accepted problem as statement of the snapshot
+// does. A draft that can't be written again is removed, never left
+// stale.
+func TestAcceptRewritesTheStatementDraft(t *testing.T) {
+	t.Chdir(t.TempDir())
+	acceptFixture(t)
+	snap := filepath.Join(".soundcheck", "snapshots", "good")
+	run := must(store.LoadRun(snap))
+	run.Options.EAA, run.Options.WCAG = true, "2.1"
+	if err := store.SaveRun(snap, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := evidence.Write(snap, must(store.LoadRun(snap)), nil); err != nil {
+		t.Fatal(err)
+	}
+	draft := filepath.Join(snap, eaaDir, draftFile)
+	if err := os.WriteFile(draft, []byte("stale: failures of 0 of 50 criteria\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runCLI(t, "accept", "b1")
+	if code != exitOK {
+		t.Fatalf("accept b1: exit %d\n%s\n%s", code, out, errOut)
+	}
+	got := string(must(os.ReadFile(draft)))
+	if strings.Contains(got, "stale") || !strings.Contains(got, "(keyboard/trap) on /: accepted into the snapshot on") ||
+		!strings.Contains(got, "**2.1.2**") {
+		t.Errorf("draft after accept:\n%s", got)
+	}
+	in := must(statementInput(snap, ""))
+	if len(in.Summary.Criteria.Failed) == 0 {
+		t.Errorf("snapshot summary = %+v, want the accepted failure", in.Summary)
+	}
+
+	// The config file is broken, so the draft can't be drawn: it is
+	// removed and the note says how to draft one.
+	if err := os.WriteFile(filepath.Join(".soundcheck", "config.yaml"), []byte("statement: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = runCLI(t, "accept", "n1")
+	if code != exitOK || !strings.Contains(errOut, `the statement draft of snapshot "good" couldn't be written again`) ||
+		!strings.Contains(errOut, "statement good") {
+		t.Errorf("accept n1: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if _, err := os.Stat(draft); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stale draft kept: %v", err)
 	}
 }
