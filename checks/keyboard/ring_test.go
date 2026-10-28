@@ -245,3 +245,56 @@ func TestRingOfOffsetSkipLink(t *testing.T) {
 		t.Errorf("no-focus-ring on %q, want #bare alone", rings)
 	}
 }
+
+// stealPage has a link whose own script takes focus off it soon after
+// it gets it, as a page's timer or late script can (testbed s81's
+// self-test did), next to a link without a ring.
+const stealPage = `<!doctype html><html lang="en"><head><title>Steal</title><style>
+body { background: #fff; margin: 40px; font: 16px sans-serif; }
+a { display: inline-block; margin: 20px; color: #000; text-decoration: none; }
+a:focus { outline: 3px solid #c00; }
+#bare:focus { outline: none; }
+</style></head><body><main>
+<a id="thief" href="#1">Ring that leaves</a>
+<a id="bare" href="#2">No ring</a>
+</main><script>
+document.getElementById('thief').addEventListener('focus', e => setTimeout(() => e.target.blur(), 20));
+</script></body></html>`
+
+// A stop that loses focus before its focused picture is taken isn't
+// judged: the picture is taken again and, focus gone again, the stop
+// counts as unstable, with no crop and no missing-ring issue.
+func TestRingOfStopThatLosesFocus(t *testing.T) {
+	srv := serve(t, &pages{html: map[string]string{"/": stealPage}})
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	cc := withSaver(runContext(t))
+	live(t, New(), cc, tab, p)
+	data, err := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := DecodeTrace(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Ring{}
+	for _, r := range tr.Rings {
+		got[r.Selector] = r
+	}
+	if r, ok := got["#thief"]; !ok || !r.Unstable || r.Crop != "" {
+		t.Errorf("#thief %+v (measured %v), want unstable without a crop", r, ok)
+	}
+	if r := got["#bare"]; r.Unstable || r.Changed >= ringPixels {
+		t.Errorf("#bare %+v, want a missing ring", r)
+	}
+	var rings []string
+	for _, i := range p.Issues {
+		if i.Check == ids.NoFocusRing {
+			rings = append(rings, i.Source)
+		}
+	}
+	if len(rings) != 1 || rings[0] != "#bare" {
+		t.Errorf("no-focus-ring on %q, want #bare alone", rings)
+	}
+}

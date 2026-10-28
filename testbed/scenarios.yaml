@@ -1151,6 +1151,7 @@ scenarios:
     include: ["/a11y/live.php*"]
     module: keyboard
     args: [--eaa]
+    control: true
     toggle: "the carousel rotates faster; the plan order, the time and the caret change anyway (php/a11y/live.php)"
     expect:
       - {clean: true}

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
@@ -56,7 +57,7 @@ func controlPass(ctx context.Context, o options, testbed string, m *Manifest, bi
 		for _, s := range m.Scenarios {
 			if s.Control {
 				targets = append(targets, controlTarget{name: s.ID, dir: s.ID, url: m.URL(s), pages: pages{Include: s.Include, Limit: s.Limit},
-					args: scenarioArgs(s, o.echo), eaa: true})
+					args: scenarioArgs(s, o.echo), eaa: true, quiet: !s.Backlog})
 			}
 		}
 	}
@@ -89,6 +90,10 @@ type controlTarget struct {
 	pages pages
 	args  []string // extra flags for snapshot and compare
 	eaa   bool     // the rounds run with --eaa
+	// quiet says the pages have no accessibility problem in their good
+	// state, so a warning or error the snapshot itself finds there is a
+	// false alarm too, not only a change the compares report.
+	quiet bool
 }
 
 func controlRound(ctx context.Context, o options, bin string, t controlTarget, round int) ControlRound {
@@ -110,6 +115,9 @@ func controlRound(ctx context.Context, o options, bin string, t controlTarget, r
 	}
 	if run, err := store.LoadRun(filepath.Join(wd, ".soundcheck", "snapshots", "control")); err == nil {
 		r.Keys = issueKeys(run)
+		if t.quiet {
+			r.Alarms = append(r.Alarms, snapshotAlarms(run)...)
+		}
 	}
 	for _, out := range []string{"compare-1.json", "compare-2.json"} {
 		cmp := append([]string{"compare", "--against-snapshot", "control", "--json", "-o", out, "--config", cfg}, t.args...)
@@ -126,6 +134,33 @@ func controlRound(ctx context.Context, o options, bin string, t controlTarget, r
 		r.Alarms = append(r.Alarms, FalseAlarms(got)...)
 	}
 	return r
+}
+
+// snapshotAlarms lists the accessibility issues at warning or error a
+// snapshot of pages with none in their good state found: a check that
+// misfires on a quiet page (s81's carousel and clock) shows here even
+// when every compare is clean.
+func snapshotAlarms(run *model.Run) []string {
+	var out []string
+	add := func(path string, i model.Issue) {
+		if i.Level.Rank() > model.Warning.Rank() || !(strings.HasPrefix(i.Check, "a11y/") || strings.HasPrefix(i.Check, "keyboard/")) {
+			return
+		}
+		s := "SNAPSHOT " + strings.ToUpper(string(i.Level)) + " " + i.Check + ": " + i.Title
+		if i.Source != "" {
+			s += " [" + i.Source + "]"
+		}
+		out = append(out, s+" ("+path+")")
+	}
+	for _, i := range run.Issues {
+		add("site", i)
+	}
+	for _, p := range run.Pages {
+		for _, i := range p.Issues {
+			add(p.Path, i)
+		}
+	}
+	return out
 }
 
 // issueKeys lists a run's issues by page path and issue key, sorted.

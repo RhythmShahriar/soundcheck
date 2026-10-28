@@ -354,7 +354,8 @@ func eaaControl(b *strings.Builder, rounds []ControlRound) {
 		return
 	}
 	w("Every scenario good. Each round takes an `--eaa` snapshot and compares twice with nothing changed; ")
-	w("the rounds marked by a scenario run on its pages with its flags. Target: 0.\n\n")
+	w("the rounds marked by a scenario run on its pages with its flags, and there an accessibility warning or error ")
+	w("in the snapshot itself counts too. Target: 0.\n\n")
 	w("| Site | Rounds | Compares | Pages | False alarms | Errors |\n|---|---:|---:|---:|---:|---:|\n")
 	seen := map[string]int{}
 	var order, names []string

@@ -205,58 +205,93 @@ func (w *walker) rings(ctx context.Context, t *Trace) error {
 	return nil
 }
 
-// ring measures one stop: two pictures blurred, one focused.
+// focusedJS tells whether the element (this) still has focus in its
+// document or shadow root: "1" when it does.
+const focusedJS = `function () { return this.getRootNode().activeElement === this ? '1' : ''; }`
+
+// ringTries is how often a stop is pictured when focus has left it by
+// the time its focused picture is taken.
+const ringTries = 2
+
+// ring measures one stop: two pictures blurred, one focused. A page can
+// move focus while the stop is pictured (a timer or a script that ends
+// late), so the picture of a stop that lost focus isn't judged: it is
+// taken again, and if focus goes again the stop counts as unstable, not
+// as one with no visible focus.
 func (w *walker) ring(ctx context.Context, i int, s Step) (Ring, error) {
-	r := Ring{Stop: i + 1, Selector: s.Selector, Tag: s.Tag, Name: s.Name}
+	for try := 1; ; try++ {
+		r, focused, err := w.ringOnce(ctx, i, s)
+		if err != nil || r.Unstable || focused {
+			return r, err
+		}
+		if try >= ringTries {
+			r.Unstable, r.Changed, r.Crop = true, 0, ""
+			return r, nil
+		}
+	}
+}
+
+// ringOnce takes the pictures of one stop. focused says whether the
+// element still had focus once its focused picture was taken; a crop
+// is saved only then.
+func (w *walker) ringOnce(ctx context.Context, i int, s Step) (r Ring, focused bool, err error) {
+	r = Ring{Stop: i + 1, Selector: s.Selector, Tag: s.Tag, Name: s.Name}
 	raw, err := w.reader.CallOn(ctx, ringJS, s.BackendNodeID)
 	if err != nil {
-		return r, err
+		return r, false, err
 	}
 	var reg region
 	if err := json.Unmarshal([]byte(raw), &reg); err != nil {
-		return r, err
+		return r, false, err
 	}
 	if reg.W < 1 || reg.H < 1 {
-		return r, fmt.Errorf("no room on screen")
+		return r, false, fmt.Errorf("no room on screen")
 	}
 	clip := &proto.PageViewport{X: reg.X, Y: reg.Y, Width: reg.W, Height: reg.H, Scale: 1}
 	if _, err := w.reader.CallOn(ctx, blurJS, s.BackendNodeID); err != nil {
-		return r, err
+		return r, false, err
 	}
 	a, err := w.shot(ctx, clip)
 	if err != nil {
-		return r, err
+		return r, false, err
 	}
 	if _, err := w.reader.CallOn(ctx, frameJS, s.BackendNodeID); err != nil {
-		return r, err
+		return r, false, err
 	}
 	b, err := w.shot(ctx, clip)
 	if err != nil {
-		return r, err
+		return r, false, err
 	}
 	if n, err := diffPixels(a, b); err != nil || n > unstableAfter {
 		r.Unstable = true
-		return r, err
+		return r, false, err
 	}
 	if _, err := w.reader.CallOn(ctx, focusJSSettled, s.BackendNodeID); err != nil {
-		return r, err
+		return r, false, err
 	}
-	focused, err := w.shot(ctx, clip)
+	shot, err := w.shot(ctx, clip)
 	if err != nil {
-		return r, err
+		return r, false, err
 	}
-	n, err := diffPixels(a, focused)
+	still, err := w.reader.CallOn(ctx, focusedJS, s.BackendNodeID)
 	if err != nil {
-		return r, err
+		return r, false, err
+	}
+	n, err := diffPixels(a, shot)
+	if err != nil {
+		return r, false, err
 	}
 	r.Changed = n
+	if still != "1" {
+		return r, false, nil
+	}
 	if n < ringPixels && !reg.Text {
 		name := fmt.Sprintf("eaa/focus/%s-%d.png", w.page.ID, i+1)
-		if w.cc.Save != nil && w.cc.Save(name, focused) == nil {
+		if w.cc.Save != nil && w.cc.Save(name, shot) == nil {
 			r.Crop = name
 		}
 	}
-	return r, nil
+	return r, true, nil
 }
 
 // shot takes a PNG picture of clip, in document coordinates.

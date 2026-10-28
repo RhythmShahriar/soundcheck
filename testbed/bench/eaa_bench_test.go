@@ -295,6 +295,28 @@ func TestIssueKeys(t *testing.T) {
 	}
 }
 
+// A snapshot of quiet pages counts its own accessibility warnings and
+// errors as false alarms; notices and other modules' findings don't.
+func TestSnapshotAlarms(t *testing.T) {
+	run := &model.Run{
+		Issues: []model.Issue{{Check: "health/robots", Level: model.Warning, Title: "x"}},
+		Pages: []model.Page{
+			{Path: "/a11y/live.php", Issues: []model.Issue{
+				{Check: "keyboard/no-focus-ring", Level: model.Warning, Title: "No visible focus indicator", Source: "#plans > li:nth-of-type(1) > a"},
+				{Check: "a11y/meta-viewport", Level: model.Notice, Title: "Zoom"},
+				{Check: "a11y/label", Level: model.Error, Title: "Form elements must have labels"},
+			}},
+		},
+	}
+	want := []string{
+		"SNAPSHOT WARNING keyboard/no-focus-ring: No visible focus indicator [#plans > li:nth-of-type(1) > a] (/a11y/live.php)",
+		"SNAPSHOT ERROR a11y/label: Form elements must have labels (/a11y/live.php)",
+	}
+	if got := snapshotAlarms(run); !slices.Equal(got, want) {
+		t.Errorf("snapshotAlarms = %q, want %q", got, want)
+	}
+}
+
 func TestA11yToolOutput(t *testing.T) {
 	axe := `[{"url":"http://localhost:18810/a11y/","violations":[{"id":"label","nodes":[{"target":["#card"]},{"target":["#zip"]}]},{"id":"color-contrast","nodes":[{"target":["iframe",".pay"]}]}]}]`
 	got, err := axeViolations([]byte(axe))
