@@ -29,7 +29,7 @@
 
 </details>
 
-Not checked, so their issues are kept from the snapshot and not counted as fixed:
+Not checked, so their issues are missing from these results:
 
 - `/catalog/` (a11y: timeout)
 

@@ -115,8 +115,9 @@ func issueExtras(check string, ids, en, path []string, plain bool) []string {
 	return lines
 }
 
-// notCheckedLines say which pages a module couldn't audit, so a missing
-// issue there isn't read as a fix.
+// notCheckedLines say which pages a module couldn't audit in a run or
+// snapshot. A comparison's warnings say it with "its issues are kept
+// from the snapshot", which a run has none of.
 func notCheckedLines(e *model.EAASummary) []string {
 	var lines []string
 	for _, n := range e.NotAudited {
@@ -124,8 +125,7 @@ func notCheckedLines(e *model.EAASummary) []string {
 		if why == "" {
 			why = n.Status
 		}
-		lines = append(lines, fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed",
-			Term(n.Path), Term(n.Module), Term(why)))
+		lines = append(lines, fmt.Sprintf("not checked: %s (%s: %s)", Term(n.Path), Term(n.Module), Term(why)))
 	}
 	return lines
 }
@@ -326,7 +326,11 @@ func writeAccessibility(b *strings.Builder, r Result) {
 	}
 	if len(e.NotAudited) > 0 {
 		// The status, not the reason: a reason can quote the page.
-		b.WriteString("Not checked, so their issues are kept from the snapshot and not counted as fixed:\n\n")
+		if r.Compared() {
+			b.WriteString("Not checked, so their issues are kept from the snapshot and not counted as fixed:\n\n")
+		} else {
+			b.WriteString("Not checked, so their issues are missing from these results:\n\n")
+		}
 		for _, n := range e.NotAudited {
 			fmt.Fprintf(b, "- %s (%s: %s)\n", mdPages([]string{n.Path}), mdCell(n.Module), mdCell(n.Status))
 		}

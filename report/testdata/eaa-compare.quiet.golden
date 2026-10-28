@@ -17,6 +17,7 @@
   wcag: 2.4.3 · EN 301 549 9.2.4.3
   path: #newsletter-open then #newsletter-close
 
+note: not checked: /catalog/ (a11y: axe-core timed out after 45s); its issues are kept from the snapshot, not counted as fixed
 Automated and keyboard tests find some accessibility problems, not all. This is
 evidence for your own review, not a statement that the site meets WCAG,
 EN 301 549 or the European Accessibility Act.

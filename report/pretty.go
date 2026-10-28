@@ -440,7 +440,8 @@ func (p *Pretty) comparison(r Result, hints []string) {
 			}
 		}
 		if p.o.Quiet {
-			p.evidence(r, len(c.Changes) > 0)
+			p.quietNotChecked(r, len(c.Changes) > 0)
+			p.evidence(r, len(c.Changes) > 0 && !p.hasNotChecked(r))
 			return
 		}
 		var parts []string
@@ -485,6 +486,7 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		}
 	}
 	if p.o.Quiet {
+		p.quietNotChecked(r, false)
 		p.evidence(r, false)
 		return
 	}
@@ -535,7 +537,8 @@ func (p *Pretty) run(r Result, hints []string) {
 			}
 		}
 		if p.o.Quiet {
-			p.evidence(r, len(issues) > 0)
+			p.quietNotChecked(r, len(issues) > 0)
+			p.evidence(r, len(issues) > 0 && !p.hasNotChecked(r))
 			return
 		}
 		counts := Counts(issues)
@@ -578,6 +581,7 @@ func (p *Pretty) run(r Result, hints []string) {
 		}
 	}
 	if p.o.Quiet {
+		p.quietNotChecked(r, false)
 		p.evidence(r, false)
 		return
 	}
@@ -622,6 +626,38 @@ func (p *Pretty) notChecked(r Result) {
 	for _, l := range notCheckedLines(r.Run.EAA) {
 		p.paragraph(l, lipgloss.NewStyle().Foreground(lipgloss.Color(ui.High)))
 	}
+}
+
+// notCheckedOf is the not-checked lines of a result: a comparison's
+// from its warnings, a run's from its eaa block.
+func notCheckedOf(r Result) []string {
+	if r.Compared() {
+		nc, _ := splitNotChecked(r.Comparison.Warnings)
+		return nc
+	}
+	if r.Run == nil || r.Run.EAA == nil {
+		return nil
+	}
+	return notCheckedLines(r.Run.EAA)
+}
+
+func (p *Pretty) hasNotChecked(r Result) bool { return len(notCheckedOf(r)) > 0 }
+
+// quietNotChecked prints the not-checked lines with -q, after an empty
+// line when gap is set: an incomplete audit's exit message points at
+// them, so they are part of the result like the evidence note.
+func (p *Pretty) quietNotChecked(r Result, gap bool) {
+	if !p.hasNotChecked(r) {
+		return
+	}
+	if gap {
+		fmt.Fprintln(p.w)
+	}
+	if r.Compared() {
+		p.notes(notCheckedOf(r))
+		return
+	}
+	p.notChecked(r)
 }
 
 // accessibility prints the counts line of an --eaa result.

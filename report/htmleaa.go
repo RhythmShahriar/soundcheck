@@ -75,10 +75,13 @@ var tileStates = map[string]struct{ Label, Icon string }{
 type htmlEAA struct {
 	Version, Counts, Note string
 	NotChecked            []string
-	Principles            []htmlPrinciple
-	Keyboard              []htmlKeyboard
-	Criteria              []htmlCriterion
-	Statement             string
+	// Compared marks a comparison, whose unchecked pages keep their
+	// issues from the snapshot.
+	Compared   bool
+	Principles []htmlPrinciple
+	Keyboard   []htmlKeyboard
+	Criteria   []htmlCriterion
+	Statement  string
 }
 
 type htmlPrinciple struct {
@@ -138,7 +141,7 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 		return nil
 	}
 	version := eaaVersion(e)
-	t := &htmlEAA{Version: version, Note: model.EvidenceNote, Statement: statementCommand,
+	t := &htmlEAA{Version: version, Note: model.EvidenceNote, Statement: statementCommand, Compared: r.Compared(),
 		Counts: strings.TrimPrefix(accessibilityLine(r, false), "Accessibility: ")}
 	for _, n := range e.NotAudited {
 		why := n.Reason

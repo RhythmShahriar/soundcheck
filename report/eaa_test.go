@@ -510,3 +510,41 @@ func TestEAARunWithOnlyNoticesIsNotAllClear(t *testing.T) {
 		})
 	}
 }
+
+// A run's not-checked lines never say its issues are kept from a
+// snapshot, which it has none of; a comparison's do. -q keeps them, as
+// the exit message of an incomplete audit points at them.
+func TestNotCheckedWording(t *testing.T) {
+	const kept = "kept from the snapshot"
+	run := Result{Run: eaaNotAudited()}
+	for name, o := range map[string]PrettyOptions{"plain": {Plain: true}, "quiet": {Plain: true, Quiet: true}, "pretty": {}} {
+		var b bytes.Buffer
+		NewPretty(&b, io.Discard, o).Summary(run, "")
+		out := b.String()
+		if !strings.Contains(out, "not checked: /catalog/ (a11y: axe-core timed out after 45s)") {
+			t.Errorf("%s: no not-checked line:\n%s", name, out)
+		}
+		if strings.Contains(out, kept) {
+			t.Errorf("%s: a run says %q:\n%s", name, kept, out)
+		}
+	}
+	var b bytes.Buffer
+	NewPretty(&b, io.Discard, PrettyOptions{Plain: true, Quiet: true}).Summary(eaaComparison(), "")
+	if !strings.Contains(b.String(), notCheckedWarning) {
+		t.Errorf("quiet comparison lacks the not-checked line:\n%s", b.String())
+	}
+	var html bytes.Buffer
+	if err := HTML(&html, run); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html.String(), kept) || !strings.Contains(html.String(), "missing from these results") {
+		t.Errorf("run report.html words the not-checked pages as a comparison's")
+	}
+	html.Reset()
+	if err := HTML(&html, eaaComparison()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html.String(), kept) {
+		t.Errorf("comparison report.html lacks %q", kept)
+	}
+}
