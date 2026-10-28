@@ -42,7 +42,7 @@ func TestChromeConnectsOnlyToLoopback(t *testing.T) {
 	dir := t.TempDir()
 	trace := filepath.Join(dir, "trace")
 	wrapper := filepath.Join(dir, "chrome")
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -f -qq -e trace=socket,connect,sendto,sendmsg,sendmmsg -o %q %q \"$@\"\n", strace, trace, bin)
+	script := fmt.Sprintf("#!/bin/sh\nexec %q -f -qq -y -e trace=socket,connect,sendto,sendmsg,sendmmsg -o %q %q \"$@\"\n", strace, trace, bin)
 	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil { //nolint:gosec // a test script
 		t.Fatal(err)
 	}
@@ -74,19 +74,36 @@ func TestChromeConnectsOnlyToLoopback(t *testing.T) {
 }
 
 var (
-	socketCall  = regexp.MustCompile(`^(\d+)\s+socket\(([A-Z_0-9]+), ([A-Z_0-9|]+).*\) = (\d+)`)
-	connectCall = regexp.MustCompile(`^(\d+)\s+connect\((\d+), \{sa_family=(AF_INET6?),.*?(?:inet_addr\("([^"]+)"\)|inet_pton\(AF_INET6, "([^"]+)")`)
-	sendCall    = regexp.MustCompile(`^(\d+)\s+send(?:to|msg|mmsg)\((\d+),`)
+	socketCall  = regexp.MustCompile(`^(\d+)\s+socket\(([A-Z_0-9]+), ([A-Z_0-9|]+).*\)\s+=\s+(\d+)(<[^>]*>)?`)
+	connectCall = regexp.MustCompile(`^(\d+)\s+connect\((\d+)(<[^>]*>)?, \{sa_family=(AF_INET6?),.*?(?:inet_addr\("([^"]+)"\)|inet_pton\(AF_INET6, "([^"]+)")`)
+	sendCall    = regexp.MustCompile(`^(\d+)\s+send(?:to|msg|mmsg)\((\d+)(<[^>]*>)?,`)
+	unfinished  = regexp.MustCompile(`^(\d+)\s+(.*) <unfinished \.\.\.>$`)
+	resumed     = regexp.MustCompile(`^(\d+)\s+<\.\.\. \w+ resumed>(.*)$`)
+	sockInode   = regexp.MustCompile(`^<socket:\[(\d+)\]>$`)
 )
 
 // ipv6Probe is the address Chrome's IPv6 reachability check connects a
 // UDP socket to.
 const ipv6Probe = "2001:4860:4860::8888"
 
-// outsideLoopback reads an strace log and lists every connection to an
-// address that isn't loopback. Threads share their process's sockets,
-// so a socket is known by its descriptor alone; a reused descriptor is
-// replaced by the next socket() call that returns it.
+// sockKey names the socket behind a descriptor. strace -y prints each
+// descriptor with the socket's inode, which is the same in every
+// process and thread that holds the socket and differs as soon as the
+// number is reused, so the inode is the key. Chrome runs many
+// processes under one trace, each with its own descriptor table, so a
+// bare number would mix them up; it only stands in, per process, when
+// strace couldn't name the socket.
+func sockKey(pid, fd, decoded string) string {
+	if m := sockInode.FindStringSubmatch(decoded); m != nil {
+		return "inode:" + m[1]
+	}
+	return pid + ":" + fd
+}
+
+// outsideLoopback reads an strace -f -y log and lists every connection
+// to an address that isn't loopback, and every send on the socket
+// Chrome's IPv6 check connected. A call strace split across lines
+// ("<unfinished ...>" then "<... resumed>") is joined first.
 func outsideLoopback(t *testing.T, trace string) []string {
 	t.Helper()
 	f, err := os.Open(trace) //nolint:gosec // the test's own file
@@ -94,20 +111,34 @@ func outsideLoopback(t *testing.T, trace string) []string {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	udp := map[string]bool{}   // descriptor: a datagram socket
-	probe := map[string]bool{} // descriptor: connected to ipv6Probe
+	udp := map[string]bool{}       // socket: a datagram socket
+	probe := map[string]bool{}     // socket: connected to ipv6Probe
+	pending := map[string]string{} // pid: the start of an unfinished call
 	var bad []string
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
 		line := sc.Text()
+		if m := unfinished.FindStringSubmatch(line); m != nil {
+			pending[m[1]] = m[2]
+			continue
+		}
+		if m := resumed.FindStringSubmatch(line); m != nil {
+			start, ok := pending[m[1]]
+			if !ok {
+				continue
+			}
+			delete(pending, m[1])
+			line = m[1] + " " + start + m[2]
+		}
 		if m := socketCall.FindStringSubmatch(line); m != nil {
-			udp[m[4]] = strings.Contains(m[3], "SOCK_DGRAM")
-			delete(probe, m[4])
+			k := sockKey(m[1], m[4], m[5])
+			udp[k] = strings.Contains(m[3], "SOCK_DGRAM")
+			delete(probe, k)
 			continue
 		}
 		if m := sendCall.FindStringSubmatch(line); m != nil {
-			if probe[m[2]] {
+			if probe[sockKey(m[1], m[2], m[3])] {
 				bad = append(bad, "sent on the IPv6 check's socket: "+line)
 			}
 			continue
@@ -116,11 +147,12 @@ func outsideLoopback(t *testing.T, trace string) []string {
 		if m == nil {
 			continue
 		}
-		addr := m[4] + m[5]
+		k := sockKey(m[1], m[2], m[3])
+		addr := m[5] + m[6]
 		switch {
 		case strings.HasPrefix(addr, "127.") || addr == "::1" || addr == "::ffff:127.0.0.1":
-		case addr == ipv6Probe && udp[m[2]]:
-			probe[m[2]] = true
+		case addr == ipv6Probe && udp[k]:
+			probe[k] = true
 		default:
 			bad = append(bad, line)
 		}
@@ -148,6 +180,33 @@ func TestOutsideLoopback(t *testing.T) {
 	}
 	bad := outsideLoopback(t, trace)
 	if len(bad) != 2 || !strings.Contains(bad[0], "142.251.43.14") || !strings.Contains(bad[1], "connect(24") {
+		t.Errorf("bad = %q", bad)
+	}
+}
+
+// TestOutsideLoopbackPerSocket covers the false alarm the race gate hit:
+// one Chrome process connects fd 27 to the IPv6 check while another
+// sends Mojo messages on its own fd 27, a socketpair. Sockets are told
+// apart by inode, so only a send on the probe socket itself counts,
+// and a split call is joined before it is read.
+func TestOutsideLoopbackPerSocket(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace")
+	log := `10 socket(AF_INET6, SOCK_DGRAM|SOCK_CLOEXEC, IPPROTO_IP) = 27<socket:[100]>
+10 connect(27<socket:[100]>, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "2001:4860:4860::8888", &sin6_addr), sin6_scope_id=0}, 28) = 0
+20 sendto(27<socket:[200]>, "\20\0\0\0@\0", 64, MSG_NOSIGNAL, NULL, 0) = 64
+11 sendmsg(27<socket:[300]>, {msg_name=NULL}, MSG_NOSIGNAL) = 8
+30 socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC, IPPROTO_IP <unfinished ...>
+31 socket(AF_UNIX, SOCK_STREAM, 0) = 5<socket:[401]>
+30 <... socket resumed>)         = 6<socket:[400]>
+30 connect(6<socket:[400]>, {sa_family=AF_INET, sin_port=htons(443), <unfinished ...>
+30 <... connect resumed>sin_addr=inet_addr("142.251.43.14")}, 16) = -1 EINPROGRESS (Operation now in progress)
+12 sendto(27<socket:[100]>, "x", 1, 0, NULL, 0) = 1
+`
+	if err := os.WriteFile(trace, []byte(log), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bad := outsideLoopback(t, trace)
+	if len(bad) != 2 || !strings.Contains(bad[0], "142.251.43.14") || !strings.Contains(bad[1], "12 sendto(27<socket:[100]>") {
 		t.Errorf("bad = %q", bad)
 	}
 }
