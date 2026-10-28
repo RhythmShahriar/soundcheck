@@ -868,6 +868,9 @@ func verdict(c *model.Comparison) string {
 	return "Nothing changed"
 }
 
+// runVerdict is the one-line answer for a single run or snapshot. An
+// --eaa run never says "all clear", notices or not: with no errors or
+// warnings it says what the tests found, as eaaVerdict does.
 func runVerdict(r *model.Run, counts map[model.Level]int) string {
 	prefix := ""
 	if r.Name != "" {
@@ -878,7 +881,7 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 		return prefix + "the site already has errors"
 	case counts[model.Warning] > 0:
 		return prefix + "a few warnings"
-	case counts[model.Notice] == 0 && r.EAA != nil:
+	case r.EAA != nil:
 		return prefix + eaaVerdict(r.EAA)
 	}
 	return prefix + "all clear"
@@ -970,14 +973,22 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 		parts = append(parts, style.Render(fmt.Sprintf("%s %d", levelGlyphs[l], n))+" "+muted.Render(strings.TrimPrefix(plural(n, string(l), string(l)+"s"), fmt.Sprint(n)+" ")))
 	}
 	body := strings.Join(parts, "   ")
-	if counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0 {
-		body = ui.Good.Render("✓ no problems found")
-		if r.EAA != nil {
-			body = ui.Good.Render(eaaVerdict(r.EAA))
-			if len(r.EAA.Criteria.Failed) > 0 {
-				body = lipgloss.NewStyle().Foreground(LevelColor(model.Warning)).Bold(true).Render(eaaVerdict(r.EAA))
-			}
+	eaaLine := ""
+	if r.EAA != nil {
+		eaaLine = ui.Good.Render(eaaVerdict(r.EAA))
+		if len(r.EAA.Criteria.Failed) > 0 {
+			eaaLine = lipgloss.NewStyle().Foreground(LevelColor(model.Warning)).Bold(true).Render(eaaVerdict(r.EAA))
 		}
+	}
+	switch {
+	case counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0:
+		body = ui.Good.Render("✓ no problems found")
+		if eaaLine != "" {
+			body = eaaLine
+		}
+	case counts[model.Error]+counts[model.Warning] == 0 && eaaLine != "":
+		// Notices alone: the counts, then what the tests found.
+		body += "\n" + eaaLine
 	}
 	return ui.Panel(head+"\n"+body, color)
 }

@@ -466,3 +466,47 @@ func TestEAARunVerdictWithFailedCriteria(t *testing.T) {
 		t.Errorf("panel:\n%s", got)
 	}
 }
+
+// An --eaa run whose only findings are notices never says "all clear":
+// not in the terminal, the Markdown or the HTML report head. With an
+// a11y notice that fails 1.4.4 it counts the failed criterion; with a
+// health notice alone it says no failures were found by these tests.
+func TestEAARunWithOnlyNoticesIsNotAllClear(t *testing.T) {
+	a11y := model.Issue{Check: "a11y/meta-viewport", Level: model.Notice, Title: "Zooming and scaling are disabled",
+		Key: "a11y/meta-viewport", WCAG: []string{"1.4.4"}}
+	favicon := model.Issue{Check: "health/favicon", Level: model.Notice, Title: "No favicon", Key: "health/favicon"}
+	for _, c := range []struct {
+		name   string
+		issues []model.Issue
+		failed []model.CriterionCount
+		want   string
+	}{
+		{"a11y and health notices", []model.Issue{a11y, favicon}, []model.CriterionCount{{ID: "1.4.4", Issues: 1, Pages: 1}}, "1 WCAG criterion has failures"},
+		{"health notice", []model.Issue{favicon}, nil, noFailuresVerdict},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			run := eaaClean()
+			run.Pages[0].Issues = c.issues
+			run.EAA.Criteria.Failed = c.failed
+			counts := map[model.Level]int{model.Notice: len(c.issues)}
+			if got := runVerdict(run, counts); got != `Snapshot "eaa-1" saved; `+c.want {
+				t.Errorf("verdict = %q", got)
+			}
+			if got := runPanel(run, counts); strings.Contains(strings.ToLower(got), "all clear") || !strings.Contains(got, c.want) {
+				t.Errorf("panel:\n%s", got)
+			}
+			var md, page bytes.Buffer
+			if err := Markdown(&md, Result{Run: run}); err != nil {
+				t.Fatal(err)
+			}
+			if err := HTML(&page, Result{Run: run}); err != nil {
+				t.Fatal(err)
+			}
+			for name, out := range map[string]string{"markdown": md.String(), "html": page.String()} {
+				if strings.Contains(strings.ToLower(out), "all clear") || !strings.Contains(out, c.want) {
+					t.Errorf("%s says all clear or lacks %q", name, c.want)
+				}
+			}
+		})
+	}
+}
