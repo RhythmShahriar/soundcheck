@@ -246,7 +246,7 @@ Runs are kept in `testbed/bench/work/<id>/` (snapshot, compare.json, tool output
 <!-- eaa:begin -->
 ## EAA mode
 
-The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims compliance.
+The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims the site meets the law.
 
 > Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
 >
@@ -288,19 +288,21 @@ Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
 | s74 | Page too big and busy for the audits to finish (plain PHP) (broken) | exit 3<br>and warning “not checked” (a11y)<br>and no FIXED | **caught** | merged | not run | not run | not run |
 | s75 | Dialog ignores Escape (plain PHP) (broken) | NEW keyboard/escape (keyboard)<br>and no any keyboard/trap | **caught** | merged | not run | not run | not run |
 | s76 | Focus handler reloads the page (plain PHP) (broken) | any keyboard/trap<br>or warning “keyboard: /a11y/reload-trap.php:” (keyboard) | **caught** | merged | not run | not run | not run |
-| s77 | Native dialog with showModal() (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **caught** | merged | not run | not run | not run |
-| s78 | Custom modal done right (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **caught** | merged | not run | not run | not run |
-| s79 | Focus shown without an outline (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/no-focus-ring | **caught** | merged | not run | not run | not run |
-| s80 | Visually hidden skip link that shows on focus (hard good) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/skip-link, any keyboard/focus-invisible, any keyboard/no-focus-ring | **caught** | merged | not run | not run | not run |
-| s81 | Page that changes on every load (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW | **caught** | merged | not run | not run | not run |
-| s82 | 300 old contrast problems, nothing changes (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW, FIXED | **caught** | merged | not run | not run | not run |
+| s77 | Native dialog with showModal() (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **quiet** | merged | not run | not run | not run |
+| s78 | Custom modal done right (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **quiet** | merged | not run | not run | not run |
+| s79 | Focus shown without an outline (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/no-focus-ring | **quiet** | merged | not run | not run | not run |
+| s80 | Visually hidden skip link that shows on focus (hard good) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/skip-link, any keyboard/focus-invisible, any keyboard/no-focus-ring | **quiet** | merged | not run | not run | not run |
+| s81 | Page that changes on every load (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW | **quiet** | merged | not run | not run | not run |
+| s82 | 300 old contrast problems, nothing changes (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW, FIXED | **quiet** | merged | not run | not run | not run |
 | s83 | One of 300 old contrast problems fixed (plain PHP) (broken) | FIXED a11y/color-contrast in row-5 (a11y)<br>and no NEW | **caught** | merged | not run | not run | not run |
-| s84 | Frames from the same and another origin (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW<br>harness: statement, canaries, requests | **caught** | merged | not run | not run | not run |
-| s85 | Checkout on a busy machine (hard good) (good) | nothing at or above NEW (keyboard)<br>and no NEW, any keyboard/trap<br>harness: stress, orders | **caught** | merged | not run | not run | not run |
+| s84 | Frames from the same and another origin (hard good, plain PHP) (good) | nothing at or above NEW (a11y)<br>and no NEW<br>harness: statement, canaries, requests | **quiet** | merged | not run | not run | not run |
+| s85 | Checkout on a busy machine (hard good) (good) | nothing at or above NEW (keyboard)<br>and no NEW, any keyboard/trap<br>harness: stress, orders | **quiet** | merged | not run | not run | not run |
 | s86 | Checkout answers 500 under --eaa (broken) | BROKE health/ (health)<br>harness: statement | **caught** | merged | not run | not run | not run |
-| s87 | Snapshot from Soundcheck 1.2 compared with --eaa (plain PHP) (good) | warning “used the WCAG 2.0 rules”<br>and nothing at or above NEW (a11y)<br>and no NEW a11y/autocomplete-valid | **caught** | merged | not run | not run | not run |
-| s88 | Page with side effects on GET and on focus (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW<br>harness: orders, requests | **caught** | merged | not run | not run | not run |
-| s89 | A fully accessible small site (plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any a11y/, any keyboard/<br>harness: statement, requests | **caught** | merged | not run | not run | not run |
+| s87 | Snapshot from Soundcheck 1.2 compared with --eaa (plain PHP) (good) | warning “used the WCAG 2.0 rules”<br>and nothing at or above NEW (a11y)<br>and no NEW a11y/autocomplete-valid | **quiet** | merged | not run | not run | not run |
+| s88 | Page with side effects on GET and on focus (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW<br>harness: orders, requests | **quiet** | merged | not run | not run | not run |
+| s89 | Small site with no known accessibility problems (plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any a11y/, any keyboard/<br>harness: statement, requests | **quiet** | merged | not run | not run | not run |
+
+**caught**: a broken scenario's problem was reported · **quiet**: a good scenario got no report it rules out · false alarm: a good scenario got one (for another tool: a violation in the second state that the first lacks) · missed · error: the tool failed · –: the tool has no result for that scenario · not run: the tool wasn't available
 
 - **s49**: BROKE keyboard/trap: Keyboard focus is trapped [#tb_coupon] (/checkout/); exit 1
 - **s50**: NEW a11y/label: Form elements must have labels [#tb_billing_name] (/checkout/)

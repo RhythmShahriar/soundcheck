@@ -170,6 +170,22 @@ func eaaScore(outcomes []Outcome) eaaTally {
 	return t
 }
 
+// eaaMark is the table cell of a result in the EAA section. On a good
+// scenario nothing broke: Soundcheck meeting the expectation stayed
+// quiet, and another tool "catching" (a violation in the second state
+// that the first lacks) raised a false alarm.
+func eaaMark(s Scenario, r Result, other bool) string {
+	if good(s) {
+		switch {
+		case r.Outcome == Caught && other:
+			return "false alarm"
+		case r.Outcome == Caught, r.Outcome == Missed && other:
+			return "**quiet**"
+		}
+	}
+	return mark(r)
+}
+
 // eaaSection renders the EAA mode section of the scoreboard.
 func eaaSection(b Board) string {
 	var sb strings.Builder
@@ -193,7 +209,7 @@ func eaaSection(b Board) string {
 	w("Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. ")
 	w("Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, ")
 	w("a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, ")
-	w("or a statement draft that claims compliance.\n\n")
+	w("or a statement draft that claims the site meets the law.\n\n")
 	w("> %s\n>\n> %s\n\n", model.EvidenceNote, framing)
 
 	t := eaaScore(b.Outcomes)
@@ -253,7 +269,7 @@ func eaaSection(b Board) string {
 					lane += " (" + l + " lane)"
 				}
 			}
-			w("| %s | %s (%s) | %s | %s | %s |", s.ID, cell(s.Name), kind, expected(s), cell(mark(o.Soundcheck)), lane)
+			w("| %s | %s (%s) | %s | %s | %s |", s.ID, cell(s.Name), kind, expected(s), cell(eaaMark(s, o.Soundcheck, false)), lane)
 			for _, tl := range allEAA {
 				r, ok := o.Tools[tl.Key]
 				switch {
@@ -262,12 +278,12 @@ func eaaSection(b Board) string {
 				case !ok || r.Outcome == NotRun:
 					w(" – |")
 				default:
-					w(" %s |", cell(mark(r)))
+					w(" %s |", cell(eaaMark(s, r, true)))
 				}
 			}
 			w("\n")
 		}
-		w("\n")
+		w("\n**caught**: a broken scenario's problem was reported · **quiet**: a good scenario got no report it rules out · false alarm: a good scenario got one (for another tool: a violation in the second state that the first lacks) · missed · error: the tool failed · –: the tool has no result for that scenario · not run: the tool wasn't available\n\n")
 		var notes []string
 		for _, o := range outcomes {
 			r := o.Soundcheck

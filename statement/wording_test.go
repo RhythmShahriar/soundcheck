@@ -54,11 +54,11 @@ func allowedPhrases() []string {
 }
 
 // wordingDirs are the folders whose text reaches people; wordingFiles
-// are single files at the module root. Folders a lane hasn't made yet
+// are single files, paths from the module root. Folders a lane hasn't made yet
 // are skipped, so each lane's text is covered as it merges.
 var (
 	wordingDirs  = []string{"cmd", "report", "clientreport", "statement", "wcag", "flow/templates"}
-	wordingFiles = []string{"README.md", "action.yml"}
+	wordingFiles = []string{"README.md", "action.yml", "testbed/README.md", "docs/benchmark.md"}
 )
 
 // wordingHits lists every banned word in the text files under root as

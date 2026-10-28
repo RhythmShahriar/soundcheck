@@ -165,7 +165,7 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s86 | `/checkout/` | the checkout answers 500 | BROKE health; the statement doesn't claim it was audited |
 | s87 | `:18810/a11y/legacy.php` | a 1.2.2 snapshot (`fixtures/s87-snapshot`) compared by 1.3 with `--eaa` | the "used the WCAG 2.0 rules" note and nothing at or above NEW |
 | s88 | `:18810/a11y/sidefx.php` | hard good: side effects on GET and on focus | nothing NEW; no counted request, no download |
-| s89 | `:18810/a11y/` | a fully accessible small site, also in every control round | nothing from a11y or keyboard; a statement with no automated failures |
+| s89 | `:18810/a11y/` | a small site with no known accessibility problems, also in every control round | nothing from a11y or keyboard; a statement with no automated failures |
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37, s54 to s56, s58, s62, s73, s80) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
@@ -252,7 +252,7 @@ For each scenario, the harness in [`bench/`](bench/) does the following:
 A scenario with `fixture` copies that snapshot folder in instead of step 2, `flows` are copied into `.soundcheck/flows/` first, `same: true` skips step 3 and `within` fails a compare that takes longer.
 
 6. runs the EAA harnesses the scenario lists, after the compare. Any problem makes the scenario missed, even when its expectation held:
-   - `statement`: the config the bench writes gets a `statement:` block (owner "Testbed Coffee Roasters", the site's address, a contact at example.test); the bench runs `rhythm-soundcheck statement -o statement.md` and checks the draft says the evidence note, `not tested: needs a person` and the scenario's `says`. It must never say `complian`, `conform`, `certif`, `passes WCAG`, `fully accessible` or `guarantee` outside the fixed disclaimer (the evidence note and PRD 15's sentences) and the "fully / partially / not compliant" choice inside a `[TO DO]` or hold a canary
+   - `statement`: the config the bench writes gets a `statement:` block (owner "Testbed Coffee Roasters", the site's address, a contact at example.test); the bench runs `rhythm-soundcheck statement -o statement.md` and checks the draft says the evidence note, `not tested: needs a person` and the scenario's `says`. It must never hold a claim word from the `never` list in `bench/harness.go` outside the fixed disclaimer (the evidence note and PRD 15's sentences) and the status choice the owner makes inside a `[TO DO]` or hold a canary
    - `requests`: reads every run under the run's `.soundcheck/` and fails on a page URL, final URL, redirect, resource or failed request whose host isn't `localhost`, `127.0.0.1`, `::1` or a service of `docker-compose.yml`
    - `orders`: `state/orders.txt` and `state/sidefx.txt` read the same before the good snapshot and after the compare
    - `canaries`: before the good state the bench writes `state/canaries` (`email`, `phone`, `token`, `data`, `field`, `aria`, `query`, `text`), made from parts and random bytes at run time. It removes the file afterwards and searches every file under the run's `.soundcheck/` and every file it wrote next to it (`good.json`, `compare.json`, `statement.md`) for the random part of each and names the canary and the file, never the value

@@ -66,7 +66,7 @@ func fakeBoard() Board {
 			{Scenario: sc("s77", "Correct native dialog", "keyboard", "keyboard", true, clean),
 				Soundcheck: Result{Outcome: FalseAlarm, Found: "NEW keyboard/dialog-focus: x"},
 				Tools:      map[string]Result{"axe": {Outcome: Caught, Good: 3}}},
-			{Scenario: sc("s89", "A fully accessible small site", "keyboard", "statement", true, clean, "statement", "requests"),
+			{Scenario: sc("s89", "Small site with no known accessibility problems", "keyboard", "statement", true, clean, "statement", "requests"),
 				Soundcheck: Result{Outcome: Caught, Found: "nothing at or above NEW"}},
 		},
 		Rounds: []ControlRound{
@@ -121,6 +121,15 @@ func TestEAASectionGolden(t *testing.T) {
 		"median at most 2 s", "at most 3×", "at most 15 s", "**over**", "| php | 2 | 1 | 2 |", "| 2.1 | 5 | 2 | 2 | 2 |", "| axe-core CLI | 2 of 3 | 1 of 1 | 4 | 0 |"} {
 		if !strings.Contains(got, s) {
 			t.Errorf("the section lacks %q", s)
+		}
+	}
+	// A good scenario's row: another tool's "catch" is a false alarm,
+	// Soundcheck meeting the expectation is quiet.
+	for _, s := range []string{"| s77 | Correct native dialog (good) | nothing at or above NEW (keyboard) | false alarm | pending (keyboard lane) | not run | false alarm | – |",
+		"| s89 | Small site with no known accessibility problems (good) | nothing at or above NEW (keyboard)<br>harness: statement, requests | **quiet** |",
+		"| s61 | Low-contrast Place order (broken) | NEW a11y/color-contrast (a11y) | **caught** | merged | not run | **caught** | **caught** |"} {
+		if !strings.Contains(got, s) {
+			t.Errorf("the table lacks %q", s)
 		}
 	}
 	if strings.Contains(got, "| s01 |") {

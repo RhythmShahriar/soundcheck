@@ -1,7 +1,7 @@
 <!-- eaa:begin -->
 ## EAA mode
 
-The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims compliance.
+The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims the site meets the law.
 
 > Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
 >
@@ -18,8 +18,10 @@ Run on 2026-10-26 with rhythm-soundcheck 1.3.0 (OS/ARCH).
 | s49 | Keyboard trap in the coupon field (broken) | BROKE keyboard/trap in #tb_coupon (keyboard)<br>harness: orders | **caught** | pending (keyboard lane) | not run | missed | error |
 | s50 | Checkout fields lose their labels (broken) | NEW a11y/label (3×) (a11y)<br>harness: statement | missed | merged | not run | **caught** | **caught** |
 | s61 | Low-contrast Place order (broken) | NEW a11y/color-contrast (a11y) | **caught** | merged | not run | **caught** | **caught** |
-| s77 | Correct native dialog (good) | nothing at or above NEW (keyboard) | false alarm | pending (keyboard lane) | not run | **caught** | – |
-| s89 | A fully accessible small site (good) | nothing at or above NEW (keyboard)<br>harness: statement, requests | **caught** | pending (statement lane) | not run | – | – |
+| s77 | Correct native dialog (good) | nothing at or above NEW (keyboard) | false alarm | pending (keyboard lane) | not run | false alarm | – |
+| s89 | Small site with no known accessibility problems (good) | nothing at or above NEW (keyboard)<br>harness: statement, requests | **quiet** | pending (statement lane) | not run | – | – |
+
+**caught**: a broken scenario's problem was reported · **quiet**: a good scenario got no report it rules out · false alarm: a good scenario got one (for another tool: a violation in the second state that the first lacks) · missed · error: the tool failed · –: the tool has no result for that scenario · not run: the tool wasn't available
 
 - **s49**: BROKE keyboard/trap: Focus is trapped [#tb_coupon] (/checkout/)
 - **s50**: the expectation held (NEW a11y/label) but harness: statement: says "conform"

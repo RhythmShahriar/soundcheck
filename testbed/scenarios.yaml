@@ -1275,7 +1275,7 @@ scenarios:
     tools: []
 
   - id: s89
-    name: A fully accessible small site (plain PHP)
+    name: Small site with no known accessibility problems (plain PHP)
     site: php
     path: /a11y/
     include: ["/a11y/", "/a11y/index.php"]
