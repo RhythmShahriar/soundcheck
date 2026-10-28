@@ -4,6 +4,7 @@
 package history
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -18,16 +19,22 @@ import (
 
 // Value is an entry's metric: for the timings, in milliseconds, the
 // site median or one page's value when page is set; for a11y and
-// keyboard, the site's open problems. It's NaN when the entry has no
-// value: the page wasn't among the ones recorded, the metric wasn't
-// measured or the run didn't have the module on. The a11y and keyboard
-// counts are kept for the whole site only.
+// keyboard, the site's open problems or one page's. It's NaN when the
+// entry has no value: the page wasn't among the ones recorded, the
+// metric wasn't measured or the run didn't have the module on.
 func (e Entry) Value(metric, page string) float64 {
 	if count, ok := countMetrics[metric]; ok {
+		n := count(e)
 		if page != "" {
-			return math.NaN()
+			n = nil
+			for _, p := range e.PageSet {
+				if p.Path == page {
+					n = pageCounts[metric](p)
+					break
+				}
+			}
 		}
-		if n := count(e); n != nil {
+		if n != nil {
 			return float64(*n)
 		}
 		return math.NaN()
@@ -62,6 +69,12 @@ func (e Entry) Value(metric, page string) float64 {
 var countMetrics = map[string]func(Entry) *int{
 	"a11y":     func(e Entry) *int { return e.A11yOpen },
 	"keyboard": func(e Entry) *int { return e.KeyboardOpen },
+}
+
+// pageCounts are countMetrics for one page of an entry.
+var pageCounts = map[string]func(PageMetrics) *int{
+	"a11y":     func(p PageMetrics) *int { return p.A11yOpen },
+	"keyboard": func(p PageMetrics) *int { return p.KeyboardOpen },
 }
 
 // countColumns name the column of a count metric.
@@ -103,14 +116,15 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 			known++
 		}
 	}
-	if _, ok := countMetrics[metric]; ok {
-		if page != "" {
-			return fmt.Errorf("--page works with lcp, tbt and ttfb: the history keeps %s counts for the whole site", metric)
-		}
-		return renderCounts(w, entries, metric, values, plain)
-	}
+	_, count := countMetrics[metric]
 	if page != "" && known == 0 {
+		if count {
+			return fmt.Errorf("no %s counts for %s in the history; it keeps the first %d pages of each run with the %s module on", metric, page, MaxPages, metric)
+		}
 		return fmt.Errorf("no timings for %s in the history; it keeps the first %d pages of each run", page, MaxPages)
+	}
+	if count {
+		return renderCounts(w, entries, metric, page, values, plain)
 	}
 	col := strings.ToUpper(metric)
 	if page == "" {
@@ -142,6 +156,61 @@ func Render(w io.Writer, entries []Entry, page, metric string, plain bool) error
 	return nil
 }
 
+// Series is what history --json prints: the metric's value in each
+// entry, oldest first, and the entries themselves with every count
+// (a11y_open, a11y_by_criterion, keyboard_open, the page timings).
+type Series struct {
+	Metric  string  `json:"metric"`
+	Page    string  `json:"page,omitempty"`
+	Points  []Point `json:"points"`
+	Entries []Entry `json:"entries"`
+}
+
+// Point is one entry's value of the metric. Value is null when the entry
+// has none (see Entry.Value).
+type Point struct {
+	At      time.Time `json:"at"`
+	Kind    string    `json:"kind"`
+	Name    string    `json:"name,omitempty"`
+	Target  string    `json:"target"`
+	Verdict string    `json:"verdict"`
+	Value   *float64  `json:"value"`
+}
+
+// JSON writes the series of metric (lcp when empty), for page when it
+// is set, as Render would show it. It fails as Render does on a metric
+// it doesn't know and on a page with no values.
+func JSON(w io.Writer, entries []Entry, page, metric string) error {
+	if metric == "" {
+		metric = "lcp"
+	}
+	if !slices.Contains(Metrics, metric) {
+		return fmt.Errorf("metric %q: want %s or %s", metric, strings.Join(Metrics[:len(Metrics)-1], ", "), Metrics[len(Metrics)-1])
+	}
+	out := Series{Metric: metric, Page: page, Points: []Point{}, Entries: entries}
+	if out.Entries == nil {
+		out.Entries = []Entry{}
+	}
+	known := 0
+	for _, e := range entries {
+		pt := Point{At: e.At, Kind: e.Kind, Name: e.Name, Target: e.Target, Verdict: e.Verdict}
+		if v := e.Value(metric, page); !math.IsNaN(v) {
+			pt.Value = &v
+			known++
+		}
+		out.Points = append(out.Points, pt)
+	}
+	if page != "" && known == 0 && len(entries) > 0 {
+		if _, count := countMetrics[metric]; count {
+			return fmt.Errorf("no %s counts for %s in the history; it keeps the first %d pages of each run with the %s module on", metric, page, MaxPages, metric)
+		}
+		return fmt.Errorf("no timings for %s in the history; it keeps the first %d pages of each run", page, MaxPages)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
 // table prints the entries' rows with the metric's column last.
 func table(w io.Writer, entries []Entry, col string, value func(int) string, text func(string) string) {
 	nameW := 4
@@ -163,8 +232,13 @@ func table(w io.Writer, entries []Entry, col string, value func(int) string, tex
 // "A11y open  188 to 64 (-66%)  ▇▇▆▆▁" and, for a11y, the criteria with
 // the most problems in the latest entry that has them:
 // "Worst criteria now: 1.4.3 Contrast (31), 4.1.2 Name, Role, Value (12)".
-func renderCounts(w io.Writer, entries []Entry, metric string, values []float64, plain bool) error {
+// With page set the counts are that page's ("A11y open /shop/") and
+// the criteria, which are counted for the whole site, are left out.
+func renderCounts(w io.Writer, entries []Entry, metric, page string, values []float64, plain bool) error {
 	col := countColumns[metric]
+	if page != "" {
+		col += " " + page
+	}
 	text := func(s string) string { return s }
 	if plain {
 		text = strings.NewReplacer("…", "...").Replace
@@ -198,7 +272,7 @@ func renderCounts(w io.Writer, entries []Entry, metric string, values []float64,
 		fmt.Fprintf(w, "  %s", Sparkline(values))
 	}
 	fmt.Fprintln(w)
-	if metric == "a11y" {
+	if metric == "a11y" && page == "" {
 		if worst := worstCriteria(entries, 3); worst != "" {
 			fmt.Fprintf(w, "Worst criteria now: %s\n", worst)
 		}

@@ -402,6 +402,23 @@ func TestHistoryCommand(t *testing.T) {
 	if code, _, _ := runCLI(t, "history", "--metric", "cls"); code != exitUsage {
 		t.Errorf("--metric cls: exit %d", code)
 	}
+	// --json carries the series; --page works with the counts too.
+	code, out, errOut = runCLI(t, "history", "--json", "--metric", "a11y")
+	var series struct {
+		Metric  string            `json:"metric"`
+		Points  []json.RawMessage `json:"points"`
+		Entries []json.RawMessage `json:"entries"`
+	}
+	if code != exitOK || json.Unmarshal([]byte(out), &series) != nil || series.Metric != "a11y" || len(series.Points) != 2 || len(series.Entries) != 2 {
+		t.Errorf("--json: exit %d %+v\n%s\n%s", code, series, out, errOut)
+	}
+	if code, _, errOut := runCLI(t, "history", "--metric", "keyboard", "--page", "/nope/"); code != exitUsage ||
+		!strings.Contains(errOut, "no keyboard counts for /nope/ in the history") {
+		t.Errorf("--page with keyboard: exit %d %q", code, errOut)
+	}
+	if code, _, _ := runCLI(t, "history", "--json", "--metric", "cls"); code != exitUsage {
+		t.Errorf("--json --metric cls: exit %d", code)
+	}
 }
 
 func TestFleetCommand(t *testing.T) {

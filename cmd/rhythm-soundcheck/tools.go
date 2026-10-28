@@ -122,13 +122,16 @@ func listChecks(w io.Writer) {
 }
 
 const historyUsage = `Usage:
-  rhythm soundcheck history [--page <path>] [--metric <name>] [--backfill]
+  rhythm soundcheck history [--page <path>] [--metric <name>] [--json] [--backfill]
 
 Shows every snapshot, run and comparison in .soundcheck/history.jsonl,
 oldest first, with the site's median LCP (or --metric) and a sparkline.
---metric takes lcp, tbt, ttfb, a11y (open accessibility issues) or keyboard
-(open keyboard issues). --page shows that page's figures instead. --backfill adds the runs and
-snapshots still in .soundcheck that the history doesn't have.
+--metric takes lcp, tbt, ttfb, a11y (open accessibility issues) or
+keyboard (open keyboard issues). --page shows that page's figures
+instead; the history keeps them for the first 50 pages of each run.
+--json prints the series and the history's entries as JSON. --backfill
+adds the runs and snapshots still in .soundcheck that the history
+doesn't have.
 `
 
 // cmdHistory prints the history of runs with a trend.
@@ -137,6 +140,7 @@ func cmdHistory(args []string, stdout, stderr io.Writer) int {
 	page := fs.String("page", "", "")
 	metric := fs.String("metric", "", "")
 	backfill := fs.Bool("backfill", false, "")
+	asJSON := fs.Bool("json", false, "")
 	pos, code, ok := subFlags(fs, args, historyUsage, stdout, stderr)
 	if !ok {
 		return code
@@ -161,6 +165,12 @@ func cmdHistory(args []string, stdout, stderr io.Writer) int {
 	entries, err := history.Read(root)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return failed(stderr, err)
+	}
+	if *asJSON {
+		if err := history.JSON(stdout, entries, *page, *metric); err != nil {
+			return failed(stderr, cli.UsageError{Msg: err.Error()})
+		}
+		return exitOK
 	}
 	if err := history.Render(stdout, entries, *page, *metric, boolFlag(fs, "plain")); err != nil {
 		return failed(stderr, cli.UsageError{Msg: err.Error()})

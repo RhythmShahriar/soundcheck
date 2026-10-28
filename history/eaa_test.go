@@ -6,6 +6,7 @@ package history
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -157,14 +158,72 @@ func TestRenderA11yGolden(t *testing.T) {
 	}
 }
 
-// --page is for timings: the counts are for the whole site.
+// --page shows one page's counts: its column names the page, the
+// criteria (counted for the whole site) are left out and a page the
+// history doesn't have is an error.
 func TestRenderA11yPage(t *testing.T) {
-	err := Render(&bytes.Buffer{}, eaaEntries(), "/p0/", "a11y", false)
-	if err == nil || !strings.Contains(err.Error(), "--page works with lcp, tbt and ttfb") {
-		t.Errorf("a11y with --page: %v", err)
+	time.Local = time.UTC
+	var b bytes.Buffer
+	if err := Render(&b, eaaEntries(), "/p0/", "a11y", true); err != nil {
+		t.Fatal(err)
 	}
-	if v := eaaEntries()[0].Value("a11y", "/p0/"); !math.IsNaN(v) {
-		t.Errorf("per-page a11y value = %v, want NaN", v)
+	if out := b.String(); !strings.Contains(out, "A11y open /p0/\n") || !strings.Contains(out, "A11y open /p0/  31 to 4 (-87%)\n") ||
+		strings.Contains(out, "Worst criteria") || !strings.Contains(out, "  -\n") {
+		t.Errorf("a11y --page /p0/:\n%s", out)
+	}
+	b.Reset()
+	if err := Render(&b, eaaEntries(), "/p1/", "keyboard", true); err != nil || !strings.Contains(b.String(), "Keyboard open /p1/  1 to 1 (+0%)\n") {
+		t.Errorf("keyboard --page /p1/: %v\n%s", err, b.String())
+	}
+	if v := eaaEntries()[0].Value("a11y", "/p0/"); v != 31 {
+		t.Errorf("per-page a11y value = %v, want 31", v)
+	}
+	// Negative: a page the history doesn't have, and a run without the
+	// module, have no value.
+	if v := eaaEntries()[2].Value("a11y", "/p0/"); !math.IsNaN(v) {
+		t.Errorf("run without a11y: %v, want NaN", v)
+	}
+	err := Render(&bytes.Buffer{}, eaaEntries(), "/nope/", "a11y", false)
+	if err == nil || err.Error() != "no a11y counts for /nope/ in the history; it keeps the first 50 pages of each run with the a11y module on" {
+		t.Errorf("unknown page: %v", err)
+	}
+}
+
+// history --json carries the series: one point per entry, null where
+// the entry has no value, and the entries with their counts.
+func TestJSONSeries(t *testing.T) {
+	var b bytes.Buffer
+	if err := JSON(&b, eaaEntries(), "", "a11y"); err != nil {
+		t.Fatal(err)
+	}
+	var s Series
+	if err := json.Unmarshal(b.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range s.Points {
+		if p.Value == nil {
+			got = append(got, "null")
+			continue
+		}
+		got = append(got, fmt.Sprint(*p.Value))
+	}
+	if s.Metric != "a11y" || strings.Join(got, " ") != "31 21 null 23 4" || len(s.Entries) != 5 || *s.Entries[0].A11yOpen != 31 {
+		t.Errorf("series %s %q, %d entries", s.Metric, got, len(s.Entries))
+	}
+	b.Reset()
+	if err := JSON(&b, eaaEntries(), "/p1/", "keyboard"); err != nil || !strings.Contains(b.String(), `"page": "/p1/"`) {
+		t.Errorf("--page: %v\n%s", err, b.String())
+	}
+	b.Reset()
+	if err := JSON(&b, nil, "", ""); err != nil || !strings.Contains(b.String(), `"metric": "lcp"`) || !strings.Contains(b.String(), `"points": []`) {
+		t.Errorf("empty: %v\n%s", err, b.String())
+	}
+	if err := JSON(&bytes.Buffer{}, eaaEntries(), "", "cls"); err == nil {
+		t.Error("unknown metric accepted")
+	}
+	if err := JSON(&bytes.Buffer{}, eaaEntries(), "/nope/", "lcp"); err == nil {
+		t.Error("unknown page accepted")
 	}
 }
 

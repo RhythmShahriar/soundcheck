@@ -90,13 +90,19 @@ type Entry struct {
 	KeyboardOpen    *int           `json:"keyboard_open,omitempty"`
 }
 
-// PageMetrics are one page's timings in an entry.
+// PageMetrics are one page's timings in an entry and, for a run with
+// the a11y or keyboard module on, its open problems of each.
 type PageMetrics struct {
 	Path string  `json:"path"`
 	LCP  float64 `json:"lcp_ms"`
 	TBT  float64 `json:"tbt_ms"`
 	TTFB float64 `json:"ttfb_ms"`
 	CLS  float64 `json:"cls"`
+	// A11yOpen and KeyboardOpen count the page's distinct a11y/* and
+	// keyboard/* problems; nil when the module was off (or the line was
+	// written before 1.3).
+	A11yOpen     *int `json:"a11y_open,omitempty"`
+	KeyboardOpen *int `json:"keyboard_open,omitempty"`
 }
 
 // New makes the entry for a run, compared with a snapshot when c isn't
@@ -131,6 +137,7 @@ func New(run *model.Run, c *model.Comparison) Entry {
 	}
 	e.LCP, e.TBT, e.TTFB = median(lcp), median(tbt), median(ttfb)
 	accessibility(&e, run)
+	pageAccessibility(&e, run)
 	e.Verdict = Clean
 	switch {
 	case e.Issues[string(model.Error)] > 0:
@@ -199,6 +206,52 @@ func accessibility(e *Entry, run *model.Run) {
 	}
 	if len(byCriterion) > 0 {
 		e.A11yByCriterion = byCriterion
+	}
+}
+
+// pageAccessibility fills the a11y and keyboard counts of each page in
+// the entry's PageSet, as accessibility does for the site: each distinct
+// problem on the page once.
+func pageAccessibility(e *Entry, run *model.Run) {
+	if e.A11yOpen == nil && e.KeyboardOpen == nil {
+		return
+	}
+	at := map[string]int{}
+	for i, p := range e.PageSet {
+		at[p.Path] = i
+	}
+	for _, p := range run.Pages {
+		i, ok := at[p.Path]
+		if !ok || p.Error != "" {
+			continue
+		}
+		seen := map[string]bool{}
+		var open, keys int
+		for _, is := range p.Issues {
+			isA11y, isKey := strings.HasPrefix(is.Check, "a11y/"), strings.HasPrefix(is.Check, "keyboard/")
+			if !isA11y && !isKey {
+				continue
+			}
+			if is.Key == "" {
+				is.Identify()
+			}
+			if seen[is.Key] {
+				continue
+			}
+			seen[is.Key] = true
+			if isA11y {
+				open++
+			} else {
+				keys++
+			}
+		}
+		if e.A11yOpen != nil {
+			e.PageSet[i].A11yOpen = &open
+		}
+		if e.KeyboardOpen != nil {
+			e.PageSet[i].KeyboardOpen = &keys
+		}
+		delete(at, p.Path) // a path listed twice counts once, as the timings do
 	}
 }
 
