@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RhythmShahriar/soundcheck/evidence"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -242,5 +243,63 @@ func TestEvidenceRefusesInsecurePack(t *testing.T) {
 	}
 	if code, _, errOut := runCLI(t, "evidence", "sign", "--key", "sign.key"); code != exitUsage || !strings.Contains(errOut, "made with -k") {
 		t.Errorf("sign of a -k pack: %d %s", code, errOut)
+	}
+}
+
+// evidence verify with no argument picks the newest pack by the start
+// time the pack records, not by run.json, which is the file a pack
+// vouches for. Editing the newest run's run.json or its pack's start
+// time never lets verify pass over it in silence.
+func TestEvidenceVerifyDefaultIgnoresRunJSON(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeConfig(t, "")
+	at := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	older := storeRun(t, at, model.Options{EAA: true, WCAG: "2.1"})
+	if err := writePack(older, must(store.LoadRun(older)), nil, evidenceExtra{}); err != nil {
+		t.Fatal(err)
+	}
+	newer := storeRun(t, at.Add(time.Hour), model.Options{EAA: true, WCAG: "2.1"})
+	prev := &evidence.Ref{Run: "runs/" + filepath.Base(older), SHA256: sha(must(os.ReadFile(filepath.Join(older, eaaDir, evidenceFile))))}
+	if err := writePack(newer, must(store.LoadRun(newer)), prev, evidenceExtra{}); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := runCLI(t, "evidence", "verify"); code != exitOK || !strings.Contains(slashes(out), slashes(newer)) || errOut != "" {
+		t.Fatalf("clean: exit %d %q %q", code, out, errOut)
+	}
+
+	// The newest run's run.json says it wasn't an --eaa run.
+	runJSON := filepath.Join(newer, "run.json")
+	orig := must(os.ReadFile(runJSON))
+	edited := strings.Replace(string(orig), `"eaa": true`, `"eaa": false`, 1)
+	edited = strings.Replace(edited, `"eaa":true`, `"eaa":false`, 1)
+	if edited == string(orig) {
+		t.Fatalf("run.json has no eaa option:\n%s", orig)
+	}
+	if err := os.WriteFile(runJSON, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runCLI(t, "evidence", "verify")
+	if code != exitFindings || strings.Contains(out, "Verified") || !strings.Contains(errOut, "run.json changed after it was recorded") {
+		t.Errorf("run.json edited: exit %d %q %q", code, out, errOut)
+	}
+	if err := os.WriteFile(runJSON, orig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The newest pack claims an older start: the older run is chosen,
+	// but the newer one is named and verify fails.
+	packFile := filepath.Join(newer, eaaDir, evidenceFile)
+	var pack map[string]any
+	if err := json.Unmarshal(must(os.ReadFile(packFile)), &pack); err != nil {
+		t.Fatal(err)
+	}
+	pack["started"] = at.Add(-time.Hour)
+	if err := os.WriteFile(packFile, must(json.Marshal(pack)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = runCLI(t, "evidence", "verify")
+	if code != exitFindings || !strings.Contains(slashes(errOut), slashes(newer)+": run.json doesn't match its evidence pack") ||
+		!strings.Contains(errOut, "verify passed over 1 newer run") {
+		t.Errorf("pack start edited: exit %d %q %q", code, out, errOut)
 	}
 }

@@ -5,8 +5,9 @@ Usage:
 
 Every --eaa run writes an evidence pack, eaa/evidence.json: the SHA-256 of
 each file the run recorded, chained to the previous --eaa run of the same
-site. verify checks the files and the chain (default: the latest --eaa
-run or snapshot). sign signs the pack with an ed25519 key from keygen, which
+site. verify checks the files and the chain (default: the run or snapshot
+whose pack records the latest start; it fails when it has to pass over
+a newer run). sign signs the pack with an ed25519 key from keygen, which
 prints the public key to give whoever checks it. A run made with -k can't
 be signed: its TLS certificates weren't verified.
 

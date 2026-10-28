@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/soundcheck/config"
@@ -28,8 +29,9 @@ const evidenceUsage = `Usage:
 
 Every --eaa run writes an evidence pack, eaa/evidence.json: the SHA-256 of
 each file the run recorded, chained to the previous --eaa run of the same
-site. verify checks the files and the chain (default: the latest --eaa
-run or snapshot). sign signs the pack with an ed25519 key from keygen, which
+site. verify checks the files and the chain (default: the run or snapshot
+whose pack records the latest start; it fails when it has to pass over
+a newer run). sign signs the pack with an ed25519 key from keygen, which
 prints the public key to give whoever checks it. A run made with -k can't
 be signed: its TLS certificates weren't verified.
 
@@ -95,7 +97,15 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 	if sub == "sign" && *key == "" {
 		return failed(stderr, cli.Usagef("evidence sign needs --key <file>; make one with %s evidence keygen -o <file>", cmdName()))
 	}
-	dir, err := statementSource(store.Store{Root: config.Dir}, rest)
+	st := store.Store{Root: config.Dir}
+	var dir string
+	var passed []string // newer runs the default choice passed over
+	var err error
+	if len(rest) == 0 {
+		dir, passed, err = latestPack(st)
+	} else {
+		dir, err = statementSource(st, rest)
+	}
 	if err != nil {
 		return failed(stderr, err)
 	}
@@ -108,6 +118,9 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 		return failed(stderr, err)
 	}
 	if sub == "verify" {
+		for _, n := range passed {
+			fmt.Fprintln(stderr, prefix(), n)
+		}
 		notes, err := verifyEvidence(dir)
 		for _, n := range notes {
 			fmt.Fprintln(stderr, "note:", n)
@@ -123,7 +136,11 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, prefix(), err)
 			return exitFindings
 		}
-		return verified(dir, pack, *pub, stdout, stderr)
+		if code := verified(dir, pack, *pub, stdout, stderr); code != exitOK || len(passed) == 0 {
+			return code
+		}
+		fmt.Fprintf(stderr, "%s verify passed over %s; verify each by name\n", prefix(), plural(len(passed), "newer run"))
+		return exitFindings
 	}
 	// The pack says whether the run checked TLS; a signature would vouch
 	// for pages that may not have come from the site.
@@ -198,4 +215,83 @@ func keygen(path string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "public key: %s\n", pub)
 	fmt.Fprintf(stderr, "Private key written to %s; keep it out of git\n", path)
 	return exitOK
+}
+
+// latestPack is the run or snapshot with the newest evidence pack, by
+// the start time the pack itself records: what evidence verify and sign
+// work on by default. run.json isn't part of the choice, as it is the
+// file a pack vouches for. A folder whose run.json and pack disagree on
+// --eaa or the start time, or whose run.json says it is a newer --eaa run
+// without a readable pack, is named in passed when it may be newer than
+// the choice, so no newer pack is passed over without a word.
+func latestPack(st store.Store) (dir string, passed []string, err error) {
+	type folder struct {
+		dir     string
+		pack    bool // has a readable pack
+		packAt  time.Time
+		runEAA  bool
+		runAt   time.Time
+		runRead bool
+	}
+	var all []folder
+	for _, kind := range []string{"runs", "snapshots"} {
+		entries, err := os.ReadDir(filepath.Join(st.Root, kind))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() || !store.ValidName(e.Name()) {
+				continue
+			}
+			f := folder{dir: filepath.Join(st.Root, kind, e.Name())}
+			if head, ok := runHead(f.dir); ok {
+				f.runRead, f.runEAA, f.runAt = true, head.Options.EAA, head.Started
+			}
+			if at, ok := packStart(f.dir); ok {
+				f.pack, f.packAt = true, at
+			}
+			if f.pack || f.runEAA {
+				all = append(all, f)
+			}
+		}
+	}
+	var best *folder
+	for i := range all {
+		if all[i].pack && (best == nil || all[i].packAt.After(best.packAt)) {
+			best = &all[i]
+		}
+	}
+	if best == nil {
+		return "", nil, fmt.Errorf("no --eaa results in %s yet; run %s snapshot <url> --eaa first", st.Root, cmdName())
+	}
+	for _, f := range all {
+		if f.dir == best.dir {
+			continue
+		}
+		newer := f.packAt.After(best.packAt) || f.runAt.After(best.packAt)
+		switch {
+		case f.pack && (!f.runRead || !f.runEAA || !f.runAt.Equal(f.packAt)):
+			// A mismatch is checked wherever it sits: its run.json may
+			// have been moved back in time to hide it.
+			passed = append(passed, fmt.Sprintf("%s: run.json doesn't match its evidence pack (--eaa or the start time differs); verify it by name", rel(f.dir)))
+		case !f.pack && newer:
+			passed = append(passed, fmt.Sprintf("%s: run.json says it is a newer --eaa run but it has no readable evidence pack", rel(f.dir)))
+		}
+	}
+	return best.dir, passed, nil
+}
+
+// packStart is the start time the evidence pack in dir records.
+func packStart(dir string) (time.Time, bool) {
+	var head struct {
+		Started time.Time `json:"started"`
+	}
+	data, err := os.ReadFile(filepath.Join(dir, eaaDir, evidenceFile)) //nolint:gosec // a run folder of the store
+	if err != nil || json.Unmarshal(data, &head) != nil {
+		return time.Time{}, false
+	}
+	return head.Started, true
 }

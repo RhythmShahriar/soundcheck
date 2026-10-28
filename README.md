@@ -173,7 +173,7 @@ Each finding is a normal issue keyed by rule and element, with its WCAG success 
 
 **What it never does.** It never gives a verdict on a site and never picks the statement's status for you. During the walk it holds requests that would send data and follows no links except skip links. A key flow only really submits with `keyboard: send` on a staging or local address. A page whose audit timed out is never reported as fixed: the run exits 3, since the evidence is incomplete.
 
-**The statement.** Every `--eaa` run writes `eaa/statement-draft.md` in its folder. `rhythm-soundcheck init --eaa` adds a `statement:` block (owner, public address, contact) to `.soundcheck/config.yaml`; then
+**The statement.** Every `--eaa` run writes `eaa/statement-draft.md` in its folder; `accept` into a snapshot writes the snapshot's draft again, with what was accepted. `rhythm-soundcheck init --eaa` adds a `statement:` block (owner, public address, contact) to `.soundcheck/config.yaml`; then
 
 ```sh
 rhythm-soundcheck statement -o accessibility-statement.md   # also .html, .json, .jsonld (EARL for WCAG-EM)
@@ -184,7 +184,7 @@ drafts a statement in the layout of the EU model statement, with a table of ever
 **The evidence pack.** Each run also writes `eaa/evidence.json`: the SHA-256 of every file it recorded, the tool, Chrome and axe-core versions and a hash chain to the previous `--eaa` run of the same site. When `accept` changes a snapshot, or a snapshot is taken again or deleted, its pack is kept in `.soundcheck/evidence/` first, so the chain of later runs still verifies.
 
 ```sh
-rhythm-soundcheck evidence verify                      # the files and the chain are unchanged
+rhythm-soundcheck evidence verify                      # the files and the chain of the newest pack are unchanged
 rhythm-soundcheck evidence verify --pub <key>          # and it was signed with this public key
 rhythm-soundcheck evidence keygen -o soundcheck.key    # once
 rhythm-soundcheck evidence sign --key soundcheck.key   # sign the latest pack
