@@ -70,25 +70,26 @@ type Result struct {
 	// Trend is the site's median LCP over its last runs, oldest first,
 	// from its history.
 	Trend []float64 `json:"trend_lcp_ms,omitempty"`
-	// A11yOpen and CriteriaFailed are the open accessibility and
-	// keyboard issues and the WCAG criteria with failures of an --eaa
-	// run, from its JSON eaa block. A site checked without --eaa leaves
-	// them out (not 0).
-	A11yOpen       *int `json:"a11y_open,omitempty"`
+	// EAAOpen and CriteriaFailed are the open accessibility and
+	// keyboard issues together and the WCAG criteria with failures of an
+	// --eaa run, from its JSON eaa block (history.jsonl splits the open
+	// issues into a11y_open and keyboard_open). A site checked without
+	// --eaa leaves them out (not 0).
+	EAAOpen        *int `json:"eaa_open,omitempty"`
 	CriteriaFailed *int `json:"criteria_failed,omitempty"`
-	// A11yTrend says how A11yOpen moved since the site's previous fleet
+	// EAATrend says how EAAOpen moved since the site's previous fleet
 	// run: up, down or same. It is absent when either run had no eaa
 	// block.
-	A11yTrend string `json:"a11y_trend,omitempty"`
-	// A11yBefore is A11yOpen of that previous fleet run, for the page's
+	EAATrend string `json:"eaa_trend,omitempty"`
+	// EAABefore is EAAOpen of that previous fleet run, for the page's
 	// trend label.
-	A11yBefore *int `json:"a11y_before,omitempty"`
+	EAABefore *int `json:"eaa_before,omitempty"`
 	// Statement is the site's accessibility statement draft, relative
 	// to the fleet folder, when its --eaa run wrote one.
 	Statement string `json:"statement,omitempty"`
 }
 
-// Trends of A11yOpen against the previous fleet run.
+// Trends of EAAOpen against the previous fleet run.
 const (
 	TrendUp   = "up"
 	TrendDown = "down"
@@ -208,7 +209,7 @@ func previous(path string) *Page {
 	return &p
 }
 
-// a11yTrends sets each --eaa result's A11yTrend against the same site in
+// a11yTrends sets each --eaa result's EAATrend against the same site in
 // the previous fleet run, when that run had an eaa block for it too.
 func a11yTrends(results []Result, prev *Page) {
 	if prev == nil {
@@ -216,24 +217,24 @@ func a11yTrends(results []Result, prev *Page) {
 	}
 	before := map[string]int{}
 	for _, r := range prev.Sites {
-		if r.A11yOpen != nil {
-			before[r.Site] = *r.A11yOpen
+		if r.EAAOpen != nil {
+			before[r.Site] = *r.EAAOpen
 		}
 	}
 	for i := range results {
 		r := &results[i]
 		b, ok := before[r.Site]
-		if r.A11yOpen == nil || !ok {
+		if r.EAAOpen == nil || !ok {
 			continue
 		}
-		r.A11yBefore = &b
-		switch now := *r.A11yOpen; {
+		r.EAABefore = &b
+		switch now := *r.EAAOpen; {
 		case now > b:
-			r.A11yTrend = TrendUp
+			r.EAATrend = TrendUp
 		case now < b:
-			r.A11yTrend = TrendDown
+			r.EAATrend = TrendDown
 		default:
-			r.A11yTrend = TrendSame
+			r.EAATrend = TrendSame
 		}
 	}
 }
@@ -334,7 +335,7 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []
 	}
 	runDir := resultDir(dir, r.Kind, stdout.Bytes())
 	r.Report = inFleet(root, runDir, "report.html")
-	if r.A11yOpen != nil {
+	if r.EAAOpen != nil {
 		r.Statement = inFleet(root, runDir, filepath.Join("eaa", "statement-draft.md"))
 	}
 	r.Trend = trend(filepath.Join(dir, config.Dir))
@@ -405,7 +406,7 @@ func (r *Result) parse(data []byte) error {
 	r.Kind = c.Kind
 	if c.EAA != nil {
 		open, failed := c.EAA.Open, len(c.EAA.Criteria.Failed)
-		r.A11yOpen, r.CriteriaFailed = &open, &failed
+		r.EAAOpen, r.CriteriaFailed = &open, &failed
 	}
 	if c.Kind == "comparison" {
 		_ = json.Unmarshal(c.Pages, &r.Pages)

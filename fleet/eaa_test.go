@@ -87,7 +87,7 @@ func TestRunEAAArgs(t *testing.T) {
 	}
 }
 
-// fleet.json carries a11y_open and criteria_failed from each --eaa
+// fleet.json carries eaa_open and criteria_failed from each --eaa
 // site's eaa block and a trend from the second fleet run on; a plain
 // site has none of them. Each --eaa site links its statement draft.
 func TestRunEAAColumns(t *testing.T) {
@@ -112,7 +112,7 @@ func TestRunEAAColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	shop := site(read(), "shop")
-	if shop.A11yOpen == nil || *shop.A11yOpen != 9 || shop.CriteriaFailed == nil || *shop.CriteriaFailed != 2 || shop.A11yTrend != "" {
+	if shop.EAAOpen == nil || *shop.EAAOpen != 9 || shop.CriteriaFailed == nil || *shop.CriteriaFailed != 2 || shop.EAATrend != "" {
 		t.Errorf("first run shop = %+v", shop)
 	}
 	if shop.Statement != "shop/.soundcheck/snapshots/2026-10-24T10-00-00/eaa/statement-draft.md" {
@@ -123,18 +123,20 @@ func TestRunEAAColumns(t *testing.T) {
 	}
 	page := read()
 	shop, blog := site(page, "shop"), site(page, "blog")
-	if *shop.A11yOpen != 7 || shop.A11yTrend != TrendDown || shop.A11yBefore == nil || *shop.A11yBefore != 9 {
+	if *shop.EAAOpen != 7 || shop.EAATrend != TrendDown || shop.EAABefore == nil || *shop.EAABefore != 9 {
 		t.Errorf("second run shop = %+v", shop)
 	}
-	if blog.A11yOpen != nil || blog.CriteriaFailed != nil || blog.A11yTrend != "" || blog.Statement != "" {
+	if blog.EAAOpen != nil || blog.CriteriaFailed != nil || blog.EAATrend != "" || blog.Statement != "" {
 		t.Errorf("plain site has a11y fields: %+v", blog)
 	}
 	raw := readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.json"))
-	if strings.Count(raw, `"a11y_open"`) != 1 || !strings.Contains(raw, `"a11y_trend":"down"`) {
+	// eaa_open counts keyboard issues too, so it isn't named like
+	// history.jsonl's a11y_open, which doesn't.
+	if strings.Count(raw, `"eaa_open"`) != 1 || !strings.Contains(raw, `"eaa_trend":"down"`) || strings.Contains(raw, "a11y_") {
 		t.Errorf("fleet.json:\n%s", raw)
 	}
 	html := readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.html"))
-	if !strings.Contains(html, "Open a11y issues") || !strings.Contains(html, "down from 9 at the last fleet run") {
+	if !strings.Contains(html, "Open accessibility issues") || !strings.Contains(html, "down from 9 at the last fleet run") {
 		t.Errorf("fleet.html lacks the a11y columns or trend")
 	}
 }
@@ -159,7 +161,7 @@ func TestEAAGolden(t *testing.T) {
 	page := Page{Mode: Compare, Created: time.Date(2026, 10, 26, 9, 30, 0, 0, time.UTC), Sites: []Result{
 		{Site: "shop", URL: "https://shop.test/", Kind: "comparison", Verdict: Broke, Counts: map[string]int{"broke": 1, "new": 2},
 			Pages: 40, Dir: "shop", Report: "shop/.soundcheck/runs/r1/report.html", Duration: 161000,
-			A11yOpen: &open, CriteriaFailed: &failed, A11yTrend: TrendUp, A11yBefore: &before,
+			EAAOpen: &open, CriteriaFailed: &failed, EAATrend: TrendUp, EAABefore: &before,
 			Statement: "shop/.soundcheck/runs/r1/eaa/statement-draft.md"},
 		{Site: "blog", URL: "https://blog.test/", Kind: "comparison", Verdict: Clean, Counts: map[string]int{}, Pages: 12, Dir: "blog", Duration: 30000},
 	}}

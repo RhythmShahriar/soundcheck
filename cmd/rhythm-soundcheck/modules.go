@@ -193,28 +193,23 @@ func cmdFlows(args []string, stdout, stderr io.Writer) int {
 var keyFlowFiles = []string{"keyboard-checkout.yaml", "keyboard-contact.yaml", "keyboard-dialog.yaml", "keyboard-menu.yaml"}
 
 // keyFlowsInit writes the four key flow templates into the flows folder.
-// Like flows init it replaces nothing: when one of them is there, it
-// writes none and says which.
+// It replaces nothing: a file that is there (init --eaa writes
+// keyboard-checkout.yaml) is kept and named while the rest are written.
+// With all four there it writes nothing and exits 2.
 func keyFlowsInit(dir string, stdout, stderr io.Writer) int {
-	for _, n := range keyFlowFiles {
-		if _, err := os.Lstat(filepath.Join(dir, n)); err == nil {
-			fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), filepath.Join(dir, n))
-			return exitUsage
-		}
-	}
 	written, kept, err := writeKeyFlows(dir, keyFlowFiles)
 	for _, p := range written {
 		fmt.Fprintf(stdout, "Wrote %s\n", p)
 	}
-	// A file made between the check and the write is left alone too.
 	for _, p := range kept {
-		fmt.Fprintf(stderr, "%s %s already exists\n", prefix(), p)
+		fmt.Fprintf(stdout, "Kept %s: it's already there\n", p)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, prefix(), named(err.Error()))
 		return exitError
 	}
-	if len(kept) > 0 {
+	if len(written) == 0 {
+		fmt.Fprintf(stderr, "%s the four key flows are already in %s; nothing was written\n", prefix(), dir)
 		return exitUsage
 	}
 	fmt.Fprintln(stdout, "Edit them, then run them with --level flows: they press keys only; keyboard: true holds every request that would send data.")

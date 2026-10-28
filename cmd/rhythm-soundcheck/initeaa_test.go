@@ -14,8 +14,10 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/evidence"
 	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/statement"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
@@ -176,11 +178,23 @@ func TestFlowsInitKeyboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _, errOut = runCLI(t, "flows", "init", "--keyboard")
-	if code != exitUsage || errOut != "rhythm-soundcheck: .soundcheck/flows/keyboard-checkout.yaml already exists\n" {
+	if code != exitUsage || errOut != "rhythm-soundcheck: the four key flows are already in .soundcheck/flows; nothing was written\n" {
 		t.Errorf("again: exit %d %q", code, errOut)
 	}
 	if data, _ := os.ReadFile(".soundcheck/flows/keyboard-menu.yaml"); string(data) != "mine\n" {
 		t.Errorf("replaced a flow: %q", data)
+	}
+	// After init --eaa, which writes keyboard-checkout.yaml, the other
+	// three are written and that one is kept.
+	for _, n := range keyFlowFiles[1:] {
+		if err := os.Remove(filepath.Join(".soundcheck", "flows", n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, out, errOut = runCLI(t, "flows", "init", "--keyboard")
+	if code != exitOK || !strings.Contains(out, "Kept .soundcheck/flows/keyboard-checkout.yaml: it's already there") ||
+		strings.Count(out, "Wrote ") != 3 || errOut != "" {
+		t.Errorf("after init --eaa: exit %d\n%s\n%s", code, out, errOut)
 	}
 	// Plain flows init still writes the example only.
 	if code, out, _ := runCLI(t, "flows", "init"); code != exitOK || !strings.Contains(out, "example.yaml") {
@@ -304,6 +318,68 @@ func TestAcceptNewBrokeAndBacklog(t *testing.T) {
 	}
 }
 
+// After an accept into an --eaa snapshot, evidence verify passes for
+// the snapshot and for the run chained to it. Accept counts every
+// change the snapshot holds, not only this call's.
+func TestAcceptKeepsTheEvidenceChain(t *testing.T) {
+	t.Chdir(t.TempDir())
+	acceptFixture(t)
+	snap := filepath.Join(".soundcheck", "snapshots", "good")
+	runDir := filepath.Join(".soundcheck", "runs", "cmp-1")
+	for _, dir := range []string{snap, runDir} {
+		run, err := store.LoadRun(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run.Options.EAA = true
+		if err := store.SaveRun(dir, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := evidence.Write(snap, must(store.LoadRun(snap)), nil); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := evidence.Previous(".soundcheck", "http://127.0.0.1:37100")
+	if err != nil || prev == nil {
+		t.Fatalf("Previous = %v, %v", prev, err)
+	}
+	if err := evidence.Write(runDir, must(store.LoadRun(runDir)), prev); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runCLI(t, "accept", "b1")
+	if code != exitOK || !strings.Contains(out, `Snapshot "good" now holds 1 accepted change.`) ||
+		!strings.Contains(errOut, "its evidence pack was recorded again") {
+		t.Fatalf("accept b1: exit %d\n%s\n%s", code, out, errOut)
+	}
+	code, out, _ = runCLI(t, "accept", "n1")
+	if code != exitOK || !strings.Contains(out, `Snapshot "good" now holds 2 accepted changes.`) {
+		t.Errorf("accept n1: exit %d\n%s", code, out)
+	}
+	code, out, errOut = runCLI(t, "evidence", "verify", runDir)
+	if code != exitOK || !strings.Contains(out, "Verified") || !strings.Contains(errOut, "snapshots/good changed by accept after runs/cmp-1 was chained to it") {
+		t.Errorf("verify run: exit %d\n%s\n%s", code, out, errOut)
+	}
+	code, out, errOut = runCLI(t, "evidence", "verify", "good")
+	if code != exitOK || !strings.Contains(errOut, "snapshots/good was recorded again after accept") {
+		t.Errorf("verify snapshot: exit %d\n%s\n%s", code, out, errOut)
+	}
+	// Deleting the snapshot keeps its pack for the run's chain.
+	code, _, errOut = runCLI(t, "snapshots", "delete", "good")
+	if code != exitOK || !strings.Contains(errOut, "its evidence pack is kept in .soundcheck/evidence/") {
+		t.Errorf("delete: exit %d %s", code, errOut)
+	}
+	if code, out, errOut := runCLI(t, "evidence", "verify", runDir); code != exitOK || !strings.Contains(errOut, "was deleted or taken again") {
+		t.Errorf("verify after delete: exit %d\n%s\n%s", code, out, errOut)
+	}
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
 func TestIgnoreRule(t *testing.T) {
 	// A selector is written as it is and matches itself as compare reads
 	// it; brackets and question marks are text there.
@@ -399,5 +475,79 @@ func TestStaleIgnoreNote(t *testing.T) {
 	}
 	if _, _, errOut := runCLI(t, "snapshot", "127.0.0.1:37101", "--modules", "health", "--name", "s3", "--plain"); strings.Contains(errOut, "note: ignore rule") {
 		t.Errorf("without --eaa: %s", errOut)
+	}
+}
+
+// Taking a snapshot again under the name of one with an evidence pack
+// keeps that pack first and says where.
+func TestRetakeKeepsTheEvidencePack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	acceptFixture(t)
+	snap := filepath.Join(".soundcheck", "snapshots", "good")
+	var b strings.Builder
+	s := &session{st: store.Store{Root: ".soundcheck"}, stderr: &b}
+	if err := s.keepReplaced("good"); err != nil || b.Len() != 0 {
+		t.Errorf("no pack: %v %q", err, b.String())
+	}
+	if err := evidence.Write(snap, must(store.LoadRun(snap)), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.keepReplaced("good"); err != nil || !strings.Contains(b.String(), `note: snapshot "good" had an evidence pack; it is kept in .soundcheck/evidence/`) {
+		t.Errorf("pack: %v %q", err, b.String())
+	}
+	if entries, err := os.ReadDir(filepath.Join(".soundcheck", "evidence")); err != nil || len(entries) != 1 {
+		t.Errorf("kept: %v %v", entries, err)
+	}
+	if err := s.keepReplaced("other"); err != nil {
+		t.Errorf("no snapshot: %v", err)
+	}
+}
+
+// The statement lists a change accepted into the snapshot under
+// "Accepted or ignored in Soundcheck" while the run still shows it. It
+// still counts it as open, as compare does.
+func TestStatementListsAcceptedChanges(t *testing.T) {
+	t.Chdir(t.TempDir())
+	acceptFixture(t)
+	runDir := filepath.Join(".soundcheck", "runs", "cmp-1")
+	run := must(store.LoadRun(runDir))
+	run.Options.EAA, run.Options.WCAG = true, "2.1"
+	if err := store.SaveRun(runDir, run); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := runCLI(t, "accept", "b1"); code != exitOK {
+		t.Fatalf("accept: exit %d\n%s\n%s", code, out, errOut)
+	}
+	in, err := statementInput(runDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(in.Ignored, func(c model.Change) bool { return c.Check == "keyboard/trap" })
+	if i < 0 || !slices.Equal(in.Ignored[i].Pages, []string{"/"}) || !strings.HasPrefix(in.Ignored[i].Reason, "accepted into the snapshot on ") {
+		t.Fatalf("ignored = %+v", in.Ignored)
+	}
+	if in.Summary.Open != 2 {
+		t.Errorf("open = %d, want the trap and the contrast issue", in.Summary.Open)
+	}
+	in.Owner = statement.Owner{Owner: "Example Ltd", Website: "https://shop.example", Contact: statement.Contact{Email: "a@shop.example"}}
+	d, err := statement.Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := statement.Markdown(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "**2.1.2**") || !strings.Contains(b.String(), "(keyboard/trap) on /: accepted into the snapshot on") {
+		t.Errorf("statement:\n%s", b.String())
+	}
+
+	// Once the run no longer shows it, it isn't listed.
+	run.Pages[0].Issues = nil
+	if err := store.SaveRun(runDir, run); err != nil {
+		t.Fatal(err)
+	}
+	if in, err := statementInput(runDir, ""); err != nil || slices.ContainsFunc(in.Ignored, func(c model.Change) bool { return c.Check == "keyboard/trap" }) {
+		t.Errorf("fixed since: %+v %v", in.Ignored, err)
 	}
 }

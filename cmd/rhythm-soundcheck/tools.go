@@ -503,7 +503,7 @@ config sets flows:). Edit it, then run flows with --level flows, which
 submits forms too. --keyboard writes four key flows instead, which the
 keyboard module runs by keyboard alone: keyboard-checkout.yaml,
 keyboard-contact.yaml, keyboard-menu.yaml and keyboard-dialog.yaml. A file
-that's already there is never replaced.
+that's already there is kept as it is and the others are written.
 `
 
 const updateUsage = `Usage:

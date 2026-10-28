@@ -47,11 +47,11 @@ type pageRow struct {
 	TrendLabel             string
 	// EAA marks a row with accessibility columns; other rows leave the
 	// cells empty, which isn't 0.
-	EAA                      bool
-	A11yOpen, CriteriaFailed int
-	A11yArrow, A11yTrend     string // "↑" and "up from 9 at the last fleet run"
-	A11yKind                 string // up, down or same, for the arrow's color
-	Statement                string
+	EAA                     bool
+	EAAOpen, CriteriaFailed int
+	EAAArrow, EAATrend      string // "↑" and "up from 9 at the last fleet run"
+	EAAKind                 string // up, down or same, for the arrow's color
+	Statement               string
 }
 
 // HTML writes the fleet page: one standalone file ranking the sites by
@@ -80,21 +80,21 @@ func HTML(w io.Writer, p Page) error {
 			row.Trend = history.SVG(r.Trend)
 			row.TrendLabel = fmt.Sprintf("LCP %s to %s over the last %d runs", lcpLabel(r.Trend[0]), lcpLabel(r.Trend[len(r.Trend)-1]), len(r.Trend))
 		}
-		if r.A11yOpen != nil {
+		if r.EAAOpen != nil {
 			d.EAA = true
-			row.EAA, row.A11yOpen, row.Statement = true, *r.A11yOpen, r.Statement
+			row.EAA, row.EAAOpen, row.Statement = true, *r.EAAOpen, r.Statement
 			if r.CriteriaFailed != nil {
 				row.CriteriaFailed = *r.CriteriaFailed
 			}
-			if r.A11yBefore != nil {
-				row.A11yKind = r.A11yTrend
-				switch r.A11yTrend {
+			if r.EAABefore != nil {
+				row.EAAKind = r.EAATrend
+				switch r.EAATrend {
 				case TrendUp:
-					row.A11yArrow, row.A11yTrend = "↑", fmt.Sprintf("up from %d at the last fleet run", *r.A11yBefore)
+					row.EAAArrow, row.EAATrend = "↑", fmt.Sprintf("up from %d at the last fleet run", *r.EAABefore)
 				case TrendDown:
-					row.A11yArrow, row.A11yTrend = "↓", fmt.Sprintf("down from %d at the last fleet run", *r.A11yBefore)
+					row.EAAArrow, row.EAATrend = "↓", fmt.Sprintf("down from %d at the last fleet run", *r.EAABefore)
 				case TrendSame:
-					row.A11yArrow, row.A11yTrend = "→", "same as at the last fleet run"
+					row.EAAArrow, row.EAATrend = "→", "same as at the last fleet run"
 				}
 			}
 		}

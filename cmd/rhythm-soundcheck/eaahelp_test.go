@@ -109,6 +109,16 @@ func TestListChecksCriteria(t *testing.T) {
 			t.Errorf("%s: %q, want it to end in %q", id, lines[id], want)
 		}
 	}
+	// The overlay is a notice like keyboard/skip-link-missing; titles
+	// leave the criteria to their column and rows stay narrow.
+	if l := lines["a11y/overlay"]; !strings.HasPrefix(l, "a11y/overlay notice ") {
+		t.Errorf("a11y/overlay: %q", l)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "(WCAG") || len([]rune(l)) > 120 {
+			t.Errorf("%d columns: %q", len([]rune(l)), l)
+		}
+	}
 	if l := lines["health/php-error"]; strings.Contains(l, "wcag") || strings.Contains(l, "advisory") {
 		t.Errorf("health/php-error: %q", l)
 	}

@@ -16,10 +16,10 @@
       "dir": "shop",
       "report": "shop/.soundcheck/runs/r1/report.html",
       "duration_ms": 161000,
-      "a11y_open": 12,
+      "eaa_open": 12,
       "criteria_failed": 4,
-      "a11y_trend": "up",
-      "a11y_before": 9,
+      "eaa_trend": "up",
+      "eaa_before": 9,
       "statement": "shop/.soundcheck/runs/r1/eaa/statement-draft.md"
     },
     {

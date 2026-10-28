@@ -55,7 +55,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
   <h1>Soundcheck fleet · 2 sites</h1>
   <div class="chips"><span class="chip k-broke"><b>1</b> Something broke</span><span class="chip k-clean"><b>1</b> Clean</span></div>
   <div class="tablewrap"><table>
-    <thead><tr><th class="num">#</th><th>Site</th><th>Result</th><th>Found</th><th class="num">Open a11y issues</th><th class="num">Criteria with failures</th><th>LCP trend</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
+    <thead><tr><th class="num">#</th><th>Site</th><th>Result</th><th>Found</th><th class="num">Open accessibility issues</th><th class="num">Criteria with failures</th><th>LCP trend</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
     <tbody><tr>
       <td class="num">1</td>
       <td><div class="site"><a href="shop/.soundcheck/runs/r1/report.html">shop</a></div><div class="url">https://shop.test/</div></td>
