@@ -189,7 +189,7 @@ func (s *session) start(target string) {
 	}
 	s.notice = update.StartCheck(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
-	s.view.Header(version, target)
+	s.view.Header(shownVersion(), target)
 	if s.siteFrom != "" {
 		s.view.Step("Site", "from "+s.siteFrom+" ("+s.siteKey+")")
 	}
@@ -208,9 +208,13 @@ func (s *session) start(target string) {
 	s.view.Step("Production", production(s.cfg))
 }
 
-// levels describes the interaction levels for the run header.
+// levels describes the interaction levels for the run header. With the
+// interact module off its levels don't apply; only the keyboard module's
+// key flows still read the flows level.
 func levels(cfg config.Config) string {
 	switch {
+	case !cfg.Has("interact") && cfg.Has("keyboard") && cfg.Level("flows"):
+		return "no clicks or submits (the interact module is off); key flows run"
 	case !cfg.Has("interact"):
 		return "none: the interact module is off"
 	case len(cfg.Interactions.Levels) == 0:
@@ -220,13 +224,21 @@ func levels(cfg config.Config) string {
 }
 
 // production describes the production guard for the run header, so a
-// user can see an entry matched what they meant.
+// user can see an entry matched what they meant. With the interact
+// module off only a key flow with keyboard: send could submit, only on
+// a local or private address or with --staging.
 func production(cfg config.Config) string {
 	sites := cfg.ProductionSites()
-	if len(sites) == 0 {
-		return "none listed: submit and flows run on any site"
+	if len(sites) > 0 {
+		return strings.Join(sites, ", ") + ": forms are not submitted there"
 	}
-	return strings.Join(sites, ", ") + ": forms are not submitted there"
+	switch {
+	case cfg.Has("interact"):
+		return "none listed: submit and flows run on any site"
+	case cfg.Has("keyboard") && cfg.Level("flows"):
+		return "none listed: only key flows with keyboard: send submit, on a local or private address or with --staging"
+	}
+	return "none listed: nothing in this run submits forms"
 }
 
 // connectEcho checks once that Echo is running, when it's on. Echo not
@@ -369,7 +381,7 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 		s.view.Step("Login", "logging in as "+who+" (from SOUNDCHECK_USER) for the leak test and login flows")
 	}
 	return runner.Options{
-		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: version,
+		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: shownVersion(),
 		EAA: s.cfg.EAA, WCAG: s.wcag, Keyboard: s.runKeyboard(),
 		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: s.modules(s.cfg), Login: login,
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
@@ -1040,7 +1052,7 @@ func (s *session) compareStored(before *model.Run, pages compare.PageSource, bef
 	head.Pages = nil
 	cc := &check.CompareContext{Config: s.cfg, Before: before, After: &head, BeforeDir: beforeDir, AfterDir: dir,
 		Dir: dir, Save: store.Saver(dir)}
-	return compare.Stream(context.WithoutCancel(s.ctx), cc, pages, compare.InMemory(after.Pages), s.modules(s.cfg), version)
+	return compare.Stream(context.WithoutCancel(s.ctx), cc, pages, compare.InMemory(after.Pages), s.modules(s.cfg), shownVersion())
 }
 
 // confirm visits the pages of c's BROKE and NEW changes again and moves
@@ -1152,8 +1164,17 @@ func cmdReport(s *session) int {
 	var err error
 	switch {
 	case len(s.args) == 0:
+		// With no run or comparison yet, the newest snapshot is the last
+		// result there is.
 		if dir, err = s.st.LatestRun(); err != nil {
-			err = cli.UsageError{Msg: err.Error()}
+			if snap, snapErr := s.st.Snapshot(""); snapErr == nil {
+				dir, err = snap, nil
+				if !s.o.quiet {
+					fmt.Fprintf(s.stderr, "No run or comparison yet; showing snapshot %q (%s)\n", filepath.Base(snap), rel(snap))
+				}
+			} else {
+				err = cli.UsageError{Msg: err.Error()}
+			}
 		}
 	default:
 		// Naming something that isn't there is a usage error (2), like no
@@ -1195,7 +1216,7 @@ func cmdReport(s *session) int {
 	case s.o.brand != "":
 		return s.fail(cli.Usagef("--brand goes with --client"))
 	}
-	s.view.Header(version, run.Target)
+	s.view.Header(shownVersion(), run.Target)
 	return s.finish(res, "")
 }
 

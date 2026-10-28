@@ -404,10 +404,17 @@ type EAASummary struct {
 
 // EAACriteria sorts the criteria of the WCAG version by what the tests
 // found.
+//
+// NotTested holds every criterion the tests didn't judge. The JSON
+// output (report.JSON) splits it the way the text does: not_tested
+// keeps the criteria whose tests didn't finish or didn't run and
+// needs_person the ones only a person can judge, which NeedsPerson
+// holds there and nowhere else.
 type EAACriteria struct {
 	Failed          []CriterionCount `json:"failed"`
 	NoFailuresFound []string         `json:"no_failures_found"` // tested, nothing found: not a pass
-	NotTested       []string         `json:"not_tested"`        // the tests can't judge it; a person must
+	NotTested       []string         `json:"not_tested"`
+	NeedsPerson     []string         `json:"needs_person"`
 }
 
 // CriterionCount is a criterion with failures and how many.
@@ -419,7 +426,7 @@ type CriterionCount struct {
 
 // EAAKeyboard counts what the keyboard tests covered.
 type EAAKeyboard struct {
-	PagesWalked   int           `json:"pages_walked"`
+	PagesWalked   int           `json:"pages_walked"` // walks that finished; not_audited lists the others
 	WidgetsTested int           `json:"widgets_tested"`
 	FlowsRun      int           `json:"flows_run"`
 	FlowsSkipped  []SkippedFlow `json:"flows_skipped,omitempty"`

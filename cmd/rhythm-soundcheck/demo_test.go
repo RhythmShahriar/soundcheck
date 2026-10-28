@@ -32,7 +32,7 @@ func TestDemo(t *testing.T) {
 			t.Errorf("no %s in:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "if this is expected") || !strings.Contains(out, "On your own site, rhythm-soundcheck accept <id> makes") {
+	if strings.Contains(out, "if this is expected") || !strings.Contains(out, "On your own site, compare shows an id with each change; rhythm-soundcheck accept <id> makes") {
 		t.Errorf("accept hints that can't work in the demo:\n%s", out)
 	}
 	if strings.Contains(out, "full report:") {

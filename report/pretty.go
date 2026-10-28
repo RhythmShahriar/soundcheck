@@ -157,7 +157,7 @@ func (p *Pretty) Step(label, value string) {
 	p.clear()
 	label, value = Term(label), Term(value)
 	if p.o.Plain {
-		fmt.Fprintf(p.w, "%s: %s\n", label, value)
+		fmt.Fprintf(p.w, "%s: %s\n", label, plainDots(value))
 		return
 	}
 	fmt.Fprintf(p.w, "  %s %s %s\n", ui.Brand.Render("▸"), muted.Bold(true).Width(13).Render(label), value)
@@ -248,9 +248,15 @@ func (p *Pretty) Page(pg *model.Page, done, total int) {
 	p.drawn = true
 }
 
+// plainProgressMin is how many items a step needs before plain mode
+// prints its progress along the way; a shorter one gets one line when
+// it is done.
+const plainProgressMin = 100
+
 // Progress shows how far a long step has got, such as the link probe
-// after the last page: a live line in a terminal, or in plain mode a
-// line at the start and at every tenth.
+// after the last page: a live line in a terminal, or in plain mode one
+// line when it is done and, for a step of plainProgressMin items or
+// more, a line at the start and at every tenth.
 func (p *Pretty) Progress(label string, done, total int) {
 	if p.o.Quiet || total <= 0 {
 		return
@@ -259,6 +265,9 @@ func (p *Pretty) Progress(label string, done, total int) {
 	if p.o.Plain || !p.o.Progress {
 		if !p.o.Plain {
 			return // a log or pipe: the step's own line said it started
+		}
+		if total < plainProgressMin && done < total {
+			return
 		}
 		tenth := done * 10 / total
 		if p.step == nil {
@@ -454,7 +463,7 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		p.notes(notChecked)
 		p.accessibility(r)
 		fmt.Fprintf(p.w, "%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
-			snapshotName(c.Before), r.stats())
+			snapshotName(c.Before), plainDots(r.stats()))
 		p.evidence(r, false)
 		p.notes(rest)
 		p.hints(hints)
@@ -549,7 +558,7 @@ func (p *Pretty) run(r Result, hints []string) {
 		p.accessibility(r)
 		fmt.Fprintf(p.w, "%s - %s, %s, %s - %s\n", runVerdict(r.Run, counts),
 			plural(counts[model.Error], "error", "errors"), plural(counts[model.Warning], "warning", "warnings"),
-			plural(counts[model.Notice], "notice", "notices"), r.stats())
+			plural(counts[model.Notice], "notice", "notices"), plainDots(r.stats()))
 		p.evidence(r, false)
 		p.notes(dropCovered(r.Run.Warnings, notCheckedOf(r)))
 		p.hints(hints)
@@ -665,6 +674,9 @@ func (p *Pretty) quietNotChecked(r Result, gap bool) {
 // accessibility prints the counts line of an --eaa result.
 func (p *Pretty) accessibility(r Result) {
 	if l := accessibilityLine(r, p.o.Plain); l != "" {
+		if p.o.Plain {
+			l = plainDots(l)
+		}
 		p.paragraph(l, bold)
 	}
 }
@@ -749,6 +761,10 @@ func (p *Pretty) notes(lists ...[]string) {
 		}
 	}
 }
+
+// plainDots writes the middle dots between parts of a line as commas,
+// for --plain: a screen reader reads "·" as a word or not at all.
+func plainDots(s string) string { return strings.ReplaceAll(s, " · ", ", ") }
 
 // stats is "124 pages · 2m10s".
 func (r Result) stats() string {

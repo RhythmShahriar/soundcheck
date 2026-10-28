@@ -180,10 +180,16 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 			s.NotAudited = append(s.NotAudited, model.NotAudited{Path: p.Path, Module: m, Status: a.Status, Reason: a.Reason})
 		}
 		if p.Keyboard != nil {
-			if _, ok := p.Audits["keyboard"]; !ok {
+			// A walk whose audit didn't finish (it timed out) isn't a
+			// page walked; one with no audit recorded (a run made before
+			// audits were) is.
+			a, ok := p.Audits["keyboard"]
+			if !ok {
 				walkedUnaudited = true
 			}
-			s.Keyboard.PagesWalked++
+			if !ok || a.Finished() {
+				s.Keyboard.PagesWalked++
+			}
 			s.Keyboard.WidgetsTested += p.Keyboard.Widgets
 		}
 		return true

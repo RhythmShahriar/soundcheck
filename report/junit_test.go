@@ -82,6 +82,27 @@ func TestJUnitEAAComparison(t *testing.T) {
 	}
 }
 
+// A NEW warning that fails soundcheck.new under --fail-on new fails its
+// page case too, so a test view never shows the page as passed; at
+// --fail-on broke neither fails.
+func TestJUnitEAANewWarningFailsPage(t *testing.T) {
+	r := eaaComparison()
+	cvc := r.Comparison.Changes[1]
+	for i := range r.Run.Pages {
+		if p := &r.Run.Pages[i]; p.Path == "/checkout/" {
+			p.Issues = append(p.Issues, model.Issue{Check: cvc.Check, Level: model.Warning, Title: cvc.Title, Source: cvc.Source, WCAG: cvc.WCAG})
+		}
+	}
+	_, s := junitOf(t, r, "new")
+	if c := pageCase(t, s, "/checkout/ · a11y"); len(c.Failure) != 1 || c.Failure[0].Type != "warning" {
+		t.Errorf("NEW warning at --fail-on new: want its page case failed, got %+v", c)
+	}
+	_, s = junitOf(t, r, "broke")
+	if c := pageCase(t, s, "/checkout/ · a11y"); len(c.Failure) != 0 {
+		t.Errorf("NEW warning at --fail-on broke failed its page case: %+v", c.Failure)
+	}
+}
+
 // A module that didn't finish on a page is skipped; a partial run fails
 // no page case.
 func TestJUnitEAASkippedAndPartial(t *testing.T) {

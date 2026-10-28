@@ -4,4 +4,4 @@
 [UNSTABLE] Server error 500 - /flaky/
   fix: Check the PHP error log.
 
-Something broke - 1 broke, 0 new, 0 changed, 0 slower, 0 fixed, 1 unstable - compared with snapshot "good", 3 pages · 6s
+Something broke - 1 broke, 0 new, 0 changed, 0 slower, 0 fixed, 1 unstable - compared with snapshot "good", 3 pages, 6s

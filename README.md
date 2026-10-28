@@ -74,7 +74,17 @@ rhythm update soundcheck
 go install github.com/RhythmShahriar/soundcheck/cmd/rhythm-soundcheck@latest
 ```
 
-`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag.
+**From source** (needs Go 1.27.3 or later, the version in [go.mod](go.mod))
+
+```sh
+git clone https://github.com/RhythmShahriar/soundcheck && cd soundcheck
+make build                      # writes bin/rhythm-soundcheck
+bin/rhythm-soundcheck --version # rhythm-soundcheck dev (1.3.0+f8b0f92)
+```
+
+Without make, `go build -o rhythm-soundcheck ./cmd/rhythm-soundcheck` does the same. A build from source names the release it is heading for and its commit, so `dev (1.3.0+…)` has EAA mode. On a release tag `make build` prints that release, as the release binaries do.
+
+`rhythm-soundcheck` works on its own; `rhythm soundcheck` is the same tool through the rhythm CLI. Every example below works with either: without the rhythm CLI (a `go install` or a build from source), type `rhythm-soundcheck` where it says `rhythm soundcheck`. `rhythm-soundcheck --version` prints the version you have; `rhythm-soundcheck --help` lists every command and flag and `rhythm-soundcheck help <command>` explains one.
 
 Soundcheck drives a real browser. It uses Chrome or Chromium if you have one. Otherwise it downloads Chrome for Testing once, on first use, into your cache folder. The download is checked against the SHA-256 pinned in the binary. `--browser firefox` or `--browser webkit` captures pages in those engines instead. The installers check every download against the release checksums, which are [signed with cosign](https://github.com/RhythmShahriar/rhythm/wiki/Verifying-Releases).
 
@@ -82,12 +92,42 @@ More install options (pinning, mirrors, CI, offline) are in the [install guide](
 
 ## Quick start
 
-No site needed: the demo serves a small built-in bakery site on 127.0.0.1, takes a snapshot, breaks it the way an update can and shows the comparison, in a few seconds and without touching your project folder.
+No site needed: the demo serves a small built-in bakery site on 127.0.0.1, takes a snapshot, breaks it the way an update can and shows the comparison, in under a minute and without touching your project folder.
 
 ```sh
 rhythm soundcheck demo         # a PHP warning, a JS error, a dead button, a 404 and a form that answers 500
 rhythm soundcheck demo --eaa   # the same plus a keyboard trap and a dialog that loses focus, found by EAA mode
 ```
+
+The end of `rhythm soundcheck demo --eaa --plain`, as it printed on a Linux laptop:
+
+```text
+2. Breaking it the way an update can: a PHP warning in the footer of every page, a JS error on /, a dead button on /about/, no title on /blog/, /pricing/ answers 404, the contact form answers 500, a keyboard trap in the newsletter field on / and focus lost when the opening hours dialog on /about/ closes.
+3. Comparing with the snapshot:
+...
+[BROKE] Keyboard focus is trapped - /
+  source: #news
+  wcag: 2.1.2; EN 301 549 9.2.1.2
+  path: main > ul > li:nth-of-type(2) > a then main > ul > li:nth-of-type(3) > a then #news (4 times)
+  Tab and Shift+Tab kept focus here for 16 presses; 1 focusable element after it (#join) can't be reached.
+  fix: Tab and Shift+Tab can't move focus out of an element or region, so a keyboard user is stuck there.
+...
+[NEW] Focus is lost after closing - /about/
+  source: #hours-open
+  wcag: 2.4.3; EN 301 549 9.2.4.3
+  After Escape on "Opening hours" focus went to a removed element.
+  fix: Closing a dialog, menu or disclosure drops focus on the page body. Move focus back to the control that opened it.
+
+Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (1.4.10, 2.1.2,
+2.4.2, 2.4.3 new), 23 had none found by these tests, 23 need a person, 1 page
+not fully tested, open issues 0 to 4
+Something broke - 3 broke, 8 new, 0 changed, 0 slower, 0 fixed - compared with snapshot "working" (just now), 5 pages, 8s
+Automated and keyboard tests find some accessibility problems, not all. This is
+evidence for your own review, not a statement that the site meets WCAG,
+EN 301 549 or the European Accessibility Act.
+```
+
+The page not fully tested is `/pricing/`, which answers 404 after the break, so its accessibility tests had no page to test. `--keep` keeps the demo's folder to look at: the HTML report and, with `--eaa`, the statement draft and evidence pack it wrote. `rhythm soundcheck help demo` has the rest.
 
 Then on your own staging site: `rhythm soundcheck snapshot staging.yoursite.com` before a change and `rhythm soundcheck compare` after it. The [first check tutorial](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-First-Check) walks through it.
 
@@ -180,10 +220,10 @@ The European Accessibility Act asks shops and services to be usable without a mo
 
 ```sh
 rhythm soundcheck snapshot staging.yoursite.com --eaa   # once: what the site does today
-rhythm soundcheck compare --eaa --fail-on new           # after a change: new problems only
+rhythm soundcheck compare --fail-on new                 # after a change: new problems only
 ```
 
-`rhythm soundcheck snapshot <url> --eaa` is the first command. The same mode works on `compare`, `run`, `--against` and `fleet`. The rest of this section uses `rhythm-soundcheck`; `rhythm soundcheck` runs the same commands through the router.
+`rhythm soundcheck snapshot <url> --eaa` is the first command. A compare takes `--eaa` from its snapshot, so it needs no `--eaa` of its own. The same mode works on `run`, `--against` and `fleet`. The rest of this section uses `rhythm-soundcheck`; `rhythm soundcheck` runs the same commands through the router.
 
 A first run from start to finish, with real output, is on the wiki: [EAA mode](https://github.com/RhythmShahriar/rhythm/wiki/Soundcheck-EAA).
 
@@ -227,7 +267,7 @@ rhythm-soundcheck evidence sign --key soundcheck.key   # sign the latest pack
     fail-on: new        # fail on any new accessibility problem, not only traps
 ```
 
-The job summary and the pull request comment carry counts and rule ids only. The full report is a workflow artifact kept for 14 days.
+The job summary and the pull request comment carry counts, criteria, check titles, selectors, page paths and fix hints, never an issue's detail, its focus path or a screenshot. The full report is a workflow artifact kept for 14 days.
 
 **Honest limits.** Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
 
@@ -335,10 +375,11 @@ All of it lives in the **[Rhythm documentation wiki](https://github.com/RhythmSh
 
 ```sh
 git clone https://github.com/RhythmShahriar/soundcheck && cd soundcheck
-make hooks   # Conventional Commits check
-make check   # lint + tests (browser tests need Chrome or Chromium)
+make build      # bin/rhythm-soundcheck
+make hooks      # Conventional Commits check
+make check      # lint + tests (browser tests need Chrome or Chromium)
 make test-short # the quick pass: tests that honour -short skip slow browser work
-make testbed # 89 broken-site scenarios in Docker, for end-to-end tests and the benchmark
+make testbed    # 89 broken-site scenarios in Docker, for end-to-end tests and the benchmark
 ```
 
 See [CONTRIBUTING](https://github.com/RhythmShahriar/.github/blob/master/CONTRIBUTING.md) for the Rhythm-wide rules. Writing a check module? [CONTRIBUTING.md](CONTRIBUTING.md) in this repository covers how a module plugs into a run.

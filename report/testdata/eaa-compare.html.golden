@@ -289,7 +289,7 @@ ol.path li { overflow-wrap: anywhere; }
   
   <div id="panel-a11y" class="a11y" role="tabpanel" aria-labelledby="tab-a11y" hidden>
     <div class="callout" role="note">
-      <p><b>4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 23 had none found by these tests · 23 need a person · open issues 3 → 4</b></p>
+      <p><b>4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 23 had none found by these tests · 23 need a person · 1 page not fully tested · open issues 3 → 4</b></p>
       <p>Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.</p>
     </div>
     <div class="partial"><b>Not checked.</b> These audits didn't finish, so the pages' issues are kept from the snapshot and not counted as fixed:<ul><li>/catalog/ (a11y: axe-core timed out after 45s)</li></ul></div>

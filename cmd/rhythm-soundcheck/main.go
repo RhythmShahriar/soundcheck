@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -20,8 +21,6 @@ import (
 	// package doc says why its init runs first.
 	_ "github.com/RhythmShahriar/soundcheck/internal/norodflag"
 )
-
-var version = "dev"
 
 // Exit codes, the kit's that every Rhythm tool shares.
 const (
@@ -49,11 +48,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
-		if len(args) == 2 {
-			if u, ok := topic(args[1]); ok {
+		// help eaa --help is help eaa.
+		asked := slices.DeleteFunc(slices.Clone(args[1:]), func(a string) bool { return a == "-h" || a == "--help" || a == "help" })
+		if len(asked) > 0 {
+			if u, ok := topic(asked[0]); ok && len(asked) == 1 {
 				fmt.Fprint(stdout, named(u))
 				return exitOK
 			}
+			fmt.Fprintf(stderr, "%s no help on %q; topics are %s\n", prefix(), strings.Join(asked, " "), strings.Join(topicNames(), ", "))
+			return exitUsage
 		}
 		usage(stdout)
 		return exitOK
@@ -61,7 +64,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		listChecks(stdout)
 		return exitOK
 	case "-v", "--version", "version":
-		fmt.Fprintln(stdout, "rhythm-soundcheck", version)
+		fmt.Fprintln(stdout, "rhythm-soundcheck", shownVersion())
 		return exitOK
 	case "snapshot", "snap":
 		return command(cmdSnapshot, args[1:], stdout, stderr)
@@ -111,7 +114,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func usage(w io.Writer) {
 	name := cmdName()
-	fmt.Fprintln(w, kit.Banner(name, version))
+	fmt.Fprintln(w, kit.Banner(name, shownVersion()))
 	// help says "rhythm soundcheck" where the command goes. The lined-up
 	// rows start with it, so their columns stay lined up for any name.
 	fmt.Fprint(w, withName(help, name))
@@ -173,7 +176,8 @@ Usage:
   rhythm soundcheck help <command>           more on snapshot, compare, report,
                                              import, accept, review, history,
                                              fleet, wp-update, rules, eaa,
-                                             keyboard, statement or evidence
+                                             keyboard, statement, evidence,
+                                             run or demo
 
 Snapshots:
       --name <name>          snapshot name (default: date and time); compare

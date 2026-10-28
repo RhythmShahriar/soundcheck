@@ -318,12 +318,15 @@ func TestSummarizeKeyboardTimedOut(t *testing.T) {
 	if len(s.NotAudited) != 2 {
 		t.Errorf("not audited: %+v", s.NotAudited)
 	}
+	if s.Keyboard.PagesWalked != 0 {
+		t.Errorf("walks that timed out counted as walked: %d", s.Keyboard.PagesWalked)
+	}
 	// A walk on a page without a keyboard audit (a run made before
 	// audits were recorded) still counts.
 	pages = []model.Page{{Path: "/", Keyboard: &model.KeyboardSummary{Stops: 3}}}
 	s = Summarize(eaaRun("keyboard"), each(pages), nil, nil, nil)
-	if !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
-		t.Errorf("an unaudited walk should count: %+v", s.Criteria)
+	if !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") || s.Keyboard.PagesWalked != 1 {
+		t.Errorf("an unaudited walk should count: %+v, walked %d", s.Criteria, s.Keyboard.PagesWalked)
 	}
 }
 

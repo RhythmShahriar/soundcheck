@@ -78,7 +78,7 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 	}
 
 	say("Soundcheck demo: a small bakery site at %s, served by this binary.", srv.URL)
-	say("1. Taking a snapshot of it while it works (a few seconds)...")
+	say("1. Taking a snapshot of it while it works (the whole demo takes under a minute)...")
 	// The snapshot's own result isn't the point: its output is left out
 	// and only errors show.
 	snap, code := demoSession(append([]string{srv.URL, "--name", "working", "-q"}, rest...), cfgPath, tmp, keep, eaa, io.Discard, stderr)
@@ -102,11 +102,19 @@ func cmdDemo(args []string, stdout, stderr io.Writer) int {
 	cmpS.stop()
 	if keep {
 		say("The demo's snapshot and report are kept in %s.", tmp)
+		if eaa {
+			say("Its statement draft and evidence pack are in the run folder's eaa/ (statement: above).")
+		}
 	}
 	say("")
-	say("On your own site, %s accept <id> makes a change you expected part of the snapshot.", cmdName())
-	if eaa {
-		say("With --eaa on your own site, every run also writes a statement draft for you to finish (%s help eaa).", cmdName())
+	// The demo's changes show no ids: accept works on the project's
+	// snapshots, not the demo's, so the hint says where they appear.
+	say("On your own site, compare shows an id with each change; %s accept <id> makes a change you expected part of the snapshot.", cmdName())
+	switch {
+	case eaa && keep:
+		say("With --eaa on your own site, every run also writes a statement draft and an evidence pack (%s help eaa).", cmdName())
+	case eaa:
+		say("With --eaa on your own site, every run also writes a statement draft and an evidence pack; %s demo --eaa --keep keeps this one's to look at.", cmdName())
 	}
 	say("Now try it on your staging site: %s snapshot staging.example.com", cmdName())
 	return code

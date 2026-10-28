@@ -125,16 +125,23 @@ func TestVerboseCapsConsole(t *testing.T) {
 }
 
 // Plain mode prints a long step's progress at the start and at every
-// tenth, not once per link.
+// tenth, not once per link. A short step's is printed once, when done.
 func TestProgressPlain(t *testing.T) {
 	var out bytes.Buffer
 	p := NewPretty(&out, io.Discard, PrettyOptions{Plain: true})
-	for i := 0; i <= 50; i++ {
-		p.Progress("Checking 50 links", i, 50)
+	for i := 0; i <= 200; i++ {
+		p.Progress("Checking 200 links", i, 200)
 	}
 	got := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(got) != 11 || got[0] != "Checking 50 links: 0/50" || got[1] != "Checking 50 links: 5/50" || got[10] != "Checking 50 links: 50/50" {
+	if len(got) != 11 || got[0] != "Checking 200 links: 0/200" || got[1] != "Checking 200 links: 20/200" || got[10] != "Checking 200 links: 200/200" {
 		t.Errorf("progress lines:\n%s", out.String())
+	}
+	out.Reset()
+	for i := 0; i <= 7; i++ {
+		p.Progress("Checking 7 links", i, 7)
+	}
+	if out.String() != "Checking 7 links: 7/7\n" {
+		t.Errorf("short step:\n%s", out.String())
 	}
 	out.Reset()
 	q := NewPretty(&out, io.Discard, PrettyOptions{Plain: true, Quiet: true})

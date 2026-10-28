@@ -472,6 +472,11 @@ func TestReportExitCodes(t *testing.T) {
 	if code, _, errOut := runCLI(t, "report", "good"); code != exitError {
 		t.Errorf("corrupt snapshot: exit %d, want 3 (%s)", code, errOut)
 	}
+	// With no run yet, report shows the newest snapshot: this one's
+	// run.json can't be read, so it is 3, not "nothing to show".
+	if code, _, errOut := runCLI(t, "report"); code != exitError || !strings.Contains(errOut, `No run or comparison yet; showing snapshot "good"`) {
+		t.Errorf("report with only a snapshot: exit %d, want 3 (%s)", code, errOut)
+	}
 	_ = os.MkdirAll(".soundcheck/runs/20261024-120000", 0o755)
 	_ = os.WriteFile(".soundcheck/runs/20261024-120000/run.json", []byte("{not json"), 0o600)
 	if code, _, errOut := runCLI(t, "report"); code != exitError {

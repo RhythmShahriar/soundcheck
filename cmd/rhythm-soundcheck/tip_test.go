@@ -143,7 +143,7 @@ func TestSeveralOutputs(t *testing.T) {
 		{[]string{"-o", "a.json", "-o", "a.pdf"}, "rhythm-soundcheck: can't tell the format of a.pdf from its extension; use .json, .md, .xml or .html\n"},
 		{[]string{"-o", "a.pdf"}, "rhythm-soundcheck: can't tell the format of a.pdf; add --json, --md, --junit or --html\n"},
 		{[]string{"-o", "a.json", "-o", "./a.json"}, "rhythm-soundcheck: -o a.json and -o ./a.json are the same file\n"},
-		{[]string{"--json", "-o", "a.json", "-o", "a.md"}, "rhythm-soundcheck: --json with several -o: each file's format comes from its extension, so leave out --json\n"},
+		{[]string{"--json", "-o", "a.json", "-o", "a.md"}, "rhythm-soundcheck: --json with several -o: each file's format comes from its extension and --json can't print to stdout as well, so leave out --json (and add -o r.json for that format)\n"},
 		{[]string{"--json", "--md", "-o", "a.json"}, "rhythm-soundcheck: pick one output format, not --json and --md\n"},
 	} {
 		code, _, errOut := runCLI(t, append([]string{"report", dir}, tc.args...)...)

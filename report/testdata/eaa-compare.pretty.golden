@@ -25,7 +25,8 @@
 
   ! not checked: /catalog/ (a11y: axe-core timed out after 45s); its issues a…
   Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new)
-  · 23 had none found by these tests · 23 need a person · open issues 3 → 4
+  · 23 had none found by these tests · 23 need a person · 1 page not fully
+  tested · open issues 3 → 4
  ╭──────────────────────────────────────────────────────────────╮
  │  SOUNDCHECK   Something broke                                │
  │  ✗ 1 broke   ▲ 1 new   ■ 0 changed   ◆ 0 slower   ✓ 1 fixed  │

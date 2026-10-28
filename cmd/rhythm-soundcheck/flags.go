@@ -596,7 +596,7 @@ func (p *plan) outputFormats() error {
 		p.outputs = []output{{o.outputs[0], chosen[0]}}
 		return nil
 	case len(chosen) == 1:
-		return cli.Usagef("--%s with several -o: each file's format comes from its extension, so leave out --%[1]s", chosen[0])
+		return cli.Usagef("--%s with several -o: each file's format comes from its extension and --%[1]s can't print to stdout as well, so leave out --%[1]s (and add -o r.%[2]s for that format)", chosen[0], formatExt(chosen[0]))
 	}
 	seen := map[string]string{}
 	for _, path := range o.outputs {
@@ -619,6 +619,14 @@ func (p *plan) outputFormats() error {
 		p.outputs = append(p.outputs, output{path, f})
 	}
 	return nil
+}
+
+// formatExt is the file extension -o reads as format.
+func formatExt(format string) string {
+	if format == "junit" {
+		return "xml"
+	}
+	return format
 }
 
 // trust reads --allow-env, --allow-host and --insecure-login into the

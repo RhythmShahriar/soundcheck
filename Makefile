@@ -2,8 +2,13 @@ GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.
 
 .PHONY: build test test-short fuzz lint fmt check hooks testbed testbed-down bench
 
-build: ## build bin/rhythm-soundcheck
-	go build -o bin/rhythm-soundcheck ./cmd/rhythm-soundcheck
+# On a release tag the binary says that release; anywhere else it says
+# "dev (<next release>+<commit>)" (see cmd/rhythm-soundcheck/version.go).
+VERSION ?= $(shell git describe --tags --exact-match --match 'v*' 2>/dev/null | sed 's/^v//')
+LDFLAGS := $(if $(VERSION),-X main.version=$(VERSION))
+
+build: ## build bin/rhythm-soundcheck (rhythm-soundcheck --version says which)
+	go build -ldflags "$(LDFLAGS)" -o bin/rhythm-soundcheck ./cmd/rhythm-soundcheck
 
 # The visual checks take about 6 minutes under -race, so Go's 10 minute
 # default timeout is too close for the whole suite.
@@ -27,7 +32,7 @@ check: lint test ## everything CI runs
 hooks: ## enable the Conventional Commits hook
 	git config core.hooksPath .githooks
 
-testbed: ## start the 20 broken sites in Docker (127.0.0.1:18800 and :18810)
+testbed: ## start the 89 broken-site scenarios in Docker (127.0.0.1:18800 and :18810)
 	$(MAKE) -C testbed up
 
 testbed-down:

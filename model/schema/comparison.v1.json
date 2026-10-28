@@ -40,18 +40,19 @@
         "axe": {"type": "string", "description": "axe-core's version."},
         "criteria": {
           "type": "object",
-          "required": ["failed", "no_failures_found", "not_tested"],
+          "required": ["failed", "no_failures_found", "not_tested", "needs_person"],
           "properties": {
             "failed": {"type": ["array", "null"], "items": {"$ref": "#/$defs/criterionCount"}},
             "no_failures_found": {"type": ["array", "null"], "items": {"type": "string"}},
-            "not_tested": {"type": ["array", "null"], "items": {"type": "string"}}
+            "not_tested": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Criteria the tests look at whose tests didn't finish or didn't run: the text's \"not tested (their tests didn't finish)\"."},
+            "needs_person": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Criteria only a person can judge: the text's \"need a person\"."}
           }
         },
         "keyboard": {
           "type": "object",
           "required": ["pages_walked", "widgets_tested", "flows_run"],
           "properties": {
-            "pages_walked": {"type": "integer", "minimum": 0},
+            "pages_walked": {"type": "integer", "minimum": 0, "description": "Pages whose keyboard walk finished; a walk that timed out is in not_audited instead."},
             "widgets_tested": {"type": "integer", "minimum": 0},
             "flows_run": {"type": "integer", "minimum": 0},
             "flows_skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedFlow"}}

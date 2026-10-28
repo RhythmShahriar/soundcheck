@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/wcag"
 )
 
 // JSON writes the comparison, or the run when there's none, in the
@@ -77,7 +78,10 @@ func eaaJSON(r Result) *model.EAASummary {
 		out.Criteria.Failed = []model.CriterionCount{}
 	}
 	out.Criteria.NoFailuresFound = nonNil(out.Criteria.NoFailuresFound)
-	out.Criteria.NotTested = nonNil(out.Criteria.NotTested)
+	// not_tested is what the text calls "not tested (their tests didn't
+	// finish)"; needs_person what it calls "need a person".
+	unrun, person := wcag.SplitNotTested(eaaVersion(e), e.Criteria.NotTested)
+	out.Criteria.NotTested, out.Criteria.NeedsPerson = nonNil(unrun), nonNil(person)
 	return &out
 }
 

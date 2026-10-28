@@ -5,6 +5,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -209,6 +210,16 @@ func TestEvidenceCommandReal(t *testing.T) {
 	}
 	if code, _, _ := runCLI(t, "evidence", "verify", "--pub", "not-a-key"); code != exitUsage {
 		t.Errorf("--pub not a key: exit %d", code)
+	}
+	// A key that is base64 but the wrong length, or has a stray
+	// character, says which.
+	if code, _, errOut := runCLI(t, "evidence", "verify", "--pub", base64.StdEncoding.EncodeToString(make([]byte, 31))); code != exitUsage ||
+		!strings.Contains(errOut, "isn't a 32-byte Ed25519 public key (decoded 31 bytes)") {
+		t.Errorf("short key: exit %d, %q", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "evidence", "verify", "--pub", "AAAA-"+strings.Repeat("A", 39)); code != exitUsage ||
+		!strings.Contains(errOut, "isn't standard base64 (it goes wrong at character 5)") {
+		t.Errorf("stray character: exit %d, %q", code, errOut)
 	}
 	if code, _, _ := runCLI(t, "evidence", "sign", "--key", "sign.key", "--pub", pub); code != exitUsage {
 		t.Errorf("--pub with sign: exit %d", code)

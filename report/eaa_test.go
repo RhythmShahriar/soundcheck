@@ -191,16 +191,16 @@ func TestEAAPlainLines(t *testing.T) {
 	NewPretty(&b, io.Discard, PrettyOptions{Plain: true}).Summary(Result{Run: eaaSnapshot()}, "")
 	out := b.String()
 	for _, want := range []string{
-		"[ERROR] Keyboard focus is trapped: Card number - /checkout/\n  source: #card-element > div:nth-of-type(1)\n  wcag: 2.1.2 · EN 301 549 9.2.1.2\n" +
+		"[ERROR] Keyboard focus is trapped: Card number - /checkout/\n  source: #card-element > div:nth-of-type(1)\n  wcag: 2.1.2; EN 301 549 9.2.1.2\n" +
 			"  path: #billing_email then #billing_phone then #card-element > div:nth-of-type(1) (4 times)\n",
 		"[WARNING] Focus is lost after closing: Newsletter - /, /shop/, /about/ +35 more (38 pages)\n",
-		"  wcag: 1.3.1, 4.1.2 · EN 301 549 9.1.3.1, 9.4.1.2\n",
+		"  wcag: 1.3.1, 4.1.2; EN 301 549 9.1.3.1, 9.4.1.2\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("plain output lacks %q:\n%s", want, out)
 		}
 	}
-	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 22 had none found by these tests · 23 need a person "+
+	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures, 22 had none found by these tests, 23 need a person "+
 		`Snapshot "eaa-1" saved; the site already has errors`) {
 		t.Errorf("no counts line before the verdict:\n%s", out)
 	}
@@ -230,7 +230,7 @@ func TestEAACompareLine(t *testing.T) {
 	var b bytes.Buffer
 	NewPretty(&b, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm soundcheck accept"}).Summary(r, "")
 	out := b.String()
-	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 23 had none found by these tests · 23 need a person · open issues 3 to 4 Something broke"
+	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new), 23 had none found by these tests, 23 need a person, 1 page not fully tested, open issues 3 to 4 Something broke"
 	if !strings.Contains(oneLine(out), want) {
 		t.Errorf("lacks %q:\n%s", want, out)
 	}

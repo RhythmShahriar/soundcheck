@@ -1,22 +1,22 @@
 
 [ERROR] Keyboard focus is trapped: Card number - /checkout/
   source: #card-element > div:nth-of-type(1)
-  wcag: 2.1.2 · EN 301 549 9.2.1.2
+  wcag: 2.1.2; EN 301 549 9.2.1.2
   path: #billing_email then #billing_phone then #card-element > div:nth-of-type(1) (4 times)
   Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can't be reached.
   fix: Let Tab move on from the field.
 [WARNING] Focus is lost after closing: Newsletter - /, /shop/, /about/ +35 more (38 pages)
   source: #newsletter-close
-  wcag: 2.4.3 · EN 301 549 9.2.4.3
+  wcag: 2.4.3; EN 301 549 9.2.4.3
   path: #newsletter-open then #newsletter-close
   fix: When the dialog closes, move focus back to the button that opened it.
 [WARNING] Form elements must have labels - /checkout/
   source: #billing_phone
-  wcag: 1.3.1, 4.1.2 · EN 301 549 9.1.3.1, 9.4.1.2
+  wcag: 1.3.1, 4.1.2; EN 301 549 9.1.3.1, 9.4.1.2
   <input id="billing_phone" name="billing_phone" type="tel">
   fix: See https://dequeuniversity.com/rules/axe/4.14/label for what the rule asks and how to fix it.
 [NOTICE] No skip link before a long run of stops - /, /shop/, /about/ +35 more (38 pages)
-  wcag: 2.4.1 · EN 301 549 9.2.4.1
+  wcag: 2.4.1; EN 301 549 9.2.4.1
 
 Automated and keyboard tests find some accessibility problems, not all. This is
 evidence for your own review, not a statement that the site meets WCAG,

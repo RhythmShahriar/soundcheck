@@ -17,11 +17,12 @@ var eaaModules = []string{"a11y", "keyboard"}
 // eaaSuites is the JUnit view of an --eaa result by page: a suite per
 // page with a case per page and accessibility module ("/checkout/ ·
 // keyboard"), so a CI test tab shows which page and module failed. A
-// case has one failure per error at the threshold: for a run the
-// --fail-on level (error when there is none), for a comparison the
-// errors a failing change covers, so a trap the snapshot already had
-// doesn't fail a compare that otherwise passes; such known errors are
-// listed as output. A module whose audit of the page didn't finish is
+// case fails on the issues that fail the class suites: for a run the
+// issues at or above the --fail-on level (error when there is none),
+// for a comparison the issues a failing change covers, so a trap the
+// snapshot already had doesn't fail a compare that otherwise passes,
+// and a NEW warning that fails soundcheck.new fails its page's case
+// too. Known errors that don't fail are listed as output. A module whose audit of the page didn't finish is
 // skipped, neither a pass nor a failure. A partial result writes its
 // errors as output, like every other case. It is nil for a result
 // without --eaa, so other runs' JUnit is unchanged.
@@ -110,7 +111,7 @@ func eaaFails(r Result, failOn string) func(model.Issue, string) bool {
 			limit = model.Error.Rank()
 		}
 		return func(i model.Issue, _ string) bool {
-			return i.Level == model.Error && i.Level.Rank() <= limit
+			return i.Level.Rank() <= limit
 		}
 	}
 	limit := slices.Index(model.Classes, failOn)
@@ -124,9 +125,6 @@ func eaaFails(r Result, failOn string) func(model.Issue, string) bool {
 		}
 	}
 	return func(i model.Issue, page string) bool {
-		if i.Level != model.Error {
-			return false
-		}
 		for _, c := range failing {
 			if c.Check == i.Check && c.Title == i.Title && c.Source == i.Source && slices.Contains(c.Pages, page) {
 				return true

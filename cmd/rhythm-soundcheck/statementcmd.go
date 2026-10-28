@@ -353,7 +353,7 @@ func statementInput(dir, drawAs string) (statement.Input, error) {
 	listed := append(slices.Clone(ignored), acceptedChanges(snapDir, pages, run.Issues)...)
 	return statement.Input{Run: run, Pages: pages, Ignored: listed, Unstable: unstable,
 		Summary: wcag.Summarize(run, pages, run.Issues, ignored, unstable),
-		Version: version, Now: time.Now(), Insecure: insecureRun(dir), Hide: statementHide()}, nil
+		Version: shownVersion(), Now: time.Now(), Insecure: insecureRun(dir), Hide: statementHide()}, nil
 }
 
 // insecureRun reads from a run's evidence pack whether it was made with

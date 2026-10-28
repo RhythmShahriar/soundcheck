@@ -88,8 +88,8 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 		return failed(stderr, cli.Usagef("-o goes with evidence keygen"))
 	case sub != "verify" && set["pub"]:
 		return failed(stderr, cli.Usagef("--pub goes with evidence verify"))
-	case set["pub"] && !validPub(*pub):
-		return failed(stderr, cli.Usagef("--pub wants the base64 public key evidence keygen printed"))
+	case set["pub"] && pubProblem(*pub) != "":
+		return failed(stderr, cli.Usagef("--pub %s; it wants the base64 public key evidence keygen printed", pubProblem(*pub)))
 	}
 	if sub == "keygen" {
 		return keygen(out, stdout, stderr)
@@ -192,10 +192,21 @@ func verified(dir, pack, want string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// validPub reports whether s is a base64 ed25519 public key.
-func validPub(s string) bool {
+// pubProblem says why s isn't an Ed25519 public key in standard base64,
+// or "" when it is one: "isn't base64 (bad character at 12)" or "isn't
+// a 32-byte Ed25519 public key (decoded 31 bytes)".
+func pubProblem(s string) string {
 	b, err := base64.StdEncoding.DecodeString(s)
-	return err == nil && len(b) == ed25519.PublicKeySize
+	var bad base64.CorruptInputError
+	switch {
+	case errors.As(err, &bad):
+		return fmt.Sprintf("isn't standard base64 (it goes wrong at character %d)", int64(bad)+1)
+	case err != nil:
+		return "isn't standard base64"
+	case len(b) != ed25519.PublicKeySize:
+		return fmt.Sprintf("isn't a %d-byte Ed25519 public key (decoded %d bytes)", ed25519.PublicKeySize, len(b))
+	}
+	return ""
 }
 
 // keygen writes a new signing key to path and prints its public key. It

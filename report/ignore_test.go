@@ -41,7 +41,7 @@ func TestIgnoredInOutput(t *testing.T) {
 	r := ignoredResult()
 	var plain bytes.Buffer
 	NewPretty(&plain, &plain, PrettyOptions{Plain: true}).Summary(r, "")
-	if !strings.Contains(plain.String(), " · 2 changes ignored · ") || strings.Contains(plain.String(), "[BROKE]") {
+	if !strings.Contains(plain.String(), ", 2 changes ignored, ") || strings.Contains(plain.String(), "[BROKE]") {
 		t.Errorf("plain output:\n%s", plain.String())
 	}
 	var md bytes.Buffer

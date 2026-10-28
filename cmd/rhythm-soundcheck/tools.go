@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -474,7 +475,40 @@ func (s *session) clientReport(res report.Result) int {
 var helpTopics = map[string]string{"accept": acceptUsage, "review": reviewUsage, "history": historyUsage,
 	"fleet": fleetUsage, "wp-update": wpUpdateUsage, "rules": rulesUsage, "statement": statementUsage, "evidence": evidenceUsage,
 	"snapshots": snapshotsUsage, "flows": flowsUsage, "update": updateUsage, "init": initUsage,
-	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic}
+	"snapshot": snapshotUsage, "compare": compareUsage, "report": reportUsage, "import": importTopic,
+	"run": runUsage, "demo": demoUsage}
+
+// topicAliases are the other names of the commands with a topic.
+var topicAliases = map[string]string{"snap": "snapshot", "cmp": "compare", "check": "run", "ls": "snapshots"}
+
+const runUsage = `Usage:
+  rhythm soundcheck run <url> [flags]
+
+Checks the site once, with no snapshot and no comparison. It lists every
+problem it found on each page. --fail-on error (or warning, notice) makes it
+exit 1 when there is one. Every flag in rhythm soundcheck help applies.
+`
+
+const demoUsage = `Usage:
+  rhythm soundcheck demo [--eaa] [--keep] [--open] [--plain] [-q]
+
+Serves a small built-in bakery site on 127.0.0.1 at a free port this binary
+picks, snapshots it while it works, breaks it the way an update can (a PHP
+warning, a JS error, a dead button, a missing title, a 404 and a contact
+form that answers 500) and shows the comparison. It takes under a minute.
+
+The snapshot and the run go to a temporary folder, never your project's
+.soundcheck. The folder is removed afterwards.
+
+  --eaa      also a keyboard trap and a dialog that loses focus, found by
+             EAA mode
+  --keep     keep the temporary folder and print where it is (the report;
+             with --eaa also the statement draft and evidence pack)
+  --open     open the HTML report in the browser (keeps the folder)
+
+It also takes --browser, --no-download, --no-sandbox and --show-browser.
+The demo never contacts anything but its own site on 127.0.0.1.
+`
 
 const snapshotsUsage = `Usage:
   rhythm soundcheck snapshots [--json]
@@ -573,9 +607,23 @@ there.
 // topic returns a command's own usage, for `help <command>`.
 func topic(name string) (string, bool) {
 	name = strings.TrimSpace(name)
+	if a, ok := topicAliases[name]; ok {
+		name = a
+	}
 	if gen, ok := generatedTopics[name]; ok {
 		return gen(), true
 	}
 	u, ok := helpTopics[name]
 	return u, ok
+}
+
+// topicNames lists every help topic, sorted, for the answer to an
+// unknown one.
+func topicNames() []string {
+	names := slices.Collect(maps.Keys(helpTopics))
+	for n := range generatedTopics {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return names
 }

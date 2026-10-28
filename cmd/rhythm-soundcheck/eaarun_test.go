@@ -376,7 +376,7 @@ Keyboard: Tab walk on every page (up to 150 stops), menus and dialogs; 2 key flo
 Never: submits a form, places an order or types into fields outside key flows
 Levels: none: the interact module is off
 Viewports: desktop, mobile
-Production: none listed: submit and flows run on any site
+Production: none listed: nothing in this run submits forms
 `
 	if out != want {
 		t.Errorf("header:\n%s\nwant\n%s", out, want)
@@ -389,6 +389,29 @@ Production: none listed: submit and flows run on any site
 	_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--eaa", "--modules", "+interact", "--level", "flows", "--plain")
 	if strings.Contains(out, "Never:") || !strings.Contains(out, "2 key flows (keyboard-checkout.yaml, keyboard-contact.yml) run") {
 		t.Errorf("--eaa with --level flows:\n%s", out)
+	}
+}
+
+// Under --eaa with key flows the header says what the levels do: the
+// interact module is off, so nothing is clicked or submitted outside key
+// flows. A snapshot's stored submit level isn't listed.
+func TestEAALevelsHeader(t *testing.T) {
+	cfg := config.Default()
+	cfg.Modules = []string{"health", "a11y", "keyboard"}
+	cfg.Interactions.Levels = config.Cumulative([]string{"inspect", "click", "flows"})
+	if got := levels(cfg); got != "no clicks or submits (the interact module is off); key flows run" {
+		t.Errorf("levels: %s", got)
+	}
+	if got := production(cfg); got != "none listed: only key flows with keyboard: send submit, on a local or private address or with --staging" {
+		t.Errorf("production: %s", got)
+	}
+	snap := model.Options{Modules: cfg.Modules, Levels: cfg.Interactions.Levels, Viewports: []string{"desktop"}}
+	if got := snapshotSettings("before", snap); got != `from snapshot "before" (modules health,a11y,keyboard; levels flows; viewports desktop)` {
+		t.Errorf("settings: %s", got)
+	}
+	snap.Modules = append(snap.Modules, "interact")
+	if got := snapshotSettings("before", snap); !strings.Contains(got, "levels inspect,click,submit,flows") {
+		t.Errorf("settings with interact: %s", got)
 	}
 }
 

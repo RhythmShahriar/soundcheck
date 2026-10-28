@@ -124,13 +124,27 @@ func joinChanges(changes []settingChange) string {
 	return strings.Join(parts, "; ")
 }
 
+// appliedLevels are the snapshot's interaction levels that did something.
+// Without the interact module only the flows level applies (the keyboard
+// module's key flows), so a snapshot taken under --eaa doesn't list
+// submit, which the stored levels hold only because flows brings it.
+func appliedLevels(o model.Options) []string {
+	if len(o.Modules) == 0 || slices.Contains(o.Modules, "interact") {
+		return o.Levels
+	}
+	if slices.Contains(o.Levels, "flows") && slices.Contains(o.Modules, "keyboard") {
+		return []string{"flows"}
+	}
+	return nil
+}
+
 // snapshotSettings describes a snapshot's settings for the Settings line.
 func snapshotSettings(name string, o model.Options) string {
 	var parts []string
 	for _, p := range []struct {
 		name string
 		v    []string
-	}{{"modules", o.Modules}, {"levels", o.Levels}, {"viewports", o.Viewports}, {"browser", engineList(o.Engine)}} {
+	}{{"modules", o.Modules}, {"levels", appliedLevels(o)}, {"viewports", o.Viewports}, {"browser", engineList(o.Engine)}} {
 		if len(p.v) > 0 {
 			parts = append(parts, p.name+" "+list(p.v))
 		}

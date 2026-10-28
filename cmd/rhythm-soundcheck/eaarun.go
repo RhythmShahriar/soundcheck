@@ -307,7 +307,7 @@ func (s *session) writeProgress(dir string) {
 // statement: in the config file lacks what the draft needs.
 func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change, unstable model.UnstableSet) error {
 	return draftTo(path, s.cfg, statement.Input{Run: run, Pages: pages, Ignored: ignored, Unstable: unstable, Summary: sum,
-		Version: version, Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
+		Version: shownVersion(), Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
 }
 
 // draftTo writes the Markdown statement draft of in to path in the

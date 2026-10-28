@@ -449,7 +449,7 @@ func TestEAAJSONSnapshotAndCompare(t *testing.T) {
 	if eaa == nil || eaa["evidence_note"] != model.EvidenceNote {
 		t.Fatalf("snapshot eaa block lacks the evidence note: %v", doc["eaa"])
 	}
-	for _, list := range []string{"failed", "no_failures_found", "not_tested"} {
+	for _, list := range []string{"failed", "no_failures_found", "not_tested", "needs_person"} {
 		if _, ok := eaa["criteria"].(map[string]any)[list].([]any); !ok {
 			t.Errorf("criteria.%s isn't a list: %v", list, eaa["criteria"])
 		}
@@ -515,5 +515,26 @@ func TestRun12StillRenders(t *testing.T) {
 	out := b.String()
 	if !strings.Contains(out, "Form elements must have labels") || strings.Contains(out, "wcag:") || strings.Contains(out, "Automated and keyboard") {
 		t.Errorf("1.2 run rendered with EAA lines or without its a11y issue:\n%s", out)
+	}
+}
+
+// The JSON splits the criteria the tests didn't judge as the text does:
+// not_tested holds the ones whose tests didn't finish and needs_person
+// the ones only a person can judge.
+func TestEAAJSONNotTestedSplit(t *testing.T) {
+	run := eaaSnapshot()
+	// 1.4.3 has tests; here they didn't finish.
+	run.EAA.Criteria.NoFailuresFound = slices.DeleteFunc(slices.Clone(run.EAA.Criteria.NoFailuresFound), func(id string) bool { return id == "1.4.3" })
+	run.EAA.Criteria.NotTested = append(slices.Clone(run.EAA.Criteria.NotTested), "1.4.3")
+	crit := jsonOf(t, Result{Run: run})["eaa"].(map[string]any)["criteria"].(map[string]any)
+	if got := fmt.Sprint(crit["not_tested"]); got != "[1.4.3]" {
+		t.Errorf("not_tested = %s, want [1.4.3]", got)
+	}
+	person := crit["needs_person"].([]any)
+	if len(person) != 23 || slices.Contains(person, any("1.4.3")) {
+		t.Errorf("needs_person = %v, want the 23 criteria only a person can judge", person)
+	}
+	if len(run.EAA.Criteria.NotTested) != 24 {
+		t.Error("JSON changed the summary it wrote")
 	}
 }

@@ -5,9 +5,14 @@ Setup, commit messages and the review process are shared by every Rhythm tool an
 This page covers what is particular to Soundcheck: how a module plugs into a run.
 
 ```sh
+make build   # bin/rhythm-soundcheck; --version says dev (<next release>+<commit>)
 make hooks   # Conventional Commits check
 make check   # lint + tests (browser tests need Chrome or Chromium)
 ```
+
+A build from source names the release it is heading for: `nextRelease` in
+[cmd/rhythm-soundcheck/version.go](cmd/rhythm-soundcheck/version.go). The pull request that starts
+a release's work raises it.
 
 ## Modules
 

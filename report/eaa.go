@@ -105,6 +105,10 @@ func pathLine(path []string, plain bool) string {
 func issueExtras(check string, ids, en, path []string, plain bool) []string {
 	var lines []string
 	if l := wcagLine(ids, en); l != "" {
+		if plain {
+			// Commas already part the ids, so a semicolon parts the lists.
+			l = strings.ReplaceAll(l, " · ", "; ")
+		}
 		lines = append(lines, l)
 	}
 	if strings.HasPrefix(check, "keyboard/") {
@@ -196,7 +200,22 @@ func restCounts(e *model.EAASummary) string {
 		parts = append(parts, fmt.Sprintf("%d not tested (their tests %s)", len(unrun), why))
 	}
 	parts = append(parts, fmt.Sprintf("%d need a person", len(person)))
+	// A page whose tests didn't finish is said even when other pages
+	// tested the same criteria: its own problems may be missing.
+	if n := notAuditedPages(e); n > 0 {
+		parts = append(parts, plural(n, "page not fully tested", "pages not fully tested"))
+	}
 	return strings.Join(parts, " · ")
+}
+
+// notAuditedPages counts the pages with a module whose tests didn't
+// finish.
+func notAuditedPages(e *model.EAASummary) int {
+	seen := map[string]bool{}
+	for _, n := range e.NotAudited {
+		seen[n.Path] = true
+	}
+	return len(seen)
 }
 
 // newCriteria lists the criteria with failures whose every counted

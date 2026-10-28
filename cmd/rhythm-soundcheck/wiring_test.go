@@ -573,11 +573,22 @@ func TestHelpTopics(t *testing.T) {
 		"compare":  "rhythm-soundcheck compare [url] [flags]",
 		"report":   "rhythm-soundcheck report --client --brand <agency.yaml>",
 		"import":   "rhythm-soundcheck import <backstop.json> [--site <url>] [--force]",
+		"demo":     "rhythm-soundcheck demo [--eaa] [--keep]",
+		"run":      "rhythm-soundcheck run <url> [flags]",
+		"cmp":      "rhythm-soundcheck compare [url] [flags]",
 	} {
 		code, out, _ := runCLI(t, "help", cmd)
 		if code != exitOK || !strings.Contains(out, want) || strings.Contains(out, "Requests and browser:") {
 			t.Errorf("help %s: exit %d\n%s", cmd, code, out)
 		}
+	}
+	// An unknown topic says so and lists the topics, exit 2.
+	if code, out, errOut := runCLI(t, "help", "nosuch"); code != exitUsage || out != "" ||
+		!strings.Contains(errOut, `no help on "nosuch"; topics are accept, compare, demo, eaa,`) {
+		t.Errorf("help nosuch: exit %d %q %q", code, out, errOut)
+	}
+	if code, out, _ := runCLI(t, "help", "eaa", "--help"); code != exitOK || !strings.Contains(out, "EAA") {
+		t.Errorf("help eaa --help: exit %d", code)
 	}
 	if _, out, _ := runCLI(t, "help", "report"); !strings.Contains(out, "agency.yaml takes four keys") || !strings.Contains(out, "accent: ") ||
 		!strings.Contains(out, "contact: ") {

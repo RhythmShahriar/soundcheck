@@ -86,7 +86,7 @@ Production: none listed: submit and flows run on any site
 Modules: health, echo
 Levels: none: the interact module is off
 Viewports: desktop, mobile
-Production: none listed: submit and flows run on any site
+Production: none listed: nothing in this run submits forms
 `},
 	} {
 		_, out, _ := runCLI(t, append([]string{"run", "127.0.0.1:20260", "--echo=" + echo, "--plain"}, tc.args...)...)
