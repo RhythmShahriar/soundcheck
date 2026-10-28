@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -321,6 +322,51 @@ func countName(k string, n int) string {
 	return k
 }
 
+// siteLog makes the site's folder dir inside the fleet folder root for
+// the owner only, then opens its soundcheck.log there, 0600. The log
+// holds the run's warnings, which name an --eaa run's page paths and
+// widgets (security M6). Neither folder nor the log may be a symlink: a
+// link planted in the fleet folder mustn't turn the log into a write
+// anywhere else on the machine.
+func siteLog(root, dir string) (*os.File, error) {
+	for _, d := range []string{root, dir} {
+		if err := os.Mkdir(d, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+		fi, err := os.Lstat(d)
+		if err != nil {
+			return nil, err
+		}
+		if !fi.IsDir() {
+			return nil, fmt.Errorf("refusing to write through a symlink or file: %s", d)
+		}
+		if fi.Mode().Perm() != 0o700 {
+			if err := os.Chmod(d, 0o700); err != nil { //nolint:gosec // a folder: 0700 is owner-only
+				return nil, err
+			}
+		}
+	}
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = r.Close() }()
+	const name = "soundcheck.log"
+	if fi, err := r.Lstat(name); err == nil && !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("refusing to write through a symlink: %s", filepath.Join(dir, name))
+	}
+	f, err := r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	// A log left by an earlier fleet run keeps its old mode otherwise.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
 // runSite runs Soundcheck for one site in its own folder.
 func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []string) Result {
 	dir := filepath.Join(root, s.Name)
@@ -334,9 +380,11 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []
 		r.Duration = float64(time.Since(start).Milliseconds())
 		return r
 	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	logf, err := siteLog(root, dir)
+	if err != nil {
 		return fail(exitError, err.Error())
 	}
+	defer func() { _ = logf.Close() }()
 	args := []string{mode, "--json"}
 	if s.Config != "" {
 		args = append(args, "--config", filepath.Join(base, s.Config))
@@ -348,11 +396,6 @@ func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []
 		args = append(args, "--eaa")
 	}
 	args = append(append(args, extra...), s.URL)
-	logf, err := os.Create(filepath.Join(dir, "soundcheck.log")) //nolint:gosec // inside our own fleet folder
-	if err != nil {
-		return fail(exitError, err.Error())
-	}
-	defer func() { _ = logf.Close() }()
 	var stdout bytes.Buffer
 	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // the Soundcheck binary, with argv from sites.yaml and no shell
 	cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = dir, childEnv(os.Environ(), s.EnvPrefix), &stdout, logf

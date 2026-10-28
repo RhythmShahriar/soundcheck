@@ -302,6 +302,51 @@ func TestRunSnapshot(t *testing.T) {
 	if page.Sites[1].Report != "one/.soundcheck/snapshots/2026-10-24T10-00-00/report.html" {
 		t.Errorf("snapshot report = %q", page.Sites[1].Report)
 	}
+	// fleet.html carries --eaa counts and makes no request when opened
+	// (PRD L2, 9.3), like report.html.
+	const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">`
+	if html := readFile(t, filepath.Join(filepath.Dir(p), Folder, "fleet.html")); !strings.Contains(html, csp) || strings.Contains(html, "<script") {
+		t.Errorf("fleet.html has no CSP meta or a script:\n%s", html[:min(len(html), 400)])
+	}
+	// The site folders are the owner's only and the log, which holds an
+	// --eaa run's warnings (page paths, widget names), is 0600 (M6).
+	for _, d := range []string{Folder, filepath.Join(Folder, "one"), filepath.Join(Folder, "two")} {
+		if fi, err := os.Stat(filepath.Join(filepath.Dir(p), d)); err != nil || fi.Mode().Perm() != 0o700 {
+			t.Errorf("%s: %v, want 0700", d, modeOf(fi, err))
+		}
+	}
+	if fi, err := os.Stat(filepath.Join(filepath.Dir(p), Folder, "one", "soundcheck.log")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("soundcheck.log: %v, want 0600", modeOf(fi, err))
+	}
+}
+
+// modeOf is a file's permissions for a failure message, or the error.
+func modeOf(fi os.FileInfo, err error) any {
+	if err != nil {
+		return err
+	}
+	return fi.Mode().Perm()
+}
+
+// The fleet refuses to write a site's log through a symlink planted in
+// its folder.
+func TestRunRefusesLinkedLog(t *testing.T) {
+	p := writeSites(t, "- {name: one, url: http://ok.test/}\n")
+	dir := filepath.Join(filepath.Dir(p), Folder, "one")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere.txt")
+	if err := os.WriteFile(elsewhere, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(dir, "soundcheck.log")); err != nil {
+		t.Skip("no symlinks here: ", err)
+	}
+	_, _ = Run(context.Background(), os.Args[0], p, Snapshot, 0, nil, &bytes.Buffer{})
+	if got := readFile(t, elsewhere); got != "keep" {
+		t.Errorf("the log was written through a symlink: %q", got)
+	}
 }
 
 func TestRunCanceled(t *testing.T) {

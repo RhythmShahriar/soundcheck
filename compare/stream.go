@@ -89,12 +89,20 @@ func Stream(ctx context.Context, cc *check.CompareContext, before, after PageSou
 		}
 		path := after.Path(i)
 		bs, as := live(before, path), live(after, path)
-		if len(bs) == 0 {
-			continue
-		}
 		a, err := after.Page(i)
 		if err != nil {
 			return nil, err
+		}
+		if len(bs) == 0 {
+			if !diffed[path] {
+				diffed[path] = true
+				_, aaud, err := issuesOf(after, as, a)
+				if err != nil {
+					return nil, err
+				}
+				d.newPage(path, aaud, diffedMod)
+			}
+			continue
 		}
 		b, err := before.Page(bs[0])
 		if err != nil {

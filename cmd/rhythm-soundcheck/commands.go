@@ -189,6 +189,10 @@ func (s *session) start(target string) {
 	}
 	s.notice = update.StartCheck(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
+	if s.cfg.EAA {
+		// An --eaa run masks the start URL in every output (security M3).
+		target = echolink.RedactTarget(target)
+	}
 	s.view.Header(shownVersion(), target)
 	if s.siteFrom != "" {
 		s.view.Step("Site", "from "+s.siteFrom+" ("+s.siteKey+")")
@@ -210,11 +214,12 @@ func (s *session) start(target string) {
 
 // levels describes the interaction levels for the run header. With the
 // interact module off its levels don't apply; only the keyboard module's
-// key flows still read the flows level.
+// key flows still read the flows level, so --level flows reads "flows
+// (key flows only; ...)" rather than "none".
 func levels(cfg config.Config) string {
 	switch {
 	case !cfg.Has("interact") && cfg.Has("keyboard") && cfg.Level("flows"):
-		return "no clicks or submits (the interact module is off); key flows run"
+		return "flows (key flows only; the interact module is off)"
 	case !cfg.Has("interact"):
 		return "none: the interact module is off"
 	case len(cfg.Interactions.Levels) == 0:
@@ -834,7 +839,8 @@ func (s *session) trend(run *model.Run) []float64 {
 	}
 	var out []float64
 	for _, e := range entries {
-		if e.Target == run.Target && e.LCP > 0 {
+		// An --eaa run's entry keeps its target masked (history.Target).
+		if (e.Target == run.Target || e.Target == history.Target(run)) && e.LCP > 0 {
 			out = append(out, e.LCP)
 		}
 	}
@@ -1216,7 +1222,7 @@ func cmdReport(s *session) int {
 	case s.o.brand != "":
 		return s.fail(cli.Usagef("--brand goes with --client"))
 	}
-	s.view.Header(shownVersion(), run.Target)
+	s.view.Header(shownVersion(), report.ShownTarget(run))
 	return s.finish(res, "")
 }
 
@@ -1287,7 +1293,7 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		if dir == latest {
 			mark = "  (latest)"
 		}
-		fmt.Fprintf(stdout, "%-24s %-6d %-12s %s%s\n", n, len(r.Pages), report.Ago(r.Started), r.Target, mark)
+		fmt.Fprintf(stdout, "%-24s %-6d %-12s %s%s\n", n, len(r.Pages), report.Ago(r.Started), report.ShownTarget(r), mark)
 	}
 	return exitOK
 }
@@ -1314,7 +1320,7 @@ func snapshotsJSON(w io.Writer, st store.Store, names []string) error {
 		if r, err := store.LoadRun(dir); err != nil {
 			e.Error = err.Error()
 		} else {
-			e.Created, e.Site, e.Pages, e.Version = r.Started.UTC().Format(time.RFC3339), r.Target, len(r.Pages), r.Version
+			e.Created, e.Site, e.Pages, e.Version = r.Started.UTC().Format(time.RFC3339), report.ShownTarget(r), len(r.Pages), r.Version
 		}
 		out = append(out, e)
 	}

@@ -446,6 +446,65 @@ steps:
 	}
 }
 
+// The canary sweep for the start URL: a snapshot, a compare and the
+// listings of a site started at a page whose path holds a token and
+// whose query holds a campaign id write neither anywhere, except the
+// stored run (run.json, pages.jsonl), which compare visits again by it.
+// The target heads every report, the PR comment and history.jsonl.
+func TestEAACanaryTarget(t *testing.T) {
+	needBrowser(t)
+	if testing.Short() {
+		t.Skip("runs Chrome")
+	}
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("CI", "1")
+	c := newCanaries(t, "path-token", "utm", "cookie", "login-password")
+	site, _ := canarySite(t, c, "tester", c["login-password"])
+	writeConfig(t, `statement:
+  owner: Example Coffee Ltd
+  website: https://shop.example
+  contact:
+    email: access@shop.example
+`)
+	if err := os.Mkdir("out", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := site.URL + "/reset/" + c["path-token"] + "/?utm=" + c["utm"]
+	printed := map[string]string{}
+	runs := [][]string{
+		append([]string{"snapshot", target, "--eaa", "--name", "before", "--verbose", "-o", "out/s.json", "-o", "out/s.md", "-o", "out/s.html"}, eaaCommon...),
+		append([]string{"compare", "--eaa", "--verbose", "-o", "out/c.json", "-o", "out/c.md", "-o", "out/c.html", "-o", "out/c.xml"}, eaaCommon...),
+		{"snapshots"},
+		{"snapshots", "--json"},
+		{"statement", "-o", "out/st.md", "-o", "out/st.html", "-o", "out/st.json"},
+	}
+	for _, args := range runs {
+		code, out, errOut := runCLI(t, args...)
+		what := strings.Join(args[:min(2, len(args))], " ")
+		printed[what+" stdout"], printed[what+" stderr"] = out, errOut
+		if code != exitOK && code != exitFindings {
+			t.Fatalf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	if report, err := os.ReadFile(filepath.Join("out", "c.md")); err != nil || !strings.Contains(string(report), "/reset/•••••/") {
+		t.Errorf("out/c.md doesn't name the masked target, so the canaries weren't in play: %v\n%s", err, report)
+	}
+	var stored []string
+	for _, h := range c.sweep(t, printed, ".soundcheck", "out") {
+		name, _, _ := strings.Cut(h, ": ")
+		if base := path.Base(name); base == "run.json" || base == "pages.jsonl" {
+			stored = append(stored, h)
+			continue
+		}
+		t.Errorf("start URL canary written: %s", h)
+	}
+	if len(stored) == 0 {
+		t.Error("the stored run lost the start URL; compare can't visit it again")
+	}
+}
+
 // The sweep finds a canary in a file, in a nested folder or in printed
 // text; it skips screenshots.
 func TestCanarySweepFinds(t *testing.T) {

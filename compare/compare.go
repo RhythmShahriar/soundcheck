@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -74,7 +75,7 @@ func collect() (warn func(string), all func() []string) {
 func start(cc *check.CompareContext, version string, pages int, warnings []string, droppedBefore, dropped int) *model.Comparison {
 	out := &model.Comparison{
 		Schema: model.Schema, Tool: "rhythm-soundcheck", Version: version, Created: time.Now().UTC(),
-		Before: ref(cc.Before, cc.BeforeDir), After: ref(cc.After, cc.AfterDir), Pages: pages,
+		Before: ref(cc.Before, cc.BeforeDir, cc.After.Options.EAA), After: ref(cc.After, cc.AfterDir, cc.After.Options.EAA), Pages: pages,
 	}
 	// The run's own notes (a skipped leak test, unreadable flows) belong in
 	// the comparison too, so JSON readers see them.
@@ -98,12 +99,15 @@ func start(cc *check.CompareContext, version string, pages int, warnings []strin
 // finish, an a11y rule one run didn't apply or an element past the
 // per-rule cap) in the comparison's Ignored list and adds their
 // warnings. Ignore rules add theirs to the list later (ApplyIgnore).
+//
+// A module's own warning about a page a not-checked note names is
+// dropped: the note says it already (see dropCovered).
 func aside(out *model.Comparison, ignored []model.Change, notes []string) {
 	if len(ignored) > 0 {
 		out.Ignored = append(out.Ignored, ignored...)
 		Sort(out.Ignored)
 	}
-	out.Warnings = append(out.Warnings, notes...)
+	out.Warnings = dropCovered(append(out.Warnings, notes...))
 }
 
 // compared drops the issue changes of modules that didn't run in both
@@ -192,8 +196,16 @@ func plural(n int) string {
 	return fmt.Sprintf("%d pages", n)
 }
 
-func ref(r *model.Run, dir string) model.RunRef {
-	return model.RunRef{Target: r.Target, Name: r.Name, Dir: dir, Started: r.Started}
+// ref points at run r stored in dir. Under --eaa its start URL is kept
+// as the reports show it (echolink.RedactTarget): comparison.json lands
+// in CI artifacts like they do. Only the stored run needs the URL as
+// typed, to visit the site again.
+func ref(r *model.Run, dir string, eaa bool) model.RunRef {
+	target := r.Target
+	if eaa {
+		target = echolink.RedactTarget(target)
+	}
+	return model.RunRef{Target: target, Name: r.Name, Dir: dir, Started: r.Started}
 }
 
 // Issues diffs the issues of two runs. Issues are matched by key on the
@@ -232,6 +244,8 @@ func diffIssues(before, after *model.Run) *issueDiff {
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
 			d.page(path, bi, ai, aa[path], gaps(path, ba[path], aa[path], diffed, listed), d.guard(bi, ba[path], aa[path]))
+		} else {
+			d.newPage(path, aa[path], diffed)
 		}
 	}
 	d.site(before.Issues, after.Issues)
@@ -346,6 +360,13 @@ func (d *issueDiff) page(path string, before, after []model.Issue, audits map[st
 		return m
 	}
 	b, a := byKey(before), byKey(after)
+	// Every module the run couldn't audit here gets its note, as the run
+	// says it, not only those with issues set aside.
+	for _, g := range gaps {
+		if g.now {
+			d.notes[g.note] = true
+		}
+	}
 	add := func(class string, i model.Issue) {
 		x := issueAt{issue: i, pages: []string{path}}
 		if gap, ok := gaps.of(i.Check); ok {
@@ -387,6 +408,14 @@ func (d *issueDiff) page(path string, before, after []model.Issue, audits map[st
 		if _, ok := a[k]; !ok {
 			add(model.Fixed, i)
 		}
+	}
+}
+
+// newPage notes the modules whose audit didn't finish on a page only
+// the later run has (see newPageNotes).
+func (d *issueDiff) newPage(path string, after map[string]model.Audit, ran func(string) bool) {
+	for _, n := range newPageNotes(path, after, ran) {
+		d.notes[n] = true
 	}
 }
 

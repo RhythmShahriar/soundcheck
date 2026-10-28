@@ -4,6 +4,7 @@
 package compare
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
@@ -29,6 +30,7 @@ type unaudited map[string]auditGap
 type auditGap struct {
 	reason string // "not checked on this page: a11y timed out"
 	note   string // the comparison's warning
+	now    bool   // the later run's own audit didn't finish
 }
 
 // gaps works out the unaudited modules of the page at path from both
@@ -58,9 +60,10 @@ func gaps(path string, before, after map[string]model.Audit, ran, listed func(st
 		b, inBefore := before[m]
 		a, inAfter := after[m]
 		var gap model.Audit
+		now := false
 		switch {
 		case inAfter && !a.Finished():
-			gap = a
+			gap, now = a, true
 		case !inAfter && slices.Contains(auditModules, m) && listed(m):
 			gap = model.Audit{Status: model.AuditSkipped, Reason: "not audited"}
 		case inBefore && !b.Finished():
@@ -78,9 +81,54 @@ func gaps(path string, before, after map[string]model.Audit, ran, listed func(st
 		out[m] = auditGap{
 			reason: fmt.Sprintf("%s: %s %s", model.NotCheckedReason, m, statusWord(gap.Status)),
 			note:   fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed", path, m, reason),
+			now:    now,
 		}
 	}
 	return out
+}
+
+// newPageNotes are the warnings for a page only the later run has whose
+// audits didn't finish, worded like the run's own not-checked lines:
+// there is nothing in the snapshot to keep.
+func newPageNotes(path string, after map[string]model.Audit, ran func(string) bool) []string {
+	var out []string
+	for _, m := range slices.Sorted(maps.Keys(after)) {
+		a := after[m]
+		if !ran(m) || a.Finished() {
+			continue
+		}
+		out = append(out, fmt.Sprintf("not checked: %s (%s: %s)", path, m, cmp.Or(a.Reason, statusWord(a.Status))))
+	}
+	return out
+}
+
+// dropCovered leaves out of warnings a module's own warning about a
+// page and module a not-checked note already names: "a11y: /big/:
+// reflow check at 320 px: timed out after 10s" next to "not checked:
+// /big/ (a11y: ...)". One note per page and module is enough.
+func dropCovered(warnings []string) []string {
+	covered := map[string]bool{} // "a11y: /big/: "
+	for _, w := range warnings {
+		rest, ok := strings.CutPrefix(w, "not checked: ")
+		if !ok {
+			continue
+		}
+		path, rest, ok := strings.Cut(rest, " (")
+		if !ok {
+			continue
+		}
+		if mod, _, ok := strings.Cut(rest, ":"); ok {
+			covered[mod+": "+path+": "] = true
+		}
+	}
+	if len(covered) == 0 {
+		return warnings
+	}
+	return slices.DeleteFunc(warnings, func(w string) bool {
+		mod, rest, _ := strings.Cut(w, ": ")
+		path, _, _ := strings.Cut(rest, ": ")
+		return covered[mod+": "+path+": "]
+	})
 }
 
 // statusWord words an audit's status for a reason: "a11y timed out".

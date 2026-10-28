@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -20,37 +21,48 @@ import (
 // (pages, issues, changes, warnings, the summary) is masked the same
 // way. r itself isn't changed: the stored run keeps the paths compare
 // and resume visit again. A result without --eaa is returned as it is.
+//
+// The start URL (the run's target and the comparison's run references)
+// is shown without its query string and with a token in its path masked
+// (see echolink.RedactTarget): it heads every report and the PR comment.
 func Masked(r Result) Result {
 	if r.Run == nil || (eaaOf(r) == nil && !r.Run.Options.EAA) {
 		return r
 	}
 	rep := pathMasker(r)
-	if rep == nil {
-		return r
-	}
 	run := *r.Run
-	run.Pages = slices.Clone(run.Pages)
-	for i := range run.Pages {
-		maskPage(&run.Pages[i], rep)
-	}
-	run.Issues = maskIssues(run.Issues, rep)
-	run.Warnings = maskAll(run.Warnings, rep)
-	if run.EAA != nil {
-		run.EAA = maskEAA(run.EAA, rep)
+	run.Target = echolink.RedactTarget(run.Target)
+	if rep != nil {
+		run.Pages = slices.Clone(run.Pages)
+		for i := range run.Pages {
+			maskPage(&run.Pages[i], rep)
+		}
+		run.Issues = maskIssues(run.Issues, rep)
+		run.Warnings = maskAll(run.Warnings, rep)
+		if run.EAA != nil {
+			run.EAA = maskEAA(run.EAA, rep)
+		}
 	}
 	r.Run = &run
 	if c := r.Comparison; c != nil {
 		cc := *c
-		cc.Changes = maskChanges(c.Changes, rep)
-		cc.Ignored = maskChanges(c.Ignored, rep)
-		cc.Warnings = maskAll(c.Warnings, rep)
-		if cc.EAA != nil {
-			cc.EAA = maskEAA(cc.EAA, rep)
+		cc.Before.Target, cc.After.Target = echolink.RedactTarget(c.Before.Target), echolink.RedactTarget(c.After.Target)
+		if rep != nil {
+			cc.Changes = maskChanges(c.Changes, rep)
+			cc.Ignored = maskChanges(c.Ignored, rep)
+			cc.Warnings = maskAll(c.Warnings, rep)
+			if cc.EAA != nil {
+				cc.EAA = maskEAA(cc.EAA, rep)
+			}
 		}
 		r.Comparison = &cc
 	}
 	return r
 }
+
+// ShownTarget is run's start URL as its outputs show it: masked as
+// Masked masks it for an --eaa run, as it is otherwise.
+func ShownTarget(run *model.Run) string { return history.Target(run) }
 
 // pathMasker replaces each page path and URL of r that has a token in
 // it with its masked form, or is nil when none has: the run's pages and

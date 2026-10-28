@@ -244,7 +244,10 @@ func newCriteria(c *model.Comparison, e *model.EAASummary) []string {
 
 // openBefore is how many accessibility and keyboard issues were open at
 // the snapshot: the ones open now, less the NEW and BROKE ones, plus
-// the FIXED ones.
+// the FIXED ones. Issues found now on a page whose audit didn't finish
+// are set aside as not checked (model.NotCheckedReason) but still
+// counted as open now; the NEW and BROKE ones among them weren't open
+// at the snapshot either.
 func openBefore(c *model.Comparison, now int) int {
 	n := now
 	for _, ch := range c.Changes {
@@ -256,6 +259,12 @@ func openBefore(c *model.Comparison, now int) int {
 			n--
 		case model.Fixed:
 			n++
+		}
+	}
+	for _, ch := range c.Ignored {
+		if accessibilityCheck(ch.Check) && (ch.Class == model.New || ch.Class == model.Broke) &&
+			strings.HasPrefix(ch.Reason, model.NotCheckedReason) {
+			n--
 		}
 	}
 	return max(0, n)

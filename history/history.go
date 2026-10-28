@@ -128,7 +128,7 @@ type PageMetrics struct {
 // New makes the entry for a run, compared with a snapshot when c isn't
 // nil.
 func New(run *model.Run, c *model.Comparison) Entry {
-	e := Entry{Schema: Schema, At: run.Started.UTC(), Kind: KindRun, Name: run.Name, Target: run.Target,
+	e := Entry{Schema: Schema, At: run.Started.UTC(), Kind: KindRun, Name: run.Name, Target: Target(run),
 		Version: run.Version, Pages: len(run.Pages), Issues: map[string]int{}, EAA: run.Options.EAA}
 	if run.Name != "" {
 		e.Kind = KindSnapshot
@@ -283,6 +283,16 @@ func pageAccessibility(e *Entry, run *model.Run, unstable model.UnstableSet) {
 		}
 		delete(at, path) // a path listed twice counts once, as the timings do
 	}
+}
+
+// Target is run's start URL as the history keeps it: an --eaa run's
+// without its query string and with a token in its path masked, as its
+// reports show it (security M3).
+func Target(run *model.Run) string {
+	if run.Options.EAA {
+		return echolink.RedactTarget(run.Target)
+	}
+	return run.Target
 }
 
 // pagePath is a page path as the history keeps it: a token in the path

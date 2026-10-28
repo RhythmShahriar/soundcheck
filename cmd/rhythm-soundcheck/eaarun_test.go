@@ -390,6 +390,13 @@ Production: none listed: nothing in this run submits forms
 	if strings.Contains(out, "Never:") || !strings.Contains(out, "2 key flows (keyboard-checkout.yaml, keyboard-contact.yml) run") {
 		t.Errorf("--eaa with --level flows:\n%s", out)
 	}
+	// --level flows without the interact module: key flows run and the
+	// Levels line says so, rather than "none".
+	_, out, _ = runCLI(t, "run", "127.0.0.1:20260", "--eaa", "--level", "flows", "--plain")
+	if !strings.Contains(out, "2 key flows (keyboard-checkout.yaml, keyboard-contact.yml) run") ||
+		!strings.Contains(out, "\nLevels: flows (key flows only; the interact module is off)\n") {
+		t.Errorf("--eaa --level flows without interact:\n%s", out)
+	}
 }
 
 // Under --eaa with key flows the header says what the levels do: the
@@ -399,7 +406,7 @@ func TestEAALevelsHeader(t *testing.T) {
 	cfg := config.Default()
 	cfg.Modules = []string{"health", "a11y", "keyboard"}
 	cfg.Interactions.Levels = config.Cumulative([]string{"inspect", "click", "flows"})
-	if got := levels(cfg); got != "no clicks or submits (the interact module is off); key flows run" {
+	if got := levels(cfg); got != "flows (key flows only; the interact module is off)" {
 		t.Errorf("levels: %s", got)
 	}
 	if got := production(cfg); got != "none listed: only key flows with keyboard: send submit, on a local or private address or with --staging" {

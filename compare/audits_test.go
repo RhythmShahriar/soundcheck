@@ -270,3 +270,40 @@ func TestModulesAddedByEAA(t *testing.T) {
 		t.Errorf("without --eaa: warnings = %q", c.Warnings)
 	}
 }
+
+// Every module the run couldn't audit on a page gets a not-checked note,
+// as the run lists it, even with no issue set aside: a keyboard walk
+// that timed out on a page without keyboard issues still left it
+// unchecked. A page only the run has gets one worded like the run's.
+// The module's own warning about that page is dropped: one note per
+// page and module.
+func TestNotCheckedWithoutIssues(t *testing.T) {
+	label := a11yIssue("label", "#email")
+	opts := model.Options{Modules: []string{"a11y", "keyboard"}}
+	done := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditOK}}
+	walk := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditTimeout, Reason: "stopped after 60 s"}}
+	before := &model.Run{Options: opts, Pages: []model.Page{{Path: "/big/", Audits: done}, {Path: "/", Audits: done}}}
+	after := &model.Run{Options: opts, Pages: []model.Page{
+		{Path: "/big/", Issues: []model.Issue{label}, Audits: walk},
+		{Path: "/", Audits: done},
+		{Path: "/new/", Audits: walk},
+	}, Warnings: []string{
+		"keyboard: /big/: stopped after 60 s; the rest of the page wasn't walked",
+		"keyboard: /new/: stopped after 60 s; the rest of the page wasn't walked",
+		"a11y: /: reflow check at 320 px: timed out after 10s",
+	}}
+	c := both(t, before, after)
+	want := []string{
+		"a11y: /: reflow check at 320 px: timed out after 10s",
+		"not checked: /big/ (keyboard: stopped after 60 s); its issues are kept from the snapshot, not counted as fixed",
+		"not checked: /new/ (keyboard: stopped after 60 s)",
+	}
+	got := slices.Clone(c.Warnings)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("warnings =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if len(c.Changes) != 1 || c.Changes[0].Check != "a11y/label" {
+		t.Errorf("changes = %+v", c.Changes)
+	}
+}

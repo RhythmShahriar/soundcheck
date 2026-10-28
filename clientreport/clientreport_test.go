@@ -107,6 +107,20 @@ func TestGoldenComparison(t *testing.T) {
 	}
 }
 
+// The client report carries the HTML report's no-network policy (PRD
+// L2, 9.3): it holds the --eaa accessibility section and must make no
+// request when opened, so no script or remote image can run.
+func TestClientReportCSP(t *testing.T) {
+	const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">`
+	got := render(t, fixture(t), brand(t))
+	if !strings.Contains(got, csp) {
+		t.Errorf("the client report has no CSP meta:\n%s", got[:min(len(got), 400)])
+	}
+	if strings.Contains(got, "<script") {
+		t.Error("the client report has a script its CSP blocks")
+	}
+}
+
 func TestPlainLanguage(t *testing.T) {
 	got := render(t, fixture(t), brand(t))
 	for _, want := range []string{

@@ -605,3 +605,23 @@ func TestNotCheckedOnce(t *testing.T) {
 		t.Errorf("the unfinished audit is told %d times:\n%s", n, b.String())
 	}
 }
+
+// The open count before a comparison doesn't count issues the snapshot
+// didn't have: a page whose audit didn't finish now keeps its new
+// findings aside as not checked, yet they are open now only. A snapshot
+// with 0 issues reads "open issues 0 to 20", not "20 to 20".
+func TestOpenBeforeNotChecked(t *testing.T) {
+	c := &model.Comparison{}
+	for i := range 20 {
+		c.Ignored = append(c.Ignored, model.Change{Class: model.New, Check: "a11y/color-contrast", Key: fmt.Sprint("k", i),
+			Reason: model.NotCheckedReason + ": a11y timed out", Pages: []string{"/a11y/big.php"}})
+	}
+	// Kept from the snapshot: open then and now. An ignore rule's NEW
+	// change isn't counted open now (the summary skips it) nor here.
+	c.Ignored = append(c.Ignored,
+		model.Change{Class: model.Fixed, Check: "a11y/label", Reason: model.NotCheckedReason + ": a11y timed out"},
+		model.Change{Class: model.New, Check: "a11y/region", Reason: "ignore rule 1"})
+	if got := openBefore(c, 21); got != 1 {
+		t.Errorf("openBefore = %d, want 1", got)
+	}
+}

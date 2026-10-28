@@ -23,7 +23,7 @@ func pick(stdout, stderr io.Writer) int {
 	var last string
 	if dir, err := st.Snapshot(""); err == nil {
 		if r, err := store.LoadRun(dir); err == nil {
-			last = fmt.Sprintf("%q of %s, %s", r.Name, r.Target, report.Ago(r.Started))
+			last = fmt.Sprintf("%q of %s, %s", r.Name, report.ShownTarget(r), report.Ago(r.Started))
 		}
 	}
 

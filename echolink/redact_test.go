@@ -78,3 +78,20 @@ func TestRedactURLAndHeaders(t *testing.T) {
 		t.Error("Redact changed its input's headers")
 	}
 }
+
+// A start URL loses its query string and fragment and has a token in
+// its path masked.
+func TestRedactTarget(t *testing.T) {
+	token := strings.Repeat("ab12cd34ef", 4)
+	for in, want := range map[string]string{
+		"https://shop.test/":                              "https://shop.test/",
+		"https://shop.test/reset/" + token + "/":          "https://shop.test/reset/" + masked + "/",
+		"https://shop.test/embed.php?utm=abc#top":         "https://shop.test/embed.php",
+		"https://shop.test/reset/" + token + "/?k=1#frag": "https://shop.test/reset/" + masked + "/",
+		"": "",
+	} {
+		if got := RedactTarget(in); got != want {
+			t.Errorf("RedactTarget(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -55,3 +55,46 @@ func TestMaskedPaths(t *testing.T) {
 		t.Error("a result without --eaa was masked")
 	}
 }
+
+// An --eaa result's start URL is masked like its page paths, in every
+// format and in the comparison's run references: the target heads the
+// Markdown (posted as a PR comment), the HTML meta and the JSON. Its
+// query string is dropped. The stored run keeps the URL as typed.
+func TestMaskedTarget(t *testing.T) {
+	token := strings.Repeat("ab12cd34ef", 4)
+	canary := "cnry" + strings.Repeat("9f", 10)
+	target := "https://shop.test/reset/" + token + "/?utm=" + canary
+	for _, compared := range []bool{false, true} {
+		run := eaaClean()
+		run.Target = target
+		res := Result{Run: run}
+		if compared {
+			res.Comparison = &model.Comparison{Before: model.RunRef{Target: target}, After: model.RunRef{Target: target}, Pages: 1}
+		}
+		shown := Masked(res)
+		var all bytes.Buffer
+		NewPretty(&all, io.Discard, PrettyOptions{Plain: true, Verbose: true}).Summary(shown, "")
+		for _, f := range []func(io.Writer, Result) error{Markdown, JSON, HTML, func(w io.Writer, r Result) error { return JUnit(w, r, "") }} {
+			if err := f(&all, shown); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if strings.Contains(all.String(), token) || strings.Contains(all.String(), canary) {
+			t.Errorf("compared %t: an --eaa output shows the target's token or query", compared)
+		}
+		if !strings.Contains(all.String(), "https://shop.test/reset/•••••/") {
+			t.Errorf("compared %t: the masked target isn't shown", compared)
+		}
+		if run.Target != target || (compared && res.Comparison.Before.Target != target) {
+			t.Errorf("compared %t: Masked changed the stored result", compared)
+		}
+		if got := ShownTarget(run); got != "https://shop.test/reset/•••••/" {
+			t.Errorf("ShownTarget: %s", got)
+		}
+	}
+	plain := eaaClean()
+	plain.Options.EAA, plain.EAA, plain.Target = false, nil, target
+	if got := ShownTarget(plain); got != target {
+		t.Errorf("ShownTarget without --eaa: %s", got)
+	}
+}

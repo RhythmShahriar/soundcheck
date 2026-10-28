@@ -103,6 +103,17 @@ func RedactURL(u string) string {
 	})
 }
 
+// RedactTarget is a start URL as an --eaa result shows it: without its
+// query string or fragment, which can hold a campaign id or a session,
+// and with a token in its path (/reset/<token>/) masked the way RedactURL
+// masks a page path.
+func RedactTarget(u string) string {
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
+		u = u[:i]
+	}
+	return RedactURL(u)
+}
+
 // redactHeader masks a header value: all of it when the name says it's a
 // credential, otherwise what Redact would mask in text.
 func redactHeader(name, value string) string {

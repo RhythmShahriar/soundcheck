@@ -348,3 +348,21 @@ func TestEAACleanVerdictShown(t *testing.T) {
 		t.Errorf("table:\n%s", out.String())
 	}
 }
+
+// history.jsonl keeps an --eaa run's start URL as its reports show it:
+// no query string and a token in its path masked. A run without --eaa
+// keeps its URL as typed.
+func TestNewMasksEAATarget(t *testing.T) {
+	token := strings.Repeat("ab12cd34ef", 4)
+	canary := "cnry" + strings.Repeat("7e", 10)
+	target := "https://shop.test/reset/" + token + "/?utm=" + canary
+	run := eaaRun(t0, "", 0)
+	run.Target = target
+	if got := New(run, nil).Target; got != "https://shop.test/reset/•••••/" {
+		t.Errorf("--eaa target: %s", got)
+	}
+	run.Options.EAA = false
+	if got := New(run, nil).Target; got != target {
+		t.Errorf("target without --eaa: %s", got)
+	}
+}
