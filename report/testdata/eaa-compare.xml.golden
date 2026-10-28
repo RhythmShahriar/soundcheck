@@ -172,7 +172,7 @@
   <testsuite name="soundcheck.page /checkout/" tests="2" failures="1" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">
     <testcase name="/checkout/ · a11y" classname="soundcheck.a11y"></testcase>
     <testcase name="/checkout/ · keyboard" classname="soundcheck.keyboard">
-      <failure message="Keyboard focus is trapped: Card number" type="error">check: keyboard/trap&#xA;wcag: 2.1.2 · EN 301 549 9.2.1.2&#xA;path: #billing_email &gt; #billing_phone &gt; #card-element &gt; div:nth-of-type(1) x4&#xA;source: #card-element &gt; div:nth-of-type(1)&#xA;detail: Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can&#39;t be reached.&#xA;fix: Let Tab move on from the field.</failure>
+      <failure message="Keyboard focus is trapped: Card number" type="error">check: keyboard/trap&#xA;wcag: 2.1.2 · EN 301 549 9.2.1.2&#xA;path: #billing_email then #billing_phone then #card-element &gt; div:nth-of-type(1) (4 times)&#xA;source: #card-element &gt; div:nth-of-type(1)&#xA;detail: Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can&#39;t be reached.&#xA;fix: Let Tab move on from the field.</failure>
     </testcase>
   </testsuite>
   <testsuite name="soundcheck.pages" tests="1" failures="0" errors="0" skipped="0" timestamp="2026-10-26T09:00:00Z">

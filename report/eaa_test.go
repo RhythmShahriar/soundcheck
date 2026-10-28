@@ -189,7 +189,7 @@ func TestEAAPlainLines(t *testing.T) {
 	out := b.String()
 	for _, want := range []string{
 		"[ERROR] Keyboard focus is trapped: Card number - /checkout/\n  source: #card-element > div:nth-of-type(1)\n  wcag: 2.1.2 · EN 301 549 9.2.1.2\n" +
-			"  path: #billing_email > #billing_phone > #card-element > div:nth-of-type(1) x4\n",
+			"  path: #billing_email then #billing_phone then #card-element > div:nth-of-type(1) (4 times)\n",
 		"[WARNING] Focus is lost after closing: Newsletter - /, /shop/, /about/ +35 more (38 pages)\n",
 		"  wcag: 1.3.1, 4.1.2 · EN 301 549 9.1.3.1, 9.4.1.2\n",
 	} {
@@ -227,7 +227,7 @@ func TestEAACompareLine(t *testing.T) {
 	var b bytes.Buffer
 	NewPretty(&b, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm soundcheck accept"}).Summary(r, "")
 	out := b.String()
-	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 22 had none found by these tests · 24 need a person · open issues 3 → 4 Something broke"
+	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 22 had none found by these tests · 24 need a person · open issues 3 to 4 Something broke"
 	if !strings.Contains(oneLine(out), want) {
 		t.Errorf("lacks %q:\n%s", want, out)
 	}
@@ -255,10 +255,11 @@ func TestPathLine(t *testing.T) {
 	}{
 		{nil, "", ""},
 		{[]string{"#a"}, "path: #a", "path: #a"},
-		{[]string{"#a", "#b", "#b", "#c"}, "path: #a > #b x2 > #c", "path: #a → #b ×2 → #c"},
-		{[]string{"1", "2", "3", "4", "5", "6", "7", "8"}, "path: 3 > 4 > 5 > 6 > 7 > 8", "path: 3 → 4 → 5 → 6 → 7 → 8"},
-		{[]string{"#x", "#x", "#x", "#x", "#x", "#x", "#x"}, "path: #x x6", "path: #x ×6"},
-		{[]string{"#a\x1b[2J", "#b"}, `path: #a\x1b[2J > #b`, `path: #a\x1b[2J → #b`},
+		{[]string{"main > ul > li", "main > ul > li", "#news"}, "path: main > ul > li (2 times) then #news", "path: main > ul > li ×2 → #news"},
+		{[]string{"#a", "#b", "#b", "#c"}, "path: #a then #b (2 times) then #c", "path: #a → #b ×2 → #c"},
+		{[]string{"1", "2", "3", "4", "5", "6", "7", "8"}, "path: 3 then 4 then 5 then 6 then 7 then 8", "path: 3 → 4 → 5 → 6 → 7 → 8"},
+		{[]string{"#x", "#x", "#x", "#x", "#x", "#x", "#x"}, "path: #x (6 times)", "path: #x ×6"},
+		{[]string{"#a\x1b[2J", "#b"}, `path: #a\x1b[2J then #b`, `path: #a\x1b[2J → #b`},
 	} {
 		if got := pathLine(tc.path, true); got != tc.plain {
 			t.Errorf("pathLine(%q, plain) = %q, want %q", tc.path, got, tc.plain)
@@ -438,6 +439,8 @@ func TestEAACleanCompareVerdict(t *testing.T) {
 	}{
 		{"eaa, none open", &model.EAASummary{}, "Nothing changed; no failures found by these tests"},
 		{"eaa, one open", &model.EAASummary{Open: 1}, "Nothing changed"},
+		{"eaa, set aside", &model.EAASummary{Criteria: model.EAACriteria{Failed: []model.CriterionCount{{ID: "1.4.3", Issues: 20, Pages: 1}}}},
+			"Nothing changed; 1 WCAG criterion has failures"},
 		{"no eaa", nil, "Nothing changed"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -445,5 +448,21 @@ func TestEAACleanCompareVerdict(t *testing.T) {
 				t.Errorf("verdict = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// A run or snapshot with no open problem says no failures only when no
+// criterion failed: findings an ignore rule set aside still fail theirs.
+func TestEAARunVerdictWithFailedCriteria(t *testing.T) {
+	run := eaaClean()
+	if got := runVerdict(run, nil); got != `Snapshot "eaa-1" saved; no failures found by these tests` {
+		t.Errorf("clean: %q", got)
+	}
+	run.EAA.Criteria.Failed = []model.CriterionCount{{ID: "1.4.3", Issues: 2, Pages: 1}, {ID: "2.4.7", Issues: 1, Pages: 1}}
+	if got := runVerdict(run, nil); got != `Snapshot "eaa-1" saved; 2 WCAG criteria have failures` {
+		t.Errorf("set aside: %q", got)
+	}
+	if got := runPanel(run, map[model.Level]int{}); strings.Contains(got, noFailuresVerdict) || !strings.Contains(got, "2 WCAG criteria have failures") {
+		t.Errorf("panel:\n%s", got)
 	}
 }

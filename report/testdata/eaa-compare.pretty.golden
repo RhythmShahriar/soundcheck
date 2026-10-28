@@ -23,6 +23,7 @@
 
     ✓  Focus is lost after closing: Newsletter                       38 pages
 
+  ! not checked: /catalog/ (a11y: axe-core timed out after 45s); its issues a…
   Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new)
   · 22 had none found by these tests · 24 need a person · open issues 3 → 4
  ╭──────────────────────────────────────────────────────────────╮
@@ -33,7 +34,6 @@
   Automated and keyboard tests find some accessibility problems, not all. This
   is evidence for your own review, not a statement that the site meets WCAG,
   EN 301 549 or the European Accessibility Act.
-  ! not checked: /catalog/ (a11y: axe-core timed out after 45s); its issues a…
 
   → full report: .soundcheck/snapshots/eaa-1/report.html
 

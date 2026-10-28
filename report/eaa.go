@@ -72,16 +72,18 @@ const pathStops = 6
 
 // pathLine is "path: #email → #phone → #card ×4": the last six focus
 // stops before a keyboard problem, with a stop repeated in a row
-// folded into one. Plain mode writes "path: #email > #phone > #card x4"
-// for screen readers and logs. It is "" without a path.
+// folded into one. Plain mode writes "path: #email then #phone then
+// #card (4 times)" for screen readers and logs: words, as ">" and a
+// trailing "x4" read as part of a CSS selector. It is "" without a
+// path.
 func pathLine(path []string, plain bool) string {
 	if len(path) == 0 {
 		return ""
 	}
 	path = path[max(0, len(path)-pathStops):]
-	arrow, times := " → ", " ×"
+	arrow, times, timesEnd := " → ", " ×", ""
 	if plain {
-		arrow, times = " > ", " x"
+		arrow, times, timesEnd = " then ", " (", " times)"
 	}
 	var parts []string
 	for i := 0; i < len(path); {
@@ -91,7 +93,7 @@ func pathLine(path []string, plain bool) string {
 		}
 		stop := Term(path[i])
 		if j-i > 1 {
-			stop += fmt.Sprintf("%s%d", times, j-i)
+			stop += fmt.Sprintf("%s%d%s", times, j-i, timesEnd)
 		}
 		parts = append(parts, stop)
 		i = j
@@ -151,7 +153,7 @@ func eaaTotal(e *model.EAASummary) int {
 // had none found by these tests · 24 need a person". A comparison adds
 // the criteria whose failures are all new and the open issues before
 // and after. It is "" for a result without EAA data.
-func accessibilityLine(r Result) string {
+func accessibilityLine(r Result, plain bool) string {
 	e := eaaOf(r)
 	if e == nil {
 		return ""
@@ -163,7 +165,11 @@ func accessibilityLine(r Result) string {
 			failed += " (" + strings.Join(termAll(ids), ", ") + " new)"
 		}
 		before, after := openBefore(c, e.Open), e.Open
-		open = fmt.Sprintf(" · open issues %d → %d", before, after)
+		arrow := "→"
+		if plain {
+			arrow = "to"
+		}
+		open = fmt.Sprintf(" · open issues %d %s %d", before, arrow, after)
 	}
 	return fmt.Sprintf("Accessibility: %s · %d had none found by these tests · %d need a person%s",
 		failed, len(e.Criteria.NoFailuresFound), len(e.Criteria.NotTested), open)
@@ -216,6 +222,17 @@ func openBefore(c *model.Comparison, now int) int {
 // issues: the tests found nothing, which isn't the same as nothing
 // being wrong.
 const noFailuresVerdict = "no failures found by these tests"
+
+// eaaVerdict is what an --eaa result with no open problem says: no
+// failures found by these tests when no criterion has one, else how
+// many criteria still have failures, from findings set aside by ignore
+// rules or kept from the snapshot for a page whose audit didn't finish.
+func eaaVerdict(e *model.EAASummary) string {
+	if n := len(e.Criteria.Failed); n > 0 {
+		return plural(n, "WCAG criterion has failures", "WCAG criteria have failures")
+	}
+	return noFailuresVerdict
+}
 
 // keyboardLine is the -v line of a page the keyboard module walked:
 // "keyboard: / 23 stops, 3 widgets (menu, dialog, details), 0.9s".

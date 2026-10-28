@@ -122,7 +122,7 @@ func TestEAAClientComparison(t *testing.T) {
 	c.Open = 7
 	res.Comparison = &model.Comparison{Schema: model.Schema, Pages: 4, EAA: &c}
 	got := render(t, res, Brand{Name: "Acme"})
-	if !strings.Contains(got, "<b>7</b><span>Accessibility problems found</span>") {
+	if !strings.Contains(got, "<b>7</b><span>Open accessibility problems</span>") {
 		t.Error("the comparison's summary isn't the one shown")
 	}
 }

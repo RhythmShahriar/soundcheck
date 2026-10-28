@@ -139,7 +139,7 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 	}
 	version := eaaVersion(e)
 	t := &htmlEAA{Version: version, Note: model.EvidenceNote, Statement: statementCommand,
-		Counts: strings.TrimPrefix(accessibilityLine(r), "Accessibility: ")}
+		Counts: strings.TrimPrefix(accessibilityLine(r, false), "Accessibility: ")}
 	for _, n := range e.NotAudited {
 		why := n.Reason
 		if why == "" {

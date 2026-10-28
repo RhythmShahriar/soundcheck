@@ -317,7 +317,7 @@ func accessOf(e *model.EAASummary) *access {
 		failTone = "bad"
 	}
 	a.Counts = []count{
-		{"Accessibility problems found", failTone, e.Open},
+		{"Open accessibility problems", failTone, e.Open},
 		{"Criteria with failures", failTone, len(e.Criteria.Failed)},
 		{"Criteria with none found by these tests", "note", len(e.Criteria.NoFailuresFound)},
 		{"Criteria a person needs to check", "note", len(e.Criteria.NotTested)},

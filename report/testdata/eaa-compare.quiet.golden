@@ -2,7 +2,7 @@
 [BROKE] Keyboard focus is trapped: Card number - /checkout/
   source: #card-element > div:nth-of-type(1)
   wcag: 2.1.2 · EN 301 549 9.2.1.2
-  path: #billing_email > #billing_phone > #card-element > div:nth-of-type(1) x4
+  path: #billing_email then #billing_phone then #card-element > div:nth-of-type(1) (4 times)
   Tab and Shift+Tab kept focus here for 4 presses; 3 focusable elements after it can't be reached.
   fix: Let Tab move on from the field.
   rhythm soundcheck accept be183701 if this is expected
@@ -15,7 +15,7 @@
 [FIXED] Focus is lost after closing: Newsletter - /, /shop/, /about/ +35 more (38 pages)
   source: #newsletter-close
   wcag: 2.4.3 · EN 301 549 9.2.4.3
-  path: #newsletter-open > #newsletter-close
+  path: #newsletter-open then #newsletter-close
 
 Automated and keyboard tests find some accessibility problems, not all. This is
 evidence for your own review, not a statement that the site meets WCAG,

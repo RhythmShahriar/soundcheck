@@ -448,11 +448,13 @@ func (p *Pretty) comparison(r Result, hints []string) {
 			parts = append(parts, fmt.Sprintf("%d %s", len(groups[class]), class))
 		}
 		fmt.Fprintln(p.w)
+		notChecked, rest := splitNotChecked(c.Warnings)
+		p.notes(notChecked)
 		p.accessibility(r)
 		fmt.Fprintf(p.w, "%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
 			snapshotName(c.Before), r.stats())
 		p.evidence(r, false)
-		p.notes(c.Warnings)
+		p.notes(rest)
 		p.hints(hints)
 		return
 	}
@@ -486,11 +488,13 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		p.evidence(r, false)
 		return
 	}
+	notChecked, rest := splitNotChecked(c.Warnings)
+	p.notes(notChecked)
 	p.accessibility(r)
 	fmt.Fprintln(p.w, comparePanel(c))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(fmt.Sprintf("compared with %s · %s", snapshotName(c.Before), r.stats())))
 	p.evidence(r, false)
-	p.notes(c.Warnings)
+	p.notes(rest)
 	p.hints(hints)
 	fmt.Fprintln(p.w)
 }
@@ -622,7 +626,7 @@ func (p *Pretty) notChecked(r Result) {
 
 // accessibility prints the counts line of an --eaa result.
 func (p *Pretty) accessibility(r Result) {
-	if l := accessibilityLine(r); l != "" {
+	if l := accessibilityLine(r, p.o.Plain); l != "" {
 		p.paragraph(l, bold)
 	}
 }
@@ -641,6 +645,20 @@ func (p *Pretty) evidence(r Result, gap bool) {
 }
 
 // notes prints run warnings, at most a few of each kind.
+// splitNotChecked takes the comparison warnings that name a page whose
+// audit didn't finish out of the rest: they are printed before the
+// Accessibility counts, which they qualify.
+func splitNotChecked(warnings []string) (notChecked, rest []string) {
+	for _, w := range warnings {
+		if strings.HasPrefix(w, "not checked: ") {
+			notChecked = append(notChecked, w)
+		} else {
+			rest = append(rest, w)
+		}
+	}
+	return notChecked, rest
+}
+
 func (p *Pretty) notes(lists ...[]string) {
 	var all []string
 	for _, l := range lists {
@@ -833,7 +851,9 @@ func issueLine(i model.Issue) string {
 
 // verdict is the one-line answer to "did my change break anything?".
 // An --eaa comparison with nothing changed and no open problem says what
-// the tests found, never that the site is clear.
+// the tests found, never that the site is clear: no failures only when
+// no criterion has one, else how many criteria fail (findings set
+// aside by ignore rules or an unfinished audit still fail theirs).
 func verdict(c *model.Comparison) string {
 	switch {
 	case c.Count(model.Broke) > 0:
@@ -843,7 +863,7 @@ func verdict(c *model.Comparison) string {
 	case c.Count(model.Changed)+c.Count(model.Slower) > 0:
 		return "Nothing broke; some pages changed"
 	case c.EAA != nil && c.EAA.Open == 0:
-		return "Nothing changed; " + noFailuresVerdict
+		return "Nothing changed; " + eaaVerdict(c.EAA)
 	}
 	return "Nothing changed"
 }
@@ -859,7 +879,7 @@ func runVerdict(r *model.Run, counts map[model.Level]int) string {
 	case counts[model.Warning] > 0:
 		return prefix + "a few warnings"
 	case counts[model.Notice] == 0 && r.EAA != nil:
-		return prefix + noFailuresVerdict
+		return prefix + eaaVerdict(r.EAA)
 	}
 	return prefix + "all clear"
 }
@@ -953,7 +973,10 @@ func runPanel(r *model.Run, counts map[model.Level]int) string {
 	if counts[model.Error]+counts[model.Warning]+counts[model.Notice] == 0 {
 		body = ui.Good.Render("✓ no problems found")
 		if r.EAA != nil {
-			body = ui.Good.Render(noFailuresVerdict)
+			body = ui.Good.Render(eaaVerdict(r.EAA))
+			if len(r.EAA.Criteria.Failed) > 0 {
+				body = lipgloss.NewStyle().Foreground(LevelColor(model.Warning)).Bold(true).Render(eaaVerdict(r.EAA))
+			}
 		}
 	}
 	return ui.Panel(head+"\n"+body, color)
