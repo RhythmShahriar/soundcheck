@@ -216,8 +216,8 @@ const ringTries = 2
 // ring measures one stop: two pictures blurred, one focused. A page can
 // move focus while the stop is pictured (a timer or a script that ends
 // late), so the picture of a stop that lost focus isn't judged: it is
-// taken again, and if focus goes again the stop counts as unstable, not
-// as one with no visible focus.
+// taken again. If focus goes again the stop counts as unstable, not as
+// one with no visible focus.
 func (w *walker) ring(ctx context.Context, i int, s Step) (Ring, error) {
 	for try := 1; ; try++ {
 		r, focused, err := w.ringOnce(ctx, i, s)

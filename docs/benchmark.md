@@ -347,7 +347,7 @@ Run on 2026-10-28 with rhythm-soundcheck dev (linux/amd64).
 
 ### False alarms on unchanged sites
 
-Every scenario good. Each round takes an `--eaa` snapshot and compares twice with nothing changed; the rounds marked by a scenario run on its pages with its flags, and there an accessibility warning or error in the snapshot itself counts too. Target: 0.
+Every scenario good. Each round takes an `--eaa` snapshot and compares twice with nothing changed; the rounds marked by a scenario run on its pages with its flags. On those pages an accessibility warning or error in the snapshot itself counts too. Target: 0.
 
 | Site | Rounds | Compares | Pages | False alarms | Errors |
 |---|---:|---:|---:|---:|---:|

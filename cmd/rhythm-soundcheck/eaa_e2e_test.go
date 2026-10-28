@@ -224,7 +224,7 @@ func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) 
 // canarySite serves a site that hides a canary in each place a run could
 // pick one up: a field's value, a data-* attribute, a link's query
 // string, a frame from another site, a cookie, an aria-label, a field
-// on the page behind the login, and in elements axe reports: a
+// on the page behind the login. Elements axe reports hold three more: a
 // prefilled textarea with no label, the selected option of a select
 // with no name and an email address in text with too little contrast. The frame is served by the second
 // server, reached as localhost so it is another site, not only another

@@ -100,8 +100,8 @@ func sockKey(pid, fd, decoded string) string {
 	return pid + ":" + fd
 }
 
-// outsideLoopback reads an strace -f -y log and lists every connection
-// to an address that isn't loopback, and every send on the socket
+// outsideLoopback reads an strace -f -y log. It lists every connection
+// to an address that isn't loopback plus every send on the socket
 // Chrome's IPv6 check connected. A call strace split across lines
 // ("<unfinished ...>" then "<... resumed>") is joined first.
 func outsideLoopback(t *testing.T, trace string) []string {

@@ -329,8 +329,8 @@ func storeRoot(dir string) string { return filepath.Dir(filepath.Dir(filepath.Cl
 // noQuery is a path without its query string or fragment, which can
 // hold session ids and reset keys.
 // cleanPath is a page path as the pack lists it: no query string or
-// fragment, and a token in the path (/reset/<token>/) or a one-time
-// code masked the way statement drafts and keyboard traces mask them.
+// fragment. A token in the path (/reset/<token>/) or a one-time code is
+// masked the way statement drafts and keyboard traces mask them.
 func cleanPath(p string) string {
 	if p == "" {
 		return p
