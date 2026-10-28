@@ -254,7 +254,7 @@ The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench
 
 **Caught 29 of 29 broken scenarios.** 1 more waits for a detector that isn't merged yet (0 of them caught already). **False alarms: 0 of 11 good scenarios, 0** in 60 `--eaa` compares of unchanged sites. Target (PRD 16.3): every broken scenario caught, none pending, no false alarm.
 
-Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
+Run on 2026-10-28 with rhythm-soundcheck dev (linux/amd64).
 
 ### Scenarios
 
@@ -288,7 +288,7 @@ Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
 | s74 | Page too big and busy for the audits to finish (plain PHP) (broken) | exit 3<br>and warning “not checked” (a11y)<br>and no FIXED | **caught** | merged | not run | not run | not run |
 | s75 | Dialog ignores Escape (plain PHP) (broken) | NEW keyboard/escape (keyboard)<br>and no any keyboard/trap | **caught** | merged | not run | not run | not run |
 | s76 | Focus handler reloads the page (plain PHP) (broken) | any keyboard/trap<br>or warning “keyboard: /a11y/reload-trap.php:” (keyboard) | **caught** | merged | not run | not run | not run |
-| s77 | Native dialog with showModal() (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **quiet** | merged | not run | not run | not run |
+| s77 | Native dialog with showModal() (hard good, plain PHP) (good) | nothing at or above NEW<br>and at least 1 widget tested (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **quiet** | merged | not run | not run | not run |
 | s78 | Custom modal done right (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/trap, any keyboard/focus-lost, any keyboard/dialog-focus | **quiet** | merged | not run | not run | not run |
 | s79 | Focus shown without an outline (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/no-focus-ring | **quiet** | merged | not run | not run | not run |
 | s80 | Visually hidden skip link that shows on focus (hard good) (good) | nothing at or above NEW (keyboard)<br>and no any keyboard/skip-link, any keyboard/focus-invisible, any keyboard/no-focus-ring | **quiet** | merged | not run | not run | not run |
@@ -300,7 +300,7 @@ Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
 | s86 | Checkout answers 500 under --eaa (broken) | BROKE health/ (health)<br>harness: statement | **caught** | merged | not run | not run | not run |
 | s87 | Snapshot from Soundcheck 1.2 compared with --eaa (plain PHP) (good) | warning “used the WCAG 2.0 rules”<br>and nothing at or above NEW (a11y)<br>and no NEW a11y/autocomplete-valid | **quiet** | merged | not run | not run | not run |
 | s88 | Page with side effects on GET and on focus (hard good, plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no NEW<br>harness: orders, requests | **quiet** | merged | not run | not run | not run |
-| s89 | Small site with no known accessibility problems (plain PHP) (good) | nothing at or above NEW (keyboard)<br>and no any a11y/, any keyboard/<br>harness: statement, requests | **quiet** | merged | not run | not run | not run |
+| s89 | Small site with no known accessibility problems (plain PHP) (good) | nothing at or above NEW<br>and at least 1 widget tested (keyboard)<br>and no any a11y/, any keyboard/<br>harness: statement, requests | **quiet** | merged | not run | not run | not run |
 
 **caught**: a broken scenario's problem was reported · **quiet**: a good scenario got no report it rules out · false alarm: a good scenario got one (for another tool: a violation in the second state that the first lacks) · missed · error: the tool failed · –: the tool has no result for that scenario · not run: the tool wasn't available
 
@@ -331,7 +331,7 @@ Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
 - **s74**: exit 3; warning: not checked: /a11y/big.php (a11y: reflow check at 320 px: context deadline exceeded); its issues are kept from the snapshot, not counted as fixed
 - **s75**: NEW keyboard/escape: Escape doesn't close it [#filters-open] (/a11y/noescape.php)
 - **s76**: warning: keyboard: /a11y/reload-trap.php: Tab stop 6 (body) left the page; the rest of the page wasn't walked
-- **s77**: nothing at or above NEW
+- **s77**: nothing at or above NEW; 1 widget tested
 - **s78**: nothing at or above NEW
 - **s79**: nothing at or above NEW
 - **s80**: nothing at or above NEW
@@ -343,7 +343,7 @@ Run on 2026-10-26 with rhythm-soundcheck dev (linux/amd64).
 - **s86**: BROKE health/status: Server error 500 (/checkout/)
 - **s87**: warning: note: snapshot "good" used the WCAG 2.0 rules; take a new snapshot to add the 2.1 rules; nothing at or above NEW
 - **s88**: nothing at or above NEW
-- **s89**: nothing at or above NEW
+- **s89**: nothing at or above NEW; 1 widget tested
 
 ### False alarms on unchanged sites
 
@@ -367,16 +367,16 @@ Issue keys of each round's snapshot against the first round's, for the same unch
 
 ### Cost
 
-16 cores, linux/amd64, Chrome 153.0.8010.52, axe-core 4.14.0 (tags wcag2a, wcag2aa, wcag21a, wcag21aa), 2026-10-26. Seconds per page, median / p95, over the control pass's pages of each site. A page visit is the time Soundcheck records for the page; the keyboard walk is counted apart. The a11y audit is a run with `--modules health,a11y` minus one with `--modules health`, page by page.
+16 cores, linux/amd64, Chrome 153.0.8010.52, axe-core 4.14.0 (tags wcag2a, wcag2aa, wcag21a, wcag21aa), 2026-10-28. Seconds per page, median / p95, over the control pass's pages of each site. A page visit is the time Soundcheck records for the page; the keyboard walk is counted apart. The a11y audit is a run with `--modules health,a11y` minus one with `--modules health`, page by page.
 
 | Measure | wp | php | Target (PRD 16.3) |
 |---|---:|---:|---|
-| Page visit, default run | 2.82 / 2.98 | 2.67 / 4.22 |  |
-| Page visit, `--eaa` run | 1.36 / 1.47 | 1.38 / 2.90 |  |
-| a11y audit per page | 0.07 / 0.87 | 0.00 / 0.02 | median at most 2 s |
-| Keyboard walk per page | 4.32 / 5.59 **over** | 1.17 / 3.60 | median at most 3 s |
-| Whole `--eaa` run ÷ default run | 0.7× (23 s ÷ 33 s) | 0.8× (24 s ÷ 32 s) | at most 3× |
-| One key flow (s70, `/checkout/`) | 1.4 s | | at most 15 s |
+| Page visit, default run | 2.78 / 2.92 | 2.69 / 4.26 |  |
+| Page visit, `--eaa` run | 1.43 / 1.61 | 1.32 / 2.86 |  |
+| a11y audit per page | 0.00 / 0.05 | 0.00 / 0.24 | median at most 2 s |
+| Keyboard walk per page | 5.79 / 8.12 **over** | 1.02 / 3.44 | median at most 3 s |
+| Whole `--eaa` run ÷ default run | 0.8× (26 s ÷ 32 s) | 0.6× (21 s ÷ 35 s) | at most 3× |
+| One key flow (s70, `/checkout/`) | 2.2 s | | at most 15 s |
 
 ### Coverage
 
