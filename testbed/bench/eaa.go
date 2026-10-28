@@ -172,7 +172,7 @@ func eaaScore(outcomes []Outcome) eaaTally {
 
 // eaaMark is the table cell of a result in the EAA section. On a good
 // scenario nothing broke: Soundcheck meeting the expectation stayed
-// quiet, and another tool "catching" (a violation in the second state
+// quiet; another tool "catching" (a violation in the second state
 // that the first lacks) raised a false alarm.
 func eaaMark(s Scenario, r Result, other bool) string {
 	if good(s) {

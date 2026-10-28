@@ -144,7 +144,7 @@ Before reporting BROKE or NEW, `compare` visits those pages again; a page whose 
 
 - `rhythm-soundcheck fleet sites.yaml snapshot|compare` checks every site in the file, a few at a time. It ranks them worst first in `.soundcheck-fleet/fleet.html`.
 - `rhythm-soundcheck report --client --brand agency.yaml -o client.html` writes a plain-language report with your name, logo and color, for a client. `agency.yaml` takes `name` (required), `logo` (a PNG, JPEG or SVG file in the same folder), `accent` (a hex color such as `"#0F766E"`; `color` works too) and `contact`.
-- `rhythm-soundcheck history` lists every snapshot, run and comparison with the site's LCP trend; the HTML report draws it too.
+- `rhythm-soundcheck history` lists every snapshot, run and comparison with the site's LCP trend; the HTML report draws it too. `--metric a11y` or `keyboard` shows the open accessibility or keyboard problems instead, `--page <path>` one page's figures and `--json` the series as JSON.
 - `rhythm-soundcheck wp-update <url> --wp "<wp-cli command>"` updates plugins with WP-CLI, compares after each (or halves the suspects with `--bisect`), names the plugin that broke the site and can roll it back with `--rollback`. It never runs on a site listed as production.
 
 `rhythm-soundcheck help <command>` explains each one.
