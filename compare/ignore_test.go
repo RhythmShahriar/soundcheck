@@ -241,8 +241,34 @@ func TestStaleIgnores(t *testing.T) {
 	if got := StaleIgnores(nil, day, gone, nil); got != nil {
 		t.Errorf("no rules: %v", got)
 	}
-	if got := StaleIgnores(rules[:1], day, nil, nil); !slices.Equal(got, []int{0}) {
+	// Without pages nothing was checked, so no rule looks fixed.
+	if got := StaleIgnores(rules[:1], day, nil, nil); len(got) != 0 {
 		t.Errorf("no pages: %v", got)
+	}
+}
+
+// A rule is stale only when the run checked a page it covers and that
+// page's audit of the rule's module finished: compare --snapshot big
+// never visited /a11y/widget.php, so the rule for it says nothing.
+func TestStaleIgnoresNeedsACheckedPage(t *testing.T) {
+	rules := []IgnoreRule{
+		{Check: "a11y/label", Pages: []string{"/a11y/widget.php"}},
+		{Check: "a11y/color-contrast", Pages: []string{"/a11y/big.php"}},
+		{Check: "keyboard/trap", Pages: []string{"/a11y/big.php"}},
+		{Check: "a11y/link-name"},
+	}
+	audits := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditTimeout}}
+	only := pagesOf(model.Page{Path: "/a11y/big.php", Audits: audits})
+	if got, want := StaleIgnores(rules, day, only, nil), []int{1, 3}; !slices.Equal(got, want) {
+		t.Errorf("stale = %v, want %v", got, want)
+	}
+	failed := pagesOf(model.Page{Path: "/a11y/widget.php", Error: "timeout"})
+	if got := StaleIgnores(rules, day, failed, nil); len(got) != 0 {
+		t.Errorf("a page that didn't load counts as checked: %v", got)
+	}
+	both := pagesOf(model.Page{Path: "/a11y/big.php", Audits: audits}, model.Page{Path: "/a11y/widget.php"})
+	if got, want := StaleIgnores(rules, day, both, nil), []int{0, 1, 3}; !slices.Equal(got, want) {
+		t.Errorf("stale with both pages = %v, want %v", got, want)
 	}
 }
 

@@ -206,22 +206,29 @@ func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page
 		return nil
 	}
 	hit := make([]bool, len(rules))
-	left := len(open)
+	// checked says the run checked a page the rule covers, so a rule
+	// whose pages weren't visited (or whose audit didn't finish there)
+	// isn't called stale: nothing says the problem is gone.
+	checked := make([]bool, len(rules))
 	match := func(i model.Issue, on func(IgnoreRule) bool) {
 		for _, n := range open {
 			if !hit[n] && rules[n].matches(i.Check, i.Title, i.Source) && on(rules[n]) {
 				hit[n] = true
-				left--
 			}
 		}
 	}
 	if pages != nil {
 		pages(func(p *model.Page) bool {
 			on := func(r IgnoreRule) bool { return r.onPage(p.Path) }
+			for _, n := range open {
+				if !checked[n] && on(rules[n]) && checkedFor(p, rules[n]) {
+					checked[n] = true
+				}
+			}
 			for _, i := range p.Issues {
 				match(i, on)
 			}
-			return left > 0
+			return true
 		})
 	}
 	for _, i := range site {
@@ -233,11 +240,26 @@ func StaleIgnores(rules []IgnoreRule, now time.Time, pages func(func(*model.Page
 	}
 	var out []int
 	for _, n := range open {
-		if !hit[n] {
+		if !hit[n] && checked[n] {
 			out = append(out, n)
 		}
 	}
 	return out
+}
+
+// checkedFor reports whether the run checked page p for what rule r
+// hides: the page loaded and, when it records an audit of the module the
+// rule's check belongs to (a11y for "a11y/label"), that audit finished.
+func checkedFor(p *model.Page, r IgnoreRule) bool {
+	if p.Error != "" || p.Canceled() {
+		return false
+	}
+	module, _, ok := strings.Cut(r.Check, "/")
+	if !ok || strings.ContainsAny(module, "*?[") {
+		return true
+	}
+	a, ok := p.Audits[module]
+	return !ok || a.Finished()
 }
 
 // builtinComparers are the shipped modules that report changes of their
