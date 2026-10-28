@@ -79,16 +79,18 @@ type tally struct {
 // version (run.Options.WCAG): pages yields the run's pages (they may
 // come from disk one by one; each is read once), site its site-level
 // issues and ignored the changes ignore rules and accepts left out. For
-// a comparison, run is the current run.
+// a comparison, run is the current run and unstable its UNSTABLE
+// changes.
 //
 // A criterion is failed when an issue that maps to it was found, each
 // finding counted once (see FindingKey). It is no failures found when a
 // test of it ran and found none. Any other is not tested: nothing tests
 // it, or the modules whose checks test it didn't run. Ignored findings
 // still count against their criteria (ignoring a problem doesn't fix
-// it) but not as open. Memory grows with the criteria and the findings,
-// not the pages.
-func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.Issue, ignored []model.Change) model.EAASummary {
+// it) but not as open. An UNSTABLE finding (seen once, gone when its
+// page was checked again) isn't counted at all. Memory grows with the
+// criteria and the findings, not the pages.
+func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.Issue, ignored []model.Change, unstable model.UnstableSet) model.EAASummary {
 	version := orDefault(run.Options.WCAG)
 	t := tables()[version]
 	s := model.EAASummary{WCAG: version, EN301549: EN301549(version), Interrupted: run.Interrupted, EvidenceNote: model.EvidenceNote,
@@ -113,7 +115,10 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		return tallies[id]
 	}
 	open := map[string]bool{}
-	add := func(i model.Issue) []string {
+	add := func(i model.Issue, path string) []string {
+		if unstable.Has(i, path) {
+			return nil
+		}
 		key := FindingKey(i)
 		if (strings.HasPrefix(i.Check, "a11y/") || strings.HasPrefix(i.Check, "keyboard/")) && !skip[key] {
 			open[key] = true
@@ -125,7 +130,7 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		return crit
 	}
 	for _, i := range site {
-		for _, c := range add(i) {
+		for _, c := range add(i, "") {
 			for _, p := range i.Pages {
 				get(c).site[p] = true
 			}
@@ -142,7 +147,7 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		checked++
 		clear(onPage)
 		for _, i := range p.Issues {
-			for _, c := range add(i) {
+			for _, c := range add(i, p.Path) {
 				onPage[c] = true
 			}
 		}

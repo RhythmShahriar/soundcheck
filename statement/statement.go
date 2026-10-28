@@ -45,9 +45,10 @@ type Input struct {
 	// wcag.Summarize, so it must start over on every call (store.Pages
 	// does): a single-use iterator gives a draft with no pages.
 	Pages    func(func(*model.Page) bool)
-	Site     []model.Issue    // the run's site-level issues; nil is Run.Issues
-	Ignored  []model.Change   // changes ignore rules and accepts left out: listed with their reasons
-	Summary  model.EAASummary // wcag.Summarize of the run
+	Site     []model.Issue     // the run's site-level issues; nil is Run.Issues
+	Ignored  []model.Change    // changes ignore rules and accepts left out: listed with their reasons
+	Unstable model.UnstableSet // findings of the comparison's UNSTABLE changes: not counted or listed
+	Summary  model.EAASummary  // wcag.Summarize of the run
 	Owner    Owner
 	Version  string    // Soundcheck's version
 	Layout   string    // LayoutModel (the default) or LayoutService

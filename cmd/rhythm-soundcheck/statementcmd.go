@@ -338,10 +338,21 @@ func statementInput(dir, drawAs string) (statement.Input, error) {
 		run.Options.WCAG = drawAs
 	}
 	var ignored []model.Change
+	var unstable model.UnstableSet
+	snapDir := ""
 	if c, err := store.LoadComparison(dir); err == nil {
-		ignored = c.Ignored
+		ignored, unstable = c.Ignored, c.Unstable()
+		if c.Before.Name != "" {
+			snapDir, _ = store.Store{Root: filepath.Dir(filepath.Dir(filepath.Clean(dir)))}.Snapshot(c.Before.Name)
+		}
+	} else if filepath.Base(filepath.Dir(filepath.Clean(dir))) == "snapshots" {
+		snapDir = dir
 	}
-	return statement.Input{Run: run, Pages: pages, Ignored: ignored, Summary: wcag.Summarize(run, pages, run.Issues, ignored),
+	// Accepted problems are listed with the ignored ones. They count as
+	// open as compare counts them: they are part of the snapshot.
+	listed := append(slices.Clone(ignored), acceptedChanges(snapDir, pages, run.Issues)...)
+	return statement.Input{Run: run, Pages: pages, Ignored: listed, Unstable: unstable,
+		Summary: wcag.Summarize(run, pages, run.Issues, ignored, unstable),
 		Version: version, Now: time.Now(), Insecure: insecureRun(dir), Hide: statementHide()}, nil
 }
 
@@ -518,4 +529,51 @@ func absPath(path string) string {
 		return abs
 	}
 	return filepath.Clean(path)
+}
+
+// acceptedChanges lists the changes accepted into the snapshot in
+// snapDir that the run's pages still show, as the statement's
+// "Accepted or ignored in Soundcheck" section lists them: an accepted
+// problem is part of the snapshot's baseline, so the comparison never
+// reports it again, yet it is still there. Accept takes no reason, so
+// none is given; who accepted it isn't named either, as the statement
+// is published. One fixed since isn't listed.
+func acceptedChanges(snapDir string, pages func(func(*model.Page) bool), siteIssues []model.Issue) []model.Change {
+	if snapDir == "" {
+		return nil
+	}
+	info, err := store.LoadSnapshotInfo(snapDir)
+	if err != nil || len(info.Accepted) == 0 {
+		return nil
+	}
+	shows := map[string]bool{} // check|title|page of the run's issues
+	site := map[string]bool{}  // check|title of any issue
+	pages(func(p *model.Page) bool {
+		for _, i := range p.Issues {
+			shows[i.Check+"|"+i.Title+"|"+p.Path] = true
+			site[i.Check+"|"+i.Title] = true
+		}
+		return true
+	})
+	for _, i := range siteIssues {
+		site[i.Check+"|"+i.Title] = true
+	}
+	var out []model.Change
+	at := map[string]int{}
+	for _, a := range info.Accepted {
+		if a.Page != "" && !shows[a.Check+"|"+a.Title+"|"+a.Page] || a.Page == "" && !site[a.Check+"|"+a.Title] {
+			continue
+		}
+		i, ok := at[a.ID]
+		if !ok {
+			i = len(out)
+			at[a.ID] = i
+			out = append(out, model.Change{ID: a.ID, Check: a.Check, Title: a.Title,
+				Reason: "accepted into the snapshot on " + a.At.UTC().Format("2006-01-02") + "; no reason given"})
+		}
+		if a.Page != "" && !slices.Contains(out[i].Pages, a.Page) {
+			out[i].Pages = append(out[i].Pages, a.Page)
+		}
+	}
+	return out
 }

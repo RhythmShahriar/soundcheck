@@ -638,6 +638,53 @@ type RunRef struct {
 	Started time.Time `json:"started"`
 }
 
+// UnstableSet holds the findings of a comparison's UNSTABLE changes:
+// seen once, gone when their page was checked again. They aren't
+// counted as open problems or against a WCAG criterion.
+type UnstableSet map[string]map[string]bool // issue key: page paths
+
+// Unstable is the comparison's UNSTABLE changes as a set; nil for a nil
+// comparison or one without them.
+func (c *Comparison) Unstable() UnstableSet {
+	if c == nil {
+		return nil
+	}
+	var u UnstableSet
+	for _, ch := range c.Changes {
+		if ch.Class != Unstable {
+			continue
+		}
+		if u == nil {
+			u = UnstableSet{}
+		}
+		k := ch.Key
+		if k == "" {
+			k = IssueKey(ch.Check, ch.Title, ch.Source)
+		}
+		if u[k] == nil {
+			u[k] = map[string]bool{}
+		}
+		for _, p := range ch.Pages {
+			u[k][p] = true
+		}
+	}
+	return u
+}
+
+// Has reports whether issue i on the page at path is one of the set's
+// findings. A site issue (path "") matches by its key alone.
+func (u UnstableSet) Has(i Issue, path string) bool {
+	if len(u) == 0 {
+		return false
+	}
+	k := i.Key
+	if k == "" {
+		k = IssueKey(i.Check, i.Title, i.Source)
+	}
+	pages, ok := u[k]
+	return ok && (path == "" || len(pages) == 0 || pages[path])
+}
+
 // Count returns how many changes are in a class.
 func (c *Comparison) Count(class string) int {
 	n := 0

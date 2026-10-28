@@ -94,6 +94,9 @@ func Build(in Input) (*Draft, error) {
 		site = in.Run.Issues
 	}
 	for _, i := range site {
+		if in.Unstable.Has(i, "") {
+			continue
+		}
 		crit := wcag.IssueCriteria(i, version)
 		for _, p := range i.Pages {
 			note(crit, clean(p))
@@ -115,7 +118,9 @@ func Build(in Input) (*Draft, error) {
 		path := clean(p.Path)
 		checked[path] = true
 		for _, i := range p.Issues {
-			note(wcag.IssueCriteria(i, version), path)
+			if !in.Unstable.Has(i, p.Path) {
+				note(wcag.IssueCriteria(i, version), path)
+			}
 		}
 		for _, a := range p.Audits {
 			for _, h := range a.Frames {

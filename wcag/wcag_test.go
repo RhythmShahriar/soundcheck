@@ -73,11 +73,11 @@ func TestStandard(t *testing.T) {
 // Summarize always carries the version and the evidence sentence.
 func TestSummarize(t *testing.T) {
 	run := &model.Run{Options: model.Options{EAA: true, WCAG: "2.2"}}
-	s := Summarize(run, func(func(*model.Page) bool) {}, nil, nil)
+	s := Summarize(run, func(func(*model.Page) bool) {}, nil, nil, nil)
 	if s.WCAG != "2.2" || s.EN301549 != "V4.1.1" || s.EvidenceNote != model.EvidenceNote {
 		t.Errorf("Summarize = %+v", s)
 	}
-	if s := Summarize(&model.Run{}, func(func(*model.Page) bool) {}, nil, nil); s.WCAG != "2.0" || s.EN301549 != "" {
+	if s := Summarize(&model.Run{}, func(func(*model.Page) bool) {}, nil, nil, nil); s.WCAG != "2.0" || s.EN301549 != "" {
 		t.Errorf("a run before 1.3: %+v", s)
 	}
 }

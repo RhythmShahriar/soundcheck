@@ -35,6 +35,8 @@ var (
 	statementMD      = statement.Markdown
 	writeEvidence    = writePack
 	previousEvidence = evidence.Previous
+	keepEvidence     = evidence.Keep
+	rerecordEvidence = evidence.Rerecord
 	staleIgnores     = compare.StaleIgnores
 )
 
@@ -163,8 +165,9 @@ func (s *session) eaaResult(res *report.Result) string {
 	}
 	run := res.Run
 	var ignored []model.Change
-	if res.Comparison != nil {
-		ignored = res.Comparison.Ignored
+	var unstable model.UnstableSet
+	if c := res.Comparison; c != nil {
+		ignored, unstable = c.Ignored, c.Unstable()
 	}
 	if !s.checked {
 		return ""
@@ -184,8 +187,14 @@ func (s *session) eaaResult(res *report.Result) string {
 		return ""
 	}
 	s.staleNotes(pages, run.Issues)
+	// The draft lists accepted problems with the ignored ones.
+	if c := res.Comparison; c != nil && c.Before.Name != "" {
+		if snap, err := s.st.Snapshot(c.Before.Name); err == nil {
+			ignored = append(slices.Clone(ignored), acceptedChanges(snap, pages, run.Issues)...)
+		}
+	}
 	path := filepath.Join(res.Dir, eaaDir, draftFile)
-	if err := s.writeDraft(path, pages, run, sum, ignored); err != nil {
+	if err := s.writeDraft(path, pages, run, sum, ignored, unstable); err != nil {
 		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), path, err)
 		return ""
 	}
@@ -206,7 +215,7 @@ func eaaSummary(res *report.Result) (pages func(func(*model.Page) bool), sum mod
 		ignored = res.Comparison.Ignored
 	}
 	pages = storedPages(res.Dir, run)
-	sum = wcag.Summarize(run, pages, run.Issues, ignored)
+	sum = wcag.Summarize(run, pages, run.Issues, ignored, res.Comparison.Unstable())
 	run.EAA = &sum
 	if res.Comparison != nil {
 		res.Comparison.EAA = &sum
@@ -281,7 +290,7 @@ func (s *session) writeProgress(dir string) {
 
 // writeDraft writes the statement draft to path, with [TO DO]s where
 // statement: in the config file lacks what the draft needs.
-func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change) error {
+func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change, unstable model.UnstableSet) error {
 	owner, err := decodeOwner(s.cfg)
 	if err != nil {
 		return err
@@ -289,7 +298,7 @@ func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), ru
 	owner.Owner = cmpOr(owner.Owner, todoOwner)
 	owner.Website = cmpOr(owner.Website, todoWebsite)
 	owner.Contact.Email = cmpOr(owner.Contact.Email, todoEmail)
-	d, err := buildStatement(statement.Input{Run: run, Pages: pages, Ignored: ignored, Summary: sum, Owner: owner,
+	d, err := buildStatement(statement.Input{Run: run, Pages: pages, Ignored: ignored, Unstable: unstable, Summary: sum, Owner: owner,
 		Version: version, Layout: "model", Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
 	if err != nil {
 		return err

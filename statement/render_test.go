@@ -135,7 +135,7 @@ func summarize(run *model.Run) model.EAASummary {
 				return
 			}
 		}
-	}, nil, nil)
+	}, nil, nil, nil)
 }
 
 // render writes d in every format.

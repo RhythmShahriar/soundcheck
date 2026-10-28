@@ -38,7 +38,7 @@ func input(pages []model.Page, o Owner) Input {
 					return
 				}
 			}
-		}, nil, nil)}
+		}, nil, nil, nil)}
 }
 
 func audited() map[string]model.Audit {
@@ -334,5 +334,56 @@ func TestBuildCountsALabelOnce(t *testing.T) {
 	}
 	if r := row(d, "3.3.2"); r.Issues != 3 {
 		t.Errorf("3.3.2: %d issues, want 3", r.Issues)
+	}
+}
+
+// A finding of an UNSTABLE change isn't a problem found: its page isn't
+// listed under the criterion, which fails only on its other pages.
+func TestBuildLeavesOutUnstable(t *testing.T) {
+	ring := issue("a11y/focus-visible", "#news", "2.4.7")
+	pages := []model.Page{
+		{Path: "/live/", Status: 200, Audits: audited(), Issues: []model.Issue{ring}},
+		{Path: "/news/", Status: 200, Audits: audited(), Issues: []model.Issue{ring}},
+	}
+	in := input(pages, owner())
+	c := &model.Comparison{Changes: []model.Change{{Class: model.Unstable, Check: ring.Check, Source: ring.Source, Key: ring.Key, Pages: []string{"/live/"}}}}
+	in.Unstable = c.Unstable()
+	in.Summary = wcag.Summarize(in.Run, func(yield func(*model.Page) bool) {
+		for i := range in.Run.Pages {
+			if !yield(&in.Run.Pages[i]) {
+				return
+			}
+		}
+	}, nil, nil, in.Unstable)
+	d, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "2.4.7"); r.Result != ResultFailures || r.Pages != 1 || !slices.Equal(r.Paths, []string{"/news/"}) {
+		t.Errorf("2.4.7 = %+v", r)
+	}
+}
+
+// A known issue whose text has no closing punctuation gets a period
+// before its planned date; one that has it gets none.
+func TestKnownIssuePeriod(t *testing.T) {
+	for text, want := range map[string]string{
+		"Videos on the product pages have no captions": "Videos on the product pages have no captions. Planned to be fixed by 2027-03-31.",
+		"Videos have no captions!":                     "Videos have no captions! Planned to be fixed by 2027-03-31.",
+		"Videos have no captions.":                     "Videos have no captions. Planned to be fixed by 2027-03-31.",
+	} {
+		in := input([]model.Page{{Path: "/", Status: 200, Audits: audited()}}, owner())
+		in.Owner.KnownIssues = []KnownIssue{{Criterion: "1.2.2", Text: text, Until: "2027-03-31"}}
+		d, err := Build(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b strings.Builder
+		if err := Markdown(&b, d); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("%q: no %q in\n%s", text, want, b.String())
+		}
 	}
 }

@@ -136,8 +136,9 @@ func New(run *model.Run, c *model.Comparison) Entry {
 		}
 	}
 	e.LCP, e.TBT, e.TTFB = median(lcp), median(tbt), median(ttfb)
-	accessibility(&e, run)
-	pageAccessibility(&e, run)
+	unstable := c.Unstable()
+	accessibility(&e, run, unstable)
+	pageAccessibility(&e, run, unstable)
 	e.Verdict = Clean
 	switch {
 	case e.Issues[string(model.Error)] > 0:
@@ -164,8 +165,9 @@ func New(run *model.Run, c *model.Comparison) Entry {
 
 // accessibility fills an entry's a11y and keyboard counts when the run
 // had those modules on (--eaa turns both on): each distinct problem
-// once, however many pages it is on, as the reports count them.
-func accessibility(e *Entry, run *model.Run) {
+// once, however many pages it is on, as the reports count them. A
+// comparison's UNSTABLE findings aren't counted.
+func accessibility(e *Entry, run *model.Run, unstable model.UnstableSet) {
 	o := run.Options
 	a11y := o.EAA || slices.Contains(o.Modules, "a11y")
 	keyboard := o.EAA || slices.Contains(o.Modules, "keyboard")
@@ -178,6 +180,13 @@ func accessibility(e *Entry, run *model.Run) {
 	for _, i := range run.AllIssues() {
 		isA11y, isKey := strings.HasPrefix(i.Check, "a11y/"), strings.HasPrefix(i.Check, "keyboard/")
 		if !isA11y && !isKey {
+			continue
+		}
+		path := ""
+		if len(i.Pages) == 1 {
+			path = i.Pages[0]
+		}
+		if unstable.Has(i, path) {
 			continue
 		}
 		k := i.Key
@@ -212,7 +221,7 @@ func accessibility(e *Entry, run *model.Run) {
 // pageAccessibility fills the a11y and keyboard counts of each page in
 // the entry's PageSet, as accessibility does for the site: each distinct
 // problem on the page once.
-func pageAccessibility(e *Entry, run *model.Run) {
+func pageAccessibility(e *Entry, run *model.Run, unstable model.UnstableSet) {
 	if e.A11yOpen == nil && e.KeyboardOpen == nil {
 		return
 	}
@@ -229,7 +238,7 @@ func pageAccessibility(e *Entry, run *model.Run) {
 		var open, keys int
 		for _, is := range p.Issues {
 			isA11y, isKey := strings.HasPrefix(is.Check, "a11y/"), strings.HasPrefix(is.Check, "keyboard/")
-			if !isA11y && !isKey {
+			if !isA11y && !isKey || unstable.Has(is, p.Path) {
 				continue
 			}
 			if is.Key == "" {

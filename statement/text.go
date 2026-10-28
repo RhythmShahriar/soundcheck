@@ -186,6 +186,10 @@ func build(dr *Draft) *doc {
 		for _, k := range dr.KnownIssues {
 			l := line{strong(k.Criterion + " " + k.Title), text(": " + k.Text)}
 			if k.Until != "" {
+				// The date is a sentence of its own after the owner's text.
+				if t := strings.TrimSpace(k.Text); t != "" && !strings.ContainsAny(t[len(t)-1:], ".!?") {
+					l = append(l, text("."))
+				}
 				l = append(l, text(" Planned to be fixed by "+k.Until+"."))
 			}
 			items = append(items, l)

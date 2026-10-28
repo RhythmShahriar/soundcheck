@@ -264,3 +264,24 @@ func TestReadHistory12(t *testing.T) {
 		t.Errorf("1.2 lcp:\n%s", b.String())
 	}
 }
+
+// A comparison's UNSTABLE findings aren't counted as open or against
+// their criteria, on the page they were UNSTABLE on.
+func TestNewLeavesOutUnstable(t *testing.T) {
+	run := eaaRun(t0, "", 1)
+	trapPage := run.Pages[1].Path
+	c := &model.Comparison{Before: model.RunRef{Name: "good"}, Changes: []model.Change{{Class: model.Unstable,
+		Check: "keyboard/trap", Title: "Keyboard focus is trapped", Source: "#card", Pages: []string{trapPage}}}}
+	e := New(run, c)
+	if e.KeyboardOpen == nil || *e.KeyboardOpen != 0 || e.A11yByCriterion["2.1.2"] != 0 {
+		t.Errorf("unstable trap counted: keyboard %v, by criterion %v", e.KeyboardOpen, e.A11yByCriterion)
+	}
+	for _, p := range e.PageSet {
+		if p.Path == trapPage && (p.KeyboardOpen == nil || *p.KeyboardOpen != 0) {
+			t.Errorf("page %s keyboard %v", p.Path, p.KeyboardOpen)
+		}
+	}
+	if e := New(run, nil); *e.KeyboardOpen != 1 {
+		t.Errorf("without the comparison: keyboard %d", *e.KeyboardOpen)
+	}
+}

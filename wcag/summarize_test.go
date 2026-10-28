@@ -59,7 +59,7 @@ func TestSummarizeClean(t *testing.T) {
 	}
 	run := eaaRun()
 	run.KeyFlows = &model.KeyFlows{Run: 1, Skipped: []model.SkippedFlow{{File: "checkout.yaml", Reason: "needs --level flows"}}}
-	s := Summarize(run, each(pages), nil, nil)
+	s := Summarize(run, each(pages), nil, nil, nil)
 	if len(s.Criteria.Failed) != 0 || len(s.Criteria.NoFailuresFound) != 27 || len(s.Criteria.NotTested) != 23 || s.Open != 0 {
 		t.Errorf("clean: %d failed, %d no failures, %d not tested, %d open", len(s.Criteria.Failed), len(s.Criteria.NoFailuresFound), len(s.Criteria.NotTested), s.Open)
 	}
@@ -89,7 +89,7 @@ func TestSummarizeFindings(t *testing.T) {
 	ignored := []model.Change{{Check: "a11y/color-contrast", Source: "footer a", Reason: "new theme"}}
 	run := eaaRun()
 	run.Interrupted = true
-	s := Summarize(run, each(pages), site, ignored)
+	s := Summarize(run, each(pages), site, ignored, nil)
 	for id, want := range map[string]model.CriterionCount{
 		"1.4.3":  {ID: "1.4.3", Issues: 1, Pages: 3}, // ignored still counts as found
 		"2.1.2":  {ID: "2.1.2", Issues: 1, Pages: 1},
@@ -127,7 +127,7 @@ func TestSummarizeLabelOnce(t *testing.T) {
 		{Path: "/checkout/", Audits: ok(), Issues: []model.Issue{issue("a11y/label", "#billing_email", "4.1.2"), unlabeled, unnamed, issue("a11y/label", "#billing_phone", "4.1.2")}},
 		{Path: "/account/", Audits: ok(), Issues: []model.Issue{issue("a11y/label", "#billing_email", "4.1.2")}},
 	}
-	s := Summarize(eaaRun(), each(pages), nil, nil)
+	s := Summarize(eaaRun(), each(pages), nil, nil, nil)
 	if got, _ := failed(s, "4.1.2"); got.Issues != 2 || got.Pages != 2 {
 		t.Errorf("4.1.2: %+v, want 2 issues on 2 pages", got)
 	}
@@ -151,7 +151,7 @@ func TestSummarizeNotAudited(t *testing.T) {
 		{Path: "/error/", Audits: map[string]model.Audit{"a11y": {Status: model.AuditSkipped, Reason: "status 500"}, "keyboard": {Status: model.AuditError, Reason: "walk failed"}}},
 		{Path: "/", Audits: ok()},
 	}
-	s := Summarize(eaaRun(), each(pages), nil, nil)
+	s := Summarize(eaaRun(), each(pages), nil, nil, nil)
 	want := []model.NotAudited{
 		{Path: "/big/", Module: "a11y", Status: "timeout", Reason: "axe-core timed out after 45s"},
 		{Path: "/error/", Module: "a11y", Status: "skipped", Reason: "status 500"},
@@ -174,7 +174,7 @@ func TestSummarizeKeyboardSkipped(t *testing.T) {
 		"skipped on every page": {eaaRun(), skipped},
 	} {
 		run, ps := tc.run, []model.Page{{Path: "/", Audits: tc.audits}}
-		s := Summarize(run, each(ps), nil, nil)
+		s := Summarize(run, each(ps), nil, nil, nil)
 		for _, id := range []string{"2.1.2", "2.4.3", "2.4.7", "3.2.1", "3.3.1"} {
 			if !slices.Contains(s.Criteria.NotTested, id) {
 				t.Errorf("%s: %s isn't not tested", name, id)
@@ -194,7 +194,7 @@ func TestSummarizeWCAG22(t *testing.T) {
 	run := eaaRun()
 	run.Options.WCAG = "2.2"
 	pages := []model.Page{{Path: "/", Audits: ok(), Issues: []model.Issue{issue("keyboard/focus-obscured", "#x")}}}
-	s := Summarize(run, each(pages), nil, nil)
+	s := Summarize(run, each(pages), nil, nil, nil)
 	if got, ok := failed(s, "2.4.11"); !ok || got.Issues != 1 {
 		t.Errorf("2.4.11: %+v", s.Criteria.Failed)
 	}
@@ -226,7 +226,7 @@ func TestSummarizeMemory(t *testing.T) {
 			}
 		}
 	}
-	s := Summarize(eaaRun(), pages, nil, nil)
+	s := Summarize(eaaRun(), pages, nil, nil, nil)
 	if got, _ := failed(s, "1.1.1"); got.Issues != 500 || got.Pages != n {
 		t.Errorf("1.1.1: %+v", got)
 	}
@@ -240,7 +240,7 @@ func TestSummarizeMemory(t *testing.T) {
 // checked no page at all.
 func TestSummarizeNothingRan(t *testing.T) {
 	a11yOnly := []model.Page{{Path: "/", Audits: map[string]model.Audit{"a11y": {Status: model.AuditOK}}}}
-	s := Summarize(eaaRun(), each(a11yOnly), nil, nil)
+	s := Summarize(eaaRun(), each(a11yOnly), nil, nil, nil)
 	if s.Keyboard.PagesWalked != 0 {
 		t.Fatalf("walked %d", s.Keyboard.PagesWalked)
 	}
@@ -255,22 +255,47 @@ func TestSummarizeNothingRan(t *testing.T) {
 
 	// A walk with no audit recorded still counts as the keyboard run.
 	walked := []model.Page{{Path: "/", Audits: map[string]model.Audit{"a11y": {Status: model.AuditOK}}, Keyboard: &model.KeyboardSummary{Stops: 3}}}
-	if s := Summarize(eaaRun(), each(walked), nil, nil); !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
+	if s := Summarize(eaaRun(), each(walked), nil, nil, nil); !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
 		t.Errorf("walked without an audit: 2.1.2 not counted: %+v", s.Criteria)
 	}
 
 	// No audits at all: a11y didn't run either while interact ran on
 	// the one page.
 	bare := []model.Page{{Path: "/"}}
-	s = Summarize(eaaRun(), each(bare), nil, nil)
+	s = Summarize(eaaRun(), each(bare), nil, nil, nil)
 	for _, id := range []string{"1.1.1", "1.4.3", "2.1.2"} {
 		if !slices.Contains(s.Criteria.NotTested, id) {
 			t.Errorf("no audits: %s isn't not tested", id)
 		}
 	}
 
-	s = Summarize(eaaRun(), each(nil), nil, nil)
+	s = Summarize(eaaRun(), each(nil), nil, nil, nil)
 	if len(s.Criteria.NoFailuresFound) != 0 || len(s.Criteria.Failed) != 0 || len(s.Criteria.NotTested) != 50 {
 		t.Errorf("zero pages: %d failed, %d no failures, %d not tested", len(s.Criteria.Failed), len(s.Criteria.NoFailuresFound), len(s.Criteria.NotTested))
+	}
+}
+
+// An UNSTABLE finding (seen once, gone when the page was checked again)
+// counts neither as open nor against its criterion, on the page it was
+// UNSTABLE on. The same finding on another page still counts.
+func TestSummarizeLeavesOutUnstable(t *testing.T) {
+	ring := issue("a11y/focus-visible", "#news", "2.4.7")
+	trap := issue("keyboard/trap", "#card")
+	pages := []model.Page{
+		{Path: "/live/", Audits: ok(), Issues: []model.Issue{ring}},
+		{Path: "/", Audits: ok(), Issues: []model.Issue{trap}},
+	}
+	c := &model.Comparison{Changes: []model.Change{
+		{Class: model.Unstable, Check: ring.Check, Title: ring.Title, Source: ring.Source, Key: ring.Key, Pages: []string{"/live/"}},
+		{Class: model.New, Check: trap.Check, Title: trap.Title, Source: trap.Source, Key: trap.Key, Pages: []string{"/"}},
+	}}
+	s := Summarize(eaaRun(), each(pages), nil, nil, c.Unstable())
+	if _, ok := failed(s, "2.4.7"); ok || s.Open != 1 {
+		t.Errorf("unstable counted: open %d, failed %+v", s.Open, s.Criteria.Failed)
+	}
+	pages = append(pages, model.Page{Path: "/news/", Audits: ok(), Issues: []model.Issue{ring}})
+	s = Summarize(eaaRun(), each(pages), nil, nil, c.Unstable())
+	if got, _ := failed(s, "2.4.7"); got != (model.CriterionCount{ID: "2.4.7", Issues: 1, Pages: 1}) || s.Open != 2 {
+		t.Errorf("stable on another page: open %d, 2.4.7 %+v", s.Open, got)
 	}
 }
