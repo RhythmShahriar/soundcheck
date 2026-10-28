@@ -132,7 +132,8 @@ func (r Result) countKeys() []string {
 }
 
 // worse orders results worst first: by verdict, then by the most
-// serious counts, then by name.
+// serious counts, then, for --eaa sites, by open accessibility problems
+// and failed criteria, then by name.
 func worse(a, b Result) int {
 	if c := cmp.Compare(slices.Index(verdictOrder, a.Verdict), slices.Index(verdictOrder, b.Verdict)); c != 0 {
 		return c
@@ -145,7 +146,23 @@ func worse(a, b Result) int {
 			return c
 		}
 	}
+	if a.EAAOpen != nil || b.EAAOpen != nil || a.CriteriaFailed != nil || b.CriteriaFailed != nil {
+		if c := cmp.Compare(deref(b.EAAOpen), deref(a.EAAOpen)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(deref(b.CriteriaFailed), deref(a.CriteriaFailed)); c != 0 {
+			return c
+		}
+	}
 	return cmp.Compare(a.Site, b.Site)
+}
+
+// deref is *n, or 0 for a site without the count.
+func deref(n *int) int {
+	if n == nil {
+		return 0
+	}
+	return *n
 }
 
 // Run checks every site in the sites file with the Soundcheck binary bin,

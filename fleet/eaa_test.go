@@ -10,9 +10,12 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhythmShahriar/soundcheck/model"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")
@@ -220,5 +223,26 @@ func TestLabelEAAClean(t *testing.T) {
 	}
 	if strings.Contains(html, "<b>2</b> Clean") {
 		t.Errorf("fleet.html counts the --eaa site as Clean")
+	}
+}
+
+// Two clean --eaa sites: the one with open accessibility problems ranks
+// worse than the one without, whatever their names.
+func TestWorseRanksOpenEAAProblems(t *testing.T) {
+	n := func(v int) *int { return &v }
+	results := []Result{
+		{Site: "good", Kind: "comparison", Verdict: Clean, EAAOpen: n(0), CriteriaFailed: n(0)},
+		{Site: "zoom", Kind: "comparison", Verdict: Clean, EAAOpen: n(1), CriteriaFailed: n(1)},
+		{Site: "blog", Kind: "comparison", Verdict: Clean},
+		{Site: "alpha", Kind: "comparison", Verdict: Clean, EAAOpen: n(1), CriteriaFailed: n(3)},
+		{Site: "shop", Kind: "comparison", Verdict: Broke, Counts: map[string]int{model.Broke: 1}, EAAOpen: n(0), CriteriaFailed: n(0)},
+	}
+	slices.SortStableFunc(results, worse)
+	var got []string
+	for _, r := range results {
+		got = append(got, r.Site)
+	}
+	if want := []string{"shop", "alpha", "zoom", "blog", "good"}; !slices.Equal(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
 	}
 }
