@@ -4,6 +4,7 @@
 package main
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -332,5 +333,40 @@ func TestFleetEAA(t *testing.T) {
 	if code, _, errOut := runCLI(t, "fleet", "sites.yaml", "snapshot", "--wcag", "2"); code != exitUsage ||
 		errOut != "rhythm-soundcheck: --wcag (a11y.wcag): \"2\" isn't one of 2.0, 2.1, 2.2\n" {
 		t.Errorf("fleet --wcag 2: exit %d %q", code, errOut)
+	}
+}
+
+// An --eaa site that can't be reached is named masked in the error and
+// the settings, as the header names it: no path token, no query string.
+// net/http quotes the URL in full in its own error.
+func TestEAAUnreachableMasked(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	c := newCanaries(t, "path-token-for-reset", "query", "against-token-reset", "against-query")
+	closed := func() string {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := l.Addr().String()
+		_ = l.Close()
+		return "http://" + addr
+	}
+	site := closed() + "/reset/" + c["path-token-for-reset"] + "/?k=" + c["query"]
+	against := closed() + "/reset/" + c["against-token-reset"] + "/?q=" + c["against-query"]
+	for _, args := range [][]string{
+		{"run", site, "--eaa", "--no-download", "--plain"},
+		{site, "--against", against, "--eaa", "--no-download", "--plain"},
+	} {
+		code, out, errOut := runCLI(t, args...)
+		if code != exitError {
+			t.Errorf("%v: exit %d, want %d\n%s\n%s", args[:2], code, exitError, out, errOut)
+		}
+		if !strings.Contains(errOut, "can't reach") || !strings.Contains(errOut, "/reset/•••••/") {
+			t.Errorf("%v: no masked can't reach error:\n%s", args[:2], errOut)
+		}
+		if hits := c.sweep(t, map[string]string{"stdout": out, "stderr": errOut}); len(hits) > 0 {
+			t.Errorf("%v: target canaries printed: %v\n%s\n%s", args[:2], hits, out, errOut)
+		}
 	}
 }

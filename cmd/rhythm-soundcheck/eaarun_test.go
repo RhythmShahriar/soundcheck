@@ -257,7 +257,7 @@ func TestEAANotAuditedExits3(t *testing.T) {
 		pages := clean(0)
 		pages[1].Status = 404
 		pages[1].Audits["a11y"] = model.Audit{Status: model.AuditSkipped, Reason: "status 404"}
-		pages[1].Audits["keyboard"] = model.Audit{Status: model.AuditSkipped, Reason: "HTTP 404"}
+		pages[1].Audits["keyboard"] = model.Audit{Status: model.AuditSkipped, Reason: "status 404"}
 		return pages
 	}
 	if code, out, errOut := runCLI(t, "run", "127.0.0.1:20260", "--eaa", "--fail-on", "none", "--plain"); code != exitOK || strings.Contains(errOut, "incomplete") {

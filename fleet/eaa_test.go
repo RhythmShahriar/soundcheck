@@ -6,6 +6,8 @@ package fleet
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"os"
@@ -244,5 +246,81 @@ func TestWorseRanksOpenEAAProblems(t *testing.T) {
 	}
 	if want := []string{"shop", "alpha", "zoom", "blog", "good"}; !slices.Equal(got, want) {
 		t.Errorf("order = %v, want %v", got, want)
+	}
+}
+
+// fleet.json and fleet.html name an --eaa site's start URL masked, as
+// its own report does: no path token, no query string. That holds for
+// eaa: true and for the fleet-wide --eaa; a plain site's URL is shown
+// as written.
+func TestRunEAAMasksURL(t *testing.T) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	token, query := "tok"+hex.EncodeToString(b), "q"+hex.EncodeToString(b[:8])
+	target := "http://ok.test/a11y/reset/" + token + "/?s=" + query
+	for name, tc := range map[string]struct {
+		sites string
+		extra []string
+	}{
+		"site key":   {"- {name: shop, url: '" + target + "', eaa: true}\n- {name: blog, url: 'http://ok.test/blog/?p=1'}\n", nil},
+		"fleet flag": {"- {name: shop, url: '" + target + "'}\n", []string{"--eaa"}},
+	} {
+		p := writeSites(t, tc.sites)
+		if _, err := Run(context.Background(), os.Args[0], p, Snapshot, 2, tc.extra, &bytes.Buffer{}); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		dir := filepath.Join(filepath.Dir(p), Folder)
+		for _, f := range []string{"fleet.json", "fleet.html"} {
+			got := readFile(t, filepath.Join(dir, f))
+			if strings.Contains(got, token) || strings.Contains(got, query) {
+				t.Errorf("%s: %s names the start URL's token or query:\n%s", name, f, got)
+			}
+			if !strings.Contains(got, "http://ok.test/a11y/reset/") {
+				t.Errorf("%s: %s lost the start URL", name, f)
+			}
+			if tc.extra == nil && !strings.Contains(got, "http://ok.test/blog/?p=1") {
+				t.Errorf("%s: %s masked the plain site's URL", name, f)
+			}
+		}
+	}
+}
+
+// An --eaa site whose axe rule hit the per-rule cap carries the count
+// found into fleet.json (eaa_open_found) and fleet.html says the open
+// count is a floor, never the whole (PRD 8.3).
+func TestEAAOpenCapped(t *testing.T) {
+	var r Result
+	r.Counts = map[string]int{}
+	if err := r.parse([]byte(`{"kind":"run","pages":[],"eaa":{"open":20,"open_found":300,"criteria":{"failed":[{"id":"1.4.3","issues":20,"pages":1,"found":300}]}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if r.EAAOpen == nil || *r.EAAOpen != 20 || r.EAAOpenFound == nil || *r.EAAOpenFound != 300 {
+		t.Fatalf("open %v, found %v", r.EAAOpen, r.EAAOpenFound)
+	}
+	r.Site, r.Verdict = "backlog", Warnings
+	j, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(j), `"eaa_open":20`) || !strings.Contains(string(j), `"eaa_open_found":300`) {
+		t.Errorf("fleet.json row: %s", j)
+	}
+	var h bytes.Buffer
+	if err := HTML(&h, Page{Mode: Snapshot, Sites: []Result{r}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.String(), "at least 20 (300 found, 20 kept)") {
+		t.Errorf("fleet.html lacks the capped count")
+	}
+	// Uncapped, there is no eaa_open_found.
+	var plain Result
+	plain.Counts = map[string]int{}
+	if err := plain.parse([]byte(`{"kind":"run","pages":[],"eaa":{"open":3,"criteria":{"failed":[]}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if plain.EAAOpenFound != nil {
+		t.Errorf("uncapped open found = %d", *plain.EAAOpenFound)
 	}
 }

@@ -59,12 +59,15 @@ type pageData struct {
 // all from the WCAG catalog (never the site's text) and the evidence
 // note.
 type access struct {
-	Version     string
-	Counts      []count
-	Failed      []string // "2.1.2 No Keyboard Trap (1 problem on 1 page)"
-	NeedPerson  []string // "1.2.1 Audio-only and Video-only (Prerecorded)"
-	NotChecked  []string // pages an accessibility test couldn't finish
-	Unrun       []string // criteria whose tests didn't run or didn't finish
+	Version    string
+	Counts     []count
+	Failed     []string // "2.1.2 No Keyboard Trap (1 problem on 1 page)"
+	NeedPerson []string // "1.2.1 Audio-only and Video-only (Prerecorded)"
+	NotChecked []string // pages an accessibility test couldn't finish
+	Unrun      []string // criteria whose tests didn't run or didn't finish
+	// Skipped says why when every page left out was skipped, not timed
+	// out ("page not audited: status 404"): checking again won't help.
+	Skipped     string
 	Note        string
 	NeedsPerson int
 	// Partial marks a run stopped before it finished: its counts come
@@ -362,16 +365,20 @@ func accessOf(e *model.EAASummary) *access {
 		failTone = "bad"
 	}
 	a.Counts = []count{
-		{"Open accessibility problems", failTone, e.Open},
+		{openLabel(e), failTone, e.Open},
 		{"Criteria with failures", failTone, len(e.Criteria.Failed)},
 		{"Criteria with none found by these tests", "note", len(e.Criteria.NoFailuresFound)},
 	}
 	if len(unrun) > 0 {
-		a.Counts = append(a.Counts, count{"Criteria not tested: their tests didn't finish", "warn", len(unrun)})
+		why := report.NotTestedWhy(e)
+		if strings.HasPrefix(why, "page") {
+			a.Skipped = why
+		}
+		a.Counts = append(a.Counts, count{"Criteria not tested: " + why, "warn", len(unrun)})
 	}
 	a.Counts = append(a.Counts, count{"Criteria a person needs to check", "note", len(person)})
 	for _, f := range e.Criteria.Failed {
-		a.Failed = append(a.Failed, fmt.Sprintf("%s (%s on %s)", name(f.ID), plural(f.Issues, "problem", "problems"), plural(f.Pages, "page", "pages")))
+		a.Failed = append(a.Failed, fmt.Sprintf("%s (%s on %s)", name(f.ID), wcag.Counted(f.Issues, f.Found, "problem", "problems"), plural(f.Pages, "page", "pages")))
 	}
 	for _, id := range unrun {
 		a.Unrun = append(a.Unrun, name(id))
@@ -478,4 +485,13 @@ func picture(path string) template.URL {
 		return ""
 	}
 	return template.URL("data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())) //nolint:gosec // our own encoded image
+}
+
+// openLabel names the open problems count. When axe's per-rule cap kept
+// fewer elements than it found, the label says the count is a floor.
+func openLabel(e *model.EAASummary) string {
+	if e.OpenFound > e.Open {
+		return fmt.Sprintf("Open accessibility problems: at least this many (%d found, %d kept)", e.OpenFound, e.Open)
+	}
+	return "Open accessibility problems"
 }

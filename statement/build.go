@@ -164,7 +164,7 @@ func Build(in Input) (*Draft, error) {
 		c.TestedBy = slices.DeleteFunc(c.TestedBy, func(t string) bool { return !testRan(in.Run, d.Keyboard, t) })
 		r := Row{Criterion: c, Result: ResultNotTested}
 		if f, ok := counts[c.ID]; ok {
-			r.Result, r.Issues, r.Pages = ResultFailures, f.Issues, f.Pages
+			r.Result, r.Issues, r.Found, r.Pages = ResultFailures, f.Issues, f.Found, f.Pages
 			if !private {
 				r.Paths = slices.Sorted(slices.Values(paths[c.ID]))
 			}

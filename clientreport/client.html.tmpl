@@ -90,11 +90,11 @@ details.person summary { cursor: pointer; font-weight: 600; }
   <h3 class="sub">Criteria with failures</h3>
   <ul class="checked">{{range .Failed}}<li>{{.}}</li>{{end}}</ul>
   {{end}}
-  {{if .NotChecked}}<p class="more">We couldn't finish the accessibility tests on {{range $i, $p := .NotChecked}}{{if $i}}, {{end}}{{$p}}{{end}}, so {{if eq (len .NotChecked) 1}}that page needs{{else}}those pages need{{end}} checking again.</p>{{end}}
+  {{if .Skipped}}<p class="more">The accessibility tests didn't run on {{range $i, $p := .NotChecked}}{{if $i}}, {{end}}{{$p}}{{end}} ({{.Skipped}}).</p>{{else if .NotChecked}}<p class="more">We couldn't finish the accessibility tests on {{range $i, $p := .NotChecked}}{{if $i}}, {{end}}{{$p}}{{end}}, so {{if eq (len .NotChecked) 1}}that page needs{{else}}those pages need{{end}} checking again.</p>{{end}}
   {{if .Partial}}<p class="more">The check was stopped before it finished, so these counts cover only the pages it checked.</p>{{end}}
   {{if .Unrun}}
   <details class="person"><summary>What wasn't tested this time</summary>
-  <p class="more">These tests didn't finish, so these criteria weren't tested this time. Run the check again to test them.</p>
+  <p class="more">{{if .Skipped}}These criteria weren't tested this time ({{.Skipped}}).{{else}}These tests didn't finish, so these criteria weren't tested this time. Run the check again to test them.{{end}}</p>
   <ul class="checked">{{range .Unrun}}<li>{{.}}</li>{{end}}</ul>
   </details>
   {{end}}

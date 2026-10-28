@@ -95,6 +95,7 @@
           }
         },
         "open": {"type": "integer", "minimum": 0},
+        "open_found": {"type": "integer", "minimum": 0, "description": "open with the elements past axe's per-rule cap counted too; present only when a rule hit the cap, so open is then a floor."},
         "interrupted": {"type": "boolean"},
         "evidence_note": {"type": "string"}
       }
@@ -105,7 +106,8 @@
       "properties": {
         "id": {"type": "string"},
         "issues": {"type": "integer", "minimum": 0},
-        "pages": {"type": "integer", "minimum": 0}
+        "pages": {"type": "integer", "minimum": 0},
+        "found": {"type": "integer", "minimum": 0, "description": "issues with the elements past axe's per-rule cap counted too; present only when a rule hit the cap."}
       }
     },
     "skippedFlow": {

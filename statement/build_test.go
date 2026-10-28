@@ -457,3 +457,37 @@ func TestDraftSplitsNotTested(t *testing.T) {
 		t.Errorf("unrun %q, person %q", unrun[2], person[2])
 	}
 }
+
+// A criterion whose rule hit axe's per-rule cap says the count is a
+// floor in every format, with what was found and kept (PRD 8.3).
+func TestBuildCappedRule(t *testing.T) {
+	audits := audited()
+	audits["a11y"] = model.Audit{Status: model.AuditOK, CappedRules: map[string]int{"color-contrast": 300}}
+	p := model.Page{Path: "/backlog/", Audits: audits}
+	for n := range 20 {
+		p.Issues = append(p.Issues, issue("a11y/color-contrast", "#row-"+strings.Repeat("x", n+1), "1.4.3"))
+	}
+	d, err := Build(input([]model.Page{p}, owner()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := row(d, "1.4.3"); r.Issues != 20 || r.Found != 300 {
+		t.Fatalf("1.4.3 row: %d issues, %d found", r.Issues, r.Found)
+	}
+	const want = "at least 20 elements (300 found, 20 kept)"
+	for ext, out := range render(t, d) {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s lacks %q", ext, want)
+		}
+		if strings.Contains(out, ": 20 elements on") || strings.Contains(out, "(20 elements, 1 page)") {
+			t.Errorf("%s gives the capped count as the whole", ext)
+		}
+	}
+	var b bytes.Buffer
+	if err := JSON(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `"found": 300`) {
+		t.Errorf("statement JSON lacks found: 300")
+	}
+}

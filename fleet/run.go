@@ -22,6 +22,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/history"
 	"github.com/RhythmShahriar/soundcheck/internal/proc"
 	"github.com/RhythmShahriar/soundcheck/model"
@@ -76,7 +77,11 @@ type Result struct {
 	// --eaa run, from its JSON eaa block (history.jsonl splits the open
 	// issues into a11y_open and keyboard_open). A site checked without
 	// --eaa leaves them out (not 0).
-	EAAOpen        *int `json:"eaa_open,omitempty"`
+	EAAOpen *int `json:"eaa_open,omitempty"`
+	// EAAOpenFound is EAAOpen with the elements past axe's per-rule cap
+	// counted too, when a rule hit the cap: EAAOpen is then at least
+	// that many, not the whole count.
+	EAAOpenFound   *int `json:"eaa_open_found,omitempty"`
 	CriteriaFailed *int `json:"criteria_failed,omitempty"`
 	// EAATrend says how EAAOpen moved since the site's previous fleet
 	// run: up, down or same. It is absent when either run had no eaa
@@ -371,6 +376,12 @@ func siteLog(root, dir string) (*os.File, error) {
 func runSite(ctx context.Context, bin, base, root, mode string, s Site, extra []string) Result {
 	dir := filepath.Join(root, s.Name)
 	r := Result{Site: s.Name, URL: s.URL, Dir: s.Name, Counts: map[string]int{}}
+	eaa := s.EAA || hasFlag(s.Args, "eaa") || hasFlag(extra, "eaa")
+	if eaa {
+		// fleet.json and fleet.html name an --eaa site's start URL the
+		// way its own report does: no query, no path token (security M3).
+		r.URL = echolink.RedactTarget(s.URL)
+	}
 	start := time.Now()
 	fail := func(exit int, msg string) Result {
 		r.Verdict, r.Exit, r.Error = Failed, exit, msg
@@ -466,8 +477,9 @@ type child struct {
 	Pages   json.RawMessage
 	// EAA is the accessibility summary of an --eaa run or comparison.
 	EAA *struct {
-		Open     int `json:"open"`
-		Criteria struct {
+		Open      int `json:"open"`
+		OpenFound int `json:"open_found"`
+		Criteria  struct {
 			Failed []json.RawMessage `json:"failed"`
 		} `json:"criteria"`
 	} `json:"eaa"`
@@ -494,6 +506,9 @@ func (r *Result) parse(data []byte) error {
 	if c.EAA != nil {
 		open, failed := c.EAA.Open, len(c.EAA.Criteria.Failed)
 		r.EAAOpen, r.CriteriaFailed = &open, &failed
+		if f := c.EAA.OpenFound; f > open {
+			r.EAAOpenFound = &f
+		}
 	}
 	if c.Kind == "comparison" {
 		_ = json.Unmarshal(c.Pages, &r.Pages)

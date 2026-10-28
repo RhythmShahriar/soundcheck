@@ -164,3 +164,26 @@ func TestClientReportInterrupted(t *testing.T) {
 		t.Error("an --eaa run with an unfinished audit isn't called partial")
 	}
 }
+
+// A capped rule's count reads as a floor and a page skipped for its
+// status isn't said to have tests that didn't finish.
+func TestEAAClientReportCappedAndSkipped(t *testing.T) {
+	time.Local = time.UTC
+	res := eaaFixture()
+	e := res.Run.EAA
+	e.Open, e.OpenFound = 20, 300
+	e.Criteria.Failed = []model.CriterionCount{{ID: "1.4.3", Issues: 20, Found: 300, Pages: 1}}
+	e.Criteria.NotTested = append(e.Criteria.NotTested, "1.1.1")
+	e.Criteria.NoFailuresFound = slices.DeleteFunc(e.Criteria.NoFailuresFound, func(id string) bool { return id == "1.1.1" || id == "1.4.3" })
+	e.NotAudited = []model.NotAudited{{Path: "/nope/", Module: "a11y", Status: model.AuditSkipped, Reason: "status 404"}}
+	got := render(t, res, Brand{Name: "Acme"})
+	for _, want := range []string{"at least 20 problems (300 found, 20 kept)", "at least this many (300 found, 20 kept)",
+		"Criteria not tested: page not audited: status 404", "weren't tested this time (page not audited: status 404)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("client report lacks %q", want)
+		}
+	}
+	if strings.Contains(got, "We couldn't finish the accessibility tests on /nope/") {
+		t.Error("a skipped page reads as tests that didn't finish")
+	}
+}

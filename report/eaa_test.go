@@ -625,3 +625,77 @@ func TestOpenBeforeNotChecked(t *testing.T) {
 		t.Errorf("openBefore = %d, want 1", got)
 	}
 }
+
+// A rule that hit axe's per-rule cap is said in the counts line, the
+// Markdown and the HTML criteria tiles: the count kept is a floor, not
+// the whole (PRD 8.3).
+func TestEAACappedCounts(t *testing.T) {
+	run := eaaClean()
+	e := eaaSummaryFor(20)
+	e.OpenFound = 300
+	e.Criteria.Failed = []model.CriterionCount{{ID: "1.4.3", Issues: 20, Found: 300, Pages: 1}}
+	run.EAA = e
+	const want = "at least 20 open issues (300 found, 20 kept)"
+	if line := accessibilityLine(Result{Run: run}, true); !strings.Contains(line, want) {
+		t.Errorf("counts line: %s", line)
+	}
+	var b strings.Builder
+	writeAccessibility(&b, Result{Run: run})
+	if !strings.Contains(b.String(), want) || !strings.Contains(b.String(), "| at least 20 (300 found, 20 kept) | 1 |") {
+		t.Errorf("markdown:\n%s", b.String())
+	}
+	var html bytes.Buffer
+	if err := HTML(&html, Result{Run: run}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html.String(), "(at least 20 (300 found, 20 kept))") || !strings.Contains(html.String(), want) {
+		t.Error("report.html lacks the capped count")
+	}
+	// Uncapped, the counts are as before.
+	e.OpenFound, e.Criteria.Failed[0].Found = 0, 0
+	b.Reset()
+	writeAccessibility(&b, Result{Run: run})
+	if strings.Contains(b.String(), "at least") || !strings.Contains(b.String(), "· 20 open issues") {
+		t.Errorf("uncapped markdown:\n%s", b.String())
+	}
+}
+
+// A start page that answered 404 was skipped, not timed out: every
+// format gives the same reason and the not-tested count says the page
+// wasn't audited rather than that its tests didn't finish.
+func TestEAASkippedPageWording(t *testing.T) {
+	run := eaaClean()
+	e := eaaSummaryFor(0)
+	unrun := []string{"1.1.1", "1.4.4", "3.1.1", "4.1.2"}
+	e.Criteria.NoFailuresFound = slices.DeleteFunc(e.Criteria.NoFailuresFound, func(id string) bool { return slices.Contains(unrun, id) })
+	e.Criteria.NotTested = append(e.Criteria.NotTested, unrun...)
+	e.NotAudited = []model.NotAudited{
+		{Path: "/nope.php", Module: "a11y", Status: model.AuditSkipped, Reason: "status 404"},
+		{Path: "/nope.php", Module: "keyboard", Status: model.AuditSkipped, Reason: "status 404"},
+	}
+	run.EAA = e
+	const why = "4 not tested (page not audited: status 404)"
+	if line := accessibilityLine(Result{Run: run}, true); !strings.Contains(line, why) || strings.Contains(line, "didn't finish") {
+		t.Errorf("counts line: %s", line)
+	}
+	var b strings.Builder
+	writeAccessibility(&b, Result{Run: run})
+	md := b.String()
+	if !strings.Contains(md, why) || strings.Contains(md, "didn't finish") ||
+		!strings.Contains(md, "(a11y: status 404)") || !strings.Contains(md, "(keyboard: status 404)") {
+		t.Errorf("markdown:\n%s", md)
+	}
+	var term bytes.Buffer
+	NewPretty(&term, io.Discard, PrettyOptions{Plain: true}).Summary(Result{Run: run}, "")
+	if !strings.Contains(term.String(), "not checked: /nope.php (a11y: status 404)") {
+		t.Errorf("terminal:\n%s", term.String())
+	}
+	// A timed-out audit keeps its status out of the Markdown, as its
+	// reason can quote the page. It still reads as didn't finish.
+	e.NotAudited[0] = model.NotAudited{Path: "/big/", Module: "a11y", Status: model.AuditTimeout, Reason: "axe-core timed out after 45s"}
+	b.Reset()
+	writeAccessibility(&b, Result{Run: run})
+	if !strings.Contains(b.String(), "(their tests didn't finish)") || !strings.Contains(b.String(), "(a11y: timeout)") {
+		t.Errorf("markdown with a timeout:\n%s", b.String())
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -133,12 +134,39 @@ func (s *session) fail(err error) int {
 		fmt.Fprintln(s.stderr, prefix(), "canceled")
 		return exitCanceled
 	}
-	fmt.Fprintln(s.stderr, prefix(), named(err.Error()))
+	fmt.Fprintln(s.stderr, prefix(), named(s.maskURLs(err.Error())))
 	var ue cli.UsageError
 	if errors.As(err, &ue) {
 		return exitUsage
 	}
 	return exitError
+}
+
+// urlInText matches a URL in a message, such as the one net/http quotes
+// in a "can't reach" error.
+var urlInText = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+// maskURLs masks every URL in msg the way an --eaa run shows its start
+// URL (echolink.RedactTarget), so an error doesn't print the path token
+// or query string the header masked. Without --eaa msg is unchanged.
+func (s *session) maskURLs(msg string) string {
+	if !s.cfg.EAA {
+		return msg
+	}
+	return urlInText.ReplaceAllStringFunc(msg, func(u string) string {
+		// Punctuation that ends a sentence stays after the URL.
+		trimmed := strings.TrimRight(u, ".,:;)")
+		return echolink.RedactTarget(trimmed) + u[len(trimmed):]
+	})
+}
+
+// shownTarget is a site URL as the terminal shows it: masked under --eaa
+// like the header (security M3), as typed otherwise.
+func (s *session) shownTarget(u string) string {
+	if s.cfg.EAA {
+		return echolink.RedactTarget(u)
+	}
+	return u
 }
 
 // site returns the one site snapshot or run checks: the argument, or the
@@ -189,11 +217,8 @@ func (s *session) start(target string) {
 	}
 	s.notice = update.StartCheck(s.ctx, &update.Updater{Repo: "RhythmShahriar/soundcheck", Binary: "rhythm-soundcheck",
 		Current: version, UserAgent: s.ua, API: os.Getenv("RHYTHM_GITHUB_API")})
-	if s.cfg.EAA {
-		// An --eaa run masks the start URL in every output (security M3).
-		target = echolink.RedactTarget(target)
-	}
-	s.view.Header(shownVersion(), target)
+	// An --eaa run masks the start URL in every output (security M3).
+	s.view.Header(shownVersion(), s.shownTarget(target))
 	if s.siteFrom != "" {
 		s.view.Step("Site", "from "+s.siteFrom+" ("+s.siteKey+")")
 	}
@@ -994,17 +1019,17 @@ func cmdAgainst(s *session) int {
 	}
 	beforeDir := filepath.Join(dir, "against")
 	s.start(s.args[0])
-	s.view.Step("Against", s.o.against)
+	s.view.Step("Against", s.shownTarget(s.o.against))
 	s.view.Step("Confirm", s.confirmSetting())
 	before, err := s.check(s.o.against, nil, true, "", beforeDir)
 	if err != nil {
 		s.discard(dir)
-		return s.fail(fmt.Errorf("%s: %w", s.o.against, err))
+		return s.fail(fmt.Errorf("%s: %w", s.shownTarget(s.o.against), err))
 	}
 	if err := store.SaveRun(beforeDir, before); err != nil {
 		return s.fail(err)
 	}
-	s.view.Step("Now", s.args[0])
+	s.view.Step("Now", s.shownTarget(s.args[0]))
 	pages := compare.InMemory(before.Pages)
 	head := *before
 	head.Pages = nil

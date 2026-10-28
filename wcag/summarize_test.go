@@ -350,3 +350,46 @@ func TestSummarizeKeptCountsAsOpen(t *testing.T) {
 		}
 	}
 }
+
+// A rule that hit axe's per-rule cap counts the elements it found past
+// the cap: its criterion's Found and the summary's OpenFound say 300
+// while Issues and Open stay at the 20 issues kept (PRD 8.3).
+func TestSummarizeCappedRule(t *testing.T) {
+	audits := ok()
+	audits["a11y"] = model.Audit{Status: model.AuditOK, CappedRules: map[string]int{"color-contrast": 300}}
+	p := model.Page{Path: "/backlog/", Audits: audits}
+	for n := range 20 {
+		p.Issues = append(p.Issues, issue("a11y/color-contrast", fmt.Sprintf("#row-%d", n+1), "1.4.3"))
+	}
+	s := Summarize(eaaRun(), each([]model.Page{p}), nil, nil, nil)
+	f, ok := failed(s, "1.4.3")
+	if !ok || f.Issues != 20 || f.Found != 300 || f.Pages != 1 {
+		t.Errorf("1.4.3 = %+v, want 20 issues, 300 found on 1 page", f)
+	}
+	if s.Open != 20 || s.OpenFound != 300 {
+		t.Errorf("open %d, open found %d, want 20 and 300", s.Open, s.OpenFound)
+	}
+	// Without the cap, Found and OpenFound stay unset.
+	p.Audits["a11y"] = model.Audit{Status: model.AuditOK}
+	s = Summarize(eaaRun(), each([]model.Page{p}), nil, nil, nil)
+	if f, _ := failed(s, "1.4.3"); f.Found != 0 || s.OpenFound != 0 {
+		t.Errorf("uncapped: found %d, open found %d", f.Found, s.OpenFound)
+	}
+}
+
+// Counted words a capped count as a floor with what was found and kept.
+func TestCounted(t *testing.T) {
+	for _, tc := range []struct {
+		kept, found int
+		want        string
+	}{
+		{1, 0, "1 element"},
+		{20, 0, "20 elements"},
+		{20, 20, "20 elements"},
+		{20, 300, "at least 20 elements (300 found, 20 kept)"},
+	} {
+		if got := Counted(tc.kept, tc.found, "element", "elements"); got != tc.want {
+			t.Errorf("Counted(%d, %d) = %q, want %q", tc.kept, tc.found, got, tc.want)
+		}
+	}
+}

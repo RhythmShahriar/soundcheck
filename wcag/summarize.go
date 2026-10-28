@@ -70,9 +70,10 @@ func ModuleOf(test string) string {
 
 // tally is what Summarize keeps for one criterion while pages stream by.
 type tally struct {
-	keys  map[string]bool // finding keys
-	pages int             // pages with one of them
-	site  map[string]bool // paths of site issues' pages not yet seen
+	keys   map[string]bool // finding keys
+	pages  int             // pages with one of them
+	site   map[string]bool // paths of site issues' pages not yet seen
+	beyond int             // elements past axe's per-rule cap, not kept as issues
 }
 
 // Summarize sums up an --eaa run against the criteria of its WCAG
@@ -150,6 +151,7 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 	// A module that records audits ran when one page's audit finished;
 	// one that doesn't (interact) ran when the run lists it and checked
 	// at least one page.
+	openBeyond := 0 // open elements past the per-rule cap
 	finished := map[string]bool{}
 	walkedUnaudited := false // a page walked with no keyboard audit recorded
 	checked := 0
@@ -170,6 +172,31 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		}
 		for id := range onPage {
 			tallies[id].pages++
+		}
+		// A rule that hit axe's per-rule cap kept some of its elements
+		// as issues; the others count too, so a capped count never reads
+		// as the whole (PRD 8.3).
+		for _, rule := range slices.Sorted(maps.Keys(p.Audits["a11y"].CappedRules)) {
+			var first *model.Issue
+			kept := 0
+			for i := range p.Issues {
+				if is := &p.Issues[i]; is.Check == "a11y/"+rule && !unstable.Has(*is, p.Path) {
+					if first == nil {
+						first = is
+					}
+					kept++
+				}
+			}
+			beyond := p.Audits["a11y"].CappedRules[rule] - kept
+			if first == nil || beyond <= 0 {
+				continue
+			}
+			for _, c := range IssueCriteria(*first, version) {
+				get(c).beyond += beyond
+			}
+			if !skip[FindingKey(*first)] {
+				openBeyond += beyond
+			}
 		}
 		for _, m := range slices.Sorted(maps.Keys(p.Audits)) {
 			a := p.Audits[m]
@@ -220,7 +247,11 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		if tl := tallies[c.ID]; tl != nil && len(tl.keys) > 0 {
 			// Pages of site issues that weren't among the pages streamed
 			// still count.
-			s.Criteria.Failed = append(s.Criteria.Failed, model.CriterionCount{ID: c.ID, Issues: len(tl.keys), Pages: tl.pages + len(tl.site)})
+			f := model.CriterionCount{ID: c.ID, Issues: len(tl.keys), Pages: tl.pages + len(tl.site)}
+			if tl.beyond > 0 {
+				f.Found = f.Issues + tl.beyond
+			}
+			s.Criteria.Failed = append(s.Criteria.Failed, f)
 			continue
 		}
 		if c.Coverage == CoveragePartly && slices.ContainsFunc(c.TestedBy, func(test string) bool { return ran(ModuleOf(test)) }) {
@@ -230,5 +261,8 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		s.Criteria.NotTested = append(s.Criteria.NotTested, c.ID)
 	}
 	s.Open = len(open)
+	if openBeyond > 0 {
+		s.OpenFound = s.Open + openBeyond
+	}
 	return s
 }

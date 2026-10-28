@@ -460,7 +460,7 @@ func TestEAACanaryTarget(t *testing.T) {
 	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
-	c := newCanaries(t, "path-token", "utm", "cookie", "login-password")
+	c := newCanaries(t, "path-token", "utm", "cookie", "login-password", "against-token", "against-utm")
 	site, _ := canarySite(t, c, "tester", c["login-password"])
 	writeConfig(t, `statement:
   owner: Example Coffee Ltd
@@ -472,6 +472,7 @@ func TestEAACanaryTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := site.URL + "/reset/" + c["path-token"] + "/?utm=" + c["utm"]
+	against := site.URL + "/reset/" + c["against-token"] + "/?utm=" + c["against-utm"]
 	printed := map[string]string{}
 	runs := [][]string{
 		append([]string{"snapshot", target, "--eaa", "--name", "before", "--verbose", "-o", "out/s.json", "-o", "out/s.md", "-o", "out/s.html"}, eaaCommon...),
@@ -479,6 +480,8 @@ func TestEAACanaryTarget(t *testing.T) {
 		{"snapshots"},
 		{"snapshots", "--json"},
 		{"statement", "-o", "out/st.md", "-o", "out/st.html", "-o", "out/st.json"},
+		// The Against and Now lines name both sites, masked.
+		append([]string{target, "--against", against, "--eaa", "--verbose", "-o", "out/a.json", "-o", "out/a.md", "-o", "out/a.html", "-o", "out/a.xml"}, eaaCommon...),
 	}
 	for _, args := range runs {
 		code, out, errOut := runCLI(t, args...)

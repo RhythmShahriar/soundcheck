@@ -92,7 +92,7 @@ type htmlPrinciple struct {
 
 type htmlTile struct {
 	ID, Title, State, Label, Icon string
-	Issues                        int
+	Issues                        string // "" for none
 }
 
 type htmlKeyboard struct {
@@ -153,8 +153,12 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 	}
 	unrun, _ := wcag.SplitNotTested(version, e.Criteria.NotTested)
 	failed := map[string]int{}
+	counts := map[string]string{}
 	for _, f := range e.Criteria.Failed {
 		failed[f.ID] = f.Issues
+		if f.Issues > 0 {
+			counts[f.ID] = CappedCount(f.Issues, f.Found)
+		}
 	}
 	for _, c := range wcag.Criteria(version) {
 		state := "manual"
@@ -171,7 +175,7 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 		}
 		p := &t.Principles[len(t.Principles)-1]
 		s := tileStates[state]
-		p.Tiles = append(p.Tiles, htmlTile{ID: c.ID, Title: c.Title, State: state, Label: s.Label, Icon: s.Icon, Issues: failed[c.ID]})
+		p.Tiles = append(p.Tiles, htmlTile{ID: c.ID, Title: c.Title, State: state, Label: s.Label, Icon: s.Icon, Issues: counts[c.ID]})
 	}
 	t.Criteria = criteriaGroups(version, items, src)
 	for i := range r.Run.Pages {

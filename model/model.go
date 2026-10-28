@@ -391,15 +391,19 @@ const EvidenceNote = "Automated and keyboard tests find some accessibility probl
 // EAASummary sums up an --eaa run against the WCAG criteria. It is
 // filled for output (wcag.Summarize) and never stored.
 type EAASummary struct {
-	WCAG         string       `json:"wcag"`     // 2.1 or 2.2
-	EN301549     string       `json:"en301549"` // the matching EN 301 549 version, such as V3.2.1
-	Axe          string       `json:"axe"`      // axe-core's version
-	Criteria     EAACriteria  `json:"criteria"`
-	Keyboard     EAAKeyboard  `json:"keyboard"`
-	NotAudited   []NotAudited `json:"not_audited,omitempty"`
-	Open         int          `json:"open"` // accessibility and keyboard problems found
-	Interrupted  bool         `json:"interrupted"`
-	EvidenceNote string       `json:"evidence_note"` // always EvidenceNote
+	WCAG       string       `json:"wcag"`     // 2.1 or 2.2
+	EN301549   string       `json:"en301549"` // the matching EN 301 549 version, such as V3.2.1
+	Axe        string       `json:"axe"`      // axe-core's version
+	Criteria   EAACriteria  `json:"criteria"`
+	Keyboard   EAAKeyboard  `json:"keyboard"`
+	NotAudited []NotAudited `json:"not_audited,omitempty"`
+	Open       int          `json:"open"` // accessibility and keyboard problems found
+	// OpenFound is Open with the elements past axe's per-rule cap
+	// (Audit.CappedRules) counted too. It is set only when a rule hit
+	// the cap, so Open alone is the whole count otherwise.
+	OpenFound    int    `json:"open_found,omitempty"`
+	Interrupted  bool   `json:"interrupted"`
+	EvidenceNote string `json:"evidence_note"` // always EvidenceNote
 }
 
 // EAACriteria sorts the criteria of the WCAG version by what the tests
@@ -422,6 +426,9 @@ type CriterionCount struct {
 	ID     string `json:"id"`
 	Issues int    `json:"issues"`
 	Pages  int    `json:"pages"`
+	// Found is Issues with the elements past axe's per-rule cap counted
+	// too. It is set only when one of the criterion's rules hit the cap.
+	Found int `json:"found,omitempty"`
 }
 
 // EAAKeyboard counts what the keyboard tests covered.

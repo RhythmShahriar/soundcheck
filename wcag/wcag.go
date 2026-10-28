@@ -5,6 +5,7 @@ package wcag
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -198,4 +199,19 @@ func Standard(version string) string {
 		return "WCAG 2.0 level AA"
 	}
 	return "WCAG " + version + " level AA"
+}
+
+// Counted words a count of failing elements or issues: "20 elements",
+// or, when axe's per-rule cap kept fewer than it found (found > kept),
+// "at least 20 elements (300 found, 20 kept)". A capped count is a
+// recorded result, never a silent stop (PRD 8.3).
+func Counted(kept, found int, one, many string) string {
+	noun := many
+	if kept == 1 {
+		noun = one
+	}
+	if found <= kept {
+		return fmt.Sprintf("%d %s", kept, noun)
+	}
+	return fmt.Sprintf("at least %d %s (%d found, %d kept)", kept, noun, found, kept)
 }

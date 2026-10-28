@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/history"
+	"github.com/RhythmShahriar/soundcheck/report"
 )
 
 //go:embed fleet.html.tmpl
@@ -48,11 +49,12 @@ type pageRow struct {
 	TrendLabel             string
 	// EAA marks a row with accessibility columns; other rows leave the
 	// cells empty, which isn't 0.
-	EAA                     bool
-	EAAOpen, CriteriaFailed int
-	EAAArrow, EAATrend      string // "↑" and "up from 9 at the last fleet run"
-	EAAKind                 string // up, down or same, for the arrow's color
-	Statement               string
+	EAA                bool
+	EAAOpen            string // "at least 20 (300 found, 20 kept)" when axe's per-rule cap kept fewer
+	CriteriaFailed     int
+	EAAArrow, EAATrend string // "↑" and "up from 9 at the last fleet run"
+	EAAKind            string // up, down or same, for the arrow's color
+	Statement          string
 }
 
 // HTML writes the fleet page: one standalone file ranking the sites by
@@ -83,7 +85,7 @@ func HTML(w io.Writer, p Page) error {
 		}
 		if r.EAAOpen != nil {
 			d.EAA = true
-			row.EAA, row.EAAOpen, row.Statement = true, *r.EAAOpen, r.Statement
+			row.EAA, row.EAAOpen, row.Statement = true, report.CappedCount(*r.EAAOpen, deref(r.EAAOpenFound)), r.Statement
 			if r.CriteriaFailed != nil {
 				row.CriteriaFailed = *r.CriteriaFailed
 			}

@@ -278,7 +278,7 @@ func TestLiveSkips(t *testing.T) {
 		reason string
 	}{
 		{nil, model.Page{Path: "/", Status: 200}, "needs Chrome"},
-		{&rod.Page{}, model.Page{Path: "/gone", Status: 404}, "HTTP 404"},
+		{&rod.Page{}, model.Page{Path: "/gone", Status: 404}, "status 404"},
 		{&rod.Page{}, model.Page{Path: "/x", Error: "timeout"}, "the page didn't load"},
 		{&rod.Page{}, model.Page{Path: "/wp-admin/edit.php", Status: 200}, "admin pages are never walked"},
 		{&rod.Page{}, model.Page{Path: "/wp-login.php?redirect_to=x", Status: 200}, "admin pages are never walked"},

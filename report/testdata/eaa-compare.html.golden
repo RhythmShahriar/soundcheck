@@ -292,7 +292,7 @@ ol.path li { overflow-wrap: anywhere; }
       <p><b>4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 23 had none found by these tests · 23 need a person · 1 page not fully tested · open issues 3 → 4</b></p>
       <p>Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.</p>
     </div>
-    <div class="partial"><b>Not checked.</b> These audits didn't finish, so the pages' issues are kept from the snapshot and not counted as fixed:<ul><li>/catalog/ (a11y: axe-core timed out after 45s)</li></ul></div>
+    <div class="partial"><b>Not checked.</b> These audits didn't finish or were skipped, so the pages' issues are kept from the snapshot and not counted as fixed:<ul><li>/catalog/ (a11y: axe-core timed out after 45s)</li></ul></div>
 
     <h2>WCAG 2.1 A and AA criteria</h2>
     <p class="legend">✕ failures: the tests found a failure · ○ none found: the tests found none, which isn't a pass · ? needs a person: these tests can't judge it · – not tested: its tests didn't run or didn't finish</p>

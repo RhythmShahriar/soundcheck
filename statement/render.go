@@ -157,6 +157,7 @@ type jsonRow struct {
 	Tests     string      `json:"tests"`
 	Text      string      `json:"text"`
 	Issues    int         `json:"issues"`
+	Found     int         `json:"found,omitempty"` // issues with the elements past axe's per-rule cap
 	Pages     int         `json:"pages"`
 	Paths     []string    `json:"paths"`
 	Manual    *jsonManual `json:"manual"`
@@ -226,7 +227,7 @@ func JSON(w io.Writer, d *Draft) error {
 	for _, r := range d.Rows {
 		jr := jsonRow{ID: r.ID, Title: r.Title, Level: r.Level, Principle: r.Principle, EN: r.EN, Coverage: r.Coverage,
 			TestedBy: append([]string{}, r.TestedBy...), HowTested: r.HowTested(), Result: r.Result, Tests: r.Tests, Text: plain(ResultText(r)),
-			Issues: r.Issues, Pages: r.Pages, Paths: plainAll(r.Paths)}
+			Issues: r.Issues, Found: r.Found, Pages: r.Pages, Paths: plainAll(r.Paths)}
 		if m := r.Manual; m != nil {
 			jr.Manual = &jsonManual{plain(m.Result), plain(m.By), plain(m.Date)}
 		}

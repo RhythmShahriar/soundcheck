@@ -81,6 +81,7 @@
         "tests": {"enum": ["failures_found", "no_failures_found", "not_tested"], "description": "What the tests found, before a manual entry."},
         "text": {"type": "string", "description": "The result as the criteria table writes it."},
         "issues": {"type": "integer", "minimum": 0},
+        "found": {"type": "integer", "minimum": 0, "description": "issues with the elements past axe's per-rule cap counted too; present only when a rule hit the cap, so issues is then a floor."},
         "pages": {"type": "integer", "minimum": 0},
         "paths": {"type": "array", "items": {"type": "string"}, "description": "Up to 3 pages with a problem, when they may be listed."},
         "manual": {

@@ -250,7 +250,7 @@ func problems(d *doc, dr *Draft) {
 		}
 		l := line{strong(r.ID + " " + r.Title), text(" (EN 301 549 " + r.EN + ")")}
 		if r.Tests == ResultFailures {
-			s := ": " + count(r.Issues, "element") + " on " + count(r.Pages, "page")
+			s := ": " + elements(r) + " on " + count(r.Pages, "page")
 			if len(r.Paths) > 0 {
 				shown := append([]string(nil), r.Paths...)
 				if more := r.Pages - len(r.Paths); more > 0 {
@@ -433,7 +433,7 @@ func ResultText(r Row) string {
 func testsText(r Row) string {
 	switch r.Tests {
 	case ResultFailures:
-		return fmt.Sprintf("failures found (%s, %s)", count(r.Issues, "element"), count(r.Pages, "page"))
+		return fmt.Sprintf("failures found (%s, %s)", elements(r), count(r.Pages, "page"))
 	case ResultNoFailures:
 		return "no failures found by these tests"
 	}
@@ -471,6 +471,13 @@ func count(n int, noun string) string {
 		noun += "s"
 	}
 	return strconv.Itoa(n) + " " + noun
+}
+
+// elements is how many failing elements the tests found for r: "20
+// elements", or "at least 20 elements (300 found, 20 kept)" when axe's
+// per-rule cap kept fewer than it found.
+func elements(r Row) string {
+	return wcag.Counted(r.Issues, r.Found, "element", "elements")
 }
 
 // countWere is "1 page was" or "3 pages were".

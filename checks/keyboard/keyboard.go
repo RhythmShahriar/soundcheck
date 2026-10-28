@@ -175,7 +175,7 @@ func skipReason(tab *rod.Page, p *model.Page) string {
 	case p.Error != "":
 		return "the page didn't load"
 	case p.Status >= 400:
-		return fmt.Sprintf("HTTP %d", p.Status)
+		return fmt.Sprintf("status %d", p.Status) // as the a11y module says it
 	case isAdmin(p.Path):
 		return "admin pages are never walked"
 	}

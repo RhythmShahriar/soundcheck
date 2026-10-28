@@ -6,6 +6,7 @@ package report
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -173,9 +174,23 @@ func accessibilityLine(r Result, plain bool) string {
 		if plain {
 			arrow = "to"
 		}
-		open = fmt.Sprintf(" · open issues %d %s %d", before, arrow, after)
+		open = fmt.Sprintf(" · open issues %d %s %s", before, arrow, CappedCount(after, e.OpenFound))
+	} else if e.OpenFound > e.Open {
+		// A rule that hit axe's per-rule cap is said, never left as the
+		// whole count (PRD 8.3).
+		open = " · " + wcag.Counted(e.Open, e.OpenFound, "open issue", "open issues")
 	}
 	return fmt.Sprintf("Accessibility: %s · %s%s", failed, restCounts(e), open)
+}
+
+// CappedCount is a count of issues as a table cell shows it: "20", or
+// "at least 20 (300 found, 20 kept)" when axe's per-rule cap kept fewer
+// than it found (found > kept).
+func CappedCount(kept, found int) string {
+	if found <= kept {
+		return strconv.Itoa(kept)
+	}
+	return fmt.Sprintf("at least %d (%d found, %d kept)", kept, found, kept)
 }
 
 // restCounts is the criteria without failures of a summary: "20 had
@@ -193,11 +208,7 @@ func restCounts(e *model.EAASummary) string {
 		parts = append(parts, fmt.Sprintf("%d had none found by these tests", len(e.Criteria.NoFailuresFound)))
 	}
 	if len(unrun) > 0 {
-		why := "didn't run"
-		if len(e.NotAudited) > 0 {
-			why = "didn't finish"
-		}
-		parts = append(parts, fmt.Sprintf("%d not tested (their tests %s)", len(unrun), why))
+		parts = append(parts, fmt.Sprintf("%d not tested (%s)", len(unrun), NotTestedWhy(e)))
 	}
 	parts = append(parts, fmt.Sprintf("%d need a person", len(person)))
 	// A page whose tests didn't finish is said even when other pages
@@ -206,6 +217,43 @@ func restCounts(e *model.EAASummary) string {
 		parts = append(parts, plural(n, "page not fully tested", "pages not fully tested"))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// NotTestedWhy says why an --eaa result's criteria weren't tested:
+// "their tests didn't run", "their tests didn't finish" when a page's
+// audit timed out or failed, or "page not audited: status 404" when
+// every page left out was skipped (an error page isn't audited, which is
+// no timeout).
+func NotTestedWhy(e *model.EAASummary) string {
+	if len(e.NotAudited) == 0 {
+		return "their tests didn't run"
+	}
+	var why []string
+	for _, n := range e.NotAudited {
+		if n.Status != model.AuditSkipped {
+			return "their tests didn't finish"
+		}
+		if r := auditReason(n); !slices.Contains(why, r) {
+			why = append(why, r)
+		}
+	}
+	page := "page not audited: "
+	if notAuditedPages(e) > 1 {
+		page = "pages not audited: "
+	}
+	return page + strings.Join(why, ", ")
+}
+
+// auditReason is why a page's audit is listed as not checked, the same
+// in every format. A skipped audit gives its reason, which Soundcheck
+// wrote ("status 404", "admin pages are never walked"). Any other gives
+// its status in a Markdown result, which may be posted as a PR comment:
+// a timeout's or error's reason can quote the page.
+func auditReason(n model.NotAudited) string {
+	if n.Reason == "" || n.Status != model.AuditSkipped {
+		return n.Status
+	}
+	return n.Reason
 }
 
 // notAuditedPages counts the pages with a module whose tests didn't
@@ -354,7 +402,7 @@ func writeAccessibility(b *strings.Builder, r Result) {
 	version := eaaVersion(e)
 	fmt.Fprintf(b, "### Accessibility (WCAG %s A and AA)\n\n", mdCell(version))
 	fmt.Fprintf(b, "%d of %d criteria have failures · %s · %s\n\n",
-		len(e.Criteria.Failed), eaaTotal(e), restCounts(e), plural(e.Open, "open issue", "open issues"))
+		len(e.Criteria.Failed), eaaTotal(e), restCounts(e), wcag.Counted(e.Open, e.OpenFound, "open issue", "open issues"))
 	if len(e.Criteria.Failed) > 0 {
 		var fresh []string
 		if r.Comparison != nil {
@@ -368,7 +416,7 @@ func writeAccessibility(b *strings.Builder, r Result) {
 			if t := titles[f.ID]; t != "" {
 				name += " " + t
 			}
-			issues := fmt.Sprint(f.Issues)
+			issues := CappedCount(f.Issues, f.Found)
 			if slices.Contains(fresh, f.ID) {
 				issues += " (new)"
 			}
@@ -377,14 +425,15 @@ func writeAccessibility(b *strings.Builder, r Result) {
 		b.WriteString("\n</details>\n\n")
 	}
 	if len(e.NotAudited) > 0 {
-		// The status, not the reason: a reason can quote the page.
+		// The status, not the reason, unless Soundcheck wrote it (a
+		// skipped audit): a timeout's reason can quote the page.
 		if r.Compared() {
 			b.WriteString("Not checked, so their issues are kept from the snapshot and not counted as fixed:\n\n")
 		} else {
 			b.WriteString("Not checked, so their issues are missing from these results:\n\n")
 		}
 		for _, n := range e.NotAudited {
-			fmt.Fprintf(b, "- %s (%s: %s)\n", mdPages([]string{n.Path}), mdCell(n.Module), mdCell(n.Status))
+			fmt.Fprintf(b, "- %s (%s: %s)\n", mdPages([]string{n.Path}), mdCell(n.Module), mdCell(auditReason(n)))
 		}
 		b.WriteString("\n")
 	}

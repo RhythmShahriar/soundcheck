@@ -180,6 +180,7 @@ type Row struct {
 	Result string   // one of the Result* values
 	Tests  string   // what the tests found, before a manual entry: ResultFailures, ResultNoFailures or ResultNotTested
 	Issues int      // problems found, each counted once per element
+	Found  int      // Issues with the elements past axe's per-rule cap; set only when a rule hit it
 	Pages  int      // pages with a problem
 	Paths  []string // up to 3 of those pages, when they may be listed
 	Manual *Manual  // the owner's own result, when the config gives one

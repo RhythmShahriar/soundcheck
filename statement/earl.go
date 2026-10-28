@@ -202,7 +202,7 @@ func EARL(w io.Writer, d *Draft) error {
 func earlOutcomeOf(r Row) (outcome, text string) {
 	switch r.Tests {
 	case ResultFailures:
-		s := fmt.Sprintf("failures found: %s on %s", count(r.Issues, "element"), count(r.Pages, "page"))
+		s := fmt.Sprintf("failures found: %s on %s", elements(r), count(r.Pages, "page"))
 		if len(r.Paths) > 0 {
 			s += " (" + strings.Join(plainAll(r.Paths), ", ") + ")"
 		}
