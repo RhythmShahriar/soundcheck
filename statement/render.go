@@ -114,6 +114,7 @@ type jsonDraft struct {
 	Checked      []string      `json:"checked"`
 	Axe          string        `json:"axe"`
 	AxeRules     int           `json:"axe_rules"`
+	OwnChecks    int           `json:"own_checks"`
 	Totals       jsonTotals    `json:"totals"`
 	Criteria     []jsonRow     `json:"criteria"`
 	KnownIssues  []jsonKnown   `json:"known_issues"`
@@ -212,7 +213,7 @@ func JSON(w io.Writer, d *Draft) error {
 		Schema: SchemaJSON, Tool: "rhythm-soundcheck", Version: plain(d.Version), Date: plain(d.Date), Layout: d.Layout,
 		WCAG: d.WCAG, EN301549: d.EN301549, Standard: d.Standard, EvidenceNote: model.EvidenceNote, Todo: d.Todo,
 		Website: plain(o.Website), Pages: d.Pages, PrivatePages: d.PrivatePages, Checked: plainAll(d.Checked),
-		Axe: d.Axe, AxeRules: d.AxeRules, Totals: jsonTotals{len(d.Rows), d.Failed, d.NotTested},
+		Axe: d.Axe, AxeRules: d.AxeRules, OwnChecks: d.OwnChecks, Totals: jsonTotals{len(d.Rows), d.Failed, d.NotTested},
 		Owner: jsonOwner{Name: plain(o.Owner), Email: plain(o.Contact.Email), Phone: plain(o.Contact.Phone), Address: plain(o.Contact.Address),
 			ResponseDays: o.ResponseDays, Country: plain(o.Country), Enforcement: plain(strings.TrimSpace(o.Enforcement)), Scope: plainAll(o.Scope), Service: plain(o.Service)},
 		Criteria: []jsonRow{}, KnownIssues: []jsonKnown{}, Ignored: []jsonIgnored{}, NotAudited: []jsonAudit{},

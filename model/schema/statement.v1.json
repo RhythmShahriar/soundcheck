@@ -5,7 +5,7 @@
   "description": "rhythm soundcheck statement --json: the draft of an accessibility statement from an --eaa run, as data. It is evidence for the owner's own statement: status is always null because choosing it is the owner's decision. Fields are only added within rhythm-soundcheck/statement/v1.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "tool", "version", "date", "layout", "wcag", "en301549", "standard", "status", "evidence_note", "todo", "website", "owner", "pages", "private_pages", "checked", "axe", "axe_rules", "totals", "criteria", "known_issues", "ignored", "not_audited", "frames", "keyboard", "notes", "limits"],
+  "required": ["schema", "tool", "version", "date", "layout", "wcag", "en301549", "standard", "status", "evidence_note", "todo", "website", "owner", "pages", "private_pages", "checked", "axe", "axe_rules", "own_checks", "totals", "criteria", "known_issues", "ignored", "not_audited", "frames", "keyboard", "notes", "limits"],
   "properties": {
     "schema": {"const": "rhythm-soundcheck/statement/v1"},
     "tool": {"const": "rhythm-soundcheck"},
@@ -24,7 +24,8 @@
     "private_pages": {"type": "integer", "minimum": 0, "description": "Pages checked logged in and left out of every list (statement.list_private_paths is off)."},
     "checked": {"type": "array", "items": {"type": "string"}, "description": "Paths of the pages checked, sorted, without query strings and with tokens masked."},
     "axe": {"type": "string", "description": "axe-core's version."},
-    "axe_rules": {"type": "integer", "minimum": 0, "description": "axe rules the run applied."},
+    "axe_rules": {"type": "integer", "minimum": 0, "description": "axe-core rules the run applied."},
+    "own_checks": {"type": "integer", "minimum": 0, "description": "Soundcheck's own checks that ran with axe-core's rules and test a WCAG criterion, such as reflow and placeholder-label. Advisory checks are left out."},
     "totals": {
       "type": "object",
       "additionalProperties": false,

@@ -26,6 +26,7 @@
   ],
   "axe": "4.14.0",
   "axe_rules": 2,
+  "own_checks": 0,
   "totals": {
     "criteria": 55,
     "failed": 0,
@@ -419,12 +420,11 @@
         "keyboard/not-reachable",
         "keyboard/not-operable",
         "keyboard/menu",
-        "keyboard/flow",
         "axe:frame-focusable-content",
         "axe:scrollable-region-focusable",
         "axe:server-side-image-map"
       ],
-      "how_tested": "partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu, keyboard/flow",
+      "how_tested": "partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu",
       "result": "no_failures_found",
       "tests": "no_failures_found",
       "text": "no failures found by these tests",
@@ -938,10 +938,9 @@
       "coverage": "partly",
       "tested_by": [
         "a11y/placeholder-label",
-        "interact/unlabeled",
         "axe:form-field-multiple-labels"
       ],
-      "how_tested": "partly: axe form-field-multiple-labels; a11y/placeholder-label, interact/unlabeled",
+      "how_tested": "partly: axe form-field-multiple-labels; a11y/placeholder-label",
       "result": "no_failures_found",
       "tests": "no_failures_found",
       "text": "no failures found by these tests",
@@ -1026,7 +1025,6 @@
       "en301549": "9.4.1.2",
       "coverage": "partly",
       "tested_by": [
-        "interact/unlabeled",
         "axe:area-alt",
         "axe:aria-allowed-attr",
         "axe:aria-braille-equivalent",
@@ -1057,7 +1055,7 @@
         "axe:select-name",
         "axe:summary-name"
       ],
-      "how_tested": "partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled",
+      "how_tested": "partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name",
       "result": "no_failures_found",
       "tests": "no_failures_found",
       "text": "no failures found by these tests",

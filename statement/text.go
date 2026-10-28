@@ -285,7 +285,10 @@ func method(d *doc, dr *Draft, noun string) {
 	if dr.Axe != "" {
 		axe += " " + dr.Axe
 	}
-	if dr.AxeRules > 0 {
+	switch {
+	case dr.AxeRules > 0 && dr.OwnChecks > 0:
+		axe += " with " + count(dr.AxeRules, "rule") + " plus " + count(dr.OwnChecks, "Soundcheck check")
+	case dr.AxeRules > 0:
 		axe += ", " + count(dr.AxeRules, "rule")
 	}
 	s := fmt.Sprintf("Rhythm Soundcheck %s checked %s of %s on %s with automated tests (%s for WCAG %s A and AA)",

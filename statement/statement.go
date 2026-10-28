@@ -135,6 +135,9 @@ type Draft struct {
 	EN301549 string // the matching EN 301 549 version, such as V3.2.1
 	Axe      string // axe-core's version
 	AxeRules int    // axe rules the run applied
+	// OwnChecks counts Soundcheck's own checks that ran with axe's
+	// rules and test a WCAG criterion (placeholder-label, reflow).
+	OwnChecks int
 
 	// Checked lists the paths of the checked pages, sorted and unique,
 	// when they may be listed. PrivatePages counts the pages left out

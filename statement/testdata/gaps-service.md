@@ -88,7 +88,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 1.4.11 Non-text Contrast | AA | 9.1.4.11 | not tested: needs a person | not tested: needs a person |
 | 1.4.12 Text Spacing | AA | 9.1.4.12 | partly: axe avoid-inline-spacing | no failures found by these tests |
 | 1.4.13 Content on Hover or Focus | AA | 9.1.4.13 | not tested: needs a person | not tested: needs a person |
-| 2.1.1 Keyboard | A | 9.2.1.1 | partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu, keyboard/flow | no failures found by these tests |
+| 2.1.1 Keyboard | A | 9.2.1.1 | partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu | no failures found by these tests |
 | 2.1.2 No Keyboard Trap | A | 9.2.1.2 | partly: keyboard/trap | no failures found by these tests |
 | 2.1.4 Character Key Shortcuts | A | 9.2.1.4 | not tested: needs a person | not tested: needs a person |
 | 2.2.1 Timing Adjustable | A | 9.2.2.1 | partly: axe meta-refresh | no failures found by these tests |
@@ -116,12 +116,12 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 3.2.4 Consistent Identification | AA | 9.3.2.4 | not tested: needs a person | not tested: needs a person |
 | 3.2.6 Consistent Help | A | 9.3.2.6 | not tested: needs a person | not tested: needs a person |
 | 3.3.1 Error Identification | A | 9.3.3.1 | partly: keyboard/error-not-linked | no failures found by these tests |
-| 3.3.2 Labels or Instructions | A | 9.3.3.2 | partly: axe form-field-multiple-labels; a11y/placeholder-label, interact/unlabeled | no failures found by these tests |
+| 3.3.2 Labels or Instructions | A | 9.3.3.2 | partly: axe form-field-multiple-labels; a11y/placeholder-label | no failures found by these tests |
 | 3.3.3 Error Suggestion | AA | 9.3.3.3 | not tested: needs a person | not tested: needs a person |
 | 3.3.4 Error Prevention (Legal, Financial, Data) | AA | 9.3.3.4 | not tested: needs a person | not tested: needs a person |
 | 3.3.7 Redundant Entry | A | 9.3.3.7 | not tested: needs a person | not tested: needs a person |
 | 3.3.8 Accessible Authentication (Minimum) | AA | 9.3.3.8 | not tested: needs a person | not tested: needs a person |
-| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled | no failures found by these tests |
+| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name | no failures found by these tests |
 | 4.1.3 Status Messages | AA | 9.4.1.3 | not tested: needs a person | not tested: needs a person |
 
 ## Not tested

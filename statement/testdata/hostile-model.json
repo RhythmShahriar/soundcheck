@@ -29,6 +29,7 @@
   ],
   "axe": "4.14.0",
   "axe_rules": 2,
+  "own_checks": 0,
   "totals": {
     "criteria": 50,
     "failed": 1,
@@ -426,12 +427,11 @@
         "keyboard/not-reachable",
         "keyboard/not-operable",
         "keyboard/menu",
-        "keyboard/flow",
         "axe:frame-focusable-content",
         "axe:scrollable-region-focusable",
         "axe:server-side-image-map"
       ],
-      "how_tested": "partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu, keyboard/flow",
+      "how_tested": "partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu",
       "result": "no_failures_found",
       "tests": "no_failures_found",
       "text": "no failures found by these tests",

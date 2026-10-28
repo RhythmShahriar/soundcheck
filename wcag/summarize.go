@@ -58,9 +58,9 @@ func selectorOf(i model.Issue) string {
 // they test. Summarize counts one as run only when an audit finished.
 var auditing = []string{"a11y", "keyboard"}
 
-// moduleOf returns the module a test of TestedBy belongs to: a11y for
+// ModuleOf returns the module a test of TestedBy belongs to: a11y for
 // the axe rules, else the part of the check id before the slash.
-func moduleOf(test string) string {
+func ModuleOf(test string) string {
 	if strings.HasPrefix(test, "axe:") {
 		return "a11y"
 	}
@@ -201,7 +201,7 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 			s.Criteria.Failed = append(s.Criteria.Failed, model.CriterionCount{ID: c.ID, Issues: len(tl.keys), Pages: tl.pages + len(tl.site)})
 			continue
 		}
-		if c.Coverage == CoveragePartly && slices.ContainsFunc(c.TestedBy, func(test string) bool { return ran(moduleOf(test)) }) {
+		if c.Coverage == CoveragePartly && slices.ContainsFunc(c.TestedBy, func(test string) bool { return ran(ModuleOf(test)) }) {
 			s.Criteria.NoFailuresFound = append(s.Criteria.NoFailuresFound, c.ID)
 			continue
 		}

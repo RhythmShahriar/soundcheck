@@ -387,3 +387,48 @@ func TestKnownIssuePeriod(t *testing.T) {
 		}
 	}
 }
+
+// The method describes only the tests that ran: a module left off and
+// key flows that never ran leave the criteria table. Soundcheck's
+// own checks are counted apart from axe-core's rules (the advisory
+// overlay check not at all).
+func TestBuildMethodOnlyWhatRan(t *testing.T) {
+	pages := []model.Page{{Path: "/", Audits: audited(), Keyboard: &model.KeyboardSummary{Widgets: 1}}}
+	in := input(pages, owner())
+	in.Run.Options.Modules = []string{"health", "a11y", "keyboard"}
+	in.Run.Options.A11y.Rules = []string{"image-alt", "label", "overlay", "placeholder-label", "reflow"}
+	d, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.AxeRules != 2 || d.OwnChecks != 2 {
+		t.Errorf("%d axe rules, %d own checks; want 2 and 2", d.AxeRules, d.OwnChecks)
+	}
+	for id, gone := range map[string]string{"3.3.2": "interact/unlabeled", "4.1.2": "interact/unlabeled", "2.1.1": "keyboard/flow"} {
+		r := row(d, id)
+		if slices.Contains(r.TestedBy, gone) || strings.Contains(r.HowTested(), gone) {
+			t.Errorf("%s lists %s, which didn't run: %q", id, gone, r.HowTested())
+		}
+	}
+	if r := row(d, "3.3.2"); !slices.Contains(r.TestedBy, "a11y/placeholder-label") {
+		t.Errorf("3.3.2 lost a check that ran: %v", r.TestedBy)
+	}
+	var b bytes.Buffer
+	if err := Markdown(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	if want := "(axe-core 4.14.0 with 2 rules plus 2 Soundcheck checks for WCAG 2.1 A and AA)"; !strings.Contains(b.String(), want) {
+		t.Errorf("method lacks %q", want)
+	}
+
+	// With interact on and a key flow run, both stay.
+	in = input(pages, owner())
+	in.Summary.Keyboard.FlowsRun = 1
+	d, err = Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(row(d, "3.3.2").TestedBy, "interact/unlabeled") || !slices.Contains(row(d, "2.1.1").TestedBy, "keyboard/flow") {
+		t.Errorf("tests that ran are missing: %v, %v", row(d, "3.3.2").TestedBy, row(d, "2.1.1").TestedBy)
+	}
+}

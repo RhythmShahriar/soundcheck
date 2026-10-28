@@ -69,7 +69,8 @@ func Lookup(id string) (Criterion, bool) {
 
 // HowTested says in words how Soundcheck tests the criterion, for the
 // criteria table: "partly: axe image-alt, role-img-alt; keyboard/trap",
-// "not tested: needs a person" or the criterion's Note.
+// "not tested: needs a person" or the criterion's Note. A partly
+// tested criterion whose tests a run left out says they didn't run.
 func (c Criterion) HowTested() string {
 	if c.Note != "" {
 		return c.Note
@@ -91,6 +92,10 @@ func (c Criterion) HowTested() string {
 	}
 	if len(own) > 0 {
 		parts = append(parts, strings.Join(own, ", "))
+	}
+	if len(parts) == 0 {
+		// Its tests are left out of a run that didn't run them.
+		return "not tested: its tests didn't run"
 	}
 	return "partly: " + strings.Join(parts, "; ")
 }

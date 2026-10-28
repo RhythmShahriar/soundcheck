@@ -37,6 +37,7 @@
   ],
   "axe": "4.14.0",
   "axe_rules": 2,
+  "own_checks": 0,
   "totals": {
     "criteria": 50,
     "failed": 7,

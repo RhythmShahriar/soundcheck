@@ -58,7 +58,17 @@ func Build(in Input) (*Draft, error) {
 		Keyboard: in.Summary.Keyboard, EvidenceNote: model.EvidenceNote,
 	}
 	if a := in.Run.Options.A11y; a != nil {
-		d.AxeRules = len(a.Rules)
+		// The rule list holds the a11y module's own checks too: count
+		// them apart. An advisory one (overlay) isn't counted at all.
+		for _, rule := range a.Rules {
+			_, axe := wcag.AxeRules[rule]
+			switch {
+			case axe || !ownCheck(rule):
+				d.AxeRules++
+			case len(wcag.ForCheck("a11y/"+rule, version)) > 0:
+				d.OwnChecks++
+			}
+		}
 		if d.Axe == "" {
 			d.Axe = a.Axe
 		}
@@ -151,6 +161,7 @@ func Build(in Input) (*Draft, error) {
 		noFailures[id] = true
 	}
 	for _, c := range wcag.Criteria(version) {
+		c.TestedBy = slices.DeleteFunc(c.TestedBy, func(t string) bool { return !testRan(in.Run, d.Keyboard, t) })
 		r := Row{Criterion: c, Result: ResultNotTested}
 		if f, ok := counts[c.ID]; ok {
 			r.Result, r.Issues, r.Pages = ResultFailures, f.Issues, f.Pages
@@ -220,3 +231,19 @@ func Build(in Input) (*Draft, error) {
 // kept because the page's audit didn't finish. Those aren't the owner's
 // choices, so the draft doesn't list them as ignored.
 const notCheckedReason = "not checked on this page"
+
+// ownChecks are the a11y module's own checks, recorded in the run's
+// axe rule list (checks/a11y ownRules).
+var ownChecks = []string{"overlay", "placeholder-label", "reflow"}
+
+func ownCheck(rule string) bool { return slices.Contains(ownChecks, rule) }
+
+// testRan reports whether a test of a criterion's TestedBy ran: its
+// module was on and, for keyboard/flow, a key flow ran. A run that
+// records no module list (one from before 1.3) keeps every test.
+func testRan(run *model.Run, k model.EAAKeyboard, test string) bool {
+	if m := run.Options.Modules; len(m) > 0 && !slices.Contains(m, wcag.ModuleOf(test)) {
+		return false
+	}
+	return test != "keyboard/flow" || k.FlowsRun > 0
+}

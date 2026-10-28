@@ -225,7 +225,10 @@ func earlScopeText(d *Draft) string {
 // evaluation specifics.
 func earlMethod(d *Draft) string {
 	s := fmt.Sprintf("Rhythm Soundcheck %s, %s: automated tests with axe-core %s", plain(d.Version), plain(d.Date), plain(d.Axe))
-	if d.AxeRules > 0 {
+	switch {
+	case d.AxeRules > 0 && d.OwnChecks > 0:
+		s += " (" + count(d.AxeRules, "rule") + " plus " + count(d.OwnChecks, "Soundcheck check") + ")"
+	case d.AxeRules > 0:
 		s += " (" + count(d.AxeRules, "rule") + ")"
 	}
 	if k := d.Keyboard; k.PagesWalked > 0 {

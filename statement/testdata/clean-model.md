@@ -86,7 +86,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 1.4.11 Non-text Contrast | AA | 9.1.4.11 | not tested: needs a person | not tested: needs a person |
 | 1.4.12 Text Spacing | AA | 9.1.4.12 | partly: axe avoid-inline-spacing | no failures found by these tests |
 | 1.4.13 Content on Hover or Focus | AA | 9.1.4.13 | not tested: needs a person | not tested: needs a person |
-| 2.1.1 Keyboard | A | 9.2.1.1 | partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu, keyboard/flow | no failures found by these tests |
+| 2.1.1 Keyboard | A | 9.2.1.1 | partly: axe frame-focusable-content, scrollable-region-focusable, server-side-image-map; keyboard/not-reachable, keyboard/not-operable, keyboard/menu | no failures found by these tests |
 | 2.1.2 No Keyboard Trap | A | 9.2.1.2 | partly: keyboard/trap | no failures found by these tests |
 | 2.1.4 Character Key Shortcuts | A | 9.2.1.4 | not tested: needs a person | not tested: needs a person |
 | 2.2.1 Timing Adjustable | A | 9.2.2.1 | partly: axe meta-refresh | no failures found by these tests |
