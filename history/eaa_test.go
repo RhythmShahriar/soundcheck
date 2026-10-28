@@ -285,3 +285,37 @@ func TestNewLeavesOutUnstable(t *testing.T) {
 		t.Errorf("without the comparison: keyboard %d", *e.KeyboardOpen)
 	}
 }
+
+// A token in a page's path (a reset link's) never reaches history.jsonl:
+// the page is kept masked, its counts still land on it and --page finds
+// it by the path as the visitor sees it.
+func TestHistoryMasksTokenPaths(t *testing.T) {
+	root := t.TempDir()
+	token := "AbCdEf0123456789" + "AbCdEf0123456789"
+	run := eaaRun(t0, "eaa-1", 0)
+	run.Pages[0].Path = "/reset/" + token + "/"
+	if err := Append(root, run, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, File))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Errorf("history.jsonl holds the token: %s", data)
+	}
+	entries, err := Read(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("read %d entries: %v", len(entries), err)
+	}
+	p := entries[0].PageSet[0]
+	if !strings.HasPrefix(p.Path, "/reset/") || strings.Contains(p.Path, token) || p.A11yOpen == nil || *p.A11yOpen != 1 {
+		t.Errorf("page %+v", p)
+	}
+	if v := entries[0].Value("a11y", run.Pages[0].Path); v != 1 {
+		t.Errorf("Value by the unmasked path = %v, want 1", v)
+	}
+	if v := entries[0].Value("a11y", p.Path); v != 1 {
+		t.Errorf("Value by the masked path = %v, want 1", v)
+	}
+}

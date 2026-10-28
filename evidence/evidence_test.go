@@ -112,6 +112,39 @@ func TestWriteAndVerify(t *testing.T) {
 	}
 }
 
+// A token in a page's path (a reset link's) is masked in evidence.json,
+// in the page list and in the pages a module couldn't audit.
+func TestPackMasksTokenPaths(t *testing.T) {
+	root := t.TempDir()
+	token := "AbCdEf0123456789" + "AbCdEf0123456789"
+	dir, run := saveRun(t, root, "snapshots", "eaa-1", time.Unix(1000, 0).UTC(), true, target)
+	run.Pages[1].Path = "/reset/" + token + "/"
+	run.EAA = &model.EAASummary{WCAG: "2.1", NotAudited: []model.NotAudited{{Path: run.Pages[1].Path, Module: "a11y", Status: model.AuditTimeout}}}
+	if err := store.SaveRun(dir, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(dir, run, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, File))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Errorf("evidence.json holds the token:\n%s", data)
+	}
+	p := readPackFile(t, dir)
+	if got := p.Pages[1].Path; !strings.HasPrefix(got, "/reset/") || strings.Contains(got, token) {
+		t.Errorf("page path %q", got)
+	}
+	if run.EAA.NotAudited[0].Path != "/reset/"+token+"/" {
+		t.Errorf("Write changed the run's own summary: %q", run.EAA.NotAudited[0].Path)
+	}
+	if _, err := Verify(dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Every way a file can change after the run, Verify names the file.
 func TestVerifyNamesTheFile(t *testing.T) {
 	for name, tc := range map[string]struct {

@@ -31,6 +31,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 
+	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 	"github.com/RhythmShahriar/soundcheck/wcag"
@@ -150,7 +151,7 @@ func writePack(dir string, run *model.Run, prev *Ref, extra Extra, amends *Amend
 		return err
 	}
 	pages(func(pg *model.Page) bool {
-		pa := PageAudit{ID: pg.ID, Path: noQuery(pg.Path)}
+		pa := PageAudit{ID: pg.ID, Path: cleanPath(pg.Path)}
 		for m, a := range pg.Audits {
 			if pa.Audits == nil {
 				pa.Audits = map[string]string{}
@@ -164,6 +165,10 @@ func writePack(dir string, run *model.Run, prev *Ref, extra Extra, amends *Amend
 		p.EAA = *run.EAA
 	} else {
 		p.EAA = wcag.Summarize(run, pages, run.Issues, nil, nil)
+	}
+	p.EAA.NotAudited = slices.Clone(p.EAA.NotAudited)
+	for i := range p.EAA.NotAudited {
+		p.EAA.NotAudited[i].Path = cleanPath(p.EAA.NotAudited[i].Path)
 	}
 	if err := done(); err != nil {
 		return fmt.Errorf("evidence: %w", err)
@@ -323,6 +328,16 @@ func storeRoot(dir string) string { return filepath.Dir(filepath.Dir(filepath.Cl
 
 // noQuery is a path without its query string or fragment, which can
 // hold session ids and reset keys.
+// cleanPath is a page path as the pack lists it: no query string or
+// fragment, and a token in the path (/reset/<token>/) or a one-time
+// code masked the way statement drafts and keyboard traces mask them.
+func cleanPath(p string) string {
+	if p == "" {
+		return p
+	}
+	return echolink.RedactURL(noQuery(p))
+}
+
 func noQuery(p string) string {
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		return p[:i]

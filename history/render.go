@@ -28,7 +28,7 @@ func (e Entry) Value(metric, page string) float64 {
 		if page != "" {
 			n = nil
 			for _, p := range e.PageSet {
-				if p.Path == page {
+				if samePage(p.Path, page) {
 					n = pageCounts[metric](p)
 					break
 				}
@@ -57,7 +57,7 @@ func (e Entry) Value(metric, page string) float64 {
 		return pick(e.LCP, e.TBT, e.TTFB)
 	}
 	for _, p := range e.PageSet {
-		if p.Path == page {
+		if samePage(p.Path, page) {
 			return pick(p.LCP, p.TBT, p.TTFB)
 		}
 	}
