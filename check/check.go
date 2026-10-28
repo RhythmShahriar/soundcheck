@@ -81,6 +81,14 @@ type ChangeFilter interface {
 	FilterChanges(changes []model.Change) []model.Change
 }
 
+// Auditor is a module that records on each page it tests whether its
+// audit finished (model.Page.Audits), such as a11y and keyboard. A
+// page that never loaded gets an error audit for each such module from
+// the runner, so it reads as not tested rather than as a clean page.
+type Auditor interface {
+	AuditsPages()
+}
+
 // Context is what a module can use during a run.
 type Context struct {
 	Config     config.Config

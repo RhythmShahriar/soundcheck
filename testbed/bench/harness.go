@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -178,13 +179,23 @@ type canary struct {
 const startCanary = "sid"
 
 // storedRun lists the files that hold the run as stored (store's
-// run.json and its pages files), where a start canary may stay.
-var storedRun = []string{"run.json", "pages.jsonl", "pages.1.jsonl"}
+// run.json and its pages files) and a snapshot comparison's
+// comparison.json, where a start canary may stay: compare and resume
+// visit a page again by its path, accept and ignore find a change's
+// pages by theirs.
+var storedRun = []string{"run.json", "pages.jsonl", "pages.1.jsonl", "comparison.json"}
 
 // canaryNames are the canaries the pages read: s68's account form
-// (email, phone, token) and s84's payment frame (data, field, aria,
-// query, text).
-var canaryNames = []string{"email", "phone", "token", "data", "field", "aria", "query", "text"}
+// (email, phone, token), s84's payment frame (data, field, aria,
+// query, text) and s91's controls, which carry them in an id (idtoken,
+// idemail, trapemail), a name (namejwt) and a class (classtoken).
+var canaryNames = []string{"email", "phone", "token", "data", "field", "aria", "query", "text",
+	"idtoken", "namejwt", "idemail", "classtoken", "trapemail"}
+
+// letters is the alphabet of the canaries an id carries: no digits and
+// no hex letters, so Soundcheck doesn't take the id for a generated one
+// and leave it out of a selector, which would hide a leak.
+const letters = "ghijklmnopqrstuvwxyzGHIJKLMNOPQRSTUVWXYZ"
 
 // newCanaries makes this run's canaries. Each is built from parts at
 // run time, so no secret-looking value is ever committed (push
@@ -197,8 +208,24 @@ func newCanaries() ([]canary, error) {
 			return nil, err
 		}
 		core := hex.EncodeToString(b)
+		word, err := randomWord(36)
+		if err != nil {
+			return nil, err
+		}
 		var value string
 		switch name {
+		case "idtoken", "classtoken":
+			// A GitHub token: gh + p_ and 36 characters.
+			core = word
+			value = "gh" + "p_" + core
+		case "namejwt":
+			// A JWT: header, payload and signature, base64url.
+			enc := base64.RawURLEncoding.EncodeToString
+			core = enc([]byte(`{"sub":"` + word[:20] + `"}`))
+			value = enc([]byte(`{"alg":"HS256"}`)) + "." + core + "." + word[20:]
+		case "idemail", "trapemail":
+			core = word[:20]
+			value = "c-" + core + "@" + "example" + ".test"
 		case "email", "aria":
 			value = "canary." + core + "@" + "example" + ".test"
 		case "phone":
@@ -222,6 +249,18 @@ func newCanaries() ([]canary, error) {
 	}
 	sid := hex.EncodeToString(b)
 	return append(out, canary{name: startCanary, value: sid, needle: sid, start: true}), nil
+}
+
+// randomWord is n random characters of letters.
+func randomWord(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = letters[int(b[i])%len(letters)]
+	}
+	return string(b), nil
 }
 
 // startURL is u with the start canary added to its query, or u when

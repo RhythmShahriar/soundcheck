@@ -47,5 +47,5 @@ wp-update-reset: ## put the ten testbed-update plugins back at 1.0 (s47, s48)
 wp-updates: ## list the plugin updates WordPress offers
 	$(COMPOSE) run --rm --no-deps -T --entrypoint wp cli plugin list --update=available --fields=name,version,update_version
 
-bench-eaa: ## run EAA mode's benchmark (s49 to s89, the --eaa control pass and the cost pass); needs make build first
+bench-eaa: ## run EAA mode's benchmark (s49 to s91, the --eaa control pass and the cost pass); needs make build first
 	cd .. && go run -tags testbed ./testbed/bench -bin bin/rhythm-soundcheck -only eaa $(ARGS)

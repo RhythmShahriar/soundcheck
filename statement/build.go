@@ -124,6 +124,11 @@ func Build(in Input) (*Draft, error) {
 		}
 	}
 	pages(func(p *model.Page) bool {
+		// A page that never loaded wasn't checked: it is listed under
+		// "Not tested" (its audits say why), not under "Pages checked".
+		if p.Error != "" {
+			return true
+		}
 		d.Pages++
 		path := clean(p.Path)
 		checked[path] = true

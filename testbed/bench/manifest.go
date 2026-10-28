@@ -178,7 +178,7 @@ func (s Scenario) ChangesSite() bool {
 	return !s.Same && !s.Harness.Has("parallel") && !s.Harness.Has("stress") && !s.Harness.Has("wp-update")
 }
 
-// EAA reports whether the scenario belongs to EAA mode (s49 to s89):
+// EAA reports whether the scenario belongs to EAA mode (s49 to s91):
 // the ones -only eaa picks.
 func (s Scenario) EAA() bool { return slices.Contains(s.Args, "--eaa") }
 
@@ -413,7 +413,7 @@ func (m *Manifest) URL(s Scenario) string {
 }
 
 // Pick returns the scenarios whose IDs are in only (all when empty).
-// The name eaa picks every EAA mode scenario (s49 to s89). Each scenario
+// The name eaa picks every EAA mode scenario (s49 to s91). Each scenario
 // comes back once, however often only names it.
 func (m *Manifest) Pick(only []string) ([]Scenario, error) {
 	if len(only) == 0 {

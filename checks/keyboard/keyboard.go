@@ -30,6 +30,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/checks/keyboard/ids"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -62,6 +63,10 @@ func New() *Module { return &Module{opts: defaults(), set: DefaultSettings()} }
 
 // Name is "keyboard".
 func (*Module) Name() string { return "keyboard" }
+
+// AuditsPages marks the module as one that records each page's audit
+// (check.Auditor).
+func (*Module) AuditsPages() {}
 
 // Phase puts the module after interact's clicks and submits.
 func (*Module) Phase() int { return check.PhaseKeyboard }
@@ -119,7 +124,7 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	if !audit.Finished() {
 		t.Capped = true
 	}
-	issues := Classify(*t, s.options(), wcagVersion(cc))
+	issues := maskIssues(Classify(*t, s.options(), wcagVersion(cc)))
 	for _, i := range issues {
 		check.Page(p, i)
 	}
@@ -209,7 +214,7 @@ func wcagVersion(cc *check.Context) string {
 func summary(t *Trace, issues []model.Issue) *model.KeyboardSummary {
 	sum := &model.KeyboardSummary{Stops: t.Stops(), Wrapped: t.Wrapped(), Capped: t.Capped, Widgets: len(t.Widgets)}
 	if t.SkipLink != nil {
-		sum.SkipLink = t.SkipLink.Selector
+		sum.SkipLink = pii.Redact(t.SkipLink.Selector)
 	}
 	sum.Frames = t.FrameSummary()
 	kinds := map[string]bool{}
@@ -227,7 +232,7 @@ func summary(t *Trace, issues []model.Issue) *model.KeyboardSummary {
 			continue
 		}
 		for _, r := range t.Rings {
-			if r.Selector == i.Source && r.Crop != "" {
+			if pii.Redact(r.Selector) == i.Source && r.Crop != "" {
 				if sum.Crops == nil {
 					sum.Crops = map[string]string{}
 				}
@@ -237,6 +242,33 @@ func summary(t *Trace, issues []model.Issue) *model.KeyboardSummary {
 		}
 	}
 	return sum
+}
+
+// maskIssues masks credentials, email addresses, phone, card and IBAN
+// numbers in the selectors the issues name, as their Source, in their
+// Detail and FocusPath (internal/pii). It keys them again: no plain
+// value stays in a key. Two elements whose selectors mask the
+// same keep one issue.
+func maskIssues(in []model.Issue) []model.Issue {
+	out := make([]model.Issue, 0, len(in))
+	seen := map[string]bool{}
+	for _, i := range in {
+		i.Source, i.Detail = pii.Redact(i.Source), pii.Redact(i.Detail)
+		if i.FocusPath != nil {
+			fp := make([]string, len(i.FocusPath))
+			for k, sel := range i.FocusPath {
+				fp[k] = pii.Redact(sel)
+			}
+			i.FocusPath = fp
+		}
+		i.Identify()
+		if seen[i.Key] {
+			continue
+		}
+		seen[i.Key] = true
+		out = append(out, i)
+	}
+	return out
 }
 
 // widgetKinds are the kinds of widget the walk tests.

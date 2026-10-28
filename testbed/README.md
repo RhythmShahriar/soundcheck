@@ -1,6 +1,6 @@
 # Soundcheck testbed
 
-89 broken-site scenarios in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
+91 broken-site scenarios in one Docker Compose stack, for Soundcheck's end-to-end tests and its public benchmark ([docs/benchmark.md](../docs/benchmark.md)).
 
 Each scenario breaks one thing the way a plugin update, a theme update, a PHP upgrade, a host or a setting would, or puts Soundcheck itself in a hard spot (Ctrl+C, two runs at once, a busy machine). Every scenario has a **good** and a **broken** state. `toggle.sh` switches between them right away, without a rebuild or restart.
 
@@ -166,14 +166,16 @@ A scenario is broken while `testbed/state/<id>` exists (or `$TESTBED_STATE/<id>`
 | s87 | `:18810/a11y/legacy.php` | a 1.2.2 snapshot (`fixtures/s87-snapshot`) compared by 1.3 with `--eaa` | the "used the WCAG 2.0 rules" note and nothing at or above NEW |
 | s88 | `:18810/a11y/sidefx.php` | hard good: side effects on GET and on focus | nothing NEW; no counted request, no download |
 | s89 | `:18810/a11y/` | a small site with no known accessibility problems, also in every control round | nothing from a11y or keyboard; a statement with no automated failures |
+| s90 | `:18810/a11y/sleepy.php` | the search page it links to waits 12 s with a 5 s timeout, so it never loads | exit 3, a "not checked" warning for a11y and for keyboard; nothing FIXED; the statement lists the page as not tested |
+| s91 | `:18810/a11y/ids.php` | controls without a label carry canaries in their id, name and class; a coupon field traps the keyboard | NEW a11y/select-name and a11y/button-name, keyboard/trap; no canary in any file |
 
 Site-wide breakage (s02, s06, s12, s14, s16, s17, s20 to s24, s27, s36, s37, s54 to s56, s58, s62, s73, s80) shows on every page. The benchmark limits each run to the scenario's own pages (`include`) and breaks one scenario at a time.
 
 **Pending** scenarios expect a detector or fix that isn't built yet: today the EAA scenarios, each marked with the Soundcheck 1.3 build lane it waits for (`pending: keyboard`, `pending: axe`…). They run like the others; the scoreboard lists them apart. Their mark or `note` in `scenarios.yaml` says what they wait for; drop the mark once the scenario is caught.
 
-### Accessibility (EAA mode, s49 to s89)
+### Accessibility (EAA mode, s49 to s91)
 
-s49 to s89 are the scenarios for `--eaa` (accessibility evidence for the European Accessibility Act): axe-core with the WCAG 2.1 rules, the keyboard walk, key flows and the statement draft. They run with `args: [--eaa]`; `-only eaa` picks them all.
+s49 to s91 are the scenarios for `--eaa` (accessibility evidence for the European Accessibility Act): axe-core with the WCAG 2.1 rules, the keyboard walk, key flows and the statement draft. They run with `args: [--eaa]`; `-only eaa` picks them all.
 
 **Step zero.** "A clean site must pass" means nothing until the clean states are clean, so both sites were audited before any scenario was added. `TestGoodStateAudit` does it with the testbed's own audit (`bench/audit.go`): axe-core 4.14.0 with the WCAG 2.1 A and AA tags, a placeholder-only label check, reflow at 320 px and a Tab walk that wants a skip link to `#main` first, no trap, no hidden stop and a visible focus ring on each of the first 40 stops. It is small and separate from Soundcheck's modules on purpose; `TestGoodStateIsClean` adds the `--eaa` pass with the modules themselves once they're merged.
 
@@ -188,7 +190,7 @@ The fixes: a skip link to `#main` before the header and `id="main"` on `<main>` 
 
 **Side effects.** The shop counts orders in `state/orders.txt`; `a11y/sidefx.php` and `a11y/ws.php` count every request that reaches an add-to-cart link, the logout link (`/a11y/sidefx.php/logout`), the download, the popup or the WebSocket in `state/sidefx.txt`. The orders harness fails a scenario that changed either. s88's include pattern is the page's exact path, so page discovery never opens the side-effect links (Soundcheck's discovery ignores `rel="nofollow"`); only the keyboard walk could reach them.
 
-**Canaries.** s68's account form and s84's cross-origin payment frame show the values in `state/canaries` (`email=…`, `phone=…`, `token=…`, one per line) in field values, `data-*` and `aria-label` attributes and a link's query string. The benchmark makes them at run time; none is ever committed. A canary in any file Soundcheck wrote is a leak.
+**Canaries.** s68's account form and s84's cross-origin payment frame show the values in `state/canaries` (`email=…`, `phone=…`, `token=…`, one per line) in field values, `data-*` and `aria-label` attributes and a link's query string. s91's controls carry a GitHub token, a JWT and email addresses (`idtoken`, `namejwt`, `classtoken`, `idemail`, `trapemail`) in their id, name and class, which Soundcheck's selectors name. The benchmark makes them at run time; none is ever committed. A canary in any file Soundcheck wrote is a leak.
 
 **Frames and overlays.** s84's same-origin frame is `a11y/frame.php/map` and its cross-origin one is `a11y/frame.php/pay` from the frame port: another host name (127.0.0.1 for localhost) on another port. s73's overlay script is a stub at the overlay plugin's real path (`wp/plugins/pojo-accessibility/assets/js/app.js`), so nothing is fetched from another host.
 
@@ -259,7 +261,7 @@ A scenario with `fixture` copies that snapshot folder in instead of step 2, `flo
 
 Then the **control pass** checks for noise: with every scenario good, it takes a snapshot of each `control` site (at most `control.limit` pages) and compares twice, for `-control` rounds (10 by default). Any change at or above NEW is a false alarm; the scoreboard shows the count next to the catches. `-control 0` skips it; a run with `-only` skips it unless `-control` is given or the list has `eaa`.
 
-**EAA mode** (`make -C testbed bench-eaa`, the same as `go run -tags testbed ./testbed/bench -only eaa`) runs s49 to s89, then the control pass with `--eaa` on both sites plus the pages of each scenario marked `control: true` (s81 and s89, with their flags; an accessibility warning or error in such a round's snapshot is a false alarm too, as these pages have none), then a cost pass: on each control site a default snapshot, one with `--modules health`, one with `--modules health,a11y` and one with `--eaa`. On the checkout it times s70's key flow with and without `--level flows`. It writes only the `EAA mode` section of `docs/benchmark.md` (between `<!-- eaa:begin -->` and `<!-- eaa:end -->`) and keeps the rest; a full run writes the whole file with the section at its end. The section has the scoreboard of s49 to s89 (caught, missed or pending with the lane), the false alarms of the good scenarios and of the `--eaa` control rounds, determinism (the issue keys of each round's snapshot against the first round's), the cost table with PRD 16.3's targets beside it (median and p95 seconds per page with and without `--eaa`, the a11y audit and the keyboard walk per page, one key flow, the whole run against a default one, with core count, OS, Chrome, axe-core and its tags), the coverage table made from the WCAG catalog (`wcag.Criteria`), the other accessibility tools and the framing of PRD 15 item 10 with the evidence note.
+**EAA mode** (`make -C testbed bench-eaa`, the same as `go run -tags testbed ./testbed/bench -only eaa`) runs s49 to s91, then the control pass with `--eaa` on both sites plus the pages of each scenario marked `control: true` (s81 and s89, with their flags; an accessibility warning or error in such a round's snapshot is a false alarm too, as these pages have none), then a cost pass: on each control site a default snapshot, one with `--modules health`, one with `--modules health,a11y` and one with `--eaa`. On the checkout it times s70's key flow with and without `--level flows`. It writes only the `EAA mode` section of `docs/benchmark.md` (between `<!-- eaa:begin -->` and `<!-- eaa:end -->`) and keeps the rest; a full run writes the whole file with the section at its end. The section has the scoreboard of s49 to s91 (caught, missed or pending with the lane), the false alarms of the good scenarios and of the `--eaa` control rounds, determinism (the issue keys of each round's snapshot against the first round's), the cost table with PRD 16.3's targets beside it (median and p95 seconds per page with and without `--eaa`, the a11y audit and the keyboard walk per page, one key flow, the whole run against a default one, with core count, OS, Chrome, axe-core and its tags), the coverage table made from the WCAG catalog (`wcag.Criteria`), the other accessibility tools and the framing of PRD 15 item 10 with the evidence note.
 
 Scenarios with `login: true` get `SOUNDCHECK_USER=soundcheck` and `SOUNDCHECK_PASSWORD=soundcheck-testbed` unless you set them yourself.
 
@@ -276,7 +278,7 @@ Flags:
 | Flag | Default | |
 |---|---|---|
 | `-bin` | `bin/rhythm-soundcheck` | the binary to benchmark |
-| `-only` | all | `s01,s05`: some scenarios; `eaa` for s49 to s89 (with the `--eaa` control pass and the cost pass) |
+| `-only` | all | `s01,s05`: some scenarios; `eaa` for s49 to s91 (with the `--eaa` control pass and the cost pass) |
 | `-tools` | `auto` | `auto`, `none`, `all`, or a list |
 | `-out` | `docs/benchmark.md` | the scoreboard |
 | `-work` | `testbed/bench/work` | runs and `results.json` |

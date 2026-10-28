@@ -20,7 +20,7 @@ This statement covers the 4 pages Soundcheck checked, listed under "Pages checke
 
 ### Problems found
 
-Soundcheck's tests found no failures on 2026-10-26. That doesn't mean there are none: 26 criteria need a person.
+On 2026-10-26 Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: 26 criteria need a person and some pages weren't fully tested (see "Not tested").
 
 ### Disproportionate burden
 

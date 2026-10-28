@@ -36,7 +36,7 @@ const axeCLITags = "wcag2a,wcag2aa,wcag21a,wcag21aa"
 // Scopes of a Tool: which scenarios it runs on.
 const (
 	scopeClassic = ""     // the scenarios before EAA mode
-	scopeEAA     = "eaa"  // the EAA scenarios (s49 to s89)
+	scopeEAA     = "eaa"  // the EAA scenarios (s49 to s91)
 	scopeBoth    = "both" // every scenario
 )
 

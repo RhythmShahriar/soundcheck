@@ -226,7 +226,7 @@ func placeholderIssues(found []field, more beyond, have []model.Issue, keep int)
 	seen := map[string]bool{}
 	var all []model.Issue
 	for _, f := range found {
-		sel := Selector(f.Path)
+		sel := maskedSelector(f.Path)
 		if sel == "" || seen[sel] || hasLabel[sel] {
 			continue
 		}

@@ -1063,7 +1063,7 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 	c.Warnings = append(c.Warnings, s.compareNotes...)
 	s.confirm(c, &model.Run{Pages: known}, site, dir)
 	compare.ApplyIgnore(c, ignoreRules(s.cfg), time.Now())
-	if err := store.SaveComparison(dir, c); err != nil {
+	if err := store.SaveComparison(dir, savedComparison(after, c)); err != nil {
 		return s.fail(err)
 	}
 	s.st.ExcludeFromGit()
@@ -1072,6 +1072,21 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 	}
 	s.record(after, c)
 	return s.finish(report.Result{Run: after, Comparison: c, Dir: dir}, "")
+}
+
+// savedComparison is c as comparison.json keeps it. A comparison with
+// a snapshot keeps its page paths as they are: accept and ignore find
+// the pages of a change by them in the snapshot and the run. Nothing
+// picks pages from an --against comparison (accept refuses one), so an
+// --eaa one is stored the way the reports show it, with the query
+// values of its page paths masked (report.Masked). Its change ids are
+// set first, so the stored ones are the ids the run printed.
+func savedComparison(after *model.Run, c *model.Comparison) *model.Comparison {
+	if c.Before.Name != "" {
+		return c
+	}
+	c.Complete()
+	return report.Masked(report.Result{Run: after, Comparison: c}).Comparison
 }
 
 // compareStored compares after, the run just made and still in memory,

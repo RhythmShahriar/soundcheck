@@ -23,7 +23,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/wcag"
 )
 
-// EAA mode's part of the benchmark: the scoreboard of s49 to s89, the
+// EAA mode's part of the benchmark: the scoreboard of s49 to s91, the
 // false alarms and determinism of --eaa on unchanged sites, what --eaa
 // costs and which WCAG criteria the tests reach. PRD 16.3 sets the
 // targets the section prints beside each measurement.
@@ -205,7 +205,7 @@ func eaaSection(b Board) string {
 	allEAA := slices.DeleteFunc(slices.Clone(allTools), func(t *Tool) bool { return t.Scope == scopeClassic })
 
 	w("%s\n## EAA mode\n\n", eaaBegin)
-	w("The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). ")
+	w("The scenarios s49 to s91 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). ")
 	w("Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. ")
 	w("Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, ")
 	w("a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, ")

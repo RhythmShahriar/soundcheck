@@ -140,7 +140,7 @@ func reflowIssue(rep reflowReport) *model.Issue {
 	var sels []string
 	widest, right := "", 0
 	for _, o := range rep.Offenders {
-		sel := Selector(o.Path)
+		sel := maskedSelector(o.Path)
 		if sel == "" || slices.Contains(sels, sel) {
 			continue
 		}

@@ -73,6 +73,10 @@ type Module struct{}
 // Name is the module's name in --modules and the config file.
 func (Module) Name() string { return "a11y" }
 
+// AuditsPages marks the module as one that records each page's audit
+// (check.Auditor).
+func (Module) AuditsPages() {}
+
 // Live audits the loaded page. axe runs in an isolated world: it shares
 // the page's DOM but not its globals. A site's AMD loader or a script
 // that redefines Array or Promise can't break it. The page can't see or
@@ -245,13 +249,13 @@ func issues(found []result, keep int, version string) []model.Issue {
 			if kept[check] >= keep {
 				break
 			}
-			sel := Selector(el.Path)
+			sel := maskedSelector(el.Path)
 			if sel == "" || seen[check+"|"+sel] {
 				continue
 			}
 			seen[check+"|"+sel] = true
 			kept[check]++
-			detail := summary(el.Summary)
+			detail := pii.Redact(summary(el.Summary))
 			if h := snippet(el.HTML); h != "" {
 				detail = strings.TrimSpace(h + "\n" + detail)
 			}
@@ -601,6 +605,13 @@ func Selector(path [][]Elem) string {
 	}
 	return strings.Join(parts, " >>> ")
 }
+
+// maskedSelector is Selector(path) with credentials, email addresses,
+// phone, card and IBAN numbers in it masked (internal/pii), for an
+// issue's Source and Detail: a site can put a token or a customer's
+// email address in an id, a name or a class. The issue's key is built
+// from it, so it holds no plain value either.
+func maskedSelector(path [][]Elem) string { return pii.Redact(Selector(path)) }
 
 func stableID(id string) bool { return id != "" && !generated.MatchString(id) }
 

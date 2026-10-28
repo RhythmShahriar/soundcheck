@@ -111,6 +111,10 @@ var probes = []probe{
 	{ID: "s87", Site: "php", Path: "/a11y/legacy.php"},
 	{ID: "s88", Site: "php", Path: "/a11y/sidefx.php"},
 	{ID: "s89", Site: "php", Path: "/a11y/index.php"},
+	{ID: "s90", Site: "php", Path: "/a11y/sleepy.php/search", Good: `"0"`, Broken: `"12"`,
+		JS: `() => document.getElementById('title').dataset.waited`},
+	{ID: "s91", Site: "php", Path: "/a11y/ids.php", Good: "0", Broken: "4",
+		JS: `() => document.querySelectorAll('form select:not(#plan):not([aria-label]), form button:empty').length`},
 }
 
 // probeResult is what one probe saw in one state.

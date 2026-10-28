@@ -1,7 +1,7 @@
 <!-- eaa:begin -->
 ## EAA mode
 
-The scenarios s49 to s89 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims the site meets the law.
+The scenarios s49 to s91 run with `--eaa` (`go run -tags testbed ./testbed/bench -only eaa`). Broken ones must be caught; good ones (nothing broken, or a page built to be hard) must stay quiet. Each scenario's harness also checks what must never happen: an order placed or a side effect on a GET or on focus, a request to a host outside the testbed, a canary value from the page in any file Soundcheck wrote, or a statement draft that claims the site meets the law.
 
 > Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.
 >

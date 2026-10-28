@@ -32,6 +32,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/check"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -366,6 +367,9 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		wg.Go(func() {
 			defer func() { <-sem }()
 			p := visit(ctx, cc, opts, hosts, pg)
+			if !cutShort(p) {
+				unloadedAudits(p, opts.Modules)
+			}
 			if discover {
 				if added := addLinks(frontier, p.Links, pg.Depth+1); len(added) > 0 {
 					qmu.Lock()
@@ -986,6 +990,31 @@ func skippedAudits(p *model.Page, noChrome []string) {
 			p.Audits = map[string]model.Audit{}
 		}
 		p.Audits[name] = model.Audit{Status: model.AuditSkipped, Reason: "needs Chrome"}
+	}
+}
+
+// unloadedAudits records on p, a page that didn't load (p.Error), that
+// each module recording audits (check.Auditor) couldn't test it. Their
+// hooks never ran, so without it the page would have no audit and read
+// as tested with nothing found: the --eaa summary, the statement's "Not
+// tested" list and exit 3 all go by these audits. A module that already
+// recorded one keeps it.
+func unloadedAudits(p *model.Page, modules []check.Module) {
+	if p.Error == "" {
+		return
+	}
+	reason := "page didn't load: " + pii.Redact(p.Error)
+	for _, m := range modules {
+		if _, ok := m.(check.Auditor); !ok {
+			continue
+		}
+		if _, ok := p.Audits[m.Name()]; ok {
+			continue
+		}
+		if p.Audits == nil {
+			p.Audits = map[string]model.Audit{}
+		}
+		p.Audits[m.Name()] = model.Audit{Status: model.AuditError, Reason: reason}
 	}
 }
 

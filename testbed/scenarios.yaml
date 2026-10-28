@@ -85,7 +85,7 @@
 #                                     at least N menus, dialogs or disclosures
 #
 # Checks for modules that aren't merged yet are matched by module prefix
-# only, e.g. "interact/". The EAA scenarios (args: [--eaa], s49 to s89)
+# only, e.g. "interact/". The EAA scenarios (args: [--eaa], s49 to s91)
 # run with -only eaa; the a11y/ and keyboard/ check names are PRD 8's.
 
 sites:
@@ -700,8 +700,9 @@ scenarios:
 
   # EAA mode (Soundcheck 1.3, --eaa): accessibility and keyboard
   # scenarios from PRD 16.1. Broken ones first (s49 to s76), then the
-  # good and hard-good ones (s77 to s89) that must stay quiet. s68 waits
-  # for a decision on auditing logged-in pages (pending: axe).
+  # good and hard-good ones (s77 to s89) that must stay quiet, then two
+  # more broken ones (s90 and s91). s68 waits for a decision on auditing
+  # logged-in pages (pending: axe).
 
   - id: s49
     name: Keyboard trap in the checkout's coupon field
@@ -1293,4 +1294,45 @@ scenarios:
     forbid:
       - {check: a11y/}
       - {check: keyboard/}
+    tools: []
+
+  # Broken ones added after the release review: a page that never loads
+  # under --eaa and selectors that hold secrets.
+
+  - id: s90
+    name: Page that never loads under --eaa (plain PHP)
+    site: php
+    path: /a11y/sleepy.php
+    include: ["/a11y/sleepy.php*"]
+    module: a11y
+    args: [--eaa, --timeout, 5s]
+    backlog: true
+    all: true
+    harness: statement
+    says: ["/a11y/sleepy.php/search: a11y failed (page didn't load: timed out)", "/a11y/sleepy.php/search: keyboard failed (page didn't load: timed out)"]
+    toggle: "the search page the start page links to waits 12 s before it answers; the run's timeout is 5 s, so it never loads (php/a11y/sleepy.php)"
+    expect:
+      - {exit: 3}
+      - {warning: "not checked: /a11y/sleepy.php/search (a11y: page didn't load"}
+      - {warning: "not checked: /a11y/sleepy.php/search (keyboard: page didn't load"}
+    # The snapshot's two unlabeled controls are kept, never counted as
+    # fixed.
+    forbid:
+      - {class: fixed}
+    tools: []
+
+  - id: s91
+    name: Ids, names and classes that hold a token, a JWT and email addresses (plain PHP)
+    site: php
+    path: /a11y/ids.php
+    include: ["/a11y/ids.php*"]
+    module: a11y
+    args: [--eaa]
+    harness: [canaries, requests]
+    all: true
+    toggle: "controls without a label carry the benchmark's runtime canaries in their id, name and class; a coupon field traps the keyboard before a select whose id is an email address (php/a11y/ids.php)"
+    expect:
+      - {class: new, check: a11y/select-name}
+      - {class: new, check: a11y/button-name}
+      - {check: keyboard/trap}
     tools: []

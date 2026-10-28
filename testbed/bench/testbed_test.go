@@ -537,7 +537,7 @@ func (shotsOnly) Name() string                { return "shots" }
 func (shotsOnly) NeedsShots() bool            { return true }
 func (shotsOnly) NeedsSecondShot(_ bool) bool { return false }
 
-// checkEAAScenarios checks the EAA mode scenarios (PRD 16.1): s49 to s89
+// checkEAAScenarios checks the EAA mode scenarios (PRD 16.1): s49 to s91
 // all there, each run with --eaa by the module that should catch it, a
 // pending mark naming a lane, a preflight probe for every page that
 // changes. The fixtures, flows and harnesses they use must be in place.
@@ -549,7 +549,7 @@ func checkEAAScenarios(t *testing.T, dir string, m *Manifest) {
 			eaa[s.ID] = s
 		}
 	}
-	for n := 49; n <= 89; n++ {
+	for n := 49; n <= 91; n++ {
 		id := fmt.Sprintf("s%02d", n)
 		s, ok := eaa[id]
 		if !ok {
@@ -593,13 +593,13 @@ func checkEAAScenarios(t *testing.T, dir string, m *Manifest) {
 		}
 	}
 	for id := range eaa {
-		t.Errorf("%s: runs with --eaa outside s49 to s89", id)
+		t.Errorf("%s: runs with --eaa outside s49 to s91", id)
 	}
 	// The harnesses PRD 16.2 asks for are where it asks for them.
 	want := map[string][]string{
-		"canaries":  {"s68", "s84"},
+		"canaries":  {"s68", "s84", "s91"},
 		"orders":    {"s49", "s70", "s85", "s88"},
-		"statement": {"s50", "s84", "s86", "s89"},
+		"statement": {"s50", "s84", "s86", "s89", "s90"},
 	}
 	for h, ids := range want {
 		for _, id := range ids {

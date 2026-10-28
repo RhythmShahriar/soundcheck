@@ -269,6 +269,10 @@ func problems(d *doc, dr *Draft) {
 	}
 	if len(items) == 0 {
 		_, person := notTestedRows(dr)
+		if len(dr.NotAudited) > 0 {
+			d.para(text(fmt.Sprintf("On %s Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: %s need a person and some pages weren't fully tested (see \"Not tested\").", dr.Date, count(len(person), "criterion"))))
+			return
+		}
 		d.para(text(fmt.Sprintf("Soundcheck's tests found no failures on %s. That doesn't mean there are none: %s need a person.", dr.Date, count(len(person), "criterion"))))
 		return
 	}

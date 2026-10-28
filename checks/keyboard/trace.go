@@ -13,6 +13,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/internal/focus"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -291,8 +292,10 @@ func DecodeTrace(data []byte) (Trace, error) {
 	return t, nil
 }
 
-// clamp holds t to the caps.
+// clamp holds t to the caps. It masks every selector first (see mask),
+// so a cut can't leave part of a token the masking no longer knows.
 func (t *Trace) clamp() {
+	t.mask()
 	t.Page, t.Viewport, t.Stopped = clip(t.Page, maxText), clip(t.Viewport, maxText), clip(t.Stopped, maxText)
 	t.Forward, t.Backward = clampSteps(t.Forward), clampSteps(t.Backward)
 	if t.MainIndex < -1 || t.MainIndex >= len(t.Forward) {
@@ -331,6 +334,42 @@ func (t *Trace) clamp() {
 	}
 	t.Held = clipAll(t.Held[:min(len(t.Held), maxList)], maxText)
 	t.Events = clipAll(t.Events[:min(len(t.Events), maxList)], maxText)
+}
+
+// mask masks credentials, email addresses, phone, card and IBAN numbers
+// in every selector the trace holds (internal/pii): a site can put a
+// token or a customer's email address in an id, a name or a class. The
+// trace is a file in the run's folder. The walk itself compares the
+// selectors as they are; the file and the issues get them masked.
+func (t *Trace) mask() {
+	for _, steps := range [][]Step{t.Forward, t.Backward} {
+		for i := range steps {
+			steps[i].Selector, steps[i].ObscuredBy = pii.Redact(steps[i].Selector), pii.Redact(steps[i].ObscuredBy)
+		}
+	}
+	if p := t.TrapProbe; p != nil {
+		maskAll(p.Set)
+		maskAll(p.After)
+	}
+	if s := t.SkipLink; s != nil {
+		s.Selector, s.NextStop, s.TargetID = pii.Redact(s.Selector), pii.Redact(s.NextStop), pii.Redact(s.TargetID)
+	}
+	for i := range t.Widgets {
+		w := &t.Widgets[i]
+		w.Trigger, w.Target, w.Leaked = pii.Redact(w.Trigger), pii.Redact(w.Target), pii.Redact(w.Leaked)
+	}
+	for i := range t.Listeners {
+		t.Listeners[i].Selector = pii.Redact(t.Listeners[i].Selector)
+	}
+	for i := range t.Rings {
+		t.Rings[i].Selector = pii.Redact(t.Rings[i].Selector)
+	}
+}
+
+func maskAll(s []string) {
+	for i := range s {
+		s[i] = pii.Redact(s[i])
+	}
 }
 
 func clampSteps(s []Step) []Step {

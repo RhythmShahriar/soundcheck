@@ -491,3 +491,42 @@ func TestBuildCappedRule(t *testing.T) {
 		t.Errorf("statement JSON lacks found: 300")
 	}
 }
+
+// A page that never loaded isn't a page checked: it is under "Not
+// tested" with both audits and the draft doesn't say the tests found
+// no failures as if every page was tested.
+func TestBuildUnloadedPage(t *testing.T) {
+	failed := model.Audit{Status: model.AuditError, Reason: "page didn't load: timed out"}
+	pages := []model.Page{
+		{Path: "/", Audits: audited()},
+		{Path: "/sleepy/", Error: "timed out", Audits: map[string]model.Audit{"a11y": failed, "keyboard": failed}},
+	}
+	d, err := Build(input(pages, owner()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Pages != 1 || !slices.Equal(d.Checked, []string{"/"}) {
+		t.Errorf("%d pages, checked %v", d.Pages, d.Checked)
+	}
+	if len(d.NotAudited) != 2 || d.NotAudited[0].Path != "/sleepy/" || d.NotAudited[1].Path != "/sleepy/" {
+		t.Errorf("not audited = %+v", d.NotAudited)
+	}
+	var b strings.Builder
+	if err := Markdown(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	_, checked, _ := strings.Cut(out, "## Pages checked")
+	if strings.Contains(checked, "/sleepy/") {
+		t.Errorf("an unloaded page under Pages checked:\n%s", checked)
+	}
+	for _, want := range []string{"- /sleepy/: a11y failed (page didn't load: timed out)", "- /sleepy/: keyboard failed (page didn't load: timed out)",
+		"found no failures on the pages where they finished", "some pages weren't fully tested"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("draft lacks %q", want)
+		}
+	}
+	if strings.Contains(out, "Soundcheck's tests found no failures on 2026") {
+		t.Error("the draft says the tests found no failures as if every page was tested")
+	}
+}

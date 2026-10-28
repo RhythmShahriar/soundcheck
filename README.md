@@ -379,7 +379,7 @@ make build      # bin/rhythm-soundcheck
 make hooks      # Conventional Commits check
 make check      # lint + tests (browser tests need Chrome or Chromium)
 make test-short # the quick pass: tests that honour -short skip slow browser work
-make testbed    # 89 broken-site scenarios in Docker, for end-to-end tests and the benchmark
+make testbed    # 91 broken-site scenarios in Docker, for end-to-end tests and the benchmark
 ```
 
 See [CONTRIBUTING](https://github.com/RhythmShahriar/.github/blob/master/CONTRIBUTING.md) for the Rhythm-wide rules. Writing a check module? [CONTRIBUTING.md](CONTRIBUTING.md) in this repository covers how a module plugs into a run.
