@@ -113,7 +113,7 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 			// nothing about whether it changed: exit 3, not 1. A recorded
 			// file that is gone is a mismatch, which Verify names itself.
 			var pe *fs.PathError
-			if errors.Is(err, evidence.ErrNotBuilt) || errors.As(err, &pe) {
+			if errors.As(err, &pe) {
 				return failed(stderr, err)
 			}
 			fmt.Fprintln(stderr, prefix(), err)

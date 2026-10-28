@@ -264,13 +264,10 @@ func TestStatementRefusals(t *testing.T) {
 	}
 }
 
-// With the statement package itself (pending until it is built).
+// With the statement package itself.
 func TestStatementCommandReal(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeConfig(t, "")
-	if _, err := statement.Build(statement.Input{}); errors.Is(err, statement.ErrNotBuilt) {
-		t.Skip("pending: statement")
-	}
 	storeRun(t, time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC), model.Options{EAA: true, WCAG: "2.1"})
 	writeConfig(t, "statement:\n  owner: Example Coffee Ltd\n  website: https://shop.example\n  contact:\n    email: access@shop.example\n")
 	for _, f := range []string{"s.md", "s.html", "s.json", "s.jsonld"} {

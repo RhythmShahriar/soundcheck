@@ -24,10 +24,6 @@ import (
 
 func init() { config.RegisterBlock("statement") }
 
-// ErrNotBuilt was returned by the parts of the package not written yet.
-// Nothing returns it now; it stays for callers that checked for it.
-var ErrNotBuilt = errors.New("not built yet")
-
 // Build's refusals. The CLI words them for the person running it.
 var (
 	// ErrMissingOwner: statement.owner, statement.website or

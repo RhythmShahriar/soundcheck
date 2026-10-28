@@ -6,7 +6,6 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -14,31 +13,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/RhythmShahriar/soundcheck/evidence"
 	"github.com/RhythmShahriar/soundcheck/model"
-	"github.com/RhythmShahriar/soundcheck/statement"
 )
-
-// pendingVerdict is true until the report lane prints "no failures
-// found by these tests" for a clean --eaa result; the integrator sets
-// it false.
-const pendingVerdict = false
-
-// pendingLinkQueries is true while a page's links (Page.Links, in
-// pages.jsonl and the JSON report) keep their query strings, so a token
-// in a link's query is written as found. The sweep then ignores the
-// query canary inside those link lists only; everywhere else it still
-// counts. Set it false once links are stored without their queries.
-const pendingLinkQueries = false
-
-// linkList matches a "links" list in JSON, compact or indented.
-var linkList = regexp.MustCompile(`"links":\s*\[[^\]]*\]`)
 
 // eaaPage writes a page of the EAA fixture sites: a title, a nav and
 // body, with a label on every field unless body leaves it out.
@@ -146,14 +127,10 @@ func TestEAAEndToEnd(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("clean compare: exit %d\n%s\n%s", code, out, errOut)
 	}
-	switch {
-	case strings.Contains(out, "no failures found by these tests"):
-	case pendingVerdict:
-		t.Log("pending: report (no EAA verdict yet)")
-	default:
+	if !strings.Contains(out, "Nothing changed; no failures found by these tests") {
 		t.Errorf("clean compare: no verdict in\n%s", out)
 	}
-	if !strings.Contains(strings.Join(strings.Fields(out), " "), model.EvidenceNote) && !pendingVerdict {
+	if !strings.Contains(strings.Join(strings.Fields(out), " "), model.EvidenceNote) {
 		t.Errorf("clean compare: no evidence note in\n%s", out)
 	}
 
@@ -173,19 +150,11 @@ func TestEAAEndToEnd(t *testing.T) {
 	if c.EAA == nil || c.EAA.EvidenceNote != model.EvidenceNote {
 		t.Errorf("no eaa block: %+v", c.EAA)
 	}
-	switch {
-	case has(model.Broke, "keyboard/trap", "/") && code == exitFindings:
-	case pendingKeyboard:
-		t.Logf("pending: keyboard (exit %d, %s)", code, changeList(c))
-	default:
+	if !has(model.Broke, "keyboard/trap", "/") || code != exitFindings {
 		t.Errorf("want BROKE keyboard/trap on / and exit 1, got exit %d: %s", code, changeList(c))
 	}
 	// The dialog that drops focus is a warning, so NEW, not BROKE.
-	switch {
-	case has(model.New, "keyboard/focus-lost", "/about/"):
-	case pendingKeyboard:
-		t.Logf("pending: keyboard (no focus-lost on /about/: %s)", changeList(c))
-	default:
+	if !has(model.New, "keyboard/focus-lost", "/about/") {
 		t.Errorf("want NEW keyboard/focus-lost on /about/: %s", changeList(c))
 	}
 }
@@ -225,11 +194,7 @@ func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) 
 	var hits []string
 	look := func(where, text string) {
 		for _, n := range slices.Sorted(maps.Keys(c)) {
-			in := text
-			if n == "query" && pendingLinkQueries {
-				in = linkList.ReplaceAllString(in, "")
-			}
-			if strings.Contains(in, c[n]) {
+			if strings.Contains(text, c[n]) {
 				hits = append(hits, where+": "+n)
 			}
 		}
@@ -406,17 +371,17 @@ steps:
 
 	code, out, errOut = runCLI(t, "statement", "-o", "out/s.md", "-o", "out/s.html", "-o", "out/s.json", "-o", "out/s.jsonld")
 	printed["statement stdout"], printed["statement stderr"] = out, errOut
-	_, err := statement.Build(statement.Input{})
-	switch {
-	case code == exitOK:
-	case errors.Is(err, statement.ErrNotBuilt):
-		t.Logf("pending: statement (exit %d)", code)
-	default:
+	if code != exitOK {
 		t.Errorf("statement: exit %d\n%s\n%s", code, out, errOut)
+	}
+	for _, f := range []string{"s.md", "s.html", "s.json", "s.jsonld"} {
+		if fi, err := os.Stat(filepath.Join("out", f)); err != nil || fi.Size() == 0 {
+			t.Errorf("out/%s wasn't written: %v", f, err)
+		}
 	}
 	code, out, errOut = runCLI(t, "evidence", "verify")
 	printed["evidence stdout"], printed["evidence stderr"] = out, errOut
-	if _, err := evidence.Keygen(filepath.Join(t.TempDir(), "k")); code != exitOK && !errors.Is(err, evidence.ErrNotBuilt) {
+	if code != exitOK {
 		t.Errorf("evidence verify: exit %d\n%s\n%s", code, out, errOut)
 	}
 
@@ -441,10 +406,7 @@ func TestCanarySweepFinds(t *testing.T) {
 	}
 	got := c.sweep(t, map[string]string{"stderr": "note: " + c["c"]}, dir)
 	want := []string{filepath.ToSlash(filepath.Join(dir, "x", "y", "run.json")) + ": a", "stderr: c",
-		filepath.ToSlash(filepath.Join(dir, "report.md")) + ": query"}
-	if !pendingLinkQueries {
-		want = append(want, filepath.ToSlash(filepath.Join(dir, "pages.jsonl"))+": query")
-	}
+		filepath.ToSlash(filepath.Join(dir, "report.md")) + ": query", filepath.ToSlash(filepath.Join(dir, "pages.jsonl")) + ": query"}
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {

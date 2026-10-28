@@ -119,7 +119,7 @@ func TestListChecksCriteria(t *testing.T) {
 	for id, want := range map[string]string{"a11y/placeholder-label": "wcag 3.3.2", "a11y/reflow": "wcag 1.4.10", "a11y/overlay": "advisory"} {
 		l, ok := lines[id]
 		if !ok {
-			t.Logf("pending: axe (%s isn't listed yet)", id)
+			t.Errorf("%s isn't listed", id)
 			continue
 		}
 		if !strings.HasSuffix(l, want) {

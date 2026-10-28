@@ -42,10 +42,6 @@ func TestPickerEAA(t *testing.T) {
 	}
 }
 
-// pendingKeyboard is true until the keyboard module (lane keyboard) is
-// merged; until then the demo can't find the trap it plants.
-const pendingKeyboard = false
-
 // demo --eaa plants a keyboard trap and lost focus next to the usual
 // breaks and shows the trap as BROKE and the lost focus as NEW. The
 // opening hours dialog's plain button opens it with showModal(), so
@@ -70,12 +66,7 @@ func TestDemoEAA(t *testing.T) {
 	if strings.Contains(out, "statement: ") {
 		t.Errorf("points at a draft it removes:\n%s", out)
 	}
-	trap := regexp.MustCompile(`(?m)^\[BROKE\] Keyboard focus is trapped.* - /$`)
-	switch {
-	case trap.MatchString(out):
-	case pendingKeyboard:
-		t.Log("pending: keyboard (no BROKE trap yet)")
-	default:
+	if trap := regexp.MustCompile(`(?m)^\[BROKE\] Keyboard focus is trapped.* - /$`); !trap.MatchString(out) {
 		t.Errorf("no BROKE trap in:\n%s", out)
 	}
 	for _, want := range []string{"[NEW] Focus is lost after closing - /about/\n", "  After Escape on \"Opening hours\" focus went to a removed element.\n"} {
