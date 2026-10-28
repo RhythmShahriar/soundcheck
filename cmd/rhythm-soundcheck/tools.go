@@ -544,7 +544,8 @@ color from --brand, to -o or stdout.
 agency.yaml takes four keys:
   name: Acme Web              the agency's name (required)
   logo: logo.svg              PNG, JPEG or SVG, inside the folder of agency.yaml
-  accent: "#0F766E"           hex color for headings and badges (color: works too)
+  accent: "#0F766E"           hex color for headings and badges (color:
+                              works too)
   contact: hello@acme.test    how the client reaches you, shown as text
 `
 
