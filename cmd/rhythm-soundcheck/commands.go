@@ -681,9 +681,14 @@ func (s *session) keepReplaced(name string) error {
 	if err != nil || kept == "" {
 		return err
 	}
-	fmt.Fprintf(s.stderr, "note: snapshot %q had an evidence pack; it is kept in %s, so evidence verify of later --eaa runs still checks their chain\n",
-		name, rel(filepath.Join(s.st.Root, filepath.FromSlash(kept))))
+	fmt.Fprintln(s.stderr, keptPackNote(name, rel(filepath.Join(s.st.Root, filepath.FromSlash(kept)))))
 	return nil
+}
+
+// keptPackNote is the note of a retaken or deleted snapshot whose
+// evidence pack was kept in dir. Both say it the same way.
+func keptPackNote(name, dir string) string {
+	return fmt.Sprintf("note: snapshot %q had an evidence pack; it is kept in %s, so evidence verify of later --eaa runs still checks their chain", name, dir)
 }
 
 // resumeHint is the line a canceled snapshot leaves on stderr: the
@@ -1201,8 +1206,7 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
 		if kept != "" {
-			fmt.Fprintf(stderr, "note: its evidence pack is kept in %s, so evidence verify of later --eaa runs still checks their chain\n",
-				rel(filepath.Join(st.Root, filepath.FromSlash(kept))))
+			fmt.Fprintln(stderr, keptPackNote(args[1], rel(filepath.Join(st.Root, filepath.FromSlash(kept)))))
 		}
 		return exitOK
 	}
