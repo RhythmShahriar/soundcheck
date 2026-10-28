@@ -63,6 +63,17 @@
         "run": {"$ref": "#/$defs/runId"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Of that run's eaa/evidence.json."}
       }
+    },
+    "amends": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "reason", "at"],
+      "description": "Present when the pack was recorded again after its run's files were changed on purpose (an accept into a snapshot). The pack it replaces and the files that one lists are kept in .soundcheck/evidence/<sha256>/, so packs chained to it can still be checked.",
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Of the eaa/evidence.json this pack replaces."},
+        "reason": {"type": "string", "description": "What changed the files, such as accept."},
+        "at": {"type": "string", "format": "date-time"}
+      }
     }
   },
   "$defs": {

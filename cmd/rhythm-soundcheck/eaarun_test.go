@@ -476,24 +476,25 @@ func TestStatementHidesTheLoginUser(t *testing.T) {
 	}
 }
 
-// accept says when the snapshot it changed has an evidence pack. It
-// stays quiet for one without.
+// accept says what it did to the snapshot's evidence pack. It stays
+// quiet for a snapshot without one.
 func TestAcceptEvidenceNote(t *testing.T) {
-	dir := t.TempDir()
 	var b strings.Builder
-	evidenceNote(dir, "base", &b)
+	evidenceNote(acceptedPack{}, "base", &b)
 	if b.Len() != 0 {
 		t.Errorf("no pack: %q", b.String())
 	}
-	if err := os.MkdirAll(filepath.Join(dir, eaaDir), 0o700); err != nil {
-		t.Fatal(err)
+	evidenceNote(acceptedPack{kept: "evidence/ab12", signed: true}, "base", &b)
+	for _, want := range []string{`note: accept changed run.json, the pages file and snapshot.json of snapshot "base"`,
+		"kept in .soundcheck/evidence/ab12", "evidence verify of later --eaa runs", "evidence sign base --key"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %q in %q", want, b.String())
+		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, eaaDir, evidenceFile), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	evidenceNote(dir, "base", &b)
-	if !strings.HasPrefix(b.String(), `note: snapshot "base" has an evidence pack from before this accept`) {
-		t.Errorf("pack: %q", b.String())
+	b.Reset()
+	evidenceNote(acceptedPack{kept: "evidence/ab12", err: errors.New("disk full")}, "base", &b)
+	if !strings.Contains(b.String(), "couldn't be recorded again: disk full") {
+		t.Errorf("failed: %q", b.String())
 	}
 }
 

@@ -76,6 +76,17 @@ type Pack struct {
 	Files       []FileHash       `json:"files"`
 	EAA         model.EAASummary `json:"eaa"`
 	Previous    *Ref             `json:"previous"`
+	Amends      *Amendment       `json:"amends,omitempty"`
+}
+
+// Amendment says a pack was recorded again after the run's files were
+// changed on purpose (an accept). It names the pack it replaces. That pack
+// and the files it lists are kept in the store (Keep), so packs chained
+// to it can still be checked.
+type Amendment struct {
+	SHA256 string    `json:"sha256"` // of the evidence.json it replaces, kept in evidence/<sha256>/
+	Reason string    `json:"reason"` // what changed the files, such as "accept"
+	At     time.Time `json:"at"`
 }
 
 // Axe is the axe-core build the run used.
@@ -113,6 +124,11 @@ func Write(dir string, run *model.Run, prev *Ref) error {
 // WriteWith is Write with the browser's version and the -k setting
 // recorded too. Sign refuses a pack whose run didn't verify TLS.
 func WriteWith(dir string, run *model.Run, prev *Ref, extra Extra) error {
+	return writePack(dir, run, prev, extra, nil)
+}
+
+// writePack is WriteWith recording amends too.
+func writePack(dir string, run *model.Run, prev *Ref, extra Extra, amends *Amendment) error {
 	if run == nil {
 		return errors.New("evidence: no run")
 	}
@@ -124,6 +140,7 @@ func WriteWith(dir string, run *model.Run, prev *Ref, extra Extra) error {
 		Schema: Schema, Tool: "rhythm-soundcheck", Version: run.Version, Run: runID(dir), Chrome: extra.Chrome,
 		Options: run.Options, Started: run.Started, Finished: run.Started.Add(time.Duration(run.Duration * float64(time.Millisecond))),
 		Interrupted: run.Interrupted, Insecure: extra.Insecure, Pages: []PageAudit{}, Files: files, Previous: prev,
+		Amends: amends,
 	}
 	if a := run.Options.A11y; a != nil {
 		p.Axe = Axe{a.Axe, a.AxeSHA256}
@@ -146,7 +163,7 @@ func WriteWith(dir string, run *model.Run, prev *Ref, extra Extra) error {
 	if run.EAA != nil {
 		p.EAA = *run.EAA
 	} else {
-		p.EAA = wcag.Summarize(run, pages, run.Issues, nil)
+		p.EAA = wcag.Summarize(run, pages, run.Issues, nil, nil)
 	}
 	if err := done(); err != nil {
 		return fmt.Errorf("evidence: %w", err)
@@ -347,6 +364,11 @@ func Decode(data []byte) (*Pack, error) {
 			return nil, fmt.Errorf("evidence: %s: %q isn't a SHA-256", File, f.SHA256)
 		}
 	}
+	if a := p.Amends; a != nil {
+		if _, err := hex.DecodeString(a.SHA256); err != nil || len(a.SHA256) != 64 {
+			return nil, fmt.Errorf("evidence: %s: amends %q, which isn't a SHA-256", File, a.SHA256)
+		}
+	}
 	if p.Previous != nil && !validRun(p.Previous.Run) {
 		return nil, fmt.Errorf("evidence: %s: previous run %q isn't a run of the store", File, p.Previous.Run)
 	}
@@ -361,12 +383,7 @@ func validRun(id string) bool {
 
 // readPack reads and decodes the pack of the run folder dir.
 func readPack(dir string) ([]byte, *Pack, error) {
-	f, err := os.Open(filepath.Join(dir, filepath.FromSlash(File))) //nolint:gosec // the caller's run folder
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(io.LimitReader(f, maxPack+1))
+	data, err := readRaw(dir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -374,43 +391,82 @@ func readPack(dir string) ([]byte, *Pack, error) {
 	return data, p, err
 }
 
+// readRaw reads the evidence.json of the run folder dir, up to just
+// over the size Decode accepts.
+func readRaw(dir string) ([]byte, error) {
+	f, err := os.Open(filepath.Join(dir, filepath.FromSlash(File))) //nolint:gosec // the caller's run folder
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(io.LimitReader(f, maxPack+1))
+}
+
 // Verify checks the evidence pack in dir: every file it lists has the
 // SHA-256 it recorded, no recorded kind of file was added, a signature
 // next to it is valid and the chain of previous packs is whole back to
 // the first run, each of them checked the same way.
-func Verify(dir string) error {
+//
+// A link whose run was changed on purpose since (an accept into a
+// snapshot, a snapshot taken again or deleted) is checked against the
+// copy kept when it changed (Keep). The notes say where that happened.
+func Verify(dir string) (notes []string, err error) {
 	root := storeRoot(dir)
 	_, p, err := readPack(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := verifyPack(dir, p, ""); err != nil {
-		return err
+		return nil, err
+	}
+	note, err := amendNote(root, runID(dir), p)
+	if err != nil {
+		return nil, err
+	}
+	if note != "" {
+		notes = append(notes, note)
 	}
 	seen := map[string]bool{runID(dir): true}
 	for id := runID(dir); p.Previous != nil; {
 		prev := p.Previous
 		if seen[prev.Run] {
-			return fmt.Errorf("evidence: the chain loops at %s", prev.Run)
+			return notes, fmt.Errorf("evidence: the chain loops at %s", prev.Run)
 		}
 		seen[prev.Run] = true
-		pdir := filepath.Join(root, filepath.FromSlash(prev.Run))
+		pdir, prefix := filepath.Join(root, filepath.FromSlash(prev.Run)), prev.Run+"/"
 		data, pp, err := readPack(pdir)
+		if errors.Is(err, fs.ErrNotExist) || err == nil && sum(data) != prev.SHA256 {
+			how := "was deleted or taken again"
+			if err == nil {
+				how = "changed"
+				if pp.Amends != nil {
+					how = "changed by " + pp.Amends.Reason
+				}
+			}
+			kdir, kdata, kp, kerr := kept(root, prev.SHA256)
+			switch {
+			case kerr == nil:
+				notes = append(notes, fmt.Sprintf("%s %s after %s was chained to it; checked the copy kept in %s", prev.Run, how, id, keptName(prev.SHA256)))
+				pdir, prefix, data, pp, err = kdir, keptName(prev.SHA256)+"/", kdata, kp, nil
+			case !errors.Is(kerr, fs.ErrNotExist):
+				return notes, kerr
+			}
+		}
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("evidence: the run before %s is missing from the chain", id)
+			return notes, fmt.Errorf("evidence: the run before %s is missing from the chain", id)
 		}
 		if err != nil {
-			return err
+			return notes, err
 		}
 		if sum(data) != prev.SHA256 {
-			return fmt.Errorf("evidence: %s/%s changed after it was recorded (sha256 differs)", prev.Run, File)
+			return notes, fmt.Errorf("evidence: %s/%s changed after it was recorded (sha256 differs)", prev.Run, File)
 		}
-		if err := verifyPack(pdir, pp, prev.Run+"/"); err != nil {
-			return err
+		if err := verifyPack(pdir, pp, prefix); err != nil {
+			return notes, err
 		}
 		id, p = prev.Run, pp
 	}
-	return nil
+	return notes, nil
 }
 
 // verifyPack checks the files and signature of one pack. Errors name

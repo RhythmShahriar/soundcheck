@@ -89,7 +89,7 @@ func TestWriteAndVerify(t *testing.T) {
 	if len(p.Pages) != 2 || p.Pages[0].Path != "/" || p.Pages[1].Audits["a11y"] != model.AuditTimeout {
 		t.Errorf("pages = %+v", p.Pages)
 	}
-	if err := Verify(dir); err != nil {
+	if _, err := Verify(dir); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
@@ -137,7 +137,7 @@ func TestVerifyNamesTheFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			tc.change(t, dir)
-			if err := Verify(dir); err == nil || err.Error() != tc.want {
+			if _, err := Verify(dir); err == nil || err.Error() != tc.want {
 				t.Errorf("Verify = %v, want %s", err, tc.want)
 			}
 		})
@@ -149,7 +149,7 @@ func TestVerifyNamesTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	rewriteRun(t, dir, func(map[string]any) {})
-	if err := Verify(dir); err != nil {
+	if _, err := Verify(dir); err != nil {
 		t.Errorf("reformatted run.json: %v", err)
 	}
 }
@@ -193,7 +193,7 @@ func TestChain(t *testing.T) {
 		return root, dirs
 	}
 	_, dirs := chain(t)
-	if err := Verify(dirs[2]); err != nil {
+	if _, err := Verify(dirs[2]); err != nil {
 		t.Fatal(err)
 	}
 	if p := readPackFile(t, dirs[2]); p.Previous == nil || p.Previous.Run != "runs/b" {
@@ -204,19 +204,19 @@ func TestChain(t *testing.T) {
 	if err := os.RemoveAll(dirs[1]); err != nil {
 		t.Fatal(err)
 	}
-	if err := Verify(dirs[2]); err == nil || err.Error() != "evidence: the run before runs/c is missing from the chain" {
+	if _, err := Verify(dirs[2]); err == nil || err.Error() != "evidence: the run before runs/c is missing from the chain" {
 		t.Errorf("gap: %v", err)
 	}
 
 	_, dirs = chain(t)
 	write(t, dirs[0], File, strings.Replace(string(must(os.ReadFile(filepath.Join(dirs[0], File)))), `"interrupted": false`, `"interrupted": true`, 1))
-	if err := Verify(dirs[2]); err == nil || err.Error() != "evidence: runs/a/eaa/evidence.json changed after it was recorded (sha256 differs)" {
+	if _, err := Verify(dirs[2]); err == nil || err.Error() != "evidence: runs/a/eaa/evidence.json changed after it was recorded (sha256 differs)" {
 		t.Errorf("changed first pack: %v", err)
 	}
 
 	_, dirs = chain(t)
 	write(t, dirs[0], "keyboard/p1.json", "{}")
-	if err := Verify(dirs[2]); err == nil || err.Error() != "evidence: runs/a/keyboard/p1.json changed after it was recorded (sha256 differs)" {
+	if _, err := Verify(dirs[2]); err == nil || err.Error() != "evidence: runs/a/keyboard/p1.json changed after it was recorded (sha256 differs)" {
 		t.Errorf("changed first trace: %v", err)
 	}
 }
@@ -285,7 +285,7 @@ func TestSign(t *testing.T) {
 	if got := strings.TrimSpace(string(must(os.ReadFile(filepath.Join(dir, PubFile))))); got != pub {
 		t.Errorf("evidence.pub = %s, want %s", got, pub)
 	}
-	if err := Verify(dir); err != nil {
+	if _, err := Verify(dir); err != nil {
 		t.Fatalf("signed pack: %v", err)
 	}
 	if got, err := SigningKey(dir); err != nil || got != pub {
@@ -295,16 +295,16 @@ func TestSign(t *testing.T) {
 	// the signature.
 	data := must(os.ReadFile(filepath.Join(dir, File)))
 	write(t, dir, File, string(data)+"\n")
-	if err := Verify(dir); err == nil || err.Error() != "evidence: eaa/evidence.sig doesn't match eaa/evidence.json (signature invalid)" {
+	if _, err := Verify(dir); err == nil || err.Error() != "evidence: eaa/evidence.sig doesn't match eaa/evidence.json (signature invalid)" {
 		t.Errorf("tampered pack: %v", err)
 	}
 	write(t, dir, File, string(data))
 	write(t, dir, SigFile, strings.Repeat("A", 86)+"==\n")
-	if err := Verify(dir); err == nil || !strings.Contains(err.Error(), "signature invalid") {
+	if _, err := Verify(dir); err == nil || !strings.Contains(err.Error(), "signature invalid") {
 		t.Errorf("tampered signature: %v", err)
 	}
 	_ = os.Remove(filepath.Join(dir, SigFile))
-	if err := Verify(dir); err == nil || !strings.Contains(err.Error(), "without eaa/evidence.sig") {
+	if _, err := Verify(dir); err == nil || !strings.Contains(err.Error(), "without eaa/evidence.sig") {
 		t.Errorf("signature removed: %v", err)
 	}
 
@@ -414,7 +414,7 @@ func TestSigningKey(t *testing.T) {
 	if err := Sign(dir, filepath.Join(keys, "other.key")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Verify(dir); err != nil {
+	if _, err := Verify(dir); err != nil {
 		t.Fatalf("re-signed: %v", err)
 	}
 	if got, _ := SigningKey(dir); got != other || got == owner {

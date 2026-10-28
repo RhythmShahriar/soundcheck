@@ -583,6 +583,10 @@ func cmdSnapshot(s *session) int {
 			if err := s.resumeSettings(name, dir); err != nil {
 				return s.fail(err)
 			}
+		} else if _, err := s.st.Snapshot(name); err == nil {
+			// Starting afresh would replace a finished snapshot, with
+			// the settings given here rather than its own.
+			return s.fail(cli.Usagef("snapshot %q already finished, so there's nothing to carry on with; drop --resume to take it again", name))
 		}
 	}
 	if dir == "" {
@@ -646,6 +650,9 @@ func cmdSnapshot(s *session) int {
 	if err := store.SaveRun(dir, run); err != nil {
 		return s.fail(err)
 	}
+	if err := s.keepReplaced(name); err != nil {
+		return s.fail(err)
+	}
 	final, err := s.st.Promote(dir, name)
 	if err == nil {
 		err = s.st.SetLatest(name)
@@ -661,6 +668,22 @@ func cmdSnapshot(s *session) int {
 	s.record(run, nil)
 	return s.finish(report.Result{Run: run, Dir: final},
 		"next: make your change (update a plugin, deploy…), then run: "+cmdName()+" compare")
+}
+
+// keepReplaced keeps the evidence pack of the snapshot name is about to
+// replace, so the chains of later --eaa runs still verify. It says so.
+func (s *session) keepReplaced(name string) error {
+	old, err := s.st.Snapshot(name)
+	if err != nil {
+		return nil // no snapshot of that name yet
+	}
+	kept, err := keepEvidence(old)
+	if err != nil || kept == "" {
+		return err
+	}
+	fmt.Fprintf(s.stderr, "note: snapshot %q had an evidence pack; it is kept in %s, so evidence verify of later --eaa runs still checks their chain\n",
+		name, rel(filepath.Join(s.st.Root, filepath.FromSlash(kept))))
+	return nil
 }
 
 // resumeHint is the line a canceled snapshot leaves on stderr: the
@@ -1167,11 +1190,20 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitUsage
 		}
+		kept, err := keepEvidence(dir)
+		if err != nil {
+			fmt.Fprintln(stderr, prefix(), named(err.Error()))
+			return exitError
+		}
 		if err := os.RemoveAll(dir); err != nil { //nolint:gosec // st.Snapshot validated the name
 			fmt.Fprintln(stderr, prefix(), named(err.Error()))
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
+		if kept != "" {
+			fmt.Fprintf(stderr, "note: its evidence pack is kept in %s, so evidence verify of later --eaa runs still checks their chain\n",
+				rel(filepath.Join(st.Root, filepath.FromSlash(kept))))
+		}
 		return exitOK
 	}
 	if len(args) > 0 {

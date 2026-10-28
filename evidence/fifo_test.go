@@ -27,7 +27,7 @@ func TestVerifyFIFO(t *testing.T) {
 		t.Skip(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- Verify(dir) }()
+	go func() { _, err := Verify(dir); done <- err }()
 	select {
 	case err := <-done:
 		if want := "evidence: pages.jsonl isn't a regular file"; err == nil || err.Error() != want {

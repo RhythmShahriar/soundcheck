@@ -184,3 +184,28 @@ func TestResumeHintAsPrinted(t *testing.T) {
 		t.Errorf("hint %q", hint)
 	}
 }
+
+// --resume with no stopped snapshot but a finished one of that name is
+// refused: starting afresh would replace it along with an --eaa
+// snapshot's evidence pack, with the settings given instead of its own.
+func TestResumeRefusesAFinishedSnapshot(t *testing.T) {
+	t.Chdir(t.TempDir())
+	dir := filepath.Join(".soundcheck", "snapshots", "r1")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveRun(dir, &model.Run{Schema: model.Schema, Target: "http://127.0.0.1:22200", Options: eaaWith}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<!doctype html><title>Home</title>`)
+	}))
+	defer srv.Close()
+	code, out, errOut := runCLI(t, "snapshot", srv.URL, "--name", "r1", "--resume", "--plain")
+	if code != exitUsage || !strings.Contains(errOut, `snapshot "r1" already finished, so there's nothing to carry on with; drop --resume to take it again`) {
+		t.Errorf("exit %d\n%s\n%s", code, out, errOut)
+	}
+	if run, err := store.LoadRun(dir); err != nil || !run.Options.EAA {
+		t.Errorf("the snapshot changed: %+v %v", run, err)
+	}
+}

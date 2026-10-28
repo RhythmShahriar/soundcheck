@@ -143,9 +143,9 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 	if *ignore {
 		return ignoreChanges(sc, ids, strings.TrimSpace(*reason), *until, stdout, stderr)
 	}
-	accepted, err := store.Accept(sc.snapDir, sc.runDir, sc.c, store.Selector{IDs: ids, Page: *page, Check: *check}, who())
+	accepted, pack, err := acceptInto(sc, store.Selector{IDs: ids, Page: *page, Check: *check})
 	if err != nil {
-		return failed(stderr, cli.UsageError{Msg: err.Error()})
+		return failed(stderr, err)
 	}
 	// By id each change is named; a --page and --check backlog may be
 	// hundreds, so it is counted.
@@ -162,9 +162,42 @@ func cmdAccept(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "Accepted %s %s (%s)\n", a.ID, report.Term(a.Title), report.Term(where))
 	}
-	fmt.Fprintf(stdout, "Snapshot %q now holds %s. Run %s compare to check again.\n", sc.c.Before.Name, plural(len(accepted), "accepted change"), cmdName())
-	evidenceNote(sc.snapDir, sc.c.Before.Name, stderr)
+	// The snapshot's whole record counts, not only this call's.
+	held := distinctIDs(accepted)
+	if info, err := store.LoadSnapshotInfo(sc.snapDir); err == nil {
+		held = distinctIDs(info.Accepted)
+	}
+	fmt.Fprintf(stdout, "Snapshot %q now holds %s. Run %s compare to check again.\n", sc.c.Before.Name, plural(held, "accepted change"), cmdName())
+	evidenceNote(pack, sc.c.Before.Name, stderr)
 	return exitOK
+}
+
+// acceptedPack is what an accept did to the snapshot's evidence pack.
+type acceptedPack struct {
+	kept   string // the old pack's folder in the store, "" when it had none
+	signed bool   // the old pack was signed; the new one isn't yet
+	err    error  // recording the pack again failed after the accept
+}
+
+// acceptInto accepts the selected changes into the snapshot. A snapshot
+// with an evidence pack has the pack kept first (evidence.Keep), as
+// later --eaa runs are chained to it as it was. It is recorded again for
+// the accepted state after.
+func acceptInto(sc stored, sel store.Selector) ([]store.Accepted, acceptedPack, error) {
+	var pack acceptedPack
+	kept, err := keepEvidence(sc.snapDir)
+	if err != nil {
+		return nil, pack, err
+	}
+	pack.kept = kept
+	accepted, err := store.Accept(sc.snapDir, sc.runDir, sc.c, sel, who())
+	if err != nil {
+		return nil, pack, cli.UsageError{Msg: err.Error()}
+	}
+	if kept != "" {
+		pack.signed, pack.err = rerecordEvidence(sc.snapDir, "accept")
+	}
+	return accepted, pack, nil
 }
 
 // distinctIDs counts the changes among accepted entries, which are one
@@ -229,15 +262,28 @@ func ignoreChanges(sc stored, ids []string, reason, until string, stdout, stderr
 	return exitOK
 }
 
-// evidenceNote tells, after an accept, that the snapshot's evidence pack
-// was recorded before it: accept rewrites the snapshot's run.json, so
-// evidence verify of it reports the change. The pack isn't rewritten, as
-// later packs are chained to it as it was.
-func evidenceNote(snapDir, name string, stderr io.Writer) {
-	if _, err := os.Lstat(filepath.Join(snapDir, eaaDir, evidenceFile)); err != nil {
+// evidenceNote tells, after an accept into a snapshot with an evidence
+// pack, what happened to the pack: accept rewrote the snapshot's
+// run.json, its pages file and snapshot.json (and the screenshots of
+// accepted visual changes), so the pack was recorded again for the
+// accepted state. The pack as it was stays in the store with its files:
+// later --eaa runs are chained to it. Evidence verify of them checks
+// that copy.
+func evidenceNote(pack acceptedPack, name string, stderr io.Writer) {
+	if pack.kept == "" {
 		return
 	}
-	fmt.Fprintf(stderr, "note: snapshot %q has an evidence pack from before this accept, so evidence verify of it now reports run.json as changed; take a new --eaa snapshot for evidence of the accepted state\n", name)
+	where := rel(filepath.Join(config.Dir, filepath.FromSlash(pack.kept)))
+	if pack.err != nil {
+		fmt.Fprintf(stderr, "%s accepted. The evidence pack of snapshot %q couldn't be recorded again: %v; evidence verify of it will report run.json and the pages file as changed. The pack from before is kept in %s, so later --eaa runs still verify\n",
+			prefix(), name, pack.err, where)
+		return
+	}
+	fmt.Fprintf(stderr, "note: accept changed run.json, the pages file and snapshot.json of snapshot %q, so its evidence pack was recorded again. The pack from before is kept in %s with its files: evidence verify of later --eaa runs, which are chained to it, checks that copy and notes it\n",
+		name, where)
+	if pack.signed {
+		fmt.Fprintf(stderr, "note: the old pack was signed; sign the new one with %s evidence sign %s --key <file>\n", cmdName(), name)
+	}
 }
 
 // ignoreRule is the rule that ignores ch from now on. Its source and
@@ -278,7 +324,10 @@ func decider(sc stored, configPath string) review.Decide {
 	return func(ch model.Change, a review.Action) error {
 		switch a {
 		case review.Accept:
-			_, err := store.Accept(sc.snapDir, sc.runDir, sc.c, store.Selector{IDs: []string{ch.ID}}, who())
+			_, pack, err := acceptInto(sc, store.Selector{IDs: []string{ch.ID}})
+			if err == nil {
+				err = pack.err
+			}
 			return err
 		case review.Ignore:
 			r := config.IgnoreRule{Check: ch.Check, Title: ch.Title, Pages: ch.Pages,

@@ -108,7 +108,11 @@ func cmdEvidence(args []string, stdout, stderr io.Writer) int {
 		return failed(stderr, err)
 	}
 	if sub == "verify" {
-		if err := verifyEvidence(dir); err != nil {
+		notes, err := verifyEvidence(dir)
+		for _, n := range notes {
+			fmt.Fprintln(stderr, "note:", n)
+		}
+		if err != nil {
 			// A file that can't be read (permissions, a disk error) says
 			// nothing about whether it changed: exit 3, not 1. A recorded
 			// file that is gone is a mismatch, which Verify names itself.

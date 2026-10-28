@@ -33,22 +33,22 @@ func fakeEvidence(t *testing.T) {
 	t.Helper()
 	oldV, oldS, oldK := verifyEvidence, signEvidence, keygenEvidence
 	t.Cleanup(func() { verifyEvidence, signEvidence, keygenEvidence = oldV, oldS, oldK })
-	verifyEvidence = func(dir string) error {
+	verifyEvidence = func(dir string) ([]string, error) {
 		data, err := os.ReadFile(filepath.Join(dir, eaaDir, evidenceFile))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		var p fakePack
 		if err := json.Unmarshal(data, &p); err != nil {
-			return err
+			return nil, err
 		}
 		for name, sum := range p.Files {
 			got, err := os.ReadFile(filepath.Join(dir, name))
 			if h := sha256.Sum256(got); err != nil || hex.EncodeToString(h[:]) != sum {
-				return fmt.Errorf("evidence: %s changed after it was recorded (sha256 differs)", name)
+				return nil, fmt.Errorf("evidence: %s changed after it was recorded (sha256 differs)", name)
 			}
 		}
-		return nil
+		return nil, nil
 	}
 	signEvidence = func(dir, key string) error {
 		if _, err := os.ReadFile(key); err != nil {
@@ -119,8 +119,8 @@ func TestEvidenceCommand(t *testing.T) {
 
 	// A recorded file that can't be read is exit 3, not a mismatch.
 	verify := verifyEvidence
-	verifyEvidence = func(string) error {
-		return &fs.PathError{Op: "open", Path: filepath.Join(dir, "keyboard", "p1.json"), Err: fs.ErrPermission}
+	verifyEvidence = func(string) ([]string, error) {
+		return nil, &fs.PathError{Op: "open", Path: filepath.Join(dir, "keyboard", "p1.json"), Err: fs.ErrPermission}
 	}
 	code, _, errOut = runCLI(t, "evidence", "verify", dir)
 	if code != exitError || !strings.Contains(errOut, "permission denied") {
