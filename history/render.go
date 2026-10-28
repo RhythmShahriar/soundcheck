@@ -213,25 +213,26 @@ func JSON(w io.Writer, entries []Entry, page, metric string) error {
 
 // table prints the entries' rows with the metric's column last.
 func table(w io.Writer, entries []Entry, col string, value func(int) string, text func(string) string) {
-	nameW := 4
+	nameW, verdictW := 4, 8
 	for _, e := range entries {
 		nameW = max(nameW, min(24, utf8.RuneCountInString(e.Name)))
+		verdictW = max(verdictW, len(e.Shown()))
 	}
 	row := func(when, kind, name, pages, errs, warns, verdict, value string) {
-		fmt.Fprintf(w, "%-17s  %-10s  %-*s  %5s  %6s  %8s  %-8s  %s\n", when, kind, nameW, name, pages, errs, warns, verdict, value)
+		fmt.Fprintf(w, "%-17s  %-10s  %-*s  %5s  %6s  %8s  %-*s  %s\n", when, kind, nameW, name, pages, errs, warns, verdictW, verdict, value)
 	}
 	row("When", "Kind", "Name", "Pages", "Errors", "Warnings", "Verdict", col)
 	for i, e := range entries {
 		row(e.At.Local().Format("2006-01-02 15:04"), e.Kind, text(truncate(e.Name, nameW)), fmt.Sprint(e.Pages),
-			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Verdict, value(i))
+			fmt.Sprint(e.Issues["error"]), fmt.Sprint(e.Issues["warning"]), e.Shown(), value(i))
 	}
 }
 
 // renderCounts is Render for a count metric (a11y or keyboard): the
 // open problems per entry, "-" for a run without the module, then
 // "A11y open  188 to 64 (-66%)  ▇▇▆▆▁" and, for a11y, the criteria with
-// the most problems in the latest entry that has them:
-// "Worst criteria now: 1.4.3 Contrast (31), 4.1.2 Name, Role, Value (12)".
+// the most a11y and keyboard problems in the latest entry that has them:
+// "Worst criteria now (a11y and keyboard problems): 1.4.3 Contrast (31)".
 // With page set the counts are that page's ("A11y open /shop/") and
 // the criteria, which are counted for the whole site, are left out.
 func renderCounts(w io.Writer, entries []Entry, metric, page string, values []float64, plain bool) error {
@@ -274,7 +275,9 @@ func renderCounts(w io.Writer, entries []Entry, metric, page string, values []fl
 	fmt.Fprintln(w)
 	if metric == "a11y" && page == "" {
 		if worst := worstCriteria(entries, 3); worst != "" {
-			fmt.Fprintf(w, "Worst criteria now: %s\n", worst)
+			// The counts are of a11y and keyboard problems together, so
+			// they can be more than the column's a11y count.
+			fmt.Fprintf(w, "Worst criteria now (a11y and keyboard problems): %s\n", worst)
 		}
 	}
 	return nil

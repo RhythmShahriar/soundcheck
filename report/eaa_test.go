@@ -5,7 +5,9 @@ package report
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -50,19 +52,20 @@ func eaaIssues() (trap, focusLost, label, skip model.Issue) {
 }
 
 // eaaSummaryFor is the accessibility summary of a WCAG 2.1 run with
-// failures of the given criteria; the rest are split between none found
-// and needs a person as wcag.Summarize would.
+// failures of the given criteria; the rest are none found when a test
+// covers them and need a person when none does, as wcag.Summarize
+// would.
 func eaaSummaryFor(open int, failed ...model.CriterionCount) *model.EAASummary {
 	e := &model.EAASummary{WCAG: "2.1", EN301549: "V3.2.1", Axe: "4.14.0", Open: open, EvidenceNote: model.EvidenceNote,
 		Criteria: model.EAACriteria{Failed: failed, NoFailuresFound: []string{}, NotTested: []string{}}}
-	for i, c := range wcag.Criteria("2.1") {
+	for _, c := range wcag.Criteria("2.1") {
 		hit := false
 		for _, f := range failed {
 			hit = hit || f.ID == c.ID
 		}
 		switch {
 		case hit:
-		case i%2 == 0:
+		case c.Coverage == wcag.CoveragePartly:
 			e.Criteria.NoFailuresFound = append(e.Criteria.NoFailuresFound, c.ID)
 		default:
 			e.Criteria.NotTested = append(e.Criteria.NotTested, c.ID)
@@ -197,7 +200,7 @@ func TestEAAPlainLines(t *testing.T) {
 			t.Errorf("plain output lacks %q:\n%s", want, out)
 		}
 	}
-	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 21 had none found by these tests · 24 need a person "+
+	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 22 had none found by these tests · 23 need a person "+
 		`Snapshot "eaa-1" saved; the site already has errors`) {
 		t.Errorf("no counts line before the verdict:\n%s", out)
 	}
@@ -227,7 +230,7 @@ func TestEAACompareLine(t *testing.T) {
 	var b bytes.Buffer
 	NewPretty(&b, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm soundcheck accept"}).Summary(r, "")
 	out := b.String()
-	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 22 had none found by these tests · 24 need a person · open issues 3 to 4 Something broke"
+	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new) · 23 had none found by these tests · 23 need a person · open issues 3 to 4 Something broke"
 	if !strings.Contains(oneLine(out), want) {
 		t.Errorf("lacks %q:\n%s", want, out)
 	}
@@ -546,5 +549,59 @@ func TestNotCheckedWording(t *testing.T) {
 	}
 	if !strings.Contains(html.String(), kept) {
 		t.Errorf("comparison report.html lacks %q", kept)
+	}
+}
+
+// Criteria a test covers that weren't tested because the audit didn't
+// finish are counted apart from the ones that need a person and an
+// interrupted run doesn't claim none found for the whole site.
+func TestEAANotTestedSplit(t *testing.T) {
+	run := eaaClean()
+	e := eaaSummaryFor(0)
+	// The axe audit didn't finish anywhere: its criteria weren't tested.
+	unrun := []string{"1.1.1", "1.4.4", "3.1.1", "4.1.2"}
+	e.Criteria.NoFailuresFound = slices.DeleteFunc(e.Criteria.NoFailuresFound, func(id string) bool { return slices.Contains(unrun, id) })
+	e.Criteria.NotTested = append(e.Criteria.NotTested, unrun...)
+	e.NotAudited = []model.NotAudited{{Path: "/big/", Module: "a11y", Status: model.AuditTimeout, Reason: "timed out after 45s"}}
+	run.EAA = e
+	line := accessibilityLine(Result{Run: run}, true)
+	if !strings.Contains(line, "· 4 not tested (their tests didn't finish) · 23 need a person") {
+		t.Errorf("counts line: %s", line)
+	}
+	var b strings.Builder
+	writeAccessibility(&b, Result{Run: run})
+	if !strings.Contains(b.String(), "4 not tested (their tests didn't finish) · 23 need a person") {
+		t.Errorf("markdown: %s", b.String())
+	}
+	e.Interrupted = true
+	if line := accessibilityLine(Result{Run: run}, true); strings.Contains(line, "by these tests") || !strings.Contains(line, "had none found on the pages checked before the stop") {
+		t.Errorf("interrupted counts line: %s", line)
+	}
+}
+
+// A page a module couldn't audit gets one note: the module's own
+// warning about it is left out under the not-checked line.
+func TestNotCheckedOnce(t *testing.T) {
+	notChecked := []string{"not checked: /a11y/big.php (a11y: reflow check at 320 px: timed out after 10s); its issues are kept from the snapshot, not counted as fixed",
+		"not checked: /a11y/big.php (keyboard: the walk took over 60 s); its issues are kept from the snapshot, not counted as fixed"}
+	warnings := []string{
+		"a11y: /a11y/big.php: reflow check at 320 px: timed out after 10s",
+		"keyboard: /a11y/big.php: stopped after 60 s; the rest of the page wasn't walked",
+		"a11y: /other/: reflow check at 320 px: timed out after 10s",
+		"health: /a11y/big.php: slow",
+	}
+	got := dropCovered(warnings, notChecked)
+	if fmt.Sprint(got) != fmt.Sprint(warnings[2:]) {
+		t.Errorf("dropCovered = %q", got)
+	}
+
+	// A run prints its not-checked line and not the module's warning.
+	run := eaaClean()
+	run.EAA.NotAudited = []model.NotAudited{{Path: "/big/", Module: "a11y", Status: model.AuditError, Reason: "reflow check at 320 px: timed out after 10s"}}
+	run.Warnings = []string{"a11y: /big/: reflow check at 320 px: timed out after 10s"}
+	var b bytes.Buffer
+	NewPretty(&b, io.Discard, PrettyOptions{Plain: true}).Summary(Result{Run: run}, "")
+	if n := strings.Count(b.String(), "timed out after 10s"); n != 1 {
+		t.Errorf("the unfinished audit is told %d times:\n%s", n, b.String())
 	}
 }

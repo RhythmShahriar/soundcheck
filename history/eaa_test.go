@@ -153,7 +153,7 @@ func TestRenderA11yGolden(t *testing.T) {
 	var out bytes.Buffer
 	_ = Render(&out, eaaEntries(), "", "a11y", true)
 	if !strings.Contains(out.String(), "A11y open  31 to 4 (-87%)\n") ||
-		!strings.Contains(out.String(), "Worst criteria now: 1.4.3 Contrast (3), 1.3.1 Info and Relationships (1), 2.1.2 No Keyboard Trap (1)\n") {
+		!strings.Contains(out.String(), "Worst criteria now (a11y and keyboard problems): 1.4.3 Contrast (3), 1.3.1 Info and Relationships (1), 2.1.2 No Keyboard Trap (1)\n") {
 		t.Errorf("footer:\n%s", out.String())
 	}
 }
@@ -317,5 +317,34 @@ func TestHistoryMasksTokenPaths(t *testing.T) {
 	}
 	if v := entries[0].Value("a11y", p.Path); v != 1 {
 		t.Errorf("Value by the masked path = %v, want 1", v)
+	}
+}
+
+// A clean --eaa entry never reads as clean in the table: a snapshot or
+// run says no failures found and a comparison unchanged. Without --eaa
+// clean stays clean.
+func TestEAACleanVerdictShown(t *testing.T) {
+	clean := eaaRun(t0, "base", 0)
+	for i := range clean.Pages {
+		clean.Pages[i].Issues = nil
+	}
+	snap := New(clean, nil)
+	if snap.Verdict != Clean || snap.Shown() != "no failures found" || !snap.EAA {
+		t.Errorf("--eaa snapshot: verdict %q shown %q", snap.Verdict, snap.Shown())
+	}
+	cmp := New(clean, &model.Comparison{Before: model.RunRef{Name: "base"}})
+	if cmp.Shown() != "unchanged" {
+		t.Errorf("--eaa comparison shown %q", cmp.Shown())
+	}
+	plain := New(sampleRun(t0, "", 1000), nil)
+	if plain.Shown() != Clean {
+		t.Errorf("plain run shown %q", plain.Shown())
+	}
+	var out strings.Builder
+	if err := Render(&out, []Entry{snap}, "", "a11y", true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  no failures found  0") || strings.Contains(out.String(), " clean ") {
+		t.Errorf("table:\n%s", out.String())
 	}
 }

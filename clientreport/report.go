@@ -64,8 +64,12 @@ type access struct {
 	Failed      []string // "2.1.2 No Keyboard Trap (1 problem on 1 page)"
 	NeedPerson  []string // "1.2.1 Audio-only and Video-only (Prerecorded)"
 	NotChecked  []string // pages an accessibility test couldn't finish
+	Unrun       []string // criteria whose tests didn't run or didn't finish
 	Note        string
 	NeedsPerson int
+	// Partial marks a run stopped before it finished: its counts come
+	// from the pages it checked.
+	Partial bool
 }
 
 type count struct {
@@ -96,6 +100,7 @@ func Write(w io.Writer, res report.Result, b Brand) error {
 	if err := b.Validate(); err != nil {
 		return err
 	}
+	res = report.Masked(res) // an --eaa result's paths with their tokens masked
 	run := res.Run
 	d := pageData{Agency: b.Name, Contact: strings.TrimSpace(b.Contact), Accent: b.Accent, Logo: b.logo,
 		Site: siteName(run.Target), Date: run.Started.Local().Format("2 January 2006"), Checked: checked(run, report.EAA(res))}
@@ -105,7 +110,40 @@ func Write(w io.Writer, res report.Result, b Brand) error {
 	} else {
 		fillRun(&d, run)
 	}
+	partial(&d, res)
 	return pageTemplate.Execute(w, d)
+}
+
+// partial words a result that doesn't cover the whole site: a run
+// stopped before it finished, or an --eaa run whose accessibility tests
+// didn't finish on a page. Its title never says everything works and
+// its lead says why the report is partial.
+func partial(d *pageData, res report.Result) {
+	stopped := report.Partial(res)
+	e := report.EAA(res)
+	unfinished := e != nil && len(e.NotAudited) > 0
+	if !stopped && !unfinished {
+		return
+	}
+	if d.Tone == "good" || d.Tone == "note" {
+		d.Title, d.Tone = "This check is partial", "warn"
+	}
+	if stopped {
+		done := 0
+		for i := range res.Run.Pages {
+			if !res.Run.Pages[i].Canceled() {
+				done++
+			}
+		}
+		total := max(len(res.Run.Pages), res.Planned)
+		d.Lead = fmt.Sprintf("The check was stopped on %s after %d of %s, so this report leaves the rest of the site out.",
+			d.Date, done, plural(total, "page", "pages"))
+		if d.Access != nil {
+			d.Access.Partial = true
+		}
+		return
+	}
+	d.Lead += " The accessibility tests didn't finish on every page, so this report is partial."
 }
 
 func fillComparison(d *pageData, res report.Result) {
@@ -221,7 +259,13 @@ func toneOf(class string) string {
 func checked(run *model.Run, e *model.EAASummary) []string {
 	o := run.Options
 	var out []string
-	pages := plural(len(run.Pages), "page", "pages")
+	done := 0 // an interrupted run's canceled pages weren't checked
+	for i := range run.Pages {
+		if !run.Pages[i].Canceled() {
+			done++
+		}
+	}
+	pages := plural(done, "page", "pages")
 	screens := screenWords(o.Viewports)
 	if screens != "" {
 		out = append(out, fmt.Sprintf("%s of the site, on %s", capitalize(pages), screens))
@@ -311,7 +355,8 @@ func accessOf(e *model.EAASummary) *access {
 		}
 		return id
 	}
-	a := &access{Version: version, Note: model.EvidenceNote, NeedsPerson: len(e.Criteria.NotTested)}
+	unrun, person := wcag.SplitNotTested(version, e.Criteria.NotTested)
+	a := &access{Version: version, Note: model.EvidenceNote, NeedsPerson: len(person), Partial: e.Interrupted}
 	failTone := "good"
 	if len(e.Criteria.Failed) > 0 {
 		failTone = "bad"
@@ -320,12 +365,18 @@ func accessOf(e *model.EAASummary) *access {
 		{"Open accessibility problems", failTone, e.Open},
 		{"Criteria with failures", failTone, len(e.Criteria.Failed)},
 		{"Criteria with none found by these tests", "note", len(e.Criteria.NoFailuresFound)},
-		{"Criteria a person needs to check", "note", len(e.Criteria.NotTested)},
 	}
+	if len(unrun) > 0 {
+		a.Counts = append(a.Counts, count{"Criteria not tested: their tests didn't finish", "warn", len(unrun)})
+	}
+	a.Counts = append(a.Counts, count{"Criteria a person needs to check", "note", len(person)})
 	for _, f := range e.Criteria.Failed {
 		a.Failed = append(a.Failed, fmt.Sprintf("%s (%s on %s)", name(f.ID), plural(f.Issues, "problem", "problems"), plural(f.Pages, "page", "pages")))
 	}
-	for _, id := range e.Criteria.NotTested {
+	for _, id := range unrun {
+		a.Unrun = append(a.Unrun, name(id))
+	}
+	for _, id := range person {
 		a.NeedPerson = append(a.NeedPerson, name(id))
 	}
 	for _, n := range e.NotAudited {

@@ -323,7 +323,11 @@ func (s *session) check(target string, paths []string, snapshot bool, name, dir 
 	s.checked = true
 	s.recordEAA(run)
 	if s.o.verbose && run != nil {
-		s.view.Step("Timing", timing(run))
+		shown := run
+		if run.Options.EAA {
+			shown = report.Masked(report.Result{Run: run}).Run // the paths' tokens masked
+		}
+		s.view.Step("Timing", timing(shown))
 	}
 	// A snapshot runs Lighthouse once it's saved under its own name.
 	if run != nil && s.o.lighthouse && !snapshot && s.ctx.Err() == nil {
@@ -371,9 +375,18 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
 			Visible: s.o.show, Log: browserLog(s.view.Log)},
-		Hooks: runner.Hooks{Discovered: s.discover, Skipped: s.view.Skipped, Page: s.view.Page, Log: s.view.Log, Progress: s.view.Progress,
+		Hooks: runner.Hooks{Discovered: s.discover, Skipped: s.view.Skipped, Page: s.pageView(), Log: s.view.Log, Progress: s.view.Progress,
 			Browser: func(v string) { s.chrome = v }},
 	}, nil
+}
+
+// pageView is the live view's page hook. Under --eaa it shows each
+// page with the tokens in its path masked, as every report does.
+func (s *session) pageView() func(*model.Page, int, int) {
+	if !s.cfg.EAA {
+		return s.view.Page
+	}
+	return func(p *model.Page, done, total int) { s.view.Page(report.MaskedPage(p), done, total) }
 }
 
 // discover notes how many pages the check will visit and shows it
@@ -435,7 +448,13 @@ func (s *session) render(w io.Writer, res report.Result, format string) error {
 func (s *session) finish(res report.Result, next string) int {
 	res.FailOn = s.o.failOn // JSON's summary.failed
 	res.Trend = s.trend(res.Run)
+	if report.Partial(res) && res.Planned == 0 {
+		res.Planned = int(s.discovered.Load()) // pages the check set out to visit
+	}
 	draft := s.eaaResult(&res)
+	// What the formats show: an --eaa result with its paths' tokens
+	// masked. The stored run keeps them; compare visits them again.
+	res = report.Masked(res)
 	html := filepath.Join(res.Dir, "report.html")
 	if err := writeFile(html, func(w io.Writer) error { return report.HTML(w, res) }); err != nil {
 		fmt.Fprintln(s.stderr, prefix(), "writing the HTML report:", err)
@@ -1205,6 +1224,10 @@ func cmdSnapshots(args []string, stdout, stderr io.Writer) int {
 			return exitError
 		}
 		fmt.Fprintln(stdout, "Deleted snapshot", args[1])
+		// LATEST mustn't name the snapshot that is gone.
+		if err := st.Forget(args[1]); err != nil {
+			fmt.Fprintln(stderr, prefix(), "moving the latest snapshot pointer:", err)
+		}
 		if kept != "" {
 			fmt.Fprintln(stderr, keptPackNote(args[1], rel(filepath.Join(st.Root, filepath.FromSlash(kept)))))
 		}

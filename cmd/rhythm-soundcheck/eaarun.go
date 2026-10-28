@@ -214,6 +214,9 @@ func eaaSummary(res *report.Result) (pages func(func(*model.Page) bool), sum mod
 	if res.Comparison != nil {
 		ignored = res.Comparison.Ignored
 	}
+	if run.Interrupted && res.Planned == 0 {
+		res.Planned = plannedPages(res.Dir)
+	}
 	pages = storedPages(res.Dir, run)
 	sum = wcag.Summarize(run, pages, run.Issues, ignored, res.Comparison.Unstable())
 	run.EAA = &sum
@@ -270,6 +273,17 @@ func (s *session) writeEvidence(dir string, run *model.Run, interrupted bool) er
 // the statement command's refusal would otherwise say "17 of 17".
 type progress struct {
 	Pages int `json:"pages"`
+}
+
+// plannedPages is the page count writeProgress recorded in an
+// interrupted run's folder, or 0.
+func plannedPages(dir string) int {
+	var pr progress
+	data, err := os.ReadFile(filepath.Join(dir, eaaDir, progressFile)) //nolint:gosec // a run folder of the store
+	if err != nil || json.Unmarshal(data, &pr) != nil {
+		return 0
+	}
+	return pr.Pages
 }
 
 // writeProgress records how many pages the interrupted check set out to

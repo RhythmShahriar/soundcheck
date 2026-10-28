@@ -5,6 +5,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -223,8 +225,9 @@ func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) 
 
 // canarySite serves a site that hides a canary in each place a run could
 // pick one up: a field's value, a data-* attribute, a link's query
-// string, a frame from another site, a cookie, an aria-label, a field
-// on the page behind the login. Elements axe reports hold three more: a
+// string, a signed image URL's query, a token in a page's path, a frame
+// from another site, a cookie, an aria-label, a field on the page
+// behind the login. Elements axe reports hold three more: a
 // prefilled textarea with no label, the selected option of a select
 // with no name and an email address in text with too little contrast. The frame is served by the second
 // server, reached as localhost so it is another site, not only another
@@ -260,10 +263,23 @@ func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, 
 		}
 		eaaPage(w, "Home", fmt.Sprintf(`<div data-user="%s"><p>Welcome.</p></div>
 <form action="/" method="get"><label for="q">Search</label> <input id="q" name="q" value="%s"></form>
-<p><a href="/account/?token=%s">Your account</a> <a href="/contact/">Contact</a></p>
+<p><a href="/account/?token=%s">Your account</a> <a href="/contact/">Contact</a> <a href="/reset/%s/">Reset</a></p>
+<img src="/img.png?sig=%s" alt="Logo" width="1" height="1">
 <iframe title="Widget" src="%s" width="300" height="120"></iframe>
 <textarea>ta-%s</textarea> <select><option>Pick one</option><option selected>opt-%s</option></select>
-<p style="color:#ccc">low contrast %s@example.org</p>`, c["data"], c["value"], c["query"], frameURL, c["textarea"], c["option"], c["email"]))
+<p style="color:#ccc">low contrast %s@example.org</p>`, c["data"], c["value"], c["query"], c["path-token"], c["sig"], frameURL, c["textarea"], c["option"], c["email"]))
+	})
+	mux.HandleFunc("/img.png", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("sig") == c["sig"] {
+			hits.signed.Add(1)
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(onePixelPNG)
+	})
+	// A page whose path holds a token, as a password reset link does;
+	// it has a field without a label, so an issue names its path.
+	mux.HandleFunc("/reset/", func(w http.ResponseWriter, _ *http.Request) {
+		eaaPage(w, "Reset", `<p>Choose a new password.</p><input type="text">`)
 	})
 	mux.HandleFunc("/contact/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -302,8 +318,11 @@ func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, 
 // pass because the canaries never got into the run: requests carrying
 // the -H header, frame loads, logged-in account pages and POSTs.
 type canaryHits struct {
-	headers, frames, accounts, posts atomic.Int64
+	headers, frames, accounts, posts, signed atomic.Int64
 }
+
+// onePixelPNG is a 1x1 transparent PNG, for the signed image.
+var onePixelPNG, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 // The canary sweep (M4): a run with --eaa, every output format and
 // --verbose, then the statement in every format, writes none of the
@@ -320,7 +339,12 @@ func TestEAACanarySweep(t *testing.T) {
 	t.Setenv("CI", "1")
 	c := newCanaries(t, "value", "data", "query", "frame-text", "frame-value", "frame-label",
 		"flow-password", "header", "cookie", "aria-label", "account-value", "login-password",
-		"textarea", "option", "email")
+		"textarea", "option", "email", "sig")
+	// The token in a page's path is masked in every output. The stored
+	// run (run.json, pages.jsonl) keeps the path: compare and resume
+	// visit the page again by it. It is swept apart below.
+	pathToken := newCanaries(t, "path-token-for-reset")
+	c["path-token"] = pathToken["path-token-for-reset"]
 	user := "tester"
 	t.Setenv("SOUNDCHECK_USER", user)
 	t.Setenv("SOUNDCHECK_PASSWORD", c["login-password"])
@@ -366,9 +390,9 @@ steps:
 	}
 	// The canaries were in play: the header was sent, the frame loaded
 	// and the cache check saw the account page logged in.
-	if hits.headers.Load() == 0 || hits.frames.Load() == 0 || hits.accounts.Load() == 0 {
-		t.Errorf("canaries not reached: header %d, frame %d, account %d\n%s\n%s",
-			hits.headers.Load(), hits.frames.Load(), hits.accounts.Load(), printed["run stdout"], printed["run stderr"])
+	if hits.headers.Load() == 0 || hits.frames.Load() == 0 || hits.accounts.Load() == 0 || hits.signed.Load() == 0 {
+		t.Errorf("canaries not reached: header %d, frame %d, account %d, signed image %d\n%s\n%s",
+			hits.headers.Load(), hits.frames.Load(), hits.accounts.Load(), hits.signed.Load(), printed["run stdout"], printed["run stderr"])
 	}
 	// axe reported the elements that hold the textarea, option and
 	// email canaries, so their details were written and swept.
@@ -399,8 +423,26 @@ steps:
 		t.Errorf("evidence verify: exit %d\n%s\n%s", code, out, errOut)
 	}
 
+	pathCanary := canaries{"path-token": c["path-token"]}
+	delete(c, "path-token")
 	if hits := c.sweep(t, printed, ".soundcheck", "out"); len(hits) > 0 {
 		t.Errorf("canaries written:\n%s", strings.Join(hits, "\n"))
+	}
+	// The page with the token was checked and only the stored run
+	// names it in full.
+	if report, err := os.ReadFile(filepath.Join("out", "r.json")); err != nil || !strings.Contains(string(report), "/reset/") {
+		t.Errorf("out/r.json has no /reset/ page, so the path canary wasn't in play (%v)", err)
+	}
+	var stored []string
+	for _, h := range pathCanary.sweep(t, printed, ".soundcheck", "out") {
+		if base := path.Base(strings.TrimSuffix(h, ": path-token")); base == "run.json" || base == "pages.jsonl" {
+			stored = append(stored, h)
+			continue
+		}
+		t.Errorf("page path token written: %s", h)
+	}
+	if len(stored) == 0 {
+		t.Error("the stored run lost the page's path; compare can't visit it again")
 	}
 }
 

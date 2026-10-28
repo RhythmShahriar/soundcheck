@@ -450,6 +450,7 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		}
 		fmt.Fprintln(p.w)
 		notChecked, rest := splitNotChecked(c.Warnings)
+		rest = dropCovered(rest, notChecked)
 		p.notes(notChecked)
 		p.accessibility(r)
 		fmt.Fprintf(p.w, "%s - %s - compared with %s, %s\n", verdict(c), strings.Join(parts, ", "),
@@ -491,6 +492,7 @@ func (p *Pretty) comparison(r Result, hints []string) {
 		return
 	}
 	notChecked, rest := splitNotChecked(c.Warnings)
+	rest = dropCovered(rest, notChecked)
 	p.notes(notChecked)
 	p.accessibility(r)
 	fmt.Fprintln(p.w, comparePanel(c))
@@ -549,7 +551,7 @@ func (p *Pretty) run(r Result, hints []string) {
 			plural(counts[model.Error], "error", "errors"), plural(counts[model.Warning], "warning", "warnings"),
 			plural(counts[model.Notice], "notice", "notices"), r.stats())
 		p.evidence(r, false)
-		p.notes(r.Run.Warnings)
+		p.notes(dropCovered(r.Run.Warnings, notCheckedOf(r)))
 		p.hints(hints)
 		return
 	}
@@ -590,7 +592,7 @@ func (p *Pretty) run(r Result, hints []string) {
 	fmt.Fprintln(p.w, runPanel(r.Run, Counts(issues)))
 	fmt.Fprintf(p.w, "  %s\n", muted.Render(r.stats()))
 	p.evidence(r, false)
-	p.notes(r.Run.Warnings)
+	p.notes(dropCovered(r.Run.Warnings, notCheckedOf(r)))
 	p.hints(hints)
 	fmt.Fprintln(p.w)
 }
@@ -695,6 +697,37 @@ func splitNotChecked(warnings []string) (notChecked, rest []string) {
 	return notChecked, rest
 }
 
+// dropCovered leaves out of warnings a module's own warning about a
+// page a not-checked line already names: "a11y: /big/: reflow check at
+// 320 px: timed out after 10s" under "not checked: /big/ (a11y: ...)".
+// One line per page and module is enough.
+func dropCovered(warnings, notChecked []string) []string {
+	if len(notChecked) == 0 {
+		return warnings
+	}
+	covered := map[string]bool{} // "a11y: /big/: "
+	for _, n := range notChecked {
+		rest, _ := strings.CutPrefix(n, "not checked: ")
+		path, rest, ok := strings.Cut(rest, " (")
+		if !ok {
+			continue
+		}
+		if mod, _, ok := strings.Cut(rest, ":"); ok {
+			covered[mod+": "+path+": "] = true
+		}
+	}
+	var out []string
+	for _, w := range warnings {
+		mod, rest, _ := strings.Cut(w, ": ")
+		path, _, _ := strings.Cut(rest, ": ")
+		if covered[mod+": "+path+": "] {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
+}
+
 func (p *Pretty) notes(lists ...[]string) {
 	var all []string
 	for _, l := range lists {
@@ -719,7 +752,7 @@ func (p *Pretty) notes(lists ...[]string) {
 
 // stats is "124 pages · 2m10s".
 func (r Result) stats() string {
-	parts := []string{plural(len(r.Run.Pages), "page", "pages")}
+	parts := []string{""}
 	failed, canceled := 0, 0
 	for i := range r.Run.Pages {
 		switch p := &r.Run.Pages[i]; {
@@ -732,8 +765,12 @@ func (r Result) stats() string {
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d couldn't be loaded", failed))
 	}
-	if canceled > 0 {
-		parts = append(parts, fmt.Sprintf("%d not checked (interrupted)", canceled))
+	// An interrupted run counts the pages that finished against the
+	// ones it set out to check: "1 of 13 pages checked (interrupted)".
+	if total := max(len(r.Run.Pages), r.Planned); canceled > 0 || Partial(r) {
+		parts[0] = fmt.Sprintf("%d of %s checked (interrupted)", len(r.Run.Pages)-canceled, plural(total, "page", "pages"))
+	} else {
+		parts[0] = plural(len(r.Run.Pages), "page", "pages")
 	}
 	if r.Compared() && len(r.Comparison.Ignored) > 0 {
 		parts = append(parts, plural(len(r.Comparison.Ignored), "change ignored", "changes ignored"))

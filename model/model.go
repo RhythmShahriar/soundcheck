@@ -638,6 +638,12 @@ type RunRef struct {
 	Started time.Time `json:"started"`
 }
 
+// NotCheckedReason starts the Reason of an ignored change a comparison
+// kept from the snapshot because its page's audit didn't finish: "not
+// checked on this page: a11y timed out". The problem wasn't checked
+// again, so it still counts as open.
+const NotCheckedReason = "not checked on this page"
+
 // UnstableSet holds the findings of a comparison's UNSTABLE changes:
 // seen once, gone when their page was checked again. They aren't
 // counted as open problems or against a WCAG criterion.

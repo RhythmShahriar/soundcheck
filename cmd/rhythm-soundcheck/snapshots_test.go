@@ -83,3 +83,33 @@ func TestSnapshotsJSON(t *testing.T) {
 		t.Errorf("bad argument: exit %d %q", code, errOut)
 	}
 }
+
+// snapshots delete of the latest snapshot points LATEST at the one left,
+// so the next compare doesn't look for the deleted one.
+func TestSnapshotsDeleteLatest(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for i, name := range []string{"p2", "p3"} {
+		dir := filepath.Join(".soundcheck/snapshots", name)
+		_ = os.MkdirAll(dir, 0o755)
+		r := &model.Run{Schema: model.Schema, Version: "1.3.0", Target: "http://127.0.0.1:39200/", Name: name,
+			Started: time.Date(2026, 10, 28, 9+i, 0, 0, 0, time.UTC), Pages: []model.Page{{Path: "/"}}}
+		if err := store.SaveRun(dir, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := (store.Store{Root: ".soundcheck"}).SetLatest("p3"); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errOut := runCLI(t, "snapshots", "delete", "p3"); code != exitOK {
+		t.Fatalf("delete: exit %d %q", code, errOut)
+	}
+	if b, err := os.ReadFile(".soundcheck/LATEST"); err != nil || string(b) != "p2\n" {
+		t.Errorf("LATEST = %q, %v; want p2", b, err)
+	}
+	if code, _, errOut := runCLI(t, "snapshots", "delete", "p2"); code != exitOK {
+		t.Fatalf("delete: exit %d %q", code, errOut)
+	}
+	if _, err := os.Stat(".soundcheck/LATEST"); !os.IsNotExist(err) {
+		t.Errorf("LATEST kept with no snapshot left: %v", err)
+	}
+}

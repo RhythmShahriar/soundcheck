@@ -100,6 +100,28 @@ func (c Criterion) HowTested() string {
 	return "partly: " + strings.Join(parts, "; ")
 }
 
+// SplitNotTested splits a summary's not tested criteria (of a WCAG
+// version) in two: unrun have tests that didn't run or didn't finish
+// in this run (an audit that timed out, say), person have no test at
+// all and need a person. A criterion the version doesn't know is put
+// with person.
+func SplitNotTested(version string, ids []string) (unrun, person []string) {
+	partly := map[string]bool{}
+	for _, c := range tables()[orDefault(version)].criteria {
+		if c.Coverage == CoveragePartly {
+			partly[c.ID] = true
+		}
+	}
+	for _, id := range ids {
+		if partly[id] {
+			unrun = append(unrun, id)
+		} else {
+			person = append(person, id)
+		}
+	}
+	return unrun, person
+}
+
 // ForCheck returns the criteria of a WCAG version an issue of check
 // fails, sorted: for an axe rule (a11y/<rule>) the criteria its tags
 // name, for Soundcheck's own checks the criteria criteria.yaml lists it

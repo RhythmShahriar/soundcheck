@@ -171,8 +171,32 @@ func accessibilityLine(r Result, plain bool) string {
 		}
 		open = fmt.Sprintf(" · open issues %d %s %d", before, arrow, after)
 	}
-	return fmt.Sprintf("Accessibility: %s · %d had none found by these tests · %d need a person%s",
-		failed, len(e.Criteria.NoFailuresFound), len(e.Criteria.NotTested), open)
+	return fmt.Sprintf("Accessibility: %s · %s%s", failed, restCounts(e), open)
+}
+
+// restCounts is the criteria without failures of a summary: "20 had
+// none found by these tests · 24 need a person". Criteria whose tests
+// didn't finish (or didn't run) are counted apart from the ones that
+// need a person: "· 4 not tested (their tests didn't finish)". An
+// interrupted run leaves out the none found count, which comes from
+// the pages it finished only.
+func restCounts(e *model.EAASummary) string {
+	unrun, person := wcag.SplitNotTested(eaaVersion(e), e.Criteria.NotTested)
+	var parts []string
+	if e.Interrupted {
+		parts = append(parts, fmt.Sprintf("%d had none found on the pages checked before the stop", len(e.Criteria.NoFailuresFound)))
+	} else {
+		parts = append(parts, fmt.Sprintf("%d had none found by these tests", len(e.Criteria.NoFailuresFound)))
+	}
+	if len(unrun) > 0 {
+		why := "didn't run"
+		if len(e.NotAudited) > 0 {
+			why = "didn't finish"
+		}
+		parts = append(parts, fmt.Sprintf("%d not tested (their tests %s)", len(unrun), why))
+	}
+	parts = append(parts, fmt.Sprintf("%d need a person", len(person)))
+	return strings.Join(parts, " · ")
 }
 
 // newCriteria lists the criteria with failures whose every counted
@@ -301,8 +325,8 @@ func writeAccessibility(b *strings.Builder, r Result) {
 	}
 	version := eaaVersion(e)
 	fmt.Fprintf(b, "### Accessibility (WCAG %s A and AA)\n\n", mdCell(version))
-	fmt.Fprintf(b, "%d of %d criteria have failures · %d had none found by these tests · %d need a person · %s\n\n",
-		len(e.Criteria.Failed), eaaTotal(e), len(e.Criteria.NoFailuresFound), len(e.Criteria.NotTested), plural(e.Open, "open issue", "open issues"))
+	fmt.Fprintf(b, "%d of %d criteria have failures · %s · %s\n\n",
+		len(e.Criteria.Failed), eaaTotal(e), restCounts(e), plural(e.Open, "open issue", "open issues"))
 	if len(e.Criteria.Failed) > 0 {
 		var fresh []string
 		if r.Comparison != nil {

@@ -467,6 +467,44 @@ func (s Store) SetLatest(name string) error {
 	return nil
 }
 
+// Forget moves LATEST off a snapshot that was just deleted: to the
+// newest snapshot left, or away when none is left, so compare doesn't
+// look for one that is gone. A pointer to another snapshot is kept.
+func (s Store) Forget(deleted string) error {
+	if !strings.EqualFold(s.latest(), deleted) {
+		return nil
+	}
+	names, err := s.Snapshots()
+	if err != nil {
+		return err
+	}
+	names = slices.DeleteFunc(names, func(n string) bool { return strings.EqualFold(n, deleted) })
+	if len(names) > 0 {
+		// The one taken last; a snapshot whose run can't be read
+		// keeps its place in the list.
+		newest, at := names[len(names)-1], time.Time{}
+		for _, n := range names {
+			if r, err := LoadRun(filepath.Join(s.Root, "snapshots", n)); err == nil && !r.Started.Before(at) {
+				newest, at = n, r.Started
+			}
+		}
+		return s.SetLatest(newest)
+	}
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	for _, p := range []string{filepath.Join(s.Root, Latest), s.legacyLatest()} {
+		if isFile(p) {
+			if err := os.Remove(p); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // latest returns the name LATEST points to, or "" when there's none. A
 // store from an older version has the pointer in snapshots/; it's read
 // there once and moved to the root.

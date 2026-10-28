@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -621,5 +622,19 @@ func TestIssuesDocumentElement(t *testing.T) {
 		Nodes: []node{{Path: [][]Elem{tree("html")}, HTML: `<html class="js">`}}}}, 20, "2.1")
 	if len(got) != 1 || got[0].Source != "html" || got[0].Key != "a11y/html-has-lang|html" {
 		t.Errorf("issues = %+v", got)
+	}
+}
+
+// The reflow check's own deadline reads as a plain reason, never Go's
+// "context deadline exceeded"; other errors keep their text.
+func TestReflowReason(t *testing.T) {
+	if got := reflowReason(context.DeadlineExceeded); got != "timed out after "+reflowTimeout.String() {
+		t.Errorf("deadline: %q", got)
+	}
+	if got := reflowReason(fmt.Errorf("eval: %w", context.DeadlineExceeded)); strings.Contains(got, "deadline") {
+		t.Errorf("wrapped deadline: %q", got)
+	}
+	if got := reflowReason(errors.New("can't open an isolated world")); got != "can't open an isolated world" {
+		t.Errorf("other error: %q", got)
 	}
 }

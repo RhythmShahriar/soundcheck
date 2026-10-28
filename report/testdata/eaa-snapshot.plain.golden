@@ -18,8 +18,8 @@
 [NOTICE] No skip link before a long run of stops - /, /shop/, /about/ +35 more (38 pages)
   wcag: 2.4.1 · EN 301 549 9.2.4.1
 
-Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 21 had none
-found by these tests · 24 need a person
+Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures · 22 had none
+found by these tests · 23 need a person
 Snapshot "eaa-1" saved; the site already has errors - 1 error, 2 warnings, 1 notice - 39 pages · 2m41s
 Automated and keyboard tests find some accessibility problems, not all. This is
 evidence for your own review, not a statement that the site meets WCAG,

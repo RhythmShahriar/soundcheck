@@ -388,7 +388,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 				kept := p
 				if opts.EAA {
 					q := *p
-					q.Links = storedLinks(p.Links)
+					storePage(&q)
 					kept = &q
 				}
 				emit(func() { opts.OnPage(kept) })
@@ -428,7 +428,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 	if opts.EAA {
 		// The site-wide checks above needed the links as found.
 		for i := range run.Pages {
-			run.Pages[i].Links = storedLinks(run.Pages[i].Links)
+			storePage(&run.Pages[i])
 		}
 	}
 	run.Duration = float64(time.Since(start).Milliseconds())
@@ -439,6 +439,40 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		run.Interrupted = true
 	}
 	return run, ctx.Err()
+}
+
+// storePage makes p as an --eaa run stores it: its links (storedLinks)
+// and the URLs of its subresources and failed requests without their
+// query strings, with token-like path segments masked. A subresource
+// URL can be signed ("/img.png?sig=…") as much as a link can carry a
+// token. The slices are copied, so a page shared with the run's other
+// results keeps its URLs.
+func storePage(p *model.Page) {
+	p.Links = storedLinks(p.Links)
+	if len(p.Resources) > 0 {
+		p.Resources = slices.Clone(p.Resources)
+		for i := range p.Resources {
+			p.Resources[i].URL = storedURL(p.Resources[i].URL)
+		}
+	}
+	if len(p.Failed) > 0 {
+		p.Failed = slices.Clone(p.Failed)
+		for i := range p.Failed {
+			p.Failed[i].URL = storedURL(p.Failed[i].URL)
+		}
+	}
+}
+
+// storedURL is a URL without its query string and fragment, with
+// token-like path segments masked.
+func storedURL(l string) string {
+	if u, err := url.Parse(l); err == nil {
+		u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
+		l = u.String()
+	} else if i := strings.IndexAny(l, "?#"); i >= 0 {
+		l = l[:i]
+	}
+	return echolink.RedactURL(l)
 }
 
 // storedLinks is how an --eaa run stores a page's links: without their
@@ -453,13 +487,7 @@ func storedLinks(links []string) []string {
 	out := make([]string, 0, len(links))
 	seen := map[string]bool{}
 	for _, l := range links {
-		if u, err := url.Parse(l); err == nil {
-			u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
-			l = u.String()
-		} else if i := strings.IndexAny(l, "?#"); i >= 0 {
-			l = l[:i]
-		}
-		l = echolink.RedactURL(l)
+		l = storedURL(l)
 		if !seen[l] {
 			seen[l] = true
 			out = append(out, l)

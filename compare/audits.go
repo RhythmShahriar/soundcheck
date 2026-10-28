@@ -76,7 +76,7 @@ func gaps(path string, before, after map[string]model.Audit, ran, listed func(st
 			out = unaudited{}
 		}
 		out[m] = auditGap{
-			reason: fmt.Sprintf("not checked on this page: %s %s", m, statusWord(gap.Status)),
+			reason: fmt.Sprintf("%s: %s %s", model.NotCheckedReason, m, statusWord(gap.Status)),
 			note:   fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed", path, m, reason),
 		}
 	}

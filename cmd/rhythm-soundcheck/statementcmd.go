@@ -382,11 +382,7 @@ func interruptedRun(dir string, run *model.Run, pages func(func(*model.Page) boo
 			done++
 		}
 	}
-	var pr progress
-	data, err := os.ReadFile(filepath.Join(dir, eaaDir, progressFile)) //nolint:gosec // a run folder of the store
-	if err == nil && json.Unmarshal(data, &pr) == nil {
-		total = max(total, pr.Pages)
-	}
+	total = max(total, plannedPages(dir))
 	return fmt.Errorf("%s was interrupted after %d of %s; a statement from part of the site would leave problems out. Run it again",
 		rel(dir), done, plural(total, "page"))
 }

@@ -196,7 +196,7 @@ func Build(in Input) (*Draft, error) {
 		d.KnownIssues = append(d.KnownIssues, Known{KnownIssue: k, Title: c.Title})
 	}
 	for _, c := range in.Ignored {
-		if strings.HasPrefix(c.Reason, notCheckedReason) {
+		if strings.HasPrefix(c.Reason, model.NotCheckedReason) {
 			continue // a page whose audit didn't finish: listed under NotAudited
 		}
 		crit := wcag.IssueCriteria(model.Issue{Check: c.Check, WCAG: c.WCAG}, version)
@@ -226,11 +226,6 @@ func Build(in Input) (*Draft, error) {
 	}
 	return d, nil
 }
-
-// notCheckedReason starts the reason a comparison gives a page issue it
-// kept because the page's audit didn't finish. Those aren't the owner's
-// choices, so the draft doesn't list them as ignored.
-const notCheckedReason = "not checked on this page"
 
 // ownChecks are the a11y module's own checks, recorded in the run's
 // axe rule list (checks/a11y ownRules).

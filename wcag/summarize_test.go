@@ -5,6 +5,7 @@ package wcag
 
 import (
 	"fmt"
+	"maps"
 	"runtime"
 	"slices"
 	"testing"
@@ -297,5 +298,52 @@ func TestSummarizeLeavesOutUnstable(t *testing.T) {
 	s = Summarize(eaaRun(), each(pages), nil, nil, c.Unstable())
 	if got, _ := failed(s, "2.4.7"); got != (model.CriterionCount{ID: "2.4.7", Issues: 1, Pages: 1}) || s.Open != 2 {
 		t.Errorf("stable on another page: open %d, 2.4.7 %+v", s.Open, got)
+	}
+}
+
+// A keyboard walk that never finished on any page leaves the keyboard
+// criteria not tested, even though the walk started.
+func TestSummarizeKeyboardTimedOut(t *testing.T) {
+	audits := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditTimeout, Reason: "timed out after 60s"}}
+	pages := []model.Page{
+		{Path: "/big/", Audits: audits, Keyboard: &model.KeyboardSummary{Stops: 400}},
+		{Path: "/big2/", Audits: maps.Clone(audits), Keyboard: &model.KeyboardSummary{Stops: 300}},
+	}
+	s := Summarize(eaaRun(), each(pages), nil, nil, nil)
+	for _, id := range []string{"2.1.2", "2.4.3", "2.4.7"} { // 2.1.1 has axe tests too
+		if !slices.Contains(s.Criteria.NotTested, id) {
+			t.Errorf("%s should be not tested: %+v", id, s.Criteria)
+		}
+	}
+	if len(s.NotAudited) != 2 {
+		t.Errorf("not audited: %+v", s.NotAudited)
+	}
+	// A walk on a page without a keyboard audit (a run made before
+	// audits were recorded) still counts.
+	pages = []model.Page{{Path: "/", Keyboard: &model.KeyboardSummary{Stops: 3}}}
+	s = Summarize(eaaRun("keyboard"), each(pages), nil, nil, nil)
+	if !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
+		t.Errorf("an unaudited walk should count: %+v", s.Criteria)
+	}
+}
+
+// A finding a comparison kept from the snapshot (its page's audit didn't
+// finish) counts as failed and open, whether or not the page has it now.
+func TestSummarizeKeptCountsAsOpen(t *testing.T) {
+	contrast := issue("a11y/color-contrast", "footer a", "1.4.3")
+	timedOut := map[string]model.Audit{"a11y": {Status: model.AuditTimeout}, "keyboard": {Status: model.AuditOK}}
+	pages := []model.Page{{Path: "/big/", Audits: timedOut, Issues: []model.Issue{contrast}}}
+	ignored := []model.Change{
+		{Class: model.Fixed, Check: contrast.Check, Title: contrast.Title, Source: contrast.Source, WCAG: contrast.WCAG, Pages: []string{"/big/"}, Reason: model.NotCheckedReason + ": a11y timed out"},
+		{Class: model.Fixed, Check: "a11y/image-alt", Title: "a11y/image-alt", Source: "img", Pages: []string{"/big/"}, Reason: model.NotCheckedReason + ": a11y timed out"},
+	}
+	s := Summarize(eaaRun(), each(pages), nil, ignored, nil)
+	if s.Open != 2 {
+		t.Errorf("open = %d, want 2 (kept findings are open)", s.Open)
+	}
+	for _, id := range []string{"1.4.3", "1.1.1"} {
+		if got, ok := failed(s, id); !ok || got.Issues != 1 || got.Pages != 1 {
+			t.Errorf("%s: %+v %v, want 1 issue on 1 page", id, got, ok)
+		}
 	}
 }

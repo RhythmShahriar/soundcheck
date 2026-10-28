@@ -57,3 +57,23 @@ func TestStoredLinks(t *testing.T) {
 		t.Error("nil links became a list")
 	}
 }
+
+// An --eaa page keeps its subresources and failed requests without their
+// query strings: a signed image URL is a credential like a link's token.
+// The page it was copied from keeps its URLs.
+func TestStorePage(t *testing.T) {
+	sig := "sig" + strings.Repeat("a9f8e", 6)
+	orig := model.Page{
+		Links:     []string{"https://example.test/a/?x=" + sig},
+		Resources: []model.Resource{{URL: "https://example.test/img.png?sig=" + sig, Type: "Image"}},
+		Failed:    []model.Request{{URL: "https://example.test/api?sig=" + sig + "#f", Status: 500}},
+	}
+	p := orig
+	storePage(&p)
+	if p.Resources[0].URL != "https://example.test/img.png" || p.Failed[0].URL != "https://example.test/api" || p.Links[0] != "https://example.test/a/" {
+		t.Errorf("stored page: %+v", p)
+	}
+	if !strings.Contains(orig.Resources[0].URL, sig) || !strings.Contains(orig.Failed[0].URL, sig) {
+		t.Error("storePage changed the page it was copied from")
+	}
+}

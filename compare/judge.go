@@ -79,6 +79,6 @@ func unjudged(path, check string, audits map[string]model.Audit) (reason, note s
 	if why == "" {
 		why = statusWord(status)
 	}
-	return fmt.Sprintf("not checked on this page: %s %s", mod, statusWord(status)),
+	return fmt.Sprintf("%s: %s %s", model.NotCheckedReason, mod, statusWord(status)),
 		fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed", path, mod, why)
 }

@@ -130,8 +130,9 @@ func (Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *mod
 		i, err := reflow(ctx, tab)
 		switch {
 		case err != nil && ctx.Err() == nil:
-			cc.Warn(fmt.Sprintf("a11y: %s: reflow check at 320 px: %s", p.Path, secrets.Redact(err.Error())))
-			unfinished = append(unfinished, "reflow check at 320 px: "+err.Error())
+			why := reflowReason(err)
+			cc.Warn(fmt.Sprintf("a11y: %s: reflow check at 320 px: %s", p.Path, secrets.Redact(why)))
+			unfinished = append(unfinished, "reflow check at 320 px: "+why)
 		case i != nil:
 			p.Issues = append(p.Issues, *i)
 		}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -430,5 +431,29 @@ func TestBuildMethodOnlyWhatRan(t *testing.T) {
 	}
 	if !slices.Contains(row(d, "3.3.2").TestedBy, "interact/unlabeled") || !slices.Contains(row(d, "2.1.1").TestedBy, "keyboard/flow") {
 		t.Errorf("tests that ran are missing: %v, %v", row(d, "3.3.2").TestedBy, row(d, "2.1.1").TestedBy)
+	}
+}
+
+// When the axe audit didn't finish on any page, the criteria only axe
+// tests are listed as not tested because of it, not as needing a person.
+func TestDraftSplitsNotTested(t *testing.T) {
+	failedAudit := map[string]model.Audit{"a11y": {Status: model.AuditError, Reason: "timed out after 45s"}, "keyboard": {Status: model.AuditOK}}
+	in := input([]model.Page{{Path: "/big/", Audits: failedAudit, Keyboard: &model.KeyboardSummary{}}}, owner())
+	d, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := Markdown(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	unrun := regexp.MustCompile(`(\d+) criteria weren't tested because their tests didn't finish on the pages above: ([0-9., ]+)\.`).FindStringSubmatch(out)
+	person := regexp.MustCompile(`(\d+) criteria need a person: ([0-9., ]+)\.`).FindStringSubmatch(out)
+	if unrun == nil || person == nil {
+		t.Fatalf("no split not tested lines:\n%s", out)
+	}
+	if !strings.Contains(unrun[2], "1.1.1") || strings.Contains(person[2], "1.1.1") || !strings.Contains(person[2], "1.2.3") || strings.Contains(unrun[2], "1.2.3") {
+		t.Errorf("unrun %q, person %q", unrun[2], person[2])
 	}
 }

@@ -89,6 +89,25 @@ type Entry struct {
 	A11yOpen        *int           `json:"a11y_open,omitempty"`
 	A11yByCriterion map[string]int `json:"a11y_by_criterion,omitempty"`
 	KeyboardOpen    *int           `json:"keyboard_open,omitempty"`
+	// EAA marks a run made with --eaa, whose clean verdict never reads
+	// as an all-clear (see Shown).
+	EAA bool `json:"eaa,omitempty"`
+}
+
+// Shown is the entry's verdict as the table shows it. A clean --eaa
+// entry never reads as an all-clear, as fleet's Label doesn't: a
+// snapshot or run says "no failures found" (by these tests) and a
+// comparison "unchanged". An entry written before the EAA mark was
+// kept counts as --eaa when it has both the a11y and keyboard counts.
+func (e Entry) Shown() string {
+	eaa := e.EAA || (e.A11yOpen != nil && e.KeyboardOpen != nil)
+	if e.Verdict != Clean || !eaa {
+		return e.Verdict
+	}
+	if e.Kind == KindComparison {
+		return "unchanged"
+	}
+	return "no failures found"
 }
 
 // PageMetrics are one page's timings in an entry and, for a run with
@@ -110,7 +129,7 @@ type PageMetrics struct {
 // nil.
 func New(run *model.Run, c *model.Comparison) Entry {
 	e := Entry{Schema: Schema, At: run.Started.UTC(), Kind: KindRun, Name: run.Name, Target: run.Target,
-		Version: run.Version, Pages: len(run.Pages), Issues: map[string]int{}}
+		Version: run.Version, Pages: len(run.Pages), Issues: map[string]int{}, EAA: run.Options.EAA}
 	if run.Name != "" {
 		e.Kind = KindSnapshot
 	}

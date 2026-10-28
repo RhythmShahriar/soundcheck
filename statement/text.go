@@ -268,7 +268,8 @@ func problems(d *doc, dr *Draft) {
 		items = append(items, l)
 	}
 	if len(items) == 0 {
-		d.para(text(fmt.Sprintf("Soundcheck's tests found no failures on %s. That doesn't mean there are none: %s need a person.", dr.Date, count(dr.NotTested, "criterion"))))
+		_, person := notTestedRows(dr)
+		d.para(text(fmt.Sprintf("Soundcheck's tests found no failures on %s. That doesn't mean there are none: %s need a person.", dr.Date, count(len(person), "criterion"))))
 		return
 	}
 	d.para(text("Found by Soundcheck's tests on " + dr.Date + ", or by your own review:"))
@@ -372,11 +373,13 @@ func appendix(d *doc, dr *Draft) {
 	for _, f := range dr.Keyboard.FlowsSkipped {
 		items = append(items, line{text("Key flow " + f.File + " didn't run: " + f.Reason + ".")})
 	}
-	var person []string
-	for _, r := range dr.Rows {
-		if r.Result == ResultNotTested {
-			person = append(person, r.ID)
+	unrun, person := notTestedRows(dr)
+	if len(unrun) > 0 {
+		why := "didn't run"
+		if len(dr.NotAudited) > 0 {
+			why = "didn't finish on the pages above"
 		}
+		items = append(items, line{text(fmt.Sprintf("%s weren't tested because their tests %s: %s.", count(len(unrun), "criterion"), why, strings.Join(unrun, ", ")))})
 	}
 	if len(person) > 0 {
 		items = append(items, line{text(fmt.Sprintf("%s need a person: %s.", count(len(person), "criterion"), strings.Join(person, ", ")))})
@@ -396,6 +399,23 @@ func appendix(d *doc, dr *Draft) {
 		pages = append(pages, line{text(p)})
 	}
 	d.listIf(pages...)
+}
+
+// notTestedRows are the ids of the draft's not tested criteria in two
+// groups: unrun have tests that didn't run or didn't finish, person
+// have none and need a person.
+func notTestedRows(dr *Draft) (unrun, person []string) {
+	for _, r := range dr.Rows {
+		if r.Result != ResultNotTested {
+			continue
+		}
+		if r.Note == "" && r.Coverage == wcag.CoveragePartly {
+			unrun = append(unrun, r.ID)
+		} else {
+			person = append(person, r.ID)
+		}
+	}
+	return unrun, person
 }
 
 // ResultText is a criterion's result in the criteria table: "failures

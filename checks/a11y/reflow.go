@@ -6,6 +6,7 @@ package a11y
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -90,6 +91,16 @@ type offender struct {
 // sideways and puts the desktop viewport back, whatever happens: the
 // modules after this one see the page as it was. It returns the
 // a11y/reflow issue, or nil when the page reflows.
+// reflowReason words why the reflow check didn't finish: its own time
+// running out reads "timed out after 10s", not Go's "context deadline
+// exceeded".
+func reflowReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
+		return "timed out after " + reflowTimeout.String()
+	}
+	return err.Error()
+}
+
 func reflow(ctx context.Context, tab *rod.Page) (*model.Issue, error) {
 	ctx, cancel := context.WithTimeout(ctx, reflowTimeout)
 	defer cancel()

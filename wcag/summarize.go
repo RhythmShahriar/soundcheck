@@ -87,7 +87,10 @@ type tally struct {
 // test of it ran and found none. Any other is not tested: nothing tests
 // it, or the modules whose checks test it didn't run. Ignored findings
 // still count against their criteria (ignoring a problem doesn't fix
-// it) but not as open. An UNSTABLE finding (seen once, gone when its
+// it) but not as open. A finding a comparison kept from the snapshot
+// because its page's audit didn't finish (an ignored change whose
+// Reason is model.NotCheckedReason) counts as failed and open, both:
+// the problem wasn't checked again, so it is still there. An UNSTABLE finding (seen once, gone when its
 // page was checked again) isn't counted at all. Memory grows with the
 // criteria and the findings, not the pages.
 func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.Issue, ignored []model.Change, unstable model.UnstableSet) model.EAASummary {
@@ -104,8 +107,14 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 	}
 
 	skip := map[string]bool{}
+	var kept []model.Issue
 	for _, c := range ignored {
-		skip[FindingKey(model.Issue{Check: c.Check, Title: c.Title, Source: c.Source, Detail: c.Detail, Key: c.Key})] = true
+		i := model.Issue{Check: c.Check, Title: c.Title, Source: c.Source, Detail: c.Detail, Key: c.Key, WCAG: c.WCAG, Pages: c.Pages}
+		if strings.HasPrefix(c.Reason, model.NotCheckedReason) {
+			kept = append(kept, i)
+			continue
+		}
+		skip[FindingKey(i)] = true
 	}
 	tallies := map[string]*tally{}
 	get := func(id string) *tally {
@@ -129,7 +138,8 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		}
 		return crit
 	}
-	for _, i := range site {
+	// Kept findings count like site issues: on the pages they name.
+	for _, i := range append(slices.Clone(site), kept...) {
 		for _, c := range add(i, "") {
 			for _, p := range i.Pages {
 				get(c).site[p] = true
@@ -141,6 +151,7 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 	// one that doesn't (interact) ran when the run lists it and checked
 	// at least one page.
 	finished := map[string]bool{}
+	walkedUnaudited := false // a page walked with no keyboard audit recorded
 	checked := 0
 	onPage := map[string]bool{}
 	pages(func(p *model.Page) bool {
@@ -169,6 +180,9 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 			s.NotAudited = append(s.NotAudited, model.NotAudited{Path: p.Path, Module: m, Status: a.Status, Reason: a.Reason})
 		}
 		if p.Keyboard != nil {
+			if _, ok := p.Audits["keyboard"]; !ok {
+				walkedUnaudited = true
+			}
 			s.Keyboard.PagesWalked++
 			s.Keyboard.WidgetsTested += p.Keyboard.Widgets
 		}
@@ -185,8 +199,10 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 		case finished[m]:
 			return true
 		case m == "keyboard":
-			// A walk counts even if the keyboard lane wrote no audit.
-			return s.Keyboard.PagesWalked > 0
+			// A walk counts when the keyboard lane wrote no audit for its
+			// page (a run made before audits were recorded). A walk whose
+			// audit didn't finish (it timed out) doesn't.
+			return walkedUnaudited
 		case slices.Contains(auditing, m):
 			// Listed but no page's audit finished, or none was
 			// recorded: its tests didn't run.

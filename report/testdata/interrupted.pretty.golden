@@ -4,6 +4,6 @@
  │  SOUNDCHECK   Nothing changed                                │
  │  ✗ 0 broke   ▲ 0 new   ■ 0 changed   ◆ 0 slower   ✓ 0 fixed  │
  ╰──────────────────────────────────────────────────────────────╯
-  compared with snapshot "good" · 3 pages · 2 not checked (interrupted) · 6s
+  compared with snapshot "good" · 1 of 3 pages checked (interrupted) · 6s
   ! interrupted: 2 pages were not checked
 

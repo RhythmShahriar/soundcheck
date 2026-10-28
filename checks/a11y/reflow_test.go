@@ -152,8 +152,8 @@ func TestOwnCheckFailureLeavesAuditUnfinished(t *testing.T) {
 	r = run()
 	restore()
 	p := r.Page("/promo/")
-	if a := p.Audits["a11y"]; a.Status != model.AuditError || !strings.HasPrefix(a.Reason, "reflow check at 320 px: ") {
-		t.Errorf("reflow failed: audit %+v", a)
+	if a := p.Audits["a11y"]; a.Status != model.AuditError || a.Reason != "reflow check at 320 px: timed out after 1ns" {
+		t.Errorf("reflow failed: audit %+v, want a plain timed out reason", a)
 	}
 	if !hasLabel(p) {
 		t.Errorf("axe's issues were dropped: %+v", p.Issues)

@@ -4,6 +4,7 @@
 package wcag
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -96,4 +97,13 @@ func FuzzCompare(f *testing.F) {
 			t.Errorf("Compare(%q, itself) = %d", a, Compare(a, a))
 		}
 	})
+}
+
+// Not tested criteria with a test that didn't run are told apart from
+// the ones that need a person.
+func TestSplitNotTested(t *testing.T) {
+	unrun, person := SplitNotTested("2.1", []string{"1.1.1", "1.2.3", "4.1.2", "9.9.9"})
+	if fmt.Sprint(unrun) != "[1.1.1 4.1.2]" || fmt.Sprint(person) != "[1.2.3 9.9.9]" {
+		t.Errorf("unrun %v, person %v", unrun, person)
+	}
 }

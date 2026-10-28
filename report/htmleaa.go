@@ -70,6 +70,7 @@ var tileStates = map[string]struct{ Label, Icon string }{
 	"failed": {"failures", "✕"},
 	"none":   {"none found", "○"},
 	"manual": {"needs a person", "?"},
+	"unrun":  {"not tested", "–"},
 }
 
 type htmlEAA struct {
@@ -150,6 +151,7 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 		}
 		t.NotChecked = append(t.NotChecked, fmt.Sprintf("%s (%s: %s)", n.Path, n.Module, why))
 	}
+	unrun, _ := wcag.SplitNotTested(version, e.Criteria.NotTested)
 	failed := map[string]int{}
 	for _, f := range e.Criteria.Failed {
 		failed[f.ID] = f.Issues
@@ -161,6 +163,8 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 			state = "failed"
 		case slices.Contains(e.Criteria.NoFailuresFound, c.ID):
 			state = "none"
+		case slices.Contains(unrun, c.ID):
+			state = "unrun" // its tests didn't run or didn't finish
 		}
 		if len(t.Principles) == 0 || t.Principles[len(t.Principles)-1].Name != c.Principle {
 			t.Principles = append(t.Principles, htmlPrinciple{Name: c.Principle})

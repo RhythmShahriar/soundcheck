@@ -6,6 +6,7 @@ package clientreport
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -38,10 +39,10 @@ func eaaFixture() report.Result {
 		NotAudited: []model.NotAudited{{Path: "/catalog/", Module: "a11y", Status: model.AuditTimeout, Reason: "axe-core timed out"}},
 		Criteria: model.EAACriteria{Failed: []model.CriterionCount{{ID: "1.3.1", Issues: 1, Pages: 1}, {ID: "2.1.2", Issues: 1, Pages: 1},
 			{ID: "4.1.2", Issues: 1, Pages: 1}}}}
-	for i, c := range wcag.Criteria("2.1") {
+	for _, c := range wcag.Criteria("2.1") {
 		switch {
 		case c.ID == "1.3.1" || c.ID == "2.1.2" || c.ID == "4.1.2":
-		case i%2 == 0:
+		case c.Coverage == wcag.CoveragePartly:
 			e.Criteria.NoFailuresFound = append(e.Criteria.NoFailuresFound, c.ID)
 		default:
 			e.Criteria.NotTested = append(e.Criteria.NotTested, c.ID)
@@ -80,7 +81,7 @@ func TestEAAClientReport(t *testing.T) {
 	for _, want := range []string{
 		"Accessibility evidence: WCAG 2.1 AA automated rules and a keyboard walkthrough of 3 pages",
 		"<h2>Accessibility</h2>", "Criteria with failures", "2.1.2 No Keyboard Trap (1 problem on 1 page)",
-		"What still needs a person (", "1.2.1 Audio-only and Video-only (Prerecorded)",
+		"What still needs a person (", "1.2.3 Audio Description or Media Alternative (Prerecorded)",
 		"We couldn't finish the accessibility tests on /catalog/, so that page needs checking again.", model.EvidenceNote,
 	} {
 		if !strings.Contains(got, want) {
@@ -124,5 +125,42 @@ func TestEAAClientComparison(t *testing.T) {
 	got := render(t, res, Brand{Name: "Acme"})
 	if !strings.Contains(got, "<b>7</b><span>Open accessibility problems</span>") {
 		t.Error("the comparison's summary isn't the one shown")
+	}
+}
+
+// A run stopped before it finished never reads as everything works: its
+// title and lead say it is partial and how many pages it checked.
+func TestClientReportInterrupted(t *testing.T) {
+	time.Local = time.UTC
+	res := eaaFixture()
+	res.Run.Pages[2].Issues = nil
+	res.Run.Pages = append(res.Run.Pages, model.Page{Path: "/about/", Error: model.CanceledError})
+	res.Run.Interrupted, res.Run.EAA.Interrupted = true, true
+	res.Run.EAA.NotAudited = nil
+	res.Planned = 13
+	got := render(t, res, Brand{Name: "Acme"})
+	for _, want := range []string{"This check is partial", "after 4 of 13 pages", "these counts cover only the pages it checked", "<li>4 pages of the site"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("interrupted client report lacks %q", want)
+		}
+	}
+	if strings.Contains(got, "Everything works") {
+		t.Error("an interrupted run reads as everything works")
+	}
+
+	// A finished run whose accessibility tests didn't finish on a page
+	// is partial too.
+	res = eaaFixture()
+	res.Run.Pages[2].Issues = nil
+	e := res.Run.EAA
+	e.Criteria.NoFailuresFound = slices.DeleteFunc(e.Criteria.NoFailuresFound, func(id string) bool { return id == "1.1.1" })
+	e.Criteria.NotTested = append(e.Criteria.NotTested, "1.1.1")
+	got = render(t, res, Brand{Name: "Acme"})
+	if !strings.Contains(got, "tested this time</summary>") || !strings.Contains(got, "<li>1.1.1 Non-text Content</li>") ||
+		strings.Contains(got[strings.Index(got, "still needs a person"):], "1.1.1") {
+		t.Error("a criterion whose test didn't finish is listed as needing a person")
+	}
+	if !strings.Contains(got, "This check is partial") || !strings.Contains(got, "finish on every page") || strings.Contains(got, "Everything works") {
+		t.Error("an --eaa run with an unfinished audit isn't called partial")
 	}
 }

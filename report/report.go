@@ -32,6 +32,10 @@ type Result struct {
 	// oldest first, from the history; the HTML report draws it when it
 	// has two or more values.
 	Trend []float64
+	// Planned is how many pages an interrupted run set out to check,
+	// when that is known; 0 otherwise. The summary counts the pages
+	// that finished against it, as the statement's refusal does.
+	Planned int
 }
 
 // Compared reports whether the result is a comparison.

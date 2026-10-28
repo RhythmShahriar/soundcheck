@@ -132,7 +132,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; display: flex; 
 .tile { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--st); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
 .tile .num { font: 600 12px var(--mono); }
 .tile .state { display: block; color: var(--st); font-weight: 650; font-size: 12px; }
-.st-failed { --st: var(--st-fail); } .st-none { --st: var(--st-none); } .st-manual { --st: var(--st-manual); }
+.st-failed { --st: var(--st-fail); } .st-none { --st: var(--st-none); } .st-manual { --st: var(--st-manual); } .st-unrun { --st: var(--st-manual); }
 .crit { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
 .crit h3 { margin: 0; font-size: 15px; } .crit h3 .en { color: var(--muted); font-weight: 500; font-size: 13px; }
 .crit h4 { margin: 12px 0 4px; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
@@ -171,7 +171,7 @@ ol.path li { overflow-wrap: anywhere; }
   <div class="hero tone-ok">
     <div class="eyebrow">Did the change break anything?</div>
     <h1 class="verdict">Nothing changed</h1>
-    <p class="sub">3 pages · 2 not checked (interrupted) · 6s</p>
+    <p class="sub">1 of 3 pages checked (interrupted) · 6s</p>
     
     <div class="chips" role="group" aria-label="Filter by kind">
       <button type="button" class="chip k-broke zero" data-filter="broke" aria-pressed="true" disabled><span class="g">✗</span><span class="n">0</span> BROKE</button>

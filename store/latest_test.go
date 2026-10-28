@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/soundcheck/model"
 )
@@ -169,5 +170,52 @@ func TestNewDirSaysLatestIsReserved(t *testing.T) {
 	_, err := Store{Root: t.TempDir()}.NewDir(Incoming, "LATEST")
 	if err == nil || err.Error() != `"LATEST" is reserved; pick another name` {
 		t.Errorf("got %v", err)
+	}
+}
+
+// Deleting the snapshot LATEST names moves the pointer to the snapshot
+// taken last, or removes it when none is left; deleting another keeps it.
+func TestForgetMovesLatest(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	for i, name := range []string{"p9", "p3", "p2"} {
+		dir, err := s.NewDir(Incoming, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		started := time.Date(2026, 10, 1+i, 9, 0, 0, 0, time.UTC)
+		if err := SaveRun(dir, &model.Run{Schema: model.Schema, Name: name, Started: started}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Promote(dir, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetLatest("p2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget("p9"); err != nil || s.latest() != "p2" {
+		t.Errorf("deleting another snapshot moved LATEST to %q (%v)", s.latest(), err)
+	}
+	del := func(name string) {
+		t.Helper()
+		if err := os.RemoveAll(filepath.Join(s.Root, "snapshots", name)); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Forget(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	del("p2")
+	// p3 was taken after p9, though p9 sorts last by name.
+	if dir, err := s.Snapshot(""); err != nil || filepath.Base(dir) != "p3" {
+		t.Errorf("after deleting the latest: %q, %v; want p3", dir, err)
+	}
+	del("p3")
+	del("p9")
+	if _, err := os.Stat(filepath.Join(s.Root, Latest)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("LATEST is left with no snapshot: %v", err)
+	}
+	if _, err := s.Snapshot(""); err == nil || !strings.Contains(err.Error(), "no snapshot yet") {
+		t.Errorf("no snapshot left: %v", err)
 	}
 }

@@ -144,3 +144,19 @@ func TestInterruptedJUnitHasNoFailures(t *testing.T) {
 	}
 	golden(t, "interrupted-findings.xml.golden", out)
 }
+
+// An interrupted run counts the pages that finished against the ones it
+// set out to check, as the statement's refusal does.
+func TestInterruptedStatsPlanned(t *testing.T) {
+	r := interruptedResult()
+	r.Comparison = nil
+	r.Run.Interrupted = true
+	r.Planned = 13
+	if got := r.stats(); !strings.HasPrefix(got, "1 of 13 pages checked (interrupted) · ") {
+		t.Errorf("stats = %q", got)
+	}
+	r.Planned = 0
+	if got := r.stats(); !strings.HasPrefix(got, "1 of 3 pages checked (interrupted) · ") {
+		t.Errorf("stats without a plan = %q", got)
+	}
+}
