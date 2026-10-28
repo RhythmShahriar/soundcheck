@@ -14,22 +14,39 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
-// fakeTemplates stands in for the flow package's key flow templates,
-// which lane flows writes.
-func fakeTemplates(t *testing.T) {
+// keepTemplates restores the key flow templates after a test stands
+// in for them.
+func keepTemplates(t *testing.T) {
 	t.Helper()
 	old := keyboardTemplates
 	t.Cleanup(func() { keyboardTemplates = old })
-	keyboardTemplates = func() map[string][]byte {
-		out := map[string][]byte{}
-		for _, n := range keyFlowFiles {
-			out[n] = []byte("name: " + n + "\nstart: /\nkeyboard: true\nsteps:\n  - expect: {focus_within: body}\n")
-		}
-		return out
+}
+
+// wantKeyFlow checks that path holds the shipped template name and that
+// it parses as a key flow.
+func wantKeyFlow(t *testing.T, path, name string) {
+	t.Helper()
+	tpl, ok := flow.KeyboardTemplates()[name]
+	if !ok {
+		t.Fatalf("the flow package ships no %s", name)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(tpl) {
+		t.Errorf("%s isn't the shipped template:\n%s", path, data)
+	}
+	f, err := flow.ReadFile(path)
+	if err != nil {
+		t.Errorf("%s doesn't load: %v", path, err)
+	} else if f.Keyboard != flow.KeyboardDry {
+		t.Errorf("%s isn't a dry key flow (keyboard: true): %q", path, f.Keyboard)
 	}
 }
 
@@ -51,7 +68,7 @@ func filePerm(t *testing.T, path string, want os.FileMode) os.FileMode {
 // the flow.
 func TestInitEAA(t *testing.T) {
 	t.Chdir(t.TempDir())
-	fakeTemplates(t)
+	keepTemplates(t)
 	code, out, errOut := runCLI(t, "init", "--eaa")
 	if code != exitOK {
 		t.Fatalf("exit %d %s", code, errOut)
@@ -73,6 +90,7 @@ func TestInitEAA(t *testing.T) {
 	if m := filePerm(t, ".soundcheck/flows/keyboard-checkout.yaml", 0o644); m != 0o644 {
 		t.Errorf("flow mode %o", m)
 	}
+	wantKeyFlow(t, ".soundcheck/flows/keyboard-checkout.yaml", "keyboard-checkout.yaml")
 	c, err := config.Load(".soundcheck/config.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -102,11 +120,7 @@ func TestInitEAA(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := config.Load("open.yaml"); err != nil {
-		if msg := err.Error(); strings.Contains(msg, `unknown setting "a11y"`) || strings.Contains(msg, `unknown setting "keyboard"`) {
-			t.Logf("pending: axe, keyboard (%v)", err)
-		} else {
-			t.Errorf("uncommented blocks: %v", err)
-		}
+		t.Errorf("uncommented blocks: %v", err)
 	}
 
 	code, out, _ = runCLI(t, "init", "--eaa", "--force")
@@ -135,7 +149,6 @@ func TestInitEAA(t *testing.T) {
 // flows init --keyboard writes the four key flows and replaces none.
 func TestFlowsInitKeyboard(t *testing.T) {
 	t.Chdir(t.TempDir())
-	fakeTemplates(t)
 	code, out, errOut := runCLI(t, "flows", "init", "--keyboard")
 	if code != exitOK {
 		t.Fatalf("exit %d %s", code, errOut)
@@ -148,6 +161,13 @@ func TestFlowsInitKeyboard(t *testing.T) {
 		if !strings.Contains(out, "Wrote "+filepath.ToSlash(p)) {
 			t.Errorf("stdout lacks %s:\n%s", p, out)
 		}
+		if m := filePerm(t, p, 0o644); m != 0o644 {
+			t.Errorf("%s mode %o", p, m)
+		}
+		wantKeyFlow(t, p, n)
+	}
+	if fs, err := flow.Load(filepath.Join(".soundcheck", "flows")); err != nil || len(fs) != 4 {
+		t.Errorf("the flows folder loads %d flows: %v", len(fs), err)
 	}
 	if keys := keyFlows(filepath.Join(".soundcheck", "flows")); len(keys) != 4 {
 		t.Errorf("key flows found: %v", keys)
