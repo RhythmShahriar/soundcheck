@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-// plainPage writes a page with a title, a heading and body, and no
+// plainPage writes a page with a title, a heading and body. It has no
 // links but the body's.
 func plainPage(w http.ResponseWriter, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -23,7 +23,7 @@ func plainPage(w http.ResponseWriter, title, body string) {
 
 // A page the run leaves out gets a note in the terminal, masked as the
 // run's outputs mask it: a snapshot page with a session the site put in
-// a link, excluded on compare, and a --page with a reset token the
+// a link (excluded on compare) and a --page with a reset token the
 // default excludes drop. The raw values appear nowhere but the stored
 // run.
 func TestEAALeftOutPageMasked(t *testing.T) {
