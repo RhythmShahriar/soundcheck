@@ -12,7 +12,7 @@ require (
 	github.com/go-rod/rod v0.116.2
 	github.com/muesli/termenv v0.16.0
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )
