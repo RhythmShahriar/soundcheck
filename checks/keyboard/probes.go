@@ -83,9 +83,18 @@ const guardJS = `(() => {
   // while its handlers run: a navigation one of them starts is told
   // from one a timer or another element starts (cand is the mouse-only
   // control being pressed, see listeners.go).
-  g.input = null; g.cand = null;
+  // act is the same element for the DOM changes the press makes
+  // (armMutJS) and is cleared as soon as the event has gone round:
+  // what a timer or the network changes in between is not the press's.
+  g.input = null; g.cand = null; g.act = null;
   for (const t of ['keydown', 'keypress', 'keyup', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click']) {
-    addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; setTimeout(() => { g.input = null; }, 0); }, true);
+    addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; g.act = e.target; setTimeout(() => { g.input = null; g.act = null; }, 0); }, true);
+    addEventListener(t, e => {
+      if (!e.isTrusted || g.act !== e.target) return;
+      const m = window.__scKbM;
+      if (m && m.o && m.mine()) m.own += m.o.takeRecords().length;
+      g.act = null;
+    });
   }
   navigation.addEventListener('navigate', e => {
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;

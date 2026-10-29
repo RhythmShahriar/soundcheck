@@ -85,24 +85,38 @@ const centerJS = `function () {
 }`
 
 // armMutJS starts counting the page's DOM changes from the isolated
-// world; readMutJS stops and returns the count and whether the address
-// changed.
+// world: own are the ones made while the page handled a trusted event
+// on the control being pressed (guardJS's act within cand), other the
+// rest (a ticking clock, a carousel, a reply to a poll). readMutJS
+// stops and returns both and whether the address changed.
 const (
 	armMutJS = `(() => {
   const g = window.__scKbM || (window.__scKbM = {});
   if (g.o) g.o.disconnect();
-  g.n = 0; g.href = location.href;
-  g.o = new MutationObserver(l => { g.n += l.length; });
+  g.own = 0; g.other = 0; g.href = location.href;
+  g.mine = () => {
+    const nav = window.__scKbNav, c = nav && nav.cand, n = nav && nav.act;
+    return !!(c && n && n.nodeType === 1 && (c === n || c.contains(n)));
+  };
+  g.o = new MutationObserver(l => { if (g.mine()) g.own += l.length; else g.other += l.length; });
   g.o.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
   return '';
 })()`
 	readMutJS = `(() => {
   const g = window.__scKbM;
-  if (!g || !g.o) return JSON.stringify({n: 0, moved: false});
+  if (!g || !g.o) return JSON.stringify({own: 0, other: 0, moved: false});
+  g.other += g.o.takeRecords().length;
   g.o.disconnect(); g.o = null;
-  return JSON.stringify({n: g.n, moved: location.href !== g.href});
+  return JSON.stringify({own: g.own, other: g.other, moved: location.href !== g.href});
 })()`
 )
+
+// mutations is what readMutJS returns.
+type mutations struct {
+	Own   int  `json:"own"`
+	Other int  `json:"other"`
+	Moved bool `json:"moved"`
+}
 
 type candidateInfo struct {
 	Tag       string          `json:"tag"`
@@ -284,59 +298,81 @@ func (w *walker) click(ctx context.Context, x, y float64) error {
 
 // effectOf runs act and says what it did within widgetWait: started a
 // navigation (navigation), made a request, sent or held (request), or
-// changed the DOM (dom); "" for nothing. A navigation counts only when
-// a handler of the pressed control's own events started it (candJS):
-// one a timer, a focus handler or another element started is no
-// answer to the press. When it is all that happened the effect is
-// unknown. Navigations logged before act are set aside first.
+// changed the DOM (dom); "" for nothing. Only what the pressed
+// control's own handlers caused counts as such: a navigation they
+// started (candJS) or a DOM change made while the page handled the
+// press on it (armMutJS). A request, a DOM change made later (after a
+// reply or a timer) or a navigation something else started may be the
+// page's own background activity: they count only when the page is
+// quiet for as long again without a press. When it isn't, the effect
+// is unknown. Navigations logged before act are set aside first.
 func (w *walker) effectOf(ctx context.Context, act func() error) (string, error) {
-	if err := w.navigations(ctx); err != nil {
+	reqs, navs, own, mut, err := w.window(ctx, act)
+	if err != nil {
 		return "", err
 	}
-	if _, err := w.reader.Eval(ctx, armMutJS); err != nil {
+	switch {
+	case w.left() || own > 0 || mut.Moved:
+		return PressNavigation, nil
+	case mut.Own > 0:
+		return PressDOM, nil
+	case reqs == 0 && mut.Other == 0 && navs == 0:
+		return "", nil
+	case navs > 0 && reqs == 0 && mut.Other == 0:
+		return PressUnknown, nil
+	}
+	// Something happened the walk can't tie to the press: the same
+	// time with no press says whether the page does it by itself.
+	qreqs, qnavs, _, quiet, err := w.window(ctx, func() error { return nil })
+	if err != nil {
 		return "", err
+	}
+	switch {
+	case w.left() || qreqs > 0 || qnavs > 0 || quiet.Own+quiet.Other > 0 || quiet.Moved:
+		return PressUnknown, nil
+	case reqs > 0:
+		return PressRequest, nil
+	case mut.Other > 0:
+		return PressDOM, nil
+	}
+	return PressUnknown, nil
+}
+
+// window runs act and waits widgetWait, then returns the requests the
+// page made, the navigations it started, those the pressed control
+// started itself and its DOM changes in that time.
+func (w *walker) window(ctx context.Context, act func() error) (reqs, navs, own int, mut mutations, err error) {
+	if err = w.navigations(ctx); err != nil {
+		return
+	}
+	if _, err = w.reader.Eval(ctx, armMutJS); err != nil {
+		return
 	}
 	g := w.guard
 	g.mu.Lock()
-	reqs, navs, own := g.requests, g.navs, g.candNavs
+	reqs, navs, own = g.requests, g.navs, g.candNavs
 	g.mu.Unlock()
-	if err := act(); err != nil {
-		return "", err
+	if err = act(); err != nil {
+		return
 	}
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		err = ctx.Err()
+		return
 	case <-time.After(widgetWait):
 	}
-	if err := w.navigations(ctx); err != nil {
-		return "", err
+	if err = w.navigations(ctx); err != nil {
+		return
 	}
 	g.mu.Lock()
 	reqs, navs, own = g.requests-reqs, g.navs-navs, g.candNavs-own
 	g.mu.Unlock()
-	if w.left() || own > 0 {
-		return PressNavigation, nil
-	}
-	var mut struct {
-		N     int  `json:"n"`
-		Moved bool `json:"moved"`
-	}
 	raw, err := w.reader.Eval(ctx, readMutJS)
 	if err != nil {
-		return "", err
+		return
 	}
-	if err := json.Unmarshal([]byte(raw), &mut); err != nil {
-		return "", fmt.Errorf("listeners: %w", err)
+	if err = json.Unmarshal([]byte(raw), &mut); err != nil {
+		err = fmt.Errorf("listeners: %w", err)
 	}
-	switch {
-	case mut.Moved:
-		return PressNavigation, nil
-	case reqs > 0:
-		return PressRequest, nil
-	case mut.N > 0:
-		return PressDOM, nil
-	case navs > 0:
-		return PressUnknown, nil
-	}
-	return "", nil
+	return
 }

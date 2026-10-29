@@ -224,3 +224,69 @@ func TestMouseOnlyForeignNavigation(t *testing.T) {
 		}
 	}
 }
+
+// busyPage has a control only a click works, one Enter works and the
+// page's own background activity: a ticking clock or a poll.
+func busyPage(background string) string {
+	return `<!doctype html><html lang="en"><head><title>Busy</title></head><body><main>
+<a id="first" href="#top">Top</a>
+<div id="add" role="button" tabindex="0">Add to basket</div>
+<div id="ok" role="button" tabindex="0">Show more</div>
+<span id="clock"></span>
+<script>
+const $ = id => document.getElementById(id);
+` + background + `
+$('add').addEventListener('click', () => { $('add').textContent = 'Added'; });
+const more = () => { $('ok').textContent = 'Show less'; };
+$('ok').addEventListener('click', more);
+$('ok').addEventListener('keydown', e => { if (e.key === 'Enter') more(); });
+</script>
+</main></body></html>`
+}
+
+// A change the page makes by itself while the walk waits for a press
+// to show an effect is no answer to the press: a mouse-only control
+// on a page with a ticking clock or a poll is still reported while a
+// control whose own Enter handler answers is not.
+func TestMouseOnlyBackgroundActivity(t *testing.T) {
+	cases := map[string]string{
+		"clock": `let n = 0; setInterval(() => { $('clock').textContent = ++n; }, 100);`,
+		"poll":  `setInterval(() => fetch('/x?' + Date.now()), 150);`,
+	}
+	for name, bg := range cases {
+		t.Run(name, func(t *testing.T) {
+			pg := &pages{html: map[string]string{"/": busyPage(bg), "/x": "x"}}
+			srv := serveIn(t, pg, 40400, 40450)
+			c := launch(t)
+			tab, p := c.open(srv.URL + "/")
+			cc := withSaver(runContext(t))
+			live(t, New(), cc, tab, p)
+			if a := p.Audits["keyboard"]; a.Status != model.AuditOK {
+				t.Fatalf("audit %+v, warnings %v", a, cc.Run.Warnings)
+			}
+			var got []string
+			for _, i := range p.Issues {
+				if i.Check == ids.NotOperable {
+					got = append(got, i.Source)
+				}
+			}
+			data, _ := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+			tr, _ := DecodeTrace(data)
+			if want := []string{"#add"}; !slices.Equal(got, want) {
+				t.Errorf("not-operable %q, want %q\nlisteners %+v", got, want, tr.Listeners)
+			}
+			for _, c := range tr.Listeners {
+				switch c.Selector {
+				case "#add":
+					if !noResponse(c.Enter) || !noResponse(c.Space) || c.Click != PressDOM {
+						t.Errorf("#add %+v, want no response to keys and dom on click", c)
+					}
+				case "#ok":
+					if c.Enter != PressDOM {
+						t.Errorf("#ok %+v, want Enter to count its own change", c)
+					}
+				}
+			}
+		})
+	}
+}
