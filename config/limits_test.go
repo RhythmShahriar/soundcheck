@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
 
 // laughs is a "billion laughs" document: each level holds ten aliases of
@@ -45,9 +48,21 @@ func TestBillionLaughs(t *testing.T) {
 	// strings: the expansion bound refuses them with the same message.
 	bodies := []string{laughs(""), laughs("statement"), laughs("laughs"), laughsOf("laughs", 9), laughsOf("", 9)}
 	for _, body := range bodies {
+		// Refused before expanding, a load allocates about 50 KB and
+		// takes milliseconds; expanded, it would allocate gigabytes and
+		// run for hours. Memory is the steady measure; the time bound is
+		// generous so a loaded runner doesn't trip it.
+		path := write(t, body)
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
 		start := time.Now()
-		_, err := Load(write(t, body))
-		if took := time.Since(start); took > 100*time.Millisecond {
+		_, err := Load(path)
+		took := time.Since(start)
+		runtime.ReadMemStats(&after)
+		if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 16<<20 {
+			t.Errorf("allocated %d bytes", alloc)
+		}
+		if took > testenv.Timeout(time.Second) {
 			t.Errorf("took %v", took)
 		}
 		if err == nil || !strings.Contains(err.Error(), "config.yaml uses too many YAML aliases") {

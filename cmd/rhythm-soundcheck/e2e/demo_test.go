@@ -55,7 +55,10 @@ func TestDemo(t *testing.T) {
 // so those get a short wait before they count. rod keeps the folders it
 // makes a browser profile in (rod/user-data) for every launch and
 // removes the profile itself: they count only when a file is left in
-// them.
+// them. On macOS Soundcheck starts Chrome with rod's leakless guard
+// (browser/process_darwin.go says why), which leakless unpacks once
+// into leakless-<arch>-<version>/leakless and keeps for every later
+// launch: that folder doesn't count when it holds only the guard.
 func leftIn(dir string) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -66,6 +69,9 @@ func leftIn(dir string) string {
 				if f := fileIn(filepath.Join(dir, "rod")); f != "" {
 					return filepath.ToSlash(filepath.Join("rod", f))
 				}
+				continue
+			}
+			if leaklessDir.MatchString(e.Name()) && onlyLeakless(filepath.Join(dir, e.Name())) {
 				continue
 			}
 			if !strings.HasPrefix(e.Name(), "com.google.Chrome.") {
@@ -131,4 +137,55 @@ func fileIn(dir string) string {
 		return nil
 	})
 	return found
+}
+
+// leaklessDir is the name of the folder leakless unpacks its guard into.
+var leaklessDir = regexp.MustCompile(`^leakless-[a-z0-9]+-[0-9a-f]{32}$`)
+
+// onlyLeakless reports whether dir holds the leakless guard and nothing
+// else.
+func onlyLeakless(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) == 1 && !entries[0].IsDir() &&
+		(entries[0].Name() == "leakless" || entries[0].Name() == "leakless.exe")
+}
+
+// leftIn lets rod's empty profile folders and the leakless guard pass,
+// and nothing else: a file in rod's folders, anything more next to the
+// guard or any other entry is left over.
+func TestLeftIn(t *testing.T) {
+	guard := "leakless-arm64-adb80298fa6a3af7ced8b1c9b5f18007"
+	for _, tc := range []struct {
+		name  string
+		files []string
+		dirs  []string
+		want  string
+	}{
+		{"empty", nil, nil, ""},
+		{"rod folders", nil, []string{"rod/user-data"}, ""},
+		{"leakless guard", []string{guard + "/leakless"}, nil, ""},
+		{"file in rod", []string{"rod/user-data/x/Cookies"}, nil, "rod/user-data/x/Cookies"},
+		{"more next to the guard", []string{guard + "/leakless", guard + "/run.json"}, nil, guard},
+		{"look-alike", []string{"leakless-arm64-snapshot/leakless"}, nil, "leakless-arm64-snapshot"},
+		{"snapshot", []string{"soundcheck-demo-1/run.json"}, nil, "soundcheck-demo-1"},
+	} {
+		dir := t.TempDir()
+		for _, d := range tc.dirs {
+			if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(d)), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, f := range tc.files {
+			p := filepath.Join(dir, filepath.FromSlash(f))
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := leftIn(dir); got != tc.want {
+			t.Errorf("%s: leftIn = %q, want %q", tc.name, got, tc.want)
+		}
+	}
 }

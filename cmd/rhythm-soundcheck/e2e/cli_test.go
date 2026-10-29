@@ -34,7 +34,7 @@ const (
 var bin string
 
 // TestMain builds the command once, named as installed and with the
-// version the command's own tests give it, and removes it afterwards.
+// version the command's own tests give it. It removes it afterwards.
 func TestMain(m *testing.M) {
 	os.Exit(func() int {
 		dir, err := os.MkdirTemp("", "soundcheck-e2e-")
