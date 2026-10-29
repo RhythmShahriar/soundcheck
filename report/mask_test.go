@@ -131,3 +131,42 @@ func TestMaskedTarget(t *testing.T) {
 		t.Errorf("ShownTarget without --eaa: %s", got)
 	}
 }
+
+// An issue's key embeds its title, so a token the title masks must not
+// come back through the key (issues[].key, pages[].issues[].key and
+// groups[].key in JSON). A URL a page sends to its console is masked
+// too, as is the JS error title made from it: no page path names them.
+func TestMaskedKeyAndConsole(t *testing.T) {
+	token := strings.Repeat("Kq4", 13) + "z"
+	link := "/password/reset/" + token
+	console := "reset failed for http://127.0.0.1:40422/account/reset/" + token + "?key=" + token
+	jsTitle := "JS error: reset failed for http://N.0.0.1:N/account/reset/" + token + "?key=" + token
+	broken := model.Issue{Check: "health/broken-link", Level: model.Warning, Title: "Broken link to " + link + " (404)", Pages: []string{link}}
+	broken.Identify()
+	jsErr := model.Issue{Check: "health/js-error", Level: model.Warning, Title: jsTitle, Detail: console}
+	jsErr.Identify()
+	run := eaaClean()
+	run.Pages = append(run.Pages, model.Page{Path: "/two.html", URL: "http://127.0.0.1:40422/two.html", Group: "/two.html", Status: 200,
+		Console: []string{console}, Issues: []model.Issue{jsErr}})
+	run.Issues = append(run.Issues, broken)
+	res := Result{Run: run, Comparison: &model.Comparison{Changes: []model.Change{{Class: model.New, Check: jsErr.Check, Title: jsTitle, Detail: console, Pages: []string{"/two.html"}}}}}
+	shown := Masked(res)
+	var all bytes.Buffer
+	pretty := NewPretty(&all, io.Discard, PrettyOptions{Plain: true, Verbose: true})
+	pretty.Summary(shown, "")
+	pretty.Page(MaskedPage(&run.Pages[len(run.Pages)-1]), 1, 1)
+	for _, f := range []func(io.Writer, Result) error{Markdown, JSON, HTML, func(w io.Writer, r Result) error { return JUnit(w, r, "") }} {
+		if err := f(&all, shown); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Contains(all.String(), token) {
+		t.Error("an --eaa output shows the token through an issue key or a console line")
+	}
+	if !strings.Contains(all.String(), "/account/reset/•••••?key=•••••") {
+		t.Error("the masked console URL isn't shown")
+	}
+	if run.Pages[len(run.Pages)-1].Console[0] != console || run.Issues[len(run.Issues)-1].Key != broken.Key {
+		t.Error("Masked changed the stored result")
+	}
+}

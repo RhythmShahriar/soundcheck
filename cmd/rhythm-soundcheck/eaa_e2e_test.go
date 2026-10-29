@@ -267,7 +267,7 @@ func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, 
 <img src="/img.png?sig=%s" alt="Logo" width="1" height="1">
 <iframe title="Widget" src="%s" width="300" height="120"></iframe>
 <textarea>ta-%s</textarea> <select><option>Pick one</option><option selected>opt-%s</option></select>
-<p style="color:#ccc">low contrast %s@example.org</p>`, c["data"], c["value"], c["query"], c["path-token"], c["sig"], frameURL, c["textarea"], c["option"], c["email"]))
+<p style="color:#ccc">low contrast %s@example.org</p>%s`, c["data"], c["value"], c["query"], c["path-token"], c["sig"], frameURL, c["textarea"], c["option"], c["email"], leaks(c)))
 	})
 	mux.HandleFunc("/img.png", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("sig") == c["sig"] {
@@ -314,6 +314,22 @@ func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, 
 	return srv, &hits
 }
 
+// leaks is the part of the canary home page that puts a token where no
+// page path names it: a link to a reset page that is gone (a broken-link
+// issue whose title and key name it) and a console error that carries a
+// reset URL (the page's console lines and a js-error issue). Either is
+// empty when c has no canary for it.
+func leaks(c canaries) string {
+	var b strings.Builder
+	if tok := c["link-token"]; tok != "" {
+		fmt.Fprintf(&b, `<p><a href="/password/reset/%s">Old reset link</a></p>`, tok)
+	}
+	if tok := c["console-token"]; tok != "" {
+		fmt.Fprintf(&b, `<script>console.error("reset failed for " + location.origin + "/account/reset/%s?key=%s")</script>`, tok, tok)
+	}
+	return b.String()
+}
+
 // canaryHits counts what reached the canary site, so the sweep can't
 // pass because the canaries never got into the run: requests carrying
 // the -H header, frame loads, logged-in account pages and POSTs.
@@ -343,8 +359,12 @@ func TestEAACanarySweep(t *testing.T) {
 	// The token in a page's path is masked in every output. The stored
 	// run (run.json, pages.jsonl) keeps the path: compare and resume
 	// visit the page again by it. It is swept apart below.
-	pathToken := newCanaries(t, "path-token-for-reset")
+	pathToken := newCanaries(t, "path-token-for-reset", "link-token-for-reset", "console-token-for-reset")
 	c["path-token"] = pathToken["path-token-for-reset"]
+	// A reset token in a broken link (in the issue's title and key) and
+	// in a console error is masked in every output the same way; the
+	// stored run keeps it.
+	c["link-token"], c["console-token"] = pathToken["link-token-for-reset"], pathToken["console-token-for-reset"]
 	user := "tester"
 	t.Setenv("SOUNDCHECK_USER", user)
 	t.Setenv("SOUNDCHECK_PASSWORD", c["login-password"])
@@ -423,23 +443,33 @@ steps:
 		t.Errorf("evidence verify: exit %d\n%s\n%s", code, out, errOut)
 	}
 
-	pathCanary := canaries{"path-token": c["path-token"]}
-	delete(c, "path-token")
+	pathCanary := canaries{"path-token": c["path-token"], "link-token": c["link-token"], "console-token": c["console-token"]}
+	for n := range pathCanary {
+		delete(c, n)
+	}
 	if hits := c.sweep(t, printed, ".soundcheck", "out"); len(hits) > 0 {
 		t.Errorf("canaries written:\n%s", strings.Join(hits, "\n"))
 	}
-	// The page with the token was checked and only the stored run
-	// names it in full.
-	if report, err := os.ReadFile(filepath.Join("out", "r.json")); err != nil || !strings.Contains(string(report), "/reset/") {
+	// The page with the token was checked, the broken link and the
+	// console error were reported and only the stored run names their
+	// tokens in full.
+	report, err := os.ReadFile(filepath.Join("out", "r.json"))
+	if err != nil || !strings.Contains(string(report), "/reset/") {
 		t.Errorf("out/r.json has no /reset/ page, so the path canary wasn't in play (%v)", err)
+	}
+	for _, check := range []string{`"health/broken-link"`, `"health/js-error"`, "/password/reset/•••••", "/account/reset/•••••?key=•••••"} {
+		if !strings.Contains(string(report), check) {
+			t.Errorf("out/r.json has no %s, so its canary wasn't in play", check)
+		}
 	}
 	var stored []string
 	for _, h := range pathCanary.sweep(t, printed, ".soundcheck", "out") {
-		if base := path.Base(strings.TrimSuffix(h, ": path-token")); base == "run.json" || base == "pages.jsonl" {
+		file, _, _ := strings.Cut(h, ": ")
+		if base := path.Base(file); base == "run.json" || base == "pages.jsonl" {
 			stored = append(stored, h)
 			continue
 		}
-		t.Errorf("page path token written: %s", h)
+		t.Errorf("token written: %s", h)
 	}
 	if len(stored) == 0 {
 		t.Error("the stored run lost the page's path; compare can't visit it again")

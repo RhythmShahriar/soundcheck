@@ -112,3 +112,21 @@ func TestRedactTarget(t *testing.T) {
 		}
 	}
 }
+
+// A console line or JS error title in an --eaa result has the URL it
+// carries masked as a page URL is: its path token and every query value.
+// A number that looks like a code is left alone.
+func TestRedactLine(t *testing.T) {
+	token := strings.Repeat("Zq7", 13) + "x"
+	for in, want := range map[string]string{
+		"reset failed for http://N.0.0.1:N/account/reset/" + token + "?key=" + token: "reset failed for http://N.0.0.1:N/account/reset/•••••?key=•••••",
+		"see https://shop.test/a?sid=9f3ac2 now":                                     "see https://shop.test/a?sid=••••• now",
+		"bad link /password/reset/" + token + " (404)":                               "bad link /password/reset/••••• (404)",
+		"app.min.js:1:123456 TypeError":                                              "app.min.js:1:123456 TypeError",
+		"":                                                                           "",
+	} {
+		if got := RedactLine(in); got != want {
+			t.Errorf("%q\n got %q\nwant %q", in, got, want)
+		}
+	}
+}

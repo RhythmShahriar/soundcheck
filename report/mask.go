@@ -29,31 +29,27 @@ func Masked(r Result) Result {
 	if r.Run == nil || (eaaOf(r) == nil && !r.Run.Options.EAA) {
 		return r
 	}
-	rep := pathMasker(r)
+	mask := masker(pathMasker(r))
 	run := *r.Run
 	run.Target = echolink.RedactTarget(run.Target)
-	if rep != nil {
-		run.Pages = slices.Clone(run.Pages)
-		for i := range run.Pages {
-			maskPage(&run.Pages[i], rep)
-		}
-		run.Issues = maskIssues(run.Issues, rep)
-		run.Warnings = maskAll(run.Warnings, rep)
-		if run.EAA != nil {
-			run.EAA = maskEAA(run.EAA, rep)
-		}
+	run.Pages = slices.Clone(run.Pages)
+	for i := range run.Pages {
+		maskPage(&run.Pages[i], mask)
+	}
+	run.Issues = maskIssues(run.Issues, mask)
+	run.Warnings = maskAll(run.Warnings, mask)
+	if run.EAA != nil {
+		run.EAA = maskEAA(run.EAA, mask)
 	}
 	r.Run = &run
 	if c := r.Comparison; c != nil {
 		cc := *c
 		cc.Before.Target, cc.After.Target = echolink.RedactTarget(c.Before.Target), echolink.RedactTarget(c.After.Target)
-		if rep != nil {
-			cc.Changes = maskChanges(c.Changes, rep)
-			cc.Ignored = maskChanges(c.Ignored, rep)
-			cc.Warnings = maskAll(c.Warnings, rep)
-			if cc.EAA != nil {
-				cc.EAA = maskEAA(cc.EAA, rep)
-			}
+		cc.Changes = maskChanges(c.Changes, mask)
+		cc.Ignored = maskChanges(c.Ignored, mask)
+		cc.Warnings = maskAll(c.Warnings, mask)
+		if cc.EAA != nil {
+			cc.EAA = maskEAA(cc.EAA, mask)
 		}
 		r.Comparison = &cc
 	}
@@ -119,58 +115,75 @@ func pathMasker(r Result) *strings.Replacer {
 	return strings.NewReplacer(pairs...)
 }
 
-func maskPage(p *model.Page, rep *strings.Replacer) {
-	p.Path, p.Group, p.URL, p.FinalURL = rep.Replace(p.Path), rep.Replace(p.Group), rep.Replace(p.URL), rep.Replace(p.FinalURL)
+// maskFunc masks one string of an --eaa result.
+type maskFunc func(string) string
+
+// masker is the mask of an --eaa result: its page paths replaced by
+// rep (when it has any to mask), then the URLs, path tokens and secrets
+// left in free text (a console line, a JS error title, an issue key
+// that embeds a title) masked by echolink.RedactLine. Text a page sends
+// to its console can carry a reset link no page path names.
+func masker(rep *strings.Replacer) maskFunc {
+	return func(s string) string {
+		if rep != nil {
+			s = rep.Replace(s)
+		}
+		return echolink.RedactLine(s)
+	}
+}
+
+func maskPage(p *model.Page, rep maskFunc) {
+	p.Path, p.Group, p.URL, p.FinalURL = rep(p.Path), rep(p.Group), rep(p.URL), rep(p.FinalURL)
 	p.Redirects = maskAll(p.Redirects, rep)
 	p.Links = maskAll(p.Links, rep)
 	p.Issues = maskIssues(p.Issues, rep)
 	p.Console = maskAll(p.Console, rep)
 }
 
-func maskIssues(issues []model.Issue, rep *strings.Replacer) []model.Issue {
+func maskIssues(issues []model.Issue, rep maskFunc) []model.Issue {
 	if issues == nil {
 		return nil
 	}
 	out := slices.Clone(issues)
 	for i := range out {
 		is := &out[i]
-		is.Title, is.Detail, is.Source = rep.Replace(is.Title), rep.Replace(is.Detail), rep.Replace(is.Source)
+		is.Title, is.Detail, is.Source, is.Key = rep(is.Title), rep(is.Detail), rep(is.Source), rep(is.Key)
 		is.Pages = maskAll(is.Pages, rep)
 	}
 	return out
 }
 
-func maskChanges(changes []model.Change, rep *strings.Replacer) []model.Change {
+func maskChanges(changes []model.Change, rep maskFunc) []model.Change {
 	if changes == nil {
 		return nil
 	}
 	out := slices.Clone(changes)
 	for i := range out {
 		c := &out[i]
-		c.Title, c.Detail, c.Source, c.Reason = rep.Replace(c.Title), rep.Replace(c.Detail), rep.Replace(c.Source), rep.Replace(c.Reason)
-		c.Before, c.After = rep.Replace(c.Before), rep.Replace(c.After)
+		c.Title, c.Detail, c.Source, c.Reason = rep(c.Title), rep(c.Detail), rep(c.Source), rep(c.Reason)
+		c.Before, c.After = rep(c.Before), rep(c.After)
 		c.Pages = maskAll(c.Pages, rep)
 	}
 	return out
 }
 
-func maskEAA(e *model.EAASummary, rep *strings.Replacer) *model.EAASummary {
+func maskEAA(e *model.EAASummary, rep maskFunc) *model.EAASummary {
 	m := *e
 	m.NotAudited = slices.Clone(e.NotAudited)
 	for i := range m.NotAudited {
 		n := &m.NotAudited[i]
-		n.Path, n.Reason = rep.Replace(n.Path), rep.Replace(n.Reason)
+		n.Path, n.Reason = rep(n.Path), rep(n.Reason)
 	}
 	return &m
 }
 
-func maskAll(list []string, rep *strings.Replacer) []string {
+func maskAll(list []string, rep maskFunc) []string {
 	if list == nil {
 		return nil
 	}
 	out := make([]string, len(list))
 	for i, s := range list {
-		out[i] = rep.Replace(s)
+		out[i] = rep(s)
 	}
 	return out
 }
@@ -179,11 +192,7 @@ func maskAll(list []string, rep *strings.Replacer) []string {
 // -v and --plain page lines): its path and URLs masked as Masked masks
 // them. pg itself isn't changed.
 func MaskedPage(pg *model.Page) *model.Page {
-	rep := pathMasker(Result{Run: &model.Run{Pages: []model.Page{*pg}}})
-	if rep == nil {
-		return pg
-	}
 	q := *pg
-	maskPage(&q, rep)
+	maskPage(&q, masker(pathMasker(Result{Run: &model.Run{Pages: []model.Page{*pg}}})))
 	return &q
 }

@@ -78,14 +78,37 @@ func redactText(s string) string {
 	if s == "" {
 		return s
 	}
+	return code.ReplaceAllString(redactTokens(s), "${1}"+masked)
+}
+
+// redactTokens masks what redactText masks except one-time codes: the
+// secrets kit/secrets knows, the tokens in reset and login paths and
+// long query values.
+func redactTokens(s string) string {
 	s = secrets.Redact(s)
 	s = tokenPath.ReplaceAllStringFunc(s, func(m string) string {
 		// The keyword's own segment stays, however long.
 		at := tokenPath.FindStringSubmatchIndex(m)[2]
 		return m[:at] + tokenSegment.ReplaceAllString(m[at:], "/"+masked)
 	})
-	s = longQuery.ReplaceAllString(s, "${1}"+masked)
-	return code.ReplaceAllString(s, "${1}"+masked)
+	return longQuery.ReplaceAllString(s, "${1}"+masked)
+}
+
+// absURL matches a URL with a scheme inside free text, such as a console
+// message or an error title.
+var absURL = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>]+`)
+
+// RedactLine is free text from a page (a console message, a JS error, an
+// issue title or key) as an --eaa result shows it: every URL in it masked
+// the way RedactPage masks a page URL and, elsewhere, the secrets, the
+// tokens in reset and login paths and the long query values Redact
+// masks. One-time codes are left alone: a six digit number in an error
+// line is more often a column or a size than a code.
+func RedactLine(s string) string {
+	if s == "" {
+		return s
+	}
+	return redactTokens(absURL.ReplaceAllStringFunc(s, RedactPage))
 }
 
 // RedactURL masks a URL the way Redact masks text. It also masks the
