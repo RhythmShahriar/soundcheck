@@ -423,6 +423,7 @@ func (w *walker) effectOf(ctx context.Context, act func() error, base *baseline)
 		if base == nil {
 			return PressUnknown, nil
 		}
+		first := e
 		var body effects
 		if body, e, err = w.again(ctx, act, base); err != nil {
 			return "", err
@@ -436,9 +437,10 @@ func (w *walker) effectOf(ctx context.Context, act func() error, base *baseline)
 		switch {
 		case e.mut.Foreign > 0:
 			return PressDOM, nil
-		case slices.ContainsFunc(e.to, func(to string) bool { return !slices.Contains(body.to, to) }):
+		case slices.ContainsFunc(e.to, func(to string) bool { return !slices.Contains(body.to, to) && slices.Contains(first.to, to) }):
 			// A delegated handler sent the control somewhere the body
-			// press doesn't go.
+			// press doesn't go, the same place both times: a handler
+			// that goes somewhere new on every press answers none.
 			return PressNavigation, nil
 		}
 		// What the body press did too is the page's answer to any press.

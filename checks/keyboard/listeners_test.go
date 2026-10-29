@@ -543,6 +543,7 @@ func TestMouseOnlyPageWideNavigation(t *testing.T) {
 		{"samenav", `document.addEventListener('keydown', e => { if (e.key === 'Enter') location.href = '/more'; });`, false},
 		{"keyreplace", `document.addEventListener('keydown', e => history.replaceState(null, '', '?k=' + e.key));`, true},
 		{"keypush", `document.addEventListener('keydown', e => history.pushState(null, '', '?n=' + Math.random()));`, true},
+		{"randompath", `document.addEventListener('keydown', e => history.pushState(null, '', '/p' + Math.random()));`, true},
 		{"hash", `document.addEventListener('keydown', e => { location.hash = 'k' + Math.random(); });`, true},
 	}
 	for _, tc := range cases {
