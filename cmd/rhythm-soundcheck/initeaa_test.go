@@ -368,7 +368,7 @@ func TestAcceptKeepsTheEvidenceChain(t *testing.T) {
 	}
 	// Deleting the snapshot keeps its pack for the run's chain.
 	code, _, errOut = runCLI(t, "snapshots", "delete", "good")
-	if code != exitOK || !strings.Contains(errOut, `note: snapshot "good" had an evidence pack; it is kept in `+filepath.Join(".soundcheck", "evidence")+string(filepath.Separator)) {
+	if code != exitOK || !strings.Contains(errOut, `note: snapshot "good" had an evidence pack; it is kept in .soundcheck/evidence/`) {
 		t.Errorf("delete: exit %d %s", code, errOut)
 	}
 	if code, out, errOut := runCLI(t, "evidence", "verify", runDir); code != exitOK || !strings.Contains(errOut, "was deleted or taken again") {
@@ -487,6 +487,8 @@ func TestRetakeKeepsTheEvidencePack(t *testing.T) {
 	t.Chdir(t.TempDir())
 	acceptFixture(t)
 	snap := filepath.Join(".soundcheck", "snapshots", "good")
+	// keepReplaced writes to b directly, not through runCLI, so the note
+	// keeps the OS's own separators.
 	var b strings.Builder
 	s := &session{st: store.Store{Root: ".soundcheck"}, stderr: &b}
 	if err := s.keepReplaced("good"); err != nil || b.Len() != 0 {
