@@ -1,15 +1,11 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package main
+package e2e
 
 import (
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
-	"io/fs"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +16,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/RhythmShahriar/soundcheck/internal/canarytest"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -170,59 +167,6 @@ func changeList(c *model.Comparison) string {
 	return b.String()
 }
 
-// canaries are values a run must never write anywhere: each is
-// assembled at runtime from a random part, so no file in the repository
-// holds one and a hit can't come from anywhere but the run.
-type canaries map[string]string
-
-func newCanaries(t *testing.T, names ...string) canaries {
-	t.Helper()
-	b := make([]byte, 8)
-	c := canaries{}
-	for _, n := range names {
-		if _, err := rand.Read(b); err != nil {
-			t.Fatal(err)
-		}
-		c[n] = "cnry" + strings.ReplaceAll(n, "-", "") + hex.EncodeToString(b)
-	}
-	return c
-}
-
-// sweep returns "file: name" for each canary found in a file under the
-// roots or in the extra texts. Screenshots are left out: they show what
-// the page showed and are tested on their own (S1, M5).
-func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) []string {
-	t.Helper()
-	var hits []string
-	look := func(where, text string) {
-		for _, n := range slices.Sorted(maps.Keys(c)) {
-			if strings.Contains(text, c[n]) {
-				hits = append(hits, where+": "+n)
-			}
-		}
-	}
-	for _, root := range roots {
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || strings.EqualFold(filepath.Ext(path), ".png") {
-				return err
-			}
-			data, err := os.ReadFile(path) //nolint:gosec // a file the test's own run wrote
-			if err != nil {
-				return err
-			}
-			look(filepath.ToSlash(path), string(data))
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	for where, text := range texts {
-		look(where, text)
-	}
-	return hits
-}
-
 // canarySite serves a site that hides a canary in each place a run could
 // pick one up: a field's value, a data-* attribute, a link's query
 // string, a signed image URL's query, a token in a page's path, a frame
@@ -232,7 +176,7 @@ func (c canaries) sweep(t *testing.T, texts map[string]string, roots ...string) 
 // with no name and an email address in text with too little contrast. The frame is served by the second
 // server, reached as localhost so it is another site, not only another
 // origin.
-func canarySite(t *testing.T, c canaries, user, pass string) (*httptest.Server, *canaryHits) {
+func canarySite(t *testing.T, c canarytest.Canaries, user, pass string) (*httptest.Server, *canaryHits) {
 	t.Helper()
 	var hits canaryHits
 	frame := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -337,13 +281,13 @@ func TestEAACanarySweep(t *testing.T) {
 	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
-	c := newCanaries(t, "value", "data", "query", "frame-text", "frame-value", "frame-label",
+	c := canarytest.New(t, "value", "data", "query", "frame-text", "frame-value", "frame-label",
 		"flow-password", "header", "cookie", "aria-label", "account-value", "login-password",
 		"textarea", "option", "email", "sig")
 	// The token in a page's path is masked in every output. The stored
 	// run (run.json, pages.jsonl) keeps the path: compare and resume
 	// visit the page again by it. It is swept apart below.
-	pathToken := newCanaries(t, "path-token-for-reset")
+	pathToken := canarytest.New(t, "path-token-for-reset")
 	c["path-token"] = pathToken["path-token-for-reset"]
 	user := "tester"
 	t.Setenv("SOUNDCHECK_USER", user)
@@ -423,9 +367,9 @@ steps:
 		t.Errorf("evidence verify: exit %d\n%s\n%s", code, out, errOut)
 	}
 
-	pathCanary := canaries{"path-token": c["path-token"]}
+	pathCanary := canarytest.Canaries{"path-token": c["path-token"]}
 	delete(c, "path-token")
-	if hits := c.sweep(t, printed, ".soundcheck", "out"); len(hits) > 0 {
+	if hits := c.Sweep(t, printed, ".soundcheck", "out"); len(hits) > 0 {
 		t.Errorf("canaries written:\n%s", strings.Join(hits, "\n"))
 	}
 	// The page with the token was checked and only the stored run
@@ -434,7 +378,7 @@ steps:
 		t.Errorf("out/r.json has no /reset/ page, so the path canary wasn't in play (%v)", err)
 	}
 	var stored []string
-	for _, h := range pathCanary.sweep(t, printed, ".soundcheck", "out") {
+	for _, h := range pathCanary.Sweep(t, printed, ".soundcheck", "out") {
 		if base := path.Base(strings.TrimSuffix(h, ": path-token")); base == "run.json" || base == "pages.jsonl" {
 			stored = append(stored, h)
 			continue
@@ -460,7 +404,7 @@ func TestEAACanaryTarget(t *testing.T) {
 	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
-	c := newCanaries(t, "path-token", "utm", "cookie", "login-password", "against-token", "against-utm")
+	c := canarytest.New(t, "path-token", "utm", "cookie", "login-password", "against-token", "against-utm")
 	site, _ := canarySite(t, c, "tester", c["login-password"])
 	writeConfig(t, `statement:
   owner: Example Coffee Ltd
@@ -495,7 +439,7 @@ func TestEAACanaryTarget(t *testing.T) {
 		t.Errorf("out/c.md doesn't name the masked target, so the canaries weren't in play: %v\n%s", err, report)
 	}
 	var stored []string
-	for _, h := range c.sweep(t, printed, ".soundcheck", "out") {
+	for _, h := range c.Sweep(t, printed, ".soundcheck", "out") {
 		name, _, _ := strings.Cut(h, ": ")
 		if base := path.Base(name); base == "run.json" || base == "pages.jsonl" {
 			stored = append(stored, h)
@@ -505,32 +449,5 @@ func TestEAACanaryTarget(t *testing.T) {
 	}
 	if len(stored) == 0 {
 		t.Error("the stored run lost the start URL; compare can't visit it again")
-	}
-}
-
-// The sweep finds a canary in a file, in a nested folder or in printed
-// text; it skips screenshots.
-func TestCanarySweepFinds(t *testing.T) {
-	dir := t.TempDir()
-	c := newCanaries(t, "a", "b", "c", "query")
-	if err := os.MkdirAll(filepath.Join(dir, "x", "y"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for name, body := range map[string]string{"x/y/run.json": `{"v":"` + c["a"] + `"}`, "shot.png": c["b"], "clean.md": "nothing",
-		"pages.jsonl": `{"links":["/a/?t=` + c["query"] + `"]}`, "report.md": "/a/?t=" + c["query"]} {
-		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got := c.sweep(t, map[string]string{"stderr": "note: " + c["c"]}, dir)
-	want := []string{filepath.ToSlash(filepath.Join(dir, "x", "y", "run.json")) + ": a", "stderr: c",
-		filepath.ToSlash(filepath.Join(dir, "report.md")) + ": query", filepath.ToSlash(filepath.Join(dir, "pages.jsonl")) + ": query"}
-	slices.Sort(got)
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
-		t.Errorf("hits %q, want %q", got, want)
-	}
-	if c["a"] == c["b"] || !strings.HasPrefix(c["a"], "cnrya") {
-		t.Errorf("canaries %q", c)
 	}
 }
