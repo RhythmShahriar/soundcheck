@@ -24,6 +24,7 @@ import (
 	"github.com/RhythmShahriar/soundcheck/compare"
 	"github.com/RhythmShahriar/soundcheck/config"
 	"github.com/RhythmShahriar/soundcheck/model"
+	"github.com/RhythmShahriar/soundcheck/report"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
@@ -457,5 +458,34 @@ func TestAcceptVisualChangeAtOneViewport(t *testing.T) {
 				t.Errorf("after accepting desktop, changes left = %q, want the mobile one", left)
 			}
 		})
+	}
+}
+
+// The comparison of an --eaa run is stored with the personal data in
+// its changes' titles masked (report.MaskedText). Accepting such a
+// change by its id still finds the issue it comes from, so the next
+// compare doesn't report it again.
+func TestAcceptMaskedTitle(t *testing.T) {
+	t.Parallel() // each compares screenshots, which the race detector makes slow
+	f := newFixture(t)
+	mail := "Warning for dana.q" + "@" + "example.org"
+	run, _ := store.LoadRun(f.run)
+	run.Page("/a/").Issues = append(run.Page("/a/").Issues, php(mail))
+	if err := store.SaveRun(f.run, run); err != nil {
+		t.Fatal(err)
+	}
+	c := f.compareAgain(t)
+	c.Complete()
+	c = report.MaskedText(c)
+	i := slices.IndexFunc(c.Changes, func(ch model.Change) bool { return strings.Contains(ch.Title, "Warning for ***@***") })
+	if i < 0 {
+		t.Fatalf("no masked change: %+v", c.Changes)
+	}
+	if _, err := store.Accept(f.snap, f.run, c, store.Selector{IDs: []string{c.Changes[i].ID}}, "dana"); err != nil {
+		t.Fatal(err)
+	}
+	again := f.compareAgain(t)
+	if slices.ContainsFunc(again.Changes, func(ch model.Change) bool { return strings.Contains(ch.Title, "Warning for") }) {
+		t.Errorf("the accepted warning is still reported: %+v", again.Changes)
 	}
 }

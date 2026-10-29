@@ -564,3 +564,118 @@ func TestCanarySweepFinds(t *testing.T) {
 		t.Errorf("canaries %q", c)
 	}
 }
+
+// fakeDigits returns n random decimal digits.
+func fakeDigits(t *testing.T, n int) string {
+	t.Helper()
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	for i := range b {
+		b[i] = '0' + b[i]%10
+	}
+	return string(b)
+}
+
+// fakeCard returns a random 16-digit number that passes the Luhn check,
+// in groups of four.
+func fakeCard(t *testing.T) string {
+	t.Helper()
+	d := "4" + fakeDigits(t, 14)
+	sum := 0
+	for i := len(d) - 1; i >= 0; i-- {
+		v := int(d[i] - '0')
+		if (len(d)-i)%2 == 1 { // doubled: the check digit goes after it
+			v *= 2
+			if v > 9 {
+				v -= 9
+			}
+		}
+		sum += v
+	}
+	d += string(rune('0' + (10-sum%10)%10))
+	return d[:4] + " " + d[4:8] + " " + d[8:12] + " " + d[12:]
+}
+
+// The canary sweep for personal data (M2, M4): an email address, a
+// phone number and a card number in a console error and in a page title
+// that changes between the snapshot and the compare are masked in every
+// output of an --eaa run, the stored comparison and `report` included.
+// Only the stored runs (run.json, pages.jsonl) keep them, as they keep
+// everything compare reads again.
+func TestEAACanaryPII(t *testing.T) {
+	needBrowser(t)
+	if testing.Short() {
+		t.Skip("runs Chrome")
+	}
+	t.Chdir(t.TempDir())
+	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
+	t.Setenv("SOUNDCHECK_ECHO", "")
+	t.Setenv("CI", "1")
+	local := newCanaries(t, "mail")["mail"]
+	c := canaries{
+		"email": local + "@" + "example.org",
+		"local": local,
+		"phone": "+49 30 " + fakeDigits(t, 7),
+		"card":  fakeCard(t),
+	}
+	var changed atomic.Bool
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		title := "Account " + c["email"] + " " + c["phone"] + " " + c["card"]
+		if changed.Load() {
+			title = "Account new." + c["email"] + " " + c["phone"] + " " + c["card"]
+		}
+		parts := strings.Join([]string{`"` + local + `"`, `"@"`, `"example.org"`}, " + ")
+		eaaPage(w, title, `<p>Account</p><script>console.error("fail mail " + `+parts+` + " call `+c["phone"]+` card `+c["card"]+`");</script>`)
+	}))
+	t.Cleanup(site.Close)
+	writeConfig(t, "")
+	if err := os.WriteFile("b.yaml", []byte("name: Acme Web\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir("out", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	printed := map[string]string{}
+	step := func(args ...string) {
+		t.Helper()
+		code, out, errOut := runCLI(t, args...)
+		what := strings.Join(args[:min(2, len(args))], " ")
+		printed[what+" stdout"], printed[what+" stderr"] = out, errOut
+		if code != exitOK && code != exitFindings {
+			t.Fatalf("%v: exit %d\n%s\n%s", args, code, out, errOut)
+		}
+	}
+	step(append([]string{"snapshot", site.URL + "/", "--eaa", "--name", "before", "--verbose",
+		"-o", "out/s.json", "-o", "out/s.md", "-o", "out/s.html", "-o", "out/s.xml"}, eaaCommon...)...)
+	changed.Store(true)
+	step(append([]string{"compare", "--eaa", "--confirm=off", "--verbose",
+		"-o", "out/c.json", "-o", "out/c.md", "-o", "out/c.html", "-o", "out/c.xml"}, eaaCommon...)...)
+	step("report", "--md")
+	step("report", "--json")
+	step("report", "--client", "--brand", "b.yaml", "-o", "out/client.html")
+	cmp, err := os.ReadFile(filepath.Join("out", "c.json"))
+	if err != nil || !strings.Contains(string(cmp), "health/title") || !strings.Contains(string(cmp), "***@***") {
+		t.Errorf("out/c.json has no masked title change, so the canaries weren't in play (%v)\n%s", err, cmp)
+	}
+	if snap := printed["snapshot "+site.URL+"/ stdout"]; !strings.Contains(snap, "JS error") {
+		t.Errorf("no JS error reported, so the console canaries weren't in play:\n%s", snap)
+	}
+	var stored []string
+	for _, h := range c.sweep(t, printed, ".soundcheck", "out") {
+		name, _, _ := strings.Cut(h, ": ")
+		if base := path.Base(name); base == "run.json" || base == "pages.jsonl" {
+			stored = append(stored, h)
+			continue
+		}
+		t.Errorf("personal data written: %s", h)
+	}
+	if len(stored) == 0 {
+		t.Error("the stored run lost the page's title")
+	}
+}

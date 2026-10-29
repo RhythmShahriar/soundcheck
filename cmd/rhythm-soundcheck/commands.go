@@ -1087,9 +1087,15 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 // picks pages from an --against comparison (accept refuses one), so an
 // --eaa one is stored the way the reports show it, with the query
 // values of its page paths masked (report.Masked). Its change ids are
-// set first, so the stored ones are the ids the run printed.
+// set first, so the stored ones are the ids the run printed. One with
+// a snapshot from an --eaa run has the free text of its changes masked
+// (report.MaskedText): a title change can name a customer.
 func savedComparison(after *model.Run, c *model.Comparison) *model.Comparison {
 	if c.Before.Name != "" {
+		if after != nil && after.Options.EAA {
+			c.Complete()
+			return report.MaskedText(c)
+		}
 		return c
 	}
 	c.Complete()

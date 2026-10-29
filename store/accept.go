@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -243,11 +244,18 @@ func keyOf(i model.Issue) string {
 	return i.Key
 }
 
+// hasKey reports whether i has key k, or k with its title masked: the
+// comparison of an --eaa run stores the titles of its changes with the
+// personal data in them masked (report.MaskedText).
+func hasKey(i model.Issue, k string) bool {
+	return keyOf(i) == k || model.IssueKey(i.Check, pii.Redact(i.Title), i.Source) == k
+}
+
 // withKey returns the issues in from with key k.
 func withKey(from []model.Issue, k string) []model.Issue {
 	var out []model.Issue
 	for _, i := range from {
-		if keyOf(i) == k {
+		if hasKey(i, k) {
 			out = append(out, i)
 		}
 	}
@@ -256,7 +264,7 @@ func withKey(from []model.Issue, k string) []model.Issue {
 
 // replaceKey returns in without its issues of key k, plus from's.
 func replaceKey(in, from []model.Issue, k string) []model.Issue {
-	in = slices.DeleteFunc(in, func(i model.Issue) bool { return keyOf(i) == k })
+	in = slices.DeleteFunc(in, func(i model.Issue) bool { return hasKey(i, k) })
 	return append(in, withKey(from, k)...)
 }
 

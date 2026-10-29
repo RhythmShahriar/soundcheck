@@ -170,3 +170,50 @@ func TestMaskedKeyAndConsole(t *testing.T) {
 		t.Error("Masked changed the stored result")
 	}
 }
+
+// Personal data a page wrote (an email address, a phone number, a card
+// number) is masked in an --eaa result's console lines, page titles,
+// issue titles, details and keys and changes' before and after; page
+// paths are left to the path mask. The stored result keeps it.
+func TestMaskedPersonalData(t *testing.T) {
+	mail := "canary.zqx" + "@" + "example.org"
+	phone := "+49 30 " + "5550123"
+	card := strings.Join([]string{"4111", "1111", "1111", "1111"}, " ")
+	line := "fail mail " + mail + " call " + phone + " card " + card
+	jsErr := model.Issue{Check: "health/js-error", Level: model.Warning, Title: "JS error: " + line, Detail: line}
+	jsErr.Identify()
+	run := eaaClean()
+	run.Pages = append(run.Pages, model.Page{Path: "/call/030-555-0123/", URL: "http://127.0.0.1:40402/call/030-555-0123/",
+		Group: "/call/030-555-0123/", Status: 200, Title: "Account " + mail, Console: []string{line}, Issues: []model.Issue{jsErr}})
+	res := Result{Run: run, Comparison: &model.Comparison{Changes: []model.Change{{Class: model.Changed, Check: "health/title",
+		Title: "Page title changed", Before: "Account " + mail, After: "Account new." + mail + " " + phone, Pages: []string{"/"}}}}}
+	shown := Masked(res)
+	var all bytes.Buffer
+	pretty := NewPretty(&all, io.Discard, PrettyOptions{Plain: true, Verbose: true})
+	pretty.Summary(shown, "")
+	pretty.Page(MaskedPage(&run.Pages[len(run.Pages)-1]), 1, 1)
+	for _, f := range []func(io.Writer, Result) error{Markdown, JSON, HTML, func(w io.Writer, r Result) error { return JUnit(w, r, "") }} {
+		if err := f(&all, shown); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, v := range []string{"canary.zqx", "5550123", "4111 1111", "***-"} {
+		if strings.Contains(all.String(), v) {
+			t.Errorf("an --eaa output shows %q", v)
+		}
+	}
+	p := shown.Run.Pages[len(shown.Run.Pages)-1]
+	if strings.Contains(p.Path, "***") || p.Title != "Account ***@***" {
+		t.Errorf("page path %q, title %q", p.Path, p.Title)
+	}
+	if run.Pages[len(run.Pages)-1].Console[0] != line || run.Pages[len(run.Pages)-1].Title != "Account "+mail {
+		t.Error("Masked changed the stored result")
+	}
+	stored := MaskedText(res.Comparison)
+	if ch := stored.Changes[0]; ch.Before != "Account ***@***" || strings.Contains(ch.After, "5550123") || ch.Pages[0] != "/" {
+		t.Errorf("stored change %+v", ch)
+	}
+	if res.Comparison.Changes[0].Before != "Account "+mail {
+		t.Error("MaskedText changed the comparison")
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/RhythmShahriar/soundcheck/echolink"
 	"github.com/RhythmShahriar/soundcheck/history"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -133,12 +134,23 @@ func masker(rep *strings.Replacer) maskFunc {
 	}
 }
 
+// textOf is mask for the free text a page wrote (an issue's title,
+// detail and key, a console line, a page title, a change's before and
+// after): masked by mask, then its email addresses, phone, card and
+// account numbers by pii.Redact (security M2, M4). A console error or a
+// title can name the signed-in customer. Page paths aren't put through
+// it: a date or an id in a path can read as a phone number.
+func textOf(mask maskFunc) maskFunc {
+	return func(s string) string { return pii.Redact(mask(s)) }
+}
+
 func maskPage(p *model.Page, rep maskFunc) {
 	p.Path, p.Group, p.URL, p.FinalURL = rep(p.Path), rep(p.Group), rep(p.URL), rep(p.FinalURL)
 	p.Redirects = maskAll(p.Redirects, rep)
 	p.Links = maskAll(p.Links, rep)
 	p.Issues = maskIssues(p.Issues, rep)
-	p.Console = maskAll(p.Console, rep)
+	p.Console = maskAll(p.Console, textOf(rep))
+	p.Title = textOf(rep)(p.Title)
 }
 
 func maskIssues(issues []model.Issue, rep maskFunc) []model.Issue {
@@ -148,7 +160,8 @@ func maskIssues(issues []model.Issue, rep maskFunc) []model.Issue {
 	out := slices.Clone(issues)
 	for i := range out {
 		is := &out[i]
-		is.Title, is.Detail, is.Source, is.Key = rep(is.Title), rep(is.Detail), rep(is.Source), rep(is.Key)
+		text := textOf(rep)
+		is.Title, is.Detail, is.Source, is.Key = text(is.Title), text(is.Detail), rep(is.Source), text(is.Key)
 		is.Pages = maskAll(is.Pages, rep)
 	}
 	return out
@@ -161,8 +174,9 @@ func maskChanges(changes []model.Change, rep maskFunc) []model.Change {
 	out := slices.Clone(changes)
 	for i := range out {
 		c := &out[i]
-		c.Title, c.Detail, c.Source, c.Reason = rep(c.Title), rep(c.Detail), rep(c.Source), rep(c.Reason)
-		c.Before, c.After = rep(c.Before), rep(c.After)
+		text := textOf(rep)
+		c.Title, c.Detail, c.Source, c.Reason = text(c.Title), text(c.Detail), rep(c.Source), rep(c.Reason)
+		c.Before, c.After = text(c.Before), text(c.After)
 		c.Pages = maskAll(c.Pages, rep)
 	}
 	return out
@@ -196,4 +210,27 @@ func MaskedPage(pg *model.Page) *model.Page {
 	q := *pg
 	maskPage(&q, masker(pathMasker(Result{Run: &model.Run{Pages: []model.Page{*pg}}})))
 	return &q
+}
+
+// MaskedText is c, a comparison of an --eaa run with a snapshot, as
+// comparison.json keeps it: the email addresses, phone, card and
+// account numbers in the free text of its changes masked by pii.Redact,
+// its page paths and sources as they are, so accept and ignore still
+// find a change's pages and its rule's source (accept matches an
+// issue by its title masked the same way). c itself isn't changed.
+func MaskedText(c *model.Comparison) *model.Comparison {
+	cc := *c
+	text := pii.Redact
+	for _, list := range []*[]model.Change{&cc.Changes, &cc.Ignored} {
+		if *list == nil {
+			continue
+		}
+		out := slices.Clone(*list)
+		for i := range out {
+			ch := &out[i]
+			ch.Title, ch.Detail, ch.Before, ch.After = text(ch.Title), text(ch.Detail), text(ch.Before), text(ch.After)
+		}
+		*list = out
+	}
+	return &cc
 }
