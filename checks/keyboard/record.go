@@ -171,7 +171,11 @@ type guard struct {
 	// it (sent or held) and navs every navigation it started: a press
 	// that makes either did something.
 	requests, navs int
-	left           bool // a navigation the page couldn't be kept from committed
+	// candNavs counts the navigations a key press or click on the
+	// mouse-only control being pressed started itself (candJS): the
+	// only ones that count as its response.
+	candNavs int
+	left     bool // a navigation the page couldn't be kept from committed
 	// armed is true while the walk has the page; reloading while the
 	// walk loads it again itself, which isn't the page leaving.
 	armed, reloading bool
@@ -590,6 +594,7 @@ func (w *walker) navigations(ctx context.Context) error {
 		At      float64 `json:"at"`    // performance.now() when it started
 		El      int     `json:"el"`    // the forward stop it came from, by probe; -1 when unknown
 		Focus   bool    `json:"focus"` // it started in a focus handler
+		Cand    bool    `json:"cand"`  // a press on the marked control started it
 	}
 	if err := json.Unmarshal([]byte(raw), &log); err != nil {
 		return fmt.Errorf("navigation log: %w", err)
@@ -619,6 +624,9 @@ func (w *walker) navigations(ctx context.Context) error {
 		// (a reset link's token), as the guard writes it down as is.
 		n.What = echolink.RedactURL(n.What)
 		g.navs++
+		if n.Cand {
+			g.candNavs++
+		}
 		kind := EffectNavigation
 		if n.Form {
 			kind = EffectForm

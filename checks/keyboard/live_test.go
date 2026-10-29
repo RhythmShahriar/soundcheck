@@ -57,6 +57,26 @@ func serve(t *testing.T, h http.Handler) *httptest.Server {
 	return nil
 }
 
+// serveIn starts h on the first free port of 127.0.0.1 from lo up to
+// hi (not included).
+func serveIn(t *testing.T, h http.Handler, lo, hi int) *httptest.Server {
+	t.Helper()
+	for port := lo; port < hi; port++ {
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		srv := httptest.NewUnstartedServer(h)
+		_ = srv.Listener.Close()
+		srv.Listener = l
+		srv.Start()
+		t.Cleanup(srv.Close)
+		return srv
+	}
+	t.Fatalf("no free port in %d-%d", lo, hi-1)
+	return nil
+}
+
 // pages serves each path's HTML and counts the loads of each.
 type pages struct {
 	html  map[string]string

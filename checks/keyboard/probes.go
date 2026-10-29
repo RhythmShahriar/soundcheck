@@ -79,6 +79,14 @@ const guardJS = `(() => {
   // runs before the element's own), so a navigation a focus handler
   // starts is told from one a timer starts.
   addEventListener('focus', () => { g.inFocus = true; setTimeout(() => { g.inFocus = false; }, 0); }, true);
+  // The element a key press or click the walk sends is handled on, set
+  // while its handlers run: a navigation one of them starts is told
+  // from one a timer or another element starts (cand is the mouse-only
+  // control being pressed, see listeners.go).
+  g.input = null; g.cand = null;
+  for (const t of ['keydown', 'keypress', 'keyup', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click']) {
+    addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; setTimeout(() => { g.input = null; }, 0); }, true);
+  }
   navigation.addEventListener('navigate', e => {
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;
     let p = '';
@@ -89,7 +97,9 @@ const guardJS = `(() => {
     let el = -1;
     const src = e.sourceElement;
     if (src) for (let i = g.els.length - 1; i >= 0; i--) { const x = g.els[i]; if (x === src || src.contains(x)) { el = i; break; } }
-    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el, focus: g.inFocus});
+    const within = n => !!(g.cand && n && n.nodeType === 1 && (g.cand === n || g.cand.contains(n)));
+    const cand = !g.inFocus && (within(src) || within(g.input));
+    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el, focus: g.inFocus, cand});
     if (e.cancelable) e.preventDefault();
   });
   return 'ok';
@@ -101,6 +111,10 @@ const (
 	guardOn  = `(() => { if (window.__scKbNav) window.__scKbNav.on = true; return ''; })()`
 	guardOff = `(() => { if (window.__scKbNav) window.__scKbNav.on = false; return ''; })()`
 	navLogJS = `(() => JSON.stringify(window.__scKbNav ? window.__scKbNav.log.splice(0) : []))()`
+	// candJS marks the element it is called on as the control being
+	// pressed (guardJS); clearCandJS unmarks it.
+	candJS      = `function () { if (window.__scKbNav) window.__scKbNav.cand = this; return ''; }`
+	clearCandJS = `(() => { if (window.__scKbNav) window.__scKbNav.cand = null; return ''; })()`
 	// envLogJS returns and clears the WebSocket hosts the envelope's
 	// policy refused and the passkey requests it refused (envelope.go).
 	envLogJS = `(() => { const g = window.__scKbNav; return JSON.stringify(g ? {ws: g.ws.splice(0), pk: g.pk.splice(0)} : {ws: [], pk: []}); })()`

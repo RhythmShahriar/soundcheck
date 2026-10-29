@@ -237,7 +237,9 @@ type Candidate struct {
 	// Tested is true when the walk pressed it: Enter, then Space, then
 	// a mouse click when neither key did anything. Enter, Space and
 	// Click say what each did: "" nothing, or dom, navigation or
-	// request (sent or held).
+	// request (sent or held); unknown when the only thing that happened
+	// was a navigation the press didn't start (a timer, a focus handler
+	// or another element), which never counts as a response.
 	Tested bool   `json:"tested,omitempty"`
 	Enter  string `json:"enter,omitempty"`
 	Space  string `json:"space,omitempty"`
@@ -253,6 +255,7 @@ const (
 	PressDOM        = "dom"
 	PressNavigation = "navigation"
 	PressRequest    = "request"
+	PressUnknown    = "unknown"
 )
 
 // Caps a trace keeps to, on disk and when it is read back.

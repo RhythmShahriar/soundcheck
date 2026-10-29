@@ -218,6 +218,13 @@ func (w *walker) mouseListeners(ctx context.Context, id int) ([]string, error) {
 // 500 ms to show an effect. A press that took the page away ends it.
 func (w *walker) operable(ctx context.Context, id int, c *Candidate) error {
 	c.Tested = true
+	// The guard credits a navigation to the press only when a handler
+	// of this control's own events started it.
+	if _, err := w.reader.CallOn(ctx, candJS, id); err != nil {
+		c.Skipped = "gone"
+		return nil
+	}
+	defer func() { _, _ = w.reader.Eval(ctx, clearCandJS) }()
 	keys := []focus.Key{focus.Enter, focus.Space}
 	if c.Link {
 		keys = keys[:1]
@@ -236,7 +243,7 @@ func (w *walker) operable(ctx context.Context, id int, c *Candidate) error {
 		} else {
 			c.Space = eff
 		}
-		if eff != "" || w.left() {
+		if !noResponse(eff) || w.left() {
 			return nil
 		}
 	}
@@ -277,14 +284,21 @@ func (w *walker) click(ctx context.Context, x, y float64) error {
 
 // effectOf runs act and says what it did within widgetWait: started a
 // navigation (navigation), made a request, sent or held (request), or
-// changed the DOM (dom); "" for nothing.
+// changed the DOM (dom); "" for nothing. A navigation counts only when
+// a handler of the pressed control's own events started it (candJS):
+// one a timer, a focus handler or another element started is no
+// answer to the press. When it is all that happened the effect is
+// unknown. Navigations logged before act are set aside first.
 func (w *walker) effectOf(ctx context.Context, act func() error) (string, error) {
+	if err := w.navigations(ctx); err != nil {
+		return "", err
+	}
 	if _, err := w.reader.Eval(ctx, armMutJS); err != nil {
 		return "", err
 	}
 	g := w.guard
 	g.mu.Lock()
-	reqs, navs := g.requests, g.navs
+	reqs, navs, own := g.requests, g.navs, g.candNavs
 	g.mu.Unlock()
 	if err := act(); err != nil {
 		return "", err
@@ -298,9 +312,9 @@ func (w *walker) effectOf(ctx context.Context, act func() error) (string, error)
 		return "", err
 	}
 	g.mu.Lock()
-	reqs, navs = g.requests-reqs, g.navs-navs
+	reqs, navs, own = g.requests-reqs, g.navs-navs, g.candNavs-own
 	g.mu.Unlock()
-	if w.left() || navs > 0 {
+	if w.left() || own > 0 {
 		return PressNavigation, nil
 	}
 	var mut struct {
@@ -321,6 +335,8 @@ func (w *walker) effectOf(ctx context.Context, act func() error) (string, error)
 		return PressRequest, nil
 	case mut.N > 0:
 		return PressDOM, nil
+	case navs > 0:
+		return PressUnknown, nil
 	}
 	return "", nil
 }

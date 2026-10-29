@@ -145,6 +145,9 @@ func TestClassifyMouseOnly(t *testing.T) {
 			ids.NotOperable + `|span reacts to a mouse click but not to Enter or Space.`},
 		{"Enter works", Candidate{Selector: "#b", Events: []string{"click"}, Focusable: true, Tested: true, Enter: PressRequest}, ""},
 		{"Space works", Candidate{Selector: "#b", Events: []string{"click"}, Focusable: true, Tested: true, Space: PressDOM}, ""},
+		{"keys: only a navigation the press didn't start", Candidate{Selector: "#b", Events: []string{"click"}, Tag: "div", Focusable: true, Tested: true, Enter: PressUnknown, Space: PressUnknown, Click: PressDOM},
+			ids.NotOperable + `|div reacts to a mouse click but not to Enter or Space.`},
+		{"click: only a navigation it didn't start", Candidate{Selector: "#b", Events: []string{"click"}, Focusable: true, Tested: true, Enter: PressUnknown, Click: PressUnknown}, ""},
 		{"click does nothing either", Candidate{Selector: "#b", Events: []string{"click"}, Focusable: true, Tested: true}, ""},
 		{"covered", Candidate{Selector: "#b", Events: []string{"click"}, Focusable: true, Tested: true, Skipped: "covered", Click: PressDOM}, ""},
 		{"no events", Candidate{Selector: "#b", Tag: "div"}, ""},
@@ -160,6 +163,64 @@ func TestClassifyMouseOnly(t *testing.T) {
 		}
 		if strings.Join(got, "\n") != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, strings.Join(got, "\n"), c.want)
+		}
+	}
+}
+
+// focusNavPage has a link that starts a navigation whenever it gets
+// focus and a control only a click works: the walk stops that
+// navigation, which must not count as the control's own response.
+const focusNavPage = `<!doctype html><html lang="en"><head><title>Focus nav</title></head><body><main>
+<a id="first" href="#top">Top</a>
+<a id="away" href="/other">Other page</a>
+<div id="no" role="button" tabindex="0">Add note</div>
+<div id="late" role="button" tabindex="0">Add tag</div>
+<div id="go" role="button" tabindex="0">Go on</div>
+<script>
+const $ = id => document.getElementById(id);
+$('away').addEventListener('focus', () => { location.href = '/elsewhere'; });
+document.addEventListener('focusin', e => { if (e.target.id === 'no') setTimeout(() => { location.href = '/later'; }, 100); });
+$('no').addEventListener('click', () => { $('no').textContent = 'Note added'; });
+$('late').addEventListener('click', () => { $('late').textContent = 'Tag added'; });
+const go = () => { location.href = '/go'; };
+$('go').addEventListener('click', go);
+$('go').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+</script>
+</main></body></html>`
+
+// A navigation another element starts on focus, or a timer the
+// control's focus set, is no answer to Enter or Space: the
+// mouse-only controls are still reported. One the control's own Enter
+// handler starts is.
+func TestMouseOnlyForeignNavigation(t *testing.T) {
+	pg := &pages{html: map[string]string{"/": focusNavPage, "/other": links(1, "")}}
+	srv := serveIn(t, pg, 40400, 40450)
+	c := launch(t)
+	tab, p := c.open(srv.URL + "/")
+	cc := withSaver(runContext(t))
+	live(t, New(), cc, tab, p)
+	if a := p.Audits["keyboard"]; a.Status != model.AuditOK {
+		t.Fatalf("audit %+v, warnings %v", a, cc.Run.Warnings)
+	}
+	var got []string
+	for _, i := range p.Issues {
+		if i.Check == ids.NotOperable {
+			got = append(got, i.Source)
+		}
+	}
+	data, _ := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+	tr, _ := DecodeTrace(data)
+	if want := []string{"#no", "#late"}; !slices.Equal(got, want) {
+		t.Errorf("not-operable %q, want %q\nlisteners %+v", got, want, tr.Listeners)
+	}
+	for _, c := range tr.Listeners {
+		if c.Selector == "#go" && c.Enter != PressNavigation {
+			t.Errorf("#go %+v, want Enter to count its navigation", c)
+		}
+	}
+	for _, path := range []string{"/elsewhere", "/later", "/go"} {
+		if n := pg.count(path); n != 0 {
+			t.Errorf("%s loaded %d times", path, n)
 		}
 	}
 }
