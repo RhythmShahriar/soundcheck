@@ -89,7 +89,12 @@ func TestReportOffline(t *testing.T) {
 	go router.Run()
 	t.Cleanup(router.MustStop)
 	page.MustEvalOnNewDocument(`window.__csp = []; document.addEventListener("securitypolicyviolation", function (e) { window.__csp.push(e.violatedDirective + " " + e.blockedURI); });`)
-	file := (&url.URL{Scheme: "file", Path: path}).String()
+	// A Windows path (C:\Users\...) becomes /C:/Users/... in a file URL.
+	slashed := filepath.ToSlash(path)
+	if !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	file := (&url.URL{Scheme: "file", Path: slashed}).String()
 	page.MustNavigate(file).MustWaitLoad()
 
 	page.MustElement("#tab-a11y").MustClick()

@@ -14,14 +14,21 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/RhythmShahriar/soundcheck/internal/canarytest"
 )
+
+// eaaCommon are the flags the browser tests share: one viewport, no
+// download, a quick rate and plain output. The e2e package's tests use
+// the same.
+var eaaCommon = []string{"--no-download", "--viewport", "desktop", "--rate", "50", "--plain"}
 
 // selectorCanaries are values a site put in the ids, names and classes
 // of its elements: a GitHub token, a JWT and email addresses. Each is
 // assembled at runtime from a random part of letters g to z, so the a11y
 // module doesn't take an id for a generated one (digits or hex) and
 // leave it out of the selector.
-func selectorCanaries(t *testing.T) canaries {
+func selectorCanaries(t *testing.T) canarytest.Canaries {
 	t.Helper()
 	const letters = "ghijklmnopqrstuvwxyzGHIJKLMNOPQRSTUVWXYZ"
 	random := func(n int) string {
@@ -35,7 +42,7 @@ func selectorCanaries(t *testing.T) canaries {
 		return string(b)
 	}
 	enc := base64.RawURLEncoding.EncodeToString
-	return canaries{
+	return canarytest.Canaries{
 		"id-token":   "gh" + "p_" + random(36),
 		"name-jwt":   enc([]byte(`{"alg":"HS256"}`)) + "." + enc([]byte(`{"sub":"`+random(12)+`"}`)) + "." + random(24),
 		"id-email":   "b-mark." + random(8) + "@" + "idcanary.test",
@@ -47,7 +54,7 @@ func selectorCanaries(t *testing.T) canaries {
 // selectorPage is a page whose unlabeled controls carry c in their id,
 // name and class, with a keyboard trap that keeps a select whose id is
 // an email address out of reach.
-func selectorPage(c canaries) string {
+func selectorPage(c canarytest.Canaries) string {
 	return fmt.Sprintf(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Ids</title><link rel="icon" href="data:,"></head>
 <body><main><h1>Ids</h1>
 <select id="%s"><option>a</option></select>
@@ -94,7 +101,7 @@ func TestEAASelectorCanaries(t *testing.T) {
 			t.Errorf("r.json lacks %q, so the canaries weren't in play", want)
 		}
 	}
-	for _, h := range c.sweep(t, map[string]string{"stdout": out, "stderr": errOut}, ".soundcheck", "out") {
+	for _, h := range c.Sweep(t, map[string]string{"stdout": out, "stderr": errOut}, ".soundcheck", "out") {
 		t.Errorf("selector canary written: %s", h)
 	}
 }
@@ -111,7 +118,7 @@ func TestEAAAgainstComparisonMasked(t *testing.T) {
 	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
-	c := newCanaries(t, "api-key")
+	c := canarytest.New(t, "api-key")
 	page := func(body string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -129,7 +136,7 @@ func TestEAAAgainstComparisonMasked(t *testing.T) {
 		t.Fatalf("no FIXED change, so the comparison names no page:\n%s", out)
 	}
 	stored := 0
-	for _, h := range c.sweep(t, map[string]string{"stdout": out, "stderr": errOut}, ".soundcheck") {
+	for _, h := range c.Sweep(t, map[string]string{"stdout": out, "stderr": errOut}, ".soundcheck") {
 		name, _, _ := strings.Cut(h, ": ")
 		if base := path.Base(name); base == "run.json" || base == "pages.jsonl" {
 			stored++

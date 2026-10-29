@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/soundcheck/config"
+	"github.com/RhythmShahriar/soundcheck/internal/canarytest"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/store"
 )
@@ -342,7 +343,7 @@ func TestFleetEAA(t *testing.T) {
 func TestEAAUnreachableMasked(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SOUNDCHECK_ECHO", "")
-	c := newCanaries(t, "path-token-for-reset", "query", "against-token-reset", "against-query")
+	c := canarytest.New(t, "path-token-for-reset", "query", "against-token-reset", "against-query")
 	closed := func() string {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -365,7 +366,7 @@ func TestEAAUnreachableMasked(t *testing.T) {
 		if !strings.Contains(errOut, "can't reach") || !strings.Contains(errOut, "/reset/•••••/") {
 			t.Errorf("%v: no masked can't reach error:\n%s", args[:2], errOut)
 		}
-		if hits := c.sweep(t, map[string]string{"stdout": out, "stderr": errOut}); len(hits) > 0 {
+		if hits := c.Sweep(t, map[string]string{"stdout": out, "stderr": errOut}); len(hits) > 0 {
 			t.Errorf("%v: target canaries printed: %v\n%s\n%s", args[:2], hits, out, errOut)
 		}
 	}

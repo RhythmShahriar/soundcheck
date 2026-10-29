@@ -69,6 +69,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
 	"unicode/utf8"
 
@@ -637,14 +638,23 @@ func (e *FileError) Error() string { return e.File + ": " + e.Err.Error() }
 func (e *FileError) Unwrap() error { return e.Err }
 
 // Load reads every .yaml/.yml flow in dir, in name order. A missing
-// folder means no flows. A file that can't be read or parsed doesn't stop
-// the others: it's returned as a *FileError, joined in err, next to the
-// flows that loaded.
+// folder means no flows. A file in the folder's place is an error: it is
+// checked up front, as Windows reports reading a file as a folder in a
+// way that can pass for a missing folder or an empty one. A file that
+// can't be read or parsed doesn't stop the others: it's returned as a
+// *FileError, joined in err, next to the flows that loaded.
 func Load(dir string) ([]Flow, error) {
-	entries, err := os.ReadDir(dir)
+	fi, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: syscall.ENOTDIR}
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}

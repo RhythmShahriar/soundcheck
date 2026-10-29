@@ -83,6 +83,25 @@ func Press(ctx context.Context, page *rod.Page, k Key) error {
 	return key.Encode(proto.InputDispatchKeyEventTypeKeyUp, mods).Call(p)
 }
 
+// Type types s one character at a time as trusted key presses: each
+// is a keydown that carries the character (so a keypress follows unless
+// the page cancels the keydown) and a keyup. A select's type-ahead
+// listens to these; Input.insertText, which a fill uses, it ignores.
+func Type(ctx context.Context, page *rod.Page, s string) error {
+	p := page.Context(ctx)
+	for _, c := range s {
+		ch := string(c)
+		down := proto.InputDispatchKeyEvent{Type: proto.InputDispatchKeyEventTypeKeyDown, Key: ch, Text: ch, UnmodifiedText: ch}
+		if err := down.Call(p); err != nil {
+			return err
+		}
+		if err := (proto.InputDispatchKeyEvent{Type: proto.InputDispatchKeyEventTypeKeyUp, Key: ch}).Call(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Stop is one keyboard focus stop: the element that has focus, as far
 // as it can be told without storing what a visitor typed. Its JSON
 // names are fixed: they are the fields of every forward and backward

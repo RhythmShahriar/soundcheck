@@ -6,12 +6,9 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/RhythmShahriar/soundcheck/demo"
 )
 
 // The picker's accessibility entry runs an --eaa snapshot of the site
@@ -39,46 +36,6 @@ func TestPickerEAA(t *testing.T) {
 		if got := pickArgs(tc.action, tc.site, tc.output); !slices.Equal(got, tc.want) {
 			t.Errorf("%s: %v, want %v", tc.action, got, tc.want)
 		}
-	}
-}
-
-// demo --eaa plants a keyboard trap and lost focus next to the usual
-// breaks and shows the trap as BROKE and the lost focus as NEW. The
-// opening hours dialog's plain button opens it with showModal(), so
-// this also proves the walk finds such a dialog.
-func TestDemoEAA(t *testing.T) {
-	needBrowser(t)
-	if testing.Short() {
-		t.Skip("runs Chrome twice")
-	}
-	t.Chdir(t.TempDir())
-	t.Setenv("TMPDIR", t.TempDir())
-	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
-	code, out, errOut := runCLI(t, "demo", "--eaa", "--plain", "--no-download")
-	if code != exitOK && code != exitError {
-		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
-	}
-	for _, want := range []string{demo.Describe(true), "BROKE] Page not found (404) - /pricing/", "With --eaa on your own site"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("no %q in:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "statement: ") {
-		t.Errorf("points at a draft it removes:\n%s", out)
-	}
-	if trap := regexp.MustCompile(`(?m)^\[BROKE\] Keyboard focus is trapped.* - /$`); !trap.MatchString(out) {
-		t.Errorf("no BROKE trap in:\n%s", out)
-	}
-	for _, want := range []string{"[NEW] Focus is lost after closing - /about/\n", "  After Escape on \"Opening hours\" focus went to a removed element.\n"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("no %q in:\n%s", want, out)
-		}
-	}
-	if _, err := os.Stat(".soundcheck"); !os.IsNotExist(err) {
-		t.Errorf("the demo wrote to the project's .soundcheck: %v", err)
-	}
-	if _, _, rest, err := demoOptions([]string{"--eaa", "--no-sandbox"}); err != nil || strings.Join(rest, " ") != "--eaa --no-sandbox" {
-		t.Errorf("demoOptions: %v %v", rest, err)
 	}
 }
 

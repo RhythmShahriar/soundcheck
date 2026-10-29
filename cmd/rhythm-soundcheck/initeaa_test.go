@@ -487,6 +487,8 @@ func TestRetakeKeepsTheEvidencePack(t *testing.T) {
 	t.Chdir(t.TempDir())
 	acceptFixture(t)
 	snap := filepath.Join(".soundcheck", "snapshots", "good")
+	// keepReplaced writes to b directly, not through runCLI, so the note
+	// keeps the OS's own separators.
 	var b strings.Builder
 	s := &session{st: store.Store{Root: ".soundcheck"}, stderr: &b}
 	if err := s.keepReplaced("good"); err != nil || b.Len() != 0 {
@@ -495,7 +497,7 @@ func TestRetakeKeepsTheEvidencePack(t *testing.T) {
 	if err := evidence.Write(snap, must(store.LoadRun(snap)), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.keepReplaced("good"); err != nil || !strings.Contains(b.String(), `note: snapshot "good" had an evidence pack; it is kept in .soundcheck/evidence/`) {
+	if err := s.keepReplaced("good"); err != nil || !strings.Contains(b.String(), `note: snapshot "good" had an evidence pack; it is kept in `+filepath.Join(".soundcheck", "evidence")+string(filepath.Separator)) {
 		t.Errorf("pack: %v %q", err, b.String())
 	}
 	if entries, err := os.ReadDir(filepath.Join(".soundcheck", "evidence")); err != nil || len(entries) != 1 {

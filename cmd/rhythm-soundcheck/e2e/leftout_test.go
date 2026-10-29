@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package main
+package e2e
 
 import (
 	"fmt"
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/RhythmShahriar/soundcheck/internal/canarytest"
 )
 
 // plainPage writes a page with a title, a heading and body. It has no
@@ -35,7 +37,7 @@ func TestEAALeftOutPageMasked(t *testing.T) {
 	t.Setenv("SOUNDCHECK_NO_SANDBOX", "")
 	t.Setenv("SOUNDCHECK_ECHO", "")
 	t.Setenv("CI", "1")
-	c := newCanaries(t, "sid", "reset")
+	c := canarytest.New(t, "sid", "reset")
 	sid := "tk_" + c["sid"]
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +75,7 @@ func TestEAALeftOutPageMasked(t *testing.T) {
 			t.Errorf("no %q in what the runs printed:\n%s", want, all)
 		}
 	}
-	for _, h := range c.sweep(t, printed, ".soundcheck") {
+	for _, h := range c.Sweep(t, printed, ".soundcheck") {
 		name, _, _ := strings.Cut(h, ": ")
 		if base := path.Base(filepath.ToSlash(name)); base == "run.json" || base == "pages.jsonl" {
 			continue // the stored run keeps the path to visit it again
