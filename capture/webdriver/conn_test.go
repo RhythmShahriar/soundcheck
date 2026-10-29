@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +17,10 @@ import (
 
 	"golang.org/x/net/websocket"
 )
+
+// noAnswer is what a fakeBiDi table returns for a command it leaves
+// unanswered.
+var noAnswer = &struct{}{}
 
 // fakeBiDi answers commands from a table and sends an event after each
 // command named "emit".
@@ -40,6 +46,9 @@ func fakeBiDi(t *testing.T, answer func(method string, params json.RawMessage) (
 				send(map[string]any{"type": "event", "method": "log.entryAdded", "params": map[string]any{"text": "hi"}})
 			}
 			res, e := answer(cmd.Method, cmd.Params)
+			if res == any(noAnswer) {
+				continue
+			}
 			if e != nil {
 				send(map[string]any{"type": "error", "id": cmd.ID, "error": e.Code, "message": e.Message})
 				continue
@@ -307,6 +316,8 @@ func TestNewTabWaitsForThePageToShow(t *testing.T) {
 			_ = json.Unmarshal(params, &p)
 			background = p["background"]
 			return map[string]string{"context": "ctx-1"}, nil
+		case "browsingContext.getTree":
+			return map[string]any{"contexts": []map[string]string{{"context": "ctx-1", "userContext": "default"}}}, nil
 		case "script.evaluate":
 			evals++
 			if evals <= 2 {
@@ -336,19 +347,34 @@ func TestNewTabWaitsForThePageToShow(t *testing.T) {
 	}
 }
 
-// A page that never shows is used after shownWait; one whose context
-// stays gone is an error.
+// A page that never shows is used after shownWait. A context whose page
+// doesn't answer is an error after shownWait while the browser still
+// lists it, at once when it doesn't.
 func TestWaitShownGivesUp(t *testing.T) {
 	wait, pause := shownWait, shownPause
-	shownWait, shownPause = 20*time.Millisecond, time.Millisecond
+	shownPause = time.Millisecond
 	t.Cleanup(func() { shownWait, shownPause = wait, pause })
 	for _, tc := range []struct {
-		name string
-		gone bool
-	}{{"hidden", false}, {"gone", true}} {
+		name         string
+		answers      bool          // the page answers, hidden
+		listed       bool          // getTree lists the context
+		wait, before time.Duration // shownWait; waitShown returns before
+	}{
+		{"hidden", true, true, 20 * time.Millisecond, 10 * time.Second},
+		{"no page yet", false, true, 20 * time.Millisecond, 10 * time.Second},
+		{"gone", false, false, time.Minute, 10 * time.Second},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			url := fakeBiDi(t, func(string, json.RawMessage) (any, *Error) {
-				if tc.gone {
+			shownWait = tc.wait
+			url := fakeBiDi(t, func(method string, _ json.RawMessage) (any, *Error) {
+				switch {
+				case method == "browsingContext.getTree":
+					tree := []map[string]string{{"context": "other", "userContext": "default"}}
+					if tc.listed {
+						tree = append(tree, map[string]string{"context": "ctx-1", "userContext": "default"})
+					}
+					return map[string]any{"contexts": tree}, nil
+				case !tc.answers:
 					return nil, &Error{Code: "no such frame", Message: "gone"}
 				}
 				return map[string]any{"type": "success", "result": map[string]any{"type": "string", "value": "hidden"}}, nil
@@ -360,10 +386,130 @@ func TestWaitShownGivesUp(t *testing.T) {
 			t.Cleanup(func() { _ = c.Close() })
 			var notes []string
 			b := &Browser{conn: c, logf: func(s string) { notes = append(notes, s) }}
+			start := time.Now()
 			err = b.waitShown(context.Background(), "ctx-1")
-			if tc.gone != (err != nil) || tc.gone == (len(notes) == 1) {
+			if tc.answers == (err != nil) || tc.answers != (len(notes) == 1) {
 				t.Errorf("waitShown = %v, notes %q", err, notes)
 			}
+			if !tc.answers && !discarded(err) {
+				t.Errorf("waitShown = %v, want no such frame", err)
+			}
+			if d := time.Since(start); d >= tc.before {
+				t.Errorf("waitShown took %s", d)
+			}
 		})
+	}
+}
+
+// On a busy machine a new window can lose its page for good, or never
+// get one in time. NewTab closes it and opens another.
+func TestNewTabReplacesAWindowThatLostItsPage(t *testing.T) {
+	wait, pause := shownWait, shownPause
+	shownWait, shownPause = 50*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { shownWait, shownPause = wait, pause })
+	for _, tc := range []struct {
+		name   string
+		listed bool // the first window stays listed, without a page
+	}{{"gone", false}, {"no page in time", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var created, closed []string
+			url := fakeBiDi(t, func(method string, params json.RawMessage) (any, *Error) {
+				mu.Lock()
+				defer mu.Unlock()
+				var p struct {
+					Context string `json:"context"`
+					Target  struct {
+						Context string `json:"context"`
+					} `json:"target"`
+				}
+				_ = json.Unmarshal(params, &p)
+				switch method {
+				case "browsingContext.create":
+					id := fmt.Sprintf("ctx-%d", len(created)+1)
+					created = append(created, id)
+					return map[string]string{"context": id}, nil
+				case "browsingContext.close":
+					closed = append(closed, p.Context)
+					return map[string]any{}, nil
+				case "browsingContext.getTree":
+					tree := []map[string]string{}
+					for _, id := range created {
+						if (id != "ctx-1" || tc.listed) && !slices.Contains(closed, id) {
+							tree = append(tree, map[string]string{"context": id, "userContext": "default"})
+						}
+					}
+					return map[string]any{"contexts": tree}, nil
+				case "script.evaluate":
+					if p.Target.Context == "ctx-1" {
+						return nil, &Error{Code: "no such frame", Message: "DiscardedBrowsingContextError: BrowsingContext does no longer exist"}
+					}
+					return map[string]any{"type": "success", "result": map[string]any{"type": "string", "value": "visible"}}, nil
+				}
+				return map[string]string{"subscription": "s"}, nil
+			})
+			c, err := Dial(context.Background(), url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			var notes []string
+			b := &Browser{conn: c, logf: func(s string) { notes = append(notes, s) }}
+			got, err := b.NewTab(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if id := got.(*tab).id; id != "ctx-2" || !slices.Equal(closed, []string{"ctx-1"}) || len(notes) != 1 {
+				t.Errorf("NewTab = %q, created %v, closed %v, notes %q; want ctx-2 with ctx-1 closed", id, created, closed, notes)
+			}
+		})
+	}
+}
+
+// A create Firefox doesn't answer in time (it answers once the window's
+// first page has loaded) is taken like a discarded one: NewTab takes the
+// window it opened.
+func TestNewTabTakesTheWindowOfACreateWithNoAnswer(t *testing.T) {
+	wait, pause := createWait, newTabPause
+	createWait, newTabPause = 50*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { createWait, newTabPause = wait, pause })
+	var mu sync.Mutex
+	creates := 0
+	opened := false
+	url := fakeBiDi(t, func(method string, _ json.RawMessage) (any, *Error) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch method {
+		case "browsingContext.create":
+			creates++
+			opened = true
+			return noAnswer, nil
+		case "browsingContext.getTree":
+			tree := []map[string]string{{"context": "first", "userContext": "default"}}
+			if opened {
+				tree = append(tree, map[string]string{"context": "slow", "userContext": "default"})
+			}
+			return map[string]any{"contexts": tree}, nil
+		case "script.evaluate":
+			return map[string]any{"type": "success", "result": map[string]any{"type": "string", "value": "visible"}}, nil
+		}
+		return map[string]string{"subscription": "s"}, nil
+	})
+	c, err := Dial(context.Background(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	b := &Browser{conn: c}
+	got, err := b.NewTab(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if id := got.(*tab).id; id != "slow" || creates != 1 {
+		t.Errorf("NewTab = %q after %d creates, want the window of the first", id, creates)
 	}
 }

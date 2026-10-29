@@ -98,7 +98,7 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 }
 
 // createContext opens the window behind a new tab and returns its
-// context.
+// context, once its page answers.
 //
 // The window opens with "background": true, which only means it doesn't
 // take the focus. A foreground create makes Firefox wait for the new
@@ -107,29 +107,69 @@ func (b *Browser) NewTab(ctx context.Context) (capture.Tab, error) {
 // (Windows runners) that fails with "no such frame" while the window is
 // fine. waitShown does that wait instead, with time to spare.
 //
-// A Firefox that has just started can still be swapping out its first
-// window. A new window can also move to another process before the
-// command returns. Either way browsingContext.create fails with "no
-// such frame" (the context was discarded), often with the window open
-// all the same. So after each such failure createContext looks for a
-// window of its user context that wasn't there before and takes it,
-// closing any other a failed try left behind. Without one it tries
-// again for a few seconds. On a slow machine (Windows runners) it can
-// keep failing: the last try opens a tab in a window that is already
-// there, in front.
+// On a busy machine a window can also lose its page for good, or never
+// get one: Firefox discards it, or its first document doesn't come
+// while waitShown waits. Such a window is closed and another opened, up
+// to shownTries windows in all.
 func (b *Browser) createContext(ctx context.Context) (string, error) {
 	// One at a time, so a window another NewTab opened is never taken.
 	b.createMu.Lock()
 	defer b.createMu.Unlock()
+	var err error
+	for try := 1; try <= shownTries; try++ {
+		var id string
+		if id, err = b.openContext(ctx); err != nil {
+			return "", err
+		}
+		if err = b.waitShown(ctx, id); err == nil || !discarded(err) || ctx.Err() != nil {
+			return id, err
+		}
+		_ = b.conn.Call(ctx, "browsingContext.close", map[string]any{"context": id}, nil)
+		if try < shownTries {
+			b.log("a new window lost its page; opening another")
+		}
+	}
+	return "", err
+}
+
+// openContext opens a window and returns its context.
+//
+// A Firefox that has just started can still be swapping out its first
+// window. A new window can also move to another process before the
+// command returns. Either way browsingContext.create fails with "no
+// such frame" (the context was discarded), often with the window open
+// all the same. So after each such failure openContext looks for a
+// window of its user context that wasn't there before and takes it,
+// closing any other a failed try left behind. A create that gets no
+// answer within createWait is taken the same way: Firefox answers once
+// the window's first page has loaded, which a busy machine can hold up
+// for long. Without a window it tries again for a few seconds. On a
+// slow machine (Windows runners) it can keep failing: the last try
+// opens a tab in a window that is already there, in front.
+func (b *Browser) openContext(ctx context.Context) (string, error) {
 	params := map[string]any{"type": "window", "background": true}
 	if b.userContext != "" {
 		params["userContext"] = b.userContext
 	}
 	before, treeErr := b.topContexts(ctx)
-	var res struct {
-		Context string `json:"context"`
+	last := false
+	create := func() (string, error) {
+		if last {
+			// A tab in the background would stay hidden.
+			params["type"], params["background"] = "tab", false
+		}
+		var res struct {
+			Context string `json:"context"`
+		}
+		cctx, cancel := context.WithTimeout(ctx, createWait)
+		defer cancel()
+		err := b.conn.Call(cctx, "browsingContext.create", params, &res)
+		if err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+			err = &Error{Code: "no such frame", Message: "browsingContext.create got no answer in " + createWait.String()}
+		}
+		return res.Context, err
 	}
-	err := b.conn.Call(ctx, "browsingContext.create", params, &res)
+	id, err := create()
 	for try := 1; err != nil && discarded(err) && try <= newTabTries; try++ {
 		select {
 		case <-ctx.Done():
@@ -138,27 +178,26 @@ func (b *Browser) createContext(ctx context.Context) (string, error) {
 		}
 		if treeErr == nil {
 			if id := b.adoptNew(ctx, before); id != "" {
-				return id, b.waitShown(ctx, id)
+				return id, nil
 			}
 		}
 		if try == newTabTries {
 			break
 		}
-		if try == newTabTries-1 {
-			// A tab in the background would stay hidden.
-			params["type"], params["background"] = "tab", false
-		}
-		err = b.conn.Call(ctx, "browsingContext.create", params, &res)
+		last = try == newTabTries-1
+		id, err = create()
 	}
 	if err != nil {
 		return "", err
 	}
-	return res.Context, b.waitShown(ctx, res.Context)
+	return id, nil
 }
 
 // waitShown waits until the page in context id is no longer hidden, for
 // up to shownWait. Until its first document is there, Firefox answers
-// "no such frame"; a page that stays hidden is used all the same.
+// "no such frame". A context that is no longer among the browser's
+// windows is gone for good: waitShown returns at once. A page that
+// stays hidden is used all the same.
 func (b *Browser) waitShown(ctx context.Context, id string) error {
 	deadline := time.Now().Add(shownWait)
 	for {
@@ -176,6 +215,8 @@ func (b *Browser) waitShown(ctx context.Context, id string) error {
 			return err
 		case err == nil && res.Result.Value != "hidden":
 			return nil
+		case err != nil && b.gone(ctx, id):
+			return err
 		case time.Now().After(deadline):
 			if err != nil {
 				return err
@@ -191,10 +232,21 @@ func (b *Browser) waitShown(ctx context.Context, id string) error {
 	}
 }
 
-// shownWait bounds waitShown; it asks again every shownPause.
+// gone reports whether the browser no longer lists context id among its
+// windows. When it can't tell, the context is taken to be there.
+func (b *Browser) gone(ctx context.Context, id string) bool {
+	now, err := b.topContexts(ctx)
+	return err == nil && !now[id]
+}
+
+// shownWait bounds waitShown; it asks again every shownPause. A window
+// whose page doesn't answer in that time is closed and another opened,
+// up to shownTries in all. createWait bounds one browsingContext.create.
 var (
-	shownWait  = 10 * time.Second
+	shownWait  = 20 * time.Second
 	shownPause = 50 * time.Millisecond
+	shownTries = 2
+	createWait = 20 * time.Second
 )
 
 // newTabTries and newTabPause bound NewTab's tries of a discarded
