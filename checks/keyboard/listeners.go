@@ -394,9 +394,11 @@ var errGone = errors.New("the control is gone")
 // change they made (armMutJS). A request, a DOM change or an address
 // change made later (after a reply or a timer) may be the page's own
 // background activity: they count only when the page is quiet for as
-// long again without a press. When it isn't, the effect is unknown, as
-// it is for a navigation something else started and for anything that
-// came with a scroll: a scroll listener's changes are no answer.
+// long again without a press and, for a key, when the control's second
+// press does the same and that key on the page body doesn't, as a page
+// may do something once at any time. When not, the effect is unknown,
+// as it is for a navigation something else started and for anything
+// that came with a scroll: a scroll listener's changes are no answer.
 // Navigations logged before act are set aside first.
 //
 // A DOM change, navigation or address change another handler made
@@ -460,22 +462,66 @@ func (w *walker) effectOf(ctx context.Context, act func() error, base *baseline)
 	}
 	// Something happened the walk can't tie to the press: the same
 	// time with no press says whether the page does it by itself.
+	eff := laterEffect(e)
 	q, err := w.window(ctx, func() error { return nil })
 	if err != nil {
 		return "", err
 	}
-	switch {
-	case w.left() || !q.quiet() || q.mut.Scrolled:
+	if w.left() || !q.quiet() || q.mut.Scrolled || eff == "" {
 		return PressUnknown, nil
+	}
+	if base == nil {
+		return eff, nil
+	}
+	// A quiet page may still do something once: the tail of its load
+	// (a late favicon or a request the browser makes for it) on a slow
+	// machine lands in whatever window is open then. So the key goes
+	// to the page body for as long again, then to the control once
+	// more: the effect counts only when the control's second press
+	// does it too and the body press doesn't.
+	body, again, err := w.again(ctx, act, base)
+	if err != nil {
+		return "", err
+	}
+	if w.left() {
+		return PressUnknown, nil
+	}
+	if own, ok := ownEffect(again); ok {
+		return own, nil
+	}
+	if shows(body, eff) || !shows(again, eff) || again.mut.Scrolled {
+		return PressUnknown, nil
+	}
+	return eff, nil
+}
+
+// laterEffect names what a window shows that came after its press (a
+// request, a DOM change or an address change after a reply or a timer),
+// "" for none of them.
+func laterEffect(e effects) string {
+	switch {
 	case e.reqs > 0:
-		return PressRequest, nil
+		return PressRequest
 	case e.mut.Other > 0:
-		return PressDOM, nil
+		return PressDOM
 	case e.mut.Drift:
 		// The address changed later (after a reply or a timer).
-		return PressNavigation, nil
+		return PressNavigation
 	}
-	return PressUnknown, nil
+	return ""
+}
+
+// shows says whether a window shows the later effect named eff.
+func shows(e effects, eff string) bool {
+	switch eff {
+	case PressRequest:
+		return e.reqs > 0
+	case PressDOM:
+		return e.mut.Other > 0
+	case PressNavigation:
+		return e.mut.Drift
+	}
+	return false
 }
 
 // ownEffect says what a press did when its control's own handlers
@@ -535,6 +581,10 @@ func (w *walker) window(ctx context.Context, act func() error) (e effects, err e
 	g.mu.Unlock()
 	if err = act(); err != nil {
 		return
+	}
+	if w.onWindow != nil {
+		w.windows++
+		w.onWindow(ctx, w.windows)
 	}
 	if _, err = w.reader.Eval(ctx, pressEndJS); err != nil {
 		return

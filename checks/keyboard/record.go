@@ -64,6 +64,12 @@ type walker struct {
 	budget    int
 	reloads   int
 	loaded    time.Time // when the page walked was loaded
+	// onWindow, when set, is called in each of listeners' windows
+	// after its press is sent, with the window's number from 1: the
+	// tests make the page do something once at a time of their choice
+	// through it, as a slow machine may.
+	onWindow func(ctx context.Context, n int)
+	windows  int
 }
 
 // partial is the trace recorded so far, or nil before the walk began.
