@@ -368,7 +368,7 @@ func TestAcceptKeepsTheEvidenceChain(t *testing.T) {
 	}
 	// Deleting the snapshot keeps its pack for the run's chain.
 	code, _, errOut = runCLI(t, "snapshots", "delete", "good")
-	if code != exitOK || !strings.Contains(errOut, `note: snapshot "good" had an evidence pack; it is kept in .soundcheck/evidence/`) {
+	if code != exitOK || !strings.Contains(errOut, `note: snapshot "good" had an evidence pack; it is kept in `+filepath.Join(".soundcheck", "evidence")+string(filepath.Separator)) {
 		t.Errorf("delete: exit %d %s", code, errOut)
 	}
 	if code, out, errOut := runCLI(t, "evidence", "verify", runDir); code != exitOK || !strings.Contains(errOut, "was deleted or taken again") {
@@ -495,7 +495,7 @@ func TestRetakeKeepsTheEvidencePack(t *testing.T) {
 	if err := evidence.Write(snap, must(store.LoadRun(snap)), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.keepReplaced("good"); err != nil || !strings.Contains(b.String(), `note: snapshot "good" had an evidence pack; it is kept in .soundcheck/evidence/`) {
+	if err := s.keepReplaced("good"); err != nil || !strings.Contains(b.String(), `note: snapshot "good" had an evidence pack; it is kept in `+filepath.Join(".soundcheck", "evidence")+string(filepath.Separator)) {
 		t.Errorf("pack: %v %q", err, b.String())
 	}
 	if entries, err := os.ReadDir(filepath.Join(".soundcheck", "evidence")); err != nil || len(entries) != 1 {

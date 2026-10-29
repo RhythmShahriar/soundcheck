@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -310,6 +311,11 @@ func TestRunSnapshot(t *testing.T) {
 	}
 	// The site folders are the owner's only and the log, which holds an
 	// --eaa run's warnings (page paths, widget names), is 0600 (M6).
+	// Windows has no Unix permission bits (Go reports 0777 and 0666
+	// there), so this is checked on the other systems only.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	for _, d := range []string{Folder, filepath.Join(Folder, "one"), filepath.Join(Folder, "two")} {
 		if fi, err := os.Stat(filepath.Join(filepath.Dir(p), d)); err != nil || fi.Mode().Perm() != 0o700 {
 			t.Errorf("%s: %v, want 0700", d, modeOf(fi, err))

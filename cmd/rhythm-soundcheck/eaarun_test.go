@@ -516,7 +516,7 @@ func TestAcceptEvidenceNote(t *testing.T) {
 	}
 	evidenceNote(acceptedPack{kept: "evidence/ab12", signed: true}, "base", &b)
 	for _, want := range []string{`note: accept changed run.json, the pages file and snapshot.json of snapshot "base"`,
-		"kept in .soundcheck/evidence/ab12", "evidence verify of later --eaa runs", "evidence sign base --key"} {
+		"kept in " + filepath.Join(".soundcheck", "evidence", "ab12"), "evidence verify of later --eaa runs", "evidence sign base --key"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("missing %q in %q", want, b.String())
 		}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -103,7 +104,8 @@ func TestStatementCommand(t *testing.T) {
 		if m := mode(t, path); m != 0o600 {
 			t.Errorf("%s: mode %o", file, m)
 		}
-		if !strings.Contains(errOut, "Statement draft written to "+path+"\n") {
+		// The line names the file as it was typed, slashes and all.
+		if !strings.Contains(errOut, "Statement draft written to out/"+file+"\n") {
 			t.Errorf("no line for %s:\n%s", path, errOut)
 		}
 	}
@@ -206,7 +208,7 @@ func TestStatementRefusals(t *testing.T) {
 		{[]string{"--md", "--html"}, exitUsage, "pick one format, not --html and --md"},
 		{[]string{"-o", "s.txt"}, exitUsage, "can't tell the format of s.txt from its extension; use .md, .html, .json or .jsonld"},
 		{[]string{"nosuch"}, exitUsage, `no snapshot named "nosuch"; see rhythm-soundcheck snapshots`},
-		{[]string{"--config", "nosuch.yaml"}, exitUsage, "--config: nosuch.yaml: no such file or directory"},
+		{[]string{"--config", "nosuch.yaml"}, exitUsage, "--config: nosuch.yaml: " + syscall.ENOENT.Error()}, // the OS's own words
 	} {
 		code, _, errOut := runCLI(t, append([]string{"statement"}, tc.args...)...)
 		if code != tc.code || errOut != "rhythm-soundcheck: "+tc.want+"\n" {
