@@ -554,7 +554,11 @@ func mismatchWith(before, after *model.Run, missing int) []string {
 		w = append(w, "one run was logged in and the other wasn't")
 	}
 	if missing > 0 {
-		w = append(w, fmt.Sprintf("%d pages from the snapshot weren't checked this time", missing))
+		verb := "weren't"
+		if missing == 1 {
+			verb = "wasn't"
+		}
+		w = append(w, fmt.Sprintf("%s from the snapshot %s checked this time", plural(missing), verb))
 	}
 	return w
 }

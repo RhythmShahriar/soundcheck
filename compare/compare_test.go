@@ -111,6 +111,22 @@ func TestMismatchEchoMode(t *testing.T) {
 	}
 }
 
+// The note on snapshot pages a compare didn't check counts them right.
+func TestMismatchMissingPages(t *testing.T) {
+	before, after := &model.Run{}, &model.Run{}
+	for n, want := range map[int]string{
+		1: "1 page from the snapshot wasn't checked this time",
+		3: "3 pages from the snapshot weren't checked this time",
+	} {
+		if w := mismatchWith(before, after, n); !slices.Equal(w, []string{want}) {
+			t.Errorf("%d missing: %q, want %q", n, w, want)
+		}
+	}
+	if w := mismatchWith(before, after, 0); len(w) != 0 {
+		t.Errorf("none missing warned: %q", w)
+	}
+}
+
 func TestMismatchEngine(t *testing.T) {
 	before, after := &model.Run{}, &model.Run{}
 	after.Options.Engine = "firefox"
