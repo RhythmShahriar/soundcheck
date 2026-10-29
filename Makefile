@@ -10,8 +10,10 @@ LDFLAGS := $(if $(VERSION),-X main.version=$(VERSION))
 build: ## build bin/rhythm-soundcheck (rhythm-soundcheck --version says which)
 	go build -ldflags "$(LDFLAGS)" -o bin/rhythm-soundcheck ./cmd/rhythm-soundcheck
 
-# The visual checks take about 6 minutes under -race, so Go's 10 minute
-# default timeout is too close for the whole suite.
+# The visual checks take about 6 minutes under -race and the browser
+# tests of cmd/rhythm-soundcheck about 5, run one after another, so Go's
+# 10 minute default timeout is too close for the whole suite (and
+# -count=2 passes it). See CONTRIBUTING.md.
 test: ## run tests (browser tests need Chrome)
 	go test -race -timeout 30m ./...
 

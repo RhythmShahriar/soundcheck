@@ -227,3 +227,29 @@ func TestREADMEEAAMissing(t *testing.T) {
 		t.Errorf("README.md: missing %q", got)
 	}
 }
+
+// The browser tests of this package run one after another (they change
+// the working directory) and take about 5 minutes under -race, so
+// CONTRIBUTING.md and `make test` give go test a timeout past Go's 10
+// minute default, which -count=2 would pass.
+func TestTestTimeoutDocumented(t *testing.T) {
+	timeout := regexp.MustCompile(`go test -race -timeout (\d+)m \./\.\.\.`)
+	for _, name := range []string{"../../CONTRIBUTING.md", "../../Makefile"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := timeout.FindSubmatch(data)
+		if m == nil {
+			t.Errorf("%s gives no go test -race -timeout", name)
+			continue
+		}
+		var mins int
+		if _, err := fmt.Sscan(string(m[1]), &mins); err != nil || mins < 20 {
+			t.Errorf("%s gives go test %sm, want at least 20m", name, m[1])
+		}
+	}
+	if data, _ := os.ReadFile("../../CONTRIBUTING.md"); !strings.Contains(string(data), "-count=2") {
+		t.Error("CONTRIBUTING.md doesn't say what -count does to the timeout")
+	}
+}

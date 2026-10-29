@@ -10,6 +10,11 @@ make hooks   # Conventional Commits check
 make check   # lint + tests (browser tests need Chrome or Chromium)
 ```
 
+Running the tests by hand, give them room: `go test -race -timeout 30m ./...`, as `make test`
+does. The browser tests of `cmd/rhythm-soundcheck` run one after another and take about 5
+minutes under `-race`, so Go's 10 minute default is too close: `-count=2` passes it. 30 minutes
+leaves room for `-count=2`; add 10 more for each count above that.
+
 A build from source names the release it is heading for: `nextRelease` in
 [cmd/rhythm-soundcheck/version.go](cmd/rhythm-soundcheck/version.go). The pull request that starts
 a release's work raises it.
