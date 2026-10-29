@@ -17,10 +17,10 @@ import (
 	"github.com/RhythmShahriar/soundcheck/store"
 )
 
-// serveFixture starts h on the first free port of 127.0.0.1:40400-40449.
+// serveFixture starts h on the first free port of 127.0.0.1:40500-40549.
 func serveFixture(t *testing.T, h http.Handler) *httptest.Server {
 	t.Helper()
-	for port := 40400; port < 40450; port++ {
+	for port := 40500; port < 40550; port++ {
 		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
@@ -32,7 +32,7 @@ func serveFixture(t *testing.T, h http.Handler) *httptest.Server {
 		t.Cleanup(srv.Close)
 		return srv
 	}
-	t.Fatal("no free port in 40400-40449")
+	t.Fatal("no free port in 40500-40549")
 	return nil
 }
 
@@ -43,8 +43,14 @@ func serveFixture(t *testing.T, h http.Handler) *httptest.Server {
 // can't tell the click did anything: the issue is kept, not checked. In
 // "marker" the later page adds a script that marks the page as used by
 // keyboard on any key press: the control still ignores Enter and Space,
-// so the issue is still open.
+// so the issue is still open. So it is in "scroll", where the later
+// page is long and draws a reading-progress bar on scroll (Space on a
+// focused div scrolls by default), in "enternav", where a page-wide
+// handler navigates on Enter, plus "keyreplace", where one rewrites
+// the address on every key.
 func TestMouseOnlyNeverFalselyFixed(t *testing.T) {
+	const menuControl = `<div id="more" tabindex="0" role="button">Menu</div><p id="out"></p>
+<script>document.getElementById("more").addEventListener("click", function () { document.getElementById("out").textContent = "Opened"; });</script>`
 	needBrowser(t)
 	if testing.Short() {
 		t.Skip("runs Chrome twice per case")
@@ -61,10 +67,15 @@ func TestMouseOnlyNeverFalselyFixed(t *testing.T) {
   });
 });</script>`,
 			after: `<p id="clock"></p><script>setInterval(function () { document.getElementById("clock").textContent = Date.now(); }, 50);</script>`},
-		{name: "marker",
-			control: `<div id="more" tabindex="0" role="button">Menu</div><p id="out"></p>
-<script>document.getElementById("more").addEventListener("click", function () { document.getElementById("out").textContent = "Opened"; });</script>`,
+		{name: "marker", control: menuControl,
 			head: `<script>document.addEventListener("keydown", function () { document.documentElement.classList.add("kbd-user"); });</script>`},
+		{name: "scroll", control: menuControl,
+			after: `<div style="height:3000px">x</div><div id="bar" style="position:fixed;top:0;height:3px;width:0"></div>
+<script>addEventListener("scroll", function () { bar.style.width = Math.round(100 * scrollY / (document.documentElement.scrollHeight - innerHeight)) + "%"; });</script>`},
+		{name: "enternav", control: menuControl,
+			head: `<script>document.addEventListener("keydown", function (e) { if (e.key === "Enter") location.href = "/search"; });</script>`},
+		{name: "keyreplace", control: menuControl,
+			head: `<script>document.addEventListener("keydown", function (e) { history.replaceState(null, "", "?k=" + e.key); });</script>`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

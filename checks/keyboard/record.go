@@ -175,7 +175,12 @@ type guard struct {
 	// mouse-only control being pressed started itself (candJS): the
 	// only ones that count as its response.
 	candNavs int
-	left     bool // a navigation the page couldn't be kept from committed
+	// keyNavs counts those another handler started while a key press
+	// or click was sent (a page-wide or delegated keydown handler) and
+	// keyTo lists where they went, as the guard logged them.
+	keyNavs int
+	keyTo   []string
+	left    bool // a navigation the page couldn't be kept from committed
 	// armed is true while the walk has the page; reloading while the
 	// walk loads it again itself, which isn't the page leaving.
 	armed, reloading bool
@@ -595,6 +600,7 @@ func (w *walker) navigations(ctx context.Context) error {
 		El      int     `json:"el"`    // the forward stop it came from, by probe; -1 when unknown
 		Focus   bool    `json:"focus"` // it started in a focus handler
 		Cand    bool    `json:"cand"`  // a press on the marked control started it
+		Key     bool    `json:"key"`   // another handler of a press started it
 	}
 	if err := json.Unmarshal([]byte(raw), &log); err != nil {
 		return fmt.Errorf("navigation log: %w", err)
@@ -626,6 +632,12 @@ func (w *walker) navigations(ctx context.Context) error {
 		g.navs++
 		if n.Cand {
 			g.candNavs++
+		}
+		if n.Key {
+			g.keyNavs++
+			if len(g.keyTo) < maxList {
+				g.keyTo = append(g.keyTo, n.What)
+			}
 		}
 		kind := EffectNavigation
 		if n.Form {

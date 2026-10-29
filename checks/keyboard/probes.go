@@ -74,23 +74,44 @@ const startJS = `(() => {
 const guardJS = `(() => {
   if (window.__scKbNav) return 'ok';
   const pressEvents = ` + pressEvents + `;
-  const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: [], inFocus: false};
+  const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: [], inFocus: false, input: null, cand: null, act: null, candOff: null};
+  // While a control is pressed (cand is set), Space doesn't scroll the
+  // page, its default for a focused div: a scroll listener's changes
+  // (a reading-progress bar, a sticky header, lazy images) would land
+  // in the press's window as if the press made them. This listener on
+  // window runs after the control's handlers and the document's.
+  for (const t of ['keydown', 'keypress']) {
+    addEventListener(t, e => { if (g.cand && e.isTrusted && e.cancelable && (e.key === ' ' || e.code === 'Space')) e.preventDefault(); });
+  }
   if (!window.navigation) return 'no navigation API';
   // Set while the page handles a focus event (a window capture listener
   // runs before the element's own), so a navigation a focus handler
   // starts is told from one a timer starts.
   addEventListener('focus', () => { g.inFocus = true; setTimeout(() => { g.inFocus = false; }, 0); }, true);
-  // The element a key press or click the walk sends is handled on, set
-  // while its handlers run: a navigation one of them starts is told
-  // from one a timer or another element starts (cand is the mouse-only
-  // control being pressed, see listeners.go). act is set by candJS's
-  // listeners on cand itself, only while the event is at cand or inside
-  // it, for the DOM changes the control's own handlers make (armMutJS).
-  g.input = null; g.cand = null; g.act = null; g.candOff = null;
+  // input is the element a key press or click the walk sends is handled
+  // on, set while its handlers run: a navigation one of them starts is
+  // told from one a timer starts. cand is the mouse-only control being
+  // pressed (see listeners.go) and act is set by candJS's listeners on
+  // cand itself, only while the event is at cand or inside it: what
+  // changes while it is set (a navigation, the address, the DOM) is the
+  // control's own doing. moves counts its navigations and address
+  // changes (armMutJS).
+  g.moves = 0;
   for (const t of pressEvents) {
     addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; setTimeout(() => { g.input = null; }, 0); }, true);
   }
   navigation.addEventListener('navigate', e => {
+    // A navigation or address change (pushState, replaceState, a new
+    // fragment) is the control's own only when one of its own handlers
+    // started it (act, set by candJS) or it came from inside it (a
+    // link's click). key marks one another handler started while a
+    // press was sent (a page-wide or delegated keydown handler), which
+    // listeners.go judges against the same key pressed on the body.
+    const src = e.sourceElement;
+    const within = n => !!(g.cand && n && n.nodeType === 1 && (g.cand === n || g.cand.contains(n)));
+    const cand = !g.inFocus && !!g.cand && (g.act === g.cand || within(src));
+    const key = !g.inFocus && !cand && !!g.input;
+    if (cand) g.moves++;
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;
     let p = '';
     try { p = new URL(e.destination.url).pathname; } catch (x) { p = ''; }
@@ -98,11 +119,8 @@ const guardJS = `(() => {
     // key press, so the press is found by the element instead: the last
     // stop inside the element the navigation came from.
     let el = -1;
-    const src = e.sourceElement;
     if (src) for (let i = g.els.length - 1; i >= 0; i--) { const x = g.els[i]; if (x === src || src.contains(x)) { el = i; break; } }
-    const within = n => !!(g.cand && n && n.nodeType === 1 && (g.cand === n || g.cand.contains(n)));
-    const cand = !g.inFocus && (within(src) || within(g.input));
-    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el, focus: g.inFocus, cand});
+    g.log.push({form: !!e.formData, what: (e.formData ? 'POST ' : 'GET ') + p, stopped: e.cancelable, at: performance.now(), el, focus: g.inFocus, cand, key});
     if (e.cancelable) e.preventDefault();
   });
   return 'ok';
