@@ -5,10 +5,13 @@ package health
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -395,5 +398,79 @@ func TestLostTitleIsOneLine(t *testing.T) {
 	all = append(compare.Issues(before, after), Module{}.Compare(context.Background(), cc)...)
 	if len(all) != 1 || all[0].Check != "health/title" || all[0].Before != "About us" || all[0].After != "About the shop" {
 		t.Errorf("a changed title = %+v", all)
+	}
+}
+
+// bullets matches a run of the kit's mask bullets.
+var bullets = regexp.MustCompile(`•+`)
+
+// randomAlnum returns n random letters and digits for a fake token.
+func randomAlnum(t *testing.T, n int) string {
+	t.Helper()
+	const set = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	for i := range b {
+		b[i] = set[int(b[i])%len(set)]
+	}
+	return string(b)
+}
+
+// A JS error or PHP message longer than a title keeps is masked whole
+// in an --eaa run before it is cut: a token the cut crosses is masked,
+// not shown up to the cut; the cut never splits a mask. Every cut
+// point inside the token is tried.
+func TestLongMessageMaskedBeforeCut(t *testing.T) {
+	enc := base64.RawURLEncoding
+	gh := "gh" + "p_" + randomAlnum(t, 36)
+	jwt := enc.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`)) + "." +
+		enc.EncodeToString([]byte(`{"sub":"`+randomAlnum(t, 12)+`","name":"Test"}`)) + "." + randomAlnum(t, 43)
+	for name, secret := range map[string]string{"github": gh, "jwt": jwt} {
+		body := secret[4:] // what must never show, even in part
+		for pad := 100; pad < 140; pad++ {
+			msg := "Request failed " + strings.Repeat("x", pad-15) + " key " + secret + " end"
+			for _, php := range []bool{false, true} {
+				p := &model.Page{Status: 200, TextLength: 500, FinalURL: "https://shop.example/"}
+				if php {
+					p.Text = "Warning: " + msg + " in /var/www/html/wp-content/themes/x/functions.php on line 4"
+				} else {
+					p.Console = []string{msg}
+				}
+				c := ctx()
+				c.Run.Options.EAA = true
+				Module{}.CheckPage(c, p)
+				if len(p.Issues) == 0 {
+					t.Fatalf("%s pad %d php %v: no issue", name, pad, php)
+				}
+				for _, is := range p.Issues {
+					for _, s := range []string{is.Title, is.Key} {
+						for i := 0; i+6 <= len(body); i++ {
+							if strings.Contains(s, body[i:i+6]) {
+								t.Fatalf("%s pad %d php %v: part of the token shows: %q", name, pad, php, s)
+							}
+						}
+						for _, run := range bullets.FindAllString(s, -1) {
+							if run != "•••••" {
+								t.Errorf("%s pad %d php %v: a split mask: %q", name, pad, php, s)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// Without --eaa the title is cut as it always was, so the issue keys of
+// earlier runs still match.
+func TestLongMessageCutWithoutEAA(t *testing.T) {
+	msg := strings.Repeat("abc ", 50)
+	p := &model.Page{Status: 200, TextLength: 500, Console: []string{msg}}
+	Module{}.CheckPage(ctx(), p)
+	want := "JS error: " + string([]rune(strings.TrimSpace(msg))[:139]) + "…"
+	if _, ok := titles(p)[want]; !ok {
+		t.Errorf("want %q, got %v", want, keys(titles(p)))
 	}
 }

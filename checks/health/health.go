@@ -22,9 +22,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/rhythm/kit/crawl"
 	"github.com/RhythmShahriar/soundcheck/check"
+	"github.com/RhythmShahriar/soundcheck/echolink"
+	"github.com/RhythmShahriar/soundcheck/internal/pii"
 	"github.com/RhythmShahriar/soundcheck/model"
 	"github.com/RhythmShahriar/soundcheck/rules"
 )
@@ -107,6 +110,9 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 			Fix: "Link to the final URL and collapse the chain into one redirect."})
 	}
 	text := p.Text
+	// An --eaa run masks what it shows: a message is masked whole before
+	// it is cut, see trimMessage.
+	eaa := cc.Run != nil && cc.Run.Options.EAA
 
 	for _, m := range phpError.FindAllStringSubmatch(text, 20) {
 		kind := strings.ToLower(m[1])
@@ -118,7 +124,7 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 			level = model.Notice
 		}
 		check.Page(p, model.Issue{Check: "health/php-error", Level: level,
-			Title:  "PHP " + titleCase(m[1]) + ": " + trimMessage(m[2]),
+			Title:  "PHP " + titleCase(m[1]) + ": " + trimMessage(m[2], eaa),
 			Source: shortPath(m[3]) + ":" + m[4],
 			Fix:    "Fix the code at the source line and turn display_errors off in production so visitors never see these."})
 	}
@@ -153,7 +159,7 @@ func (m Module) CheckPage(cc *check.Context, p *model.Page) {
 				src = "inline script"
 			}
 		}
-		check.Page(p, model.Issue{Check: "health/js-error", Level: model.Warning, Title: "JS error: " + normalize(msg), Source: src,
+		check.Page(p, model.Issue{Check: "health/js-error", Level: model.Warning, Title: "JS error: " + normalize(msg, eaa), Source: src,
 			Fix: "Open the browser console on this page to see the full stack."})
 	}
 
@@ -430,19 +436,44 @@ func shortPath(p string) string {
 	return path.Base(p)
 }
 
-// trimMessage keeps PHP messages short and stable across runs.
-func trimMessage(s string) string {
+// maxMessage is the most runes of a message an issue's title keeps.
+const maxMessage = 140
+
+// maskRun matches what the masks put in place of a value: the kit's
+// bullets and the "***" (or "***@***") of pii.Redact.
+var maskRun = regexp.MustCompile(`•+|\*\*\*(?:@\*\*\*)?`)
+
+// trimMessage keeps PHP and JS messages short and stable across runs.
+// With mask set (an --eaa run, whose outputs mask secrets and personal
+// data) the whole message is masked first, the way those outputs mask
+// it: a token cut short no longer matches its pattern, so masking after
+// the cut would show its first part. The cut never lands inside a mask.
+func trimMessage(s string, mask bool) string {
 	s = strings.Join(strings.Fields(s), " ")
-	if r := []rune(s); len(r) > 140 {
-		s = string(r[:139]) + "…"
+	if mask {
+		s = pii.Redact(echolink.RedactLine(s))
 	}
-	return s
+	if utf8.RuneCountInString(s) <= maxMessage {
+		return s
+	}
+	cut := 0
+	for range maxMessage - 1 {
+		_, n := utf8.DecodeRuneInString(s[cut:])
+		cut += n
+	}
+	for _, m := range maskRun.FindAllStringIndex(s, -1) {
+		if m[0] < cut && cut < m[1] {
+			cut = m[0]
+			break
+		}
+	}
+	return s[:cut] + "…"
 }
 
 // normalize removes numbers (timestamps, IDs) from a JS error so the same
-// error groups across pages and runs.
-func normalize(s string) string {
-	s = trimMessage(s)
+// error groups across pages and runs. mask is trimMessage's.
+func normalize(s string, mask bool) string {
+	s = trimMessage(s, mask)
 	return digits.ReplaceAllString(s, "N")
 }
 
