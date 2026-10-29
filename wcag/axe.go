@@ -39,3 +39,15 @@ func (r Rule) Runs(version string) bool {
 	}
 	return slices.ContainsFunc(AxeTags(version), func(t string) bool { return slices.Contains(r.Tags, t) })
 }
+
+// reviewOnly are the axe rules that can never report a violation, only
+// incomplete results a person reviews: in the vendored axe-core the
+// caption check of video-caption and audio-caption returns false (a
+// captions track) or undefined (none), never a failure. A run keeps
+// violations only, so these rules find nothing and don't test their
+// criteria: 1.2.2 and 1.2.1 need a person.
+var reviewOnly = map[string]bool{"video-caption": true, "audio-caption": true}
+
+// CanFail reports whether the axe rule named id can report a violation
+// at all: false for the rules whose results only ever need review.
+func CanFail(id string) bool { return !reviewOnly[id] }

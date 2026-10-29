@@ -61,7 +61,7 @@ func TestSummarizeClean(t *testing.T) {
 	run := eaaRun()
 	run.KeyFlows = &model.KeyFlows{Run: 1, Skipped: []model.SkippedFlow{{File: "checkout.yaml", Reason: "needs --level flows"}}}
 	s := Summarize(run, each(pages), nil, nil, nil)
-	if len(s.Criteria.Failed) != 0 || len(s.Criteria.NoFailuresFound) != 27 || len(s.Criteria.NotTested) != 23 || s.Open != 0 {
+	if len(s.Criteria.Failed) != 0 || len(s.Criteria.NoFailuresFound) != 25 || len(s.Criteria.NotTested) != 25 || s.Open != 0 {
 		t.Errorf("clean: %d failed, %d no failures, %d not tested, %d open", len(s.Criteria.Failed), len(s.Criteria.NoFailuresFound), len(s.Criteria.NotTested), s.Open)
 	}
 	if !slices.Contains(s.Criteria.NotTested, "4.1.1") || !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {

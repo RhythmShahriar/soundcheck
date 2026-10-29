@@ -44,9 +44,9 @@ th { background: var(--note); }
 <h2>About the service</h2>
 <p><mark class="todo">[TO DO: describe the service in general terms, in words people with disabilities can use; or set statement.service.]</mark></p>
 <h2>How the service meets the accessibility requirements</h2>
-<p><mark class="todo">[TO DO: choose one after your review: &#34;fully compliant&#34;, &#34;partially compliant&#34; or &#34;not compliant&#34; with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 26 of them.]</mark></p>
+<p><mark class="todo">[TO DO: choose one after your review: &#34;fully compliant&#34;, &#34;partially compliant&#34; or &#34;not compliant&#34; with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 28 of them.]</mark></p>
 <h3>Problems found</h3>
-<p>On 2026-10-26 Soundcheck&#39;s tests found no failures on the pages where they finished. That doesn&#39;t mean there are none: 26 criteria need a person and some pages weren&#39;t fully tested (see &#34;Not tested&#34;).</p>
+<p>On 2026-10-26 Soundcheck&#39;s tests found no failures on the pages where they finished. That doesn&#39;t mean there are none: 28 criteria need a person and some pages weren&#39;t fully tested (see &#34;Not tested&#34;).</p>
 <h3>Disproportionate burden</h3>
 <p><mark class="todo">[TO DO: say if fixing any of this would be a disproportionate burden and why, or delete this section.]</mark></p>
 <h2>Accessibility features</h2>
@@ -78,8 +78,8 @@ th { background: var(--note); }
 <thead><tr><th scope="col">Criterion</th><th scope="col">Level</th><th scope="col">EN 301 549</th><th scope="col">How Soundcheck tests it</th><th scope="col">Result</th></tr></thead>
 <tbody>
 <tr><th scope="row">1.1.1 Non-text Content</th><td>A</td><td>9.1.1.1</td><td>partly: axe aria-meter-name, aria-progressbar-name, image-alt, input-image-alt, object-alt, role-img-alt, svg-img-alt</td><td>no failures found by these tests</td></tr>
-<tr><th scope="row">1.2.1 Audio-only and Video-only (Prerecorded)</th><td>A</td><td>9.1.2.1</td><td>partly: axe audio-caption</td><td>no failures found by these tests</td></tr>
-<tr><th scope="row">1.2.2 Captions (Prerecorded)</th><td>A</td><td>9.1.2.2</td><td>partly: axe video-caption</td><td>no failures found by these tests</td></tr>
+<tr><th scope="row">1.2.1 Audio-only and Video-only (Prerecorded)</th><td>A</td><td>9.1.2.1</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
+<tr><th scope="row">1.2.2 Captions (Prerecorded)</th><td>A</td><td>9.1.2.2</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">1.2.3 Audio Description or Media Alternative (Prerecorded)</th><td>A</td><td>9.1.2.3</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">1.2.4 Captions (Live)</th><td>AA</td><td>9.1.2.4</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">1.2.5 Audio Description (Prerecorded)</th><td>AA</td><td>9.1.2.5</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
@@ -140,7 +140,7 @@ th { background: var(--note); }
 <li>/broken/: keyboard was skipped (the page answered 500); its criteria count as not tested there.</li>
 <li>/catalog/: a11y timed out (axe-core timed out after 45s); its criteria count as not tested there.</li>
 <li>Content in frames from js.stripe.com wasn&#39;t tested.</li>
-<li>26 criteria need a person: 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.</li>
+<li>28 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.</li>
 <li>Only Chrome was used. The keyboard walk ran at desktop width.</li>
 <li>No screen reader, voice control or test with disabled users.</li>
 <li>EN 301 549 clauses 5 (generic requirements, such as closed functionality), 6 (two-way voice communication), 7 (video capabilities), 10 (non-web documents), 11 (software) and 12 (documentation and support services) are outside a website check and weren&#39;t tested.</li>

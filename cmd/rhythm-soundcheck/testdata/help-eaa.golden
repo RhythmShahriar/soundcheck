@@ -23,7 +23,7 @@ What the tests do:
 
 What they can't do:
 Of the 50 WCAG 2.1 A and AA success criteria, the tests look for failures of
-27 (29 of the 55 in WCAG 2.2). The other 23 need a person. Even for a
+25 (27 of the 55 in WCAG 2.2). The other 25 need a person. Even for a
 criterion the tests look at, only a person can say it is met. A person's
 review can follow WCAG-EM, the W3C's method for evaluating a website:
 https://www.w3.org/WAI/test-evaluate/conformance/wcag-em/

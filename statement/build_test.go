@@ -134,7 +134,7 @@ func TestBuild(t *testing.T) {
 	if r := row(d, "4.1.1"); r.Result != ResultNotTested || r.HowTested() != r.Note || r.Note == "" {
 		t.Errorf("4.1.1: %+v", r)
 	}
-	if d.Failed != 2 || d.NotTested != 23 {
+	if d.Failed != 2 || d.NotTested != 25 {
 		t.Errorf("%d failed, %d not tested", d.Failed, d.NotTested)
 	}
 	if !slices.Equal(d.Checked, []string{"/", "/about/", "/big/", "/legal/", "/shop/"}) || d.PrivatePages != 0 {
@@ -180,7 +180,7 @@ func TestBuildManual(t *testing.T) {
 		t.Errorf("1.4.11: %+v", r)
 	}
 	// The status sentence counts what the tests did.
-	if d.Failed != 1 || d.NotTested != 23 {
+	if d.Failed != 1 || d.NotTested != 25 {
 		t.Errorf("%d failed, %d not tested", d.Failed, d.NotTested)
 	}
 	if !slices.Equal(d.Notes, []string{"Your manual result for 2.4.11 is left out: WCAG 2.1 has no criterion 2.4.11."}) {
@@ -528,5 +528,41 @@ func TestBuildUnloadedPage(t *testing.T) {
 	}
 	if strings.Contains(out, "Soundcheck's tests found no failures on 2026") {
 		t.Error("the draft says the tests found no failures as if every page was tested")
+	}
+}
+
+// A page with a video and an audio clip that have no captions track:
+// axe's video-caption and audio-caption only ever ask for review there
+// and never fail. A run keeps failures only. The draft must not say the
+// tests found no failures of 1.2.1 and 1.2.2: a person checks them.
+func TestBuildUncaptionedMedia(t *testing.T) {
+	// What the a11y audit of <video src="/intro.mp4"></video> and
+	// <audio src="/talk.mp3" controls></audio> keeps: nothing.
+	pages := []model.Page{{Path: "/media/", Audits: audited(), Keyboard: &model.KeyboardSummary{}}}
+	in := input(pages, owner())
+	in.Run.Options.A11y.Rules = []string{"image-alt", "label", "video-caption", "audio-caption"}
+	d, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := Markdown(&b, d); err != nil {
+		t.Fatal(err)
+	}
+	person := regexp.MustCompile(`(\d+) criteria need a person: ([0-9., ]+)\.`).FindStringSubmatch(b.String())
+	for _, id := range []string{"1.2.1", "1.2.2"} {
+		r := row(d, id)
+		if r.Result != ResultNotTested || ResultText(r) != "not tested: needs a person" || len(r.TestedBy) > 0 {
+			t.Errorf("%s: %+v, %q", id, r, ResultText(r))
+		}
+		if slices.Contains(in.Summary.Criteria.NoFailuresFound, id) {
+			t.Errorf("%s counted as none found", id)
+		}
+		if person == nil || !slices.Contains(strings.Split(person[2], ", "), id) {
+			t.Errorf("%s not among the criteria that need a person: %v", id, person)
+		}
+	}
+	if strings.Contains(b.String(), "audio-caption") || strings.Contains(b.String(), "video-caption") {
+		t.Errorf("the draft names a caption rule as a test:\n%s", b.String())
 	}
 }

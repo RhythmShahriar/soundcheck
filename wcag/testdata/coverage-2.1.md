@@ -1,8 +1,8 @@
 | WCAG 2.1 | Level | EN 301 549 | How Soundcheck tests it |
 |---|---|---|---|
 | 1.1.1 Non-text Content | A | 9.1.1.1 | partly: axe aria-meter-name, aria-progressbar-name, image-alt, input-image-alt, object-alt, role-img-alt, svg-img-alt |
-| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | partly: axe audio-caption |
-| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | partly: axe video-caption |
+| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | not tested: needs a person |
+| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | not tested: needs a person |
 | 1.2.3 Audio Description or Media Alternative (Prerecorded) | A | 9.1.2.3 | not tested: needs a person |
 | 1.2.4 Captions (Live) | AA | 9.1.2.4 | not tested: needs a person |
 | 1.2.5 Audio Description (Prerecorded) | AA | 9.1.2.5 | not tested: needs a person |
@@ -51,4 +51,4 @@
 | 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled |
 | 4.1.3 Status Messages | AA | 9.4.1.3 | not tested: needs a person |
 
-27 of 50 criteria partly tested, 23 need a person.
+25 of 50 criteria partly tested, 25 need a person.

@@ -18,11 +18,11 @@ This information covers the 4 pages Soundcheck checked, listed under "Pages chec
 
 ## How the service meets the accessibility requirements
 
-[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 26 of them.]
+[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 28 of them.]
 
 ### Problems found
 
-On 2026-10-26 Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: 26 criteria need a person and some pages weren't fully tested (see "Not tested").
+On 2026-10-26 Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: 28 criteria need a person and some pages weren't fully tested (see "Not tested").
 
 ### Disproportionate burden
 
@@ -69,8 +69,8 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | Criterion | Level | EN 301 549 | How Soundcheck tests it | Result |
 |---|---|---|---|---|
 | 1.1.1 Non-text Content | A | 9.1.1.1 | partly: axe aria-meter-name, aria-progressbar-name, image-alt, input-image-alt, object-alt, role-img-alt, svg-img-alt | no failures found by these tests |
-| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | partly: axe audio-caption | no failures found by these tests |
-| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | partly: axe video-caption | no failures found by these tests |
+| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | not tested: needs a person | not tested: needs a person |
+| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | not tested: needs a person | not tested: needs a person |
 | 1.2.3 Audio Description or Media Alternative (Prerecorded) | A | 9.1.2.3 | not tested: needs a person | not tested: needs a person |
 | 1.2.4 Captions (Live) | AA | 9.1.2.4 | not tested: needs a person | not tested: needs a person |
 | 1.2.5 Audio Description (Prerecorded) | AA | 9.1.2.5 | not tested: needs a person | not tested: needs a person |
@@ -130,7 +130,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 - /broken/: keyboard was skipped (the page answered 500); its criteria count as not tested there.
 - /catalog/: a11y timed out (axe-core timed out after 45s); its criteria count as not tested there.
 - Content in frames from js.stripe.com wasn't tested.
-- 26 criteria need a person: 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.
+- 28 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.
 - Only Chrome was used. The keyboard walk ran at desktop width.
 - No screen reader, voice control or test with disabled users.
 - EN 301 549 clauses 5 (generic requirements, such as closed functionality), 6 (two-way voice communication), 7 (video capabilities), 10 (non-web documents), 11 (software) and 12 (documentation and support services) are outside a website check and weren't tested.

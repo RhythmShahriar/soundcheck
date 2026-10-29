@@ -86,3 +86,47 @@ func TestAxeTags(t *testing.T) {
 		t.Error("a best practice runs")
 	}
 }
+
+// video-caption and audio-caption fail only through their "caption"
+// check, which in the vendored axe-core returns false or undefined,
+// never true: they can't report a violation, so they test nothing.
+// After an axe bump that changes this, revisit reviewOnly.
+func TestReviewOnlyRules(t *testing.T) {
+	src, err := os.ReadFile(vendoredAxe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+	for _, id := range []string{"video-caption", "audio-caption"} {
+		i := strings.Index(js, `{id:"`+id+`"`)
+		if i < 0 {
+			t.Fatalf("no rule %s in the vendored axe-core", id)
+		}
+		end := strings.Index(js[i:], "}")
+		if rule := js[i : i+end]; !strings.Contains(rule, `all:[],any:[],none:["caption"]`) {
+			t.Errorf("%s: %s", id, rule)
+		}
+		if CanFail(id) {
+			t.Errorf("CanFail(%s) is true", id)
+		}
+	}
+	if !strings.Contains(js, `{id:"caption",evaluate:"caption-evaluate"}`) {
+		t.Error("the caption check changed")
+	}
+	j := strings.Index(js, `"caption-evaluate":`)
+	if j < 0 {
+		t.Fatal("no caption-evaluate")
+	}
+	name := strings.TrimSuffix(strings.SplitN(js[j+len(`"caption-evaluate":`):], ",", 2)[0], "}")
+	body := "function " + name + "(e,t,r){return!"
+	k := strings.Index(js, body)
+	if k < 0 {
+		t.Fatalf("caption-evaluate %s not found", name)
+	}
+	if fn := js[k : k+strings.Index(js[k:], "}function")]; !strings.HasSuffix(fn, "&&void 0") {
+		t.Errorf("caption-evaluate can now return true: %s", fn)
+	}
+	if !CanFail("image-alt") {
+		t.Error("CanFail(image-alt) is false")
+	}
+}

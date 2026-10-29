@@ -28,7 +28,7 @@
   "totals": {
     "criteria": 50,
     "failed": 0,
-    "not_tested": 23
+    "not_tested": 25
   },
   "criteria": [
     {
@@ -62,14 +62,12 @@
       "level": "A",
       "principle": "Perceivable",
       "en301549": "9.1.2.1",
-      "coverage": "partly",
-      "tested_by": [
-        "axe:audio-caption"
-      ],
-      "how_tested": "partly: axe audio-caption",
-      "result": "no_failures_found",
-      "tests": "no_failures_found",
-      "text": "no failures found by these tests",
+      "coverage": "none",
+      "tested_by": [],
+      "how_tested": "not tested: needs a person",
+      "result": "not_tested",
+      "tests": "not_tested",
+      "text": "not tested: needs a person",
       "issues": 0,
       "pages": 0,
       "paths": [],
@@ -81,14 +79,12 @@
       "level": "A",
       "principle": "Perceivable",
       "en301549": "9.1.2.2",
-      "coverage": "partly",
-      "tested_by": [
-        "axe:video-caption"
-      ],
-      "how_tested": "partly: axe video-caption",
-      "result": "no_failures_found",
-      "tests": "no_failures_found",
-      "text": "no failures found by these tests",
+      "coverage": "none",
+      "tested_by": [],
+      "how_tested": "not tested: needs a person",
+      "result": "not_tested",
+      "tests": "not_tested",
+      "text": "not tested: needs a person",
       "issues": 0,
       "pages": 0,
       "paths": [],

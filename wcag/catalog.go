@@ -85,7 +85,9 @@ var tables = sync.OnceValue(func() map[string]table {
 					t.byCheck[id] = append(t.byCheck[id], e.ID)
 				}
 				for _, rule := range rules {
-					if r := AxeRules[rule]; r.Runs(v) && slices.Contains(r.WCAG, e.ID) {
+					// A rule that can only ask for review never finds
+					// a failure: it doesn't test the criterion.
+					if r := AxeRules[rule]; r.Runs(v) && CanFail(rule) && slices.Contains(r.WCAG, e.ID) {
 						c.TestedBy = append(c.TestedBy, "axe:"+rule)
 					}
 				}

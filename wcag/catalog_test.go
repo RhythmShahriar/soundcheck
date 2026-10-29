@@ -87,7 +87,7 @@ func TestCatalogRows(t *testing.T) {
 				t.Errorf("%s: coverage none but tested by %v", e.ID, e.TestedBy)
 			}
 			for id, r := range AxeRules {
-				if r.Runs("2.2") && slices.Contains(r.WCAG, e.ID) {
+				if r.Runs("2.2") && CanFail(id) && slices.Contains(r.WCAG, e.ID) {
 					t.Errorf("%s: coverage none but axe %s tests it", e.ID, id)
 				}
 			}

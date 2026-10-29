@@ -36,7 +36,7 @@
   principle: Perceivable
   since: "2.0"
   en: "9.1.2.1"
-  coverage: partly
+  coverage: none
 - id: "1.2.2"
   title: "Captions (Prerecorded)"
   slug: captions-prerecorded
@@ -44,7 +44,7 @@
   principle: Perceivable
   since: "2.0"
   en: "9.1.2.2"
-  coverage: partly
+  coverage: none
 - id: "1.2.3"
   title: "Audio Description or Media Alternative (Prerecorded)"
   slug: audio-description-or-media-alternative-prerecorded
