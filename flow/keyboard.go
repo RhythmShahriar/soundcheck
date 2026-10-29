@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -563,17 +564,22 @@ func (r *runner) keyFill(n int, in Input) error {
 }
 
 // optionsJS finds the option a select step wants, by value then label,
-// and where the select is now.
+// where the select is now and the wanted option's label as type-ahead
+// matches it (whitespace collapsed).
 const optionsJS = `function(v) {
   const os = [...this.options];
   let want = os.findIndex(o => o.value === v);
   if (want < 0) want = os.findIndex(o => o.text.trim() === v);
-  return {want, cur: this.selectedIndex, n: os.length};
+  return {want, cur: this.selectedIndex, n: os.length, label: want < 0 ? '' : os[want].label};
 }`
 
-// keySelect reaches a select and moves through its options with
-// ArrowDown (or ArrowUp, for an option above the current one) until the
-// wanted one is selected.
+// keySelect reaches a select and sets it the way a keyboard user can on
+// every system: it types the wanted option's label, which the select's
+// type-ahead picks. Where that lands elsewhere (an earlier option whose
+// label starts the same way), it moves on with ArrowDown (or ArrowUp,
+// for an option above) until the wanted one is selected. Arrows alone
+// aren't enough: on macOS they open the option list and leave the
+// value as it was.
 func (r *runner) keySelect(n int, in Input) error {
 	v, err := r.expandToType(in.Value)
 	if err != nil {
@@ -583,7 +589,10 @@ func (r *runner) keySelect(n int, in Input) error {
 	if err != nil {
 		return err
 	}
-	var st struct{ Want, Cur, N int }
+	var st struct {
+		Want, Cur, N int
+		Label        string
+	}
 	read := func() error {
 		res, err := el.Timeout(r.o.Timeout).Eval(optionsJS, v)
 		if err != nil {
@@ -596,6 +605,18 @@ func (r *runner) keySelect(n int, in Input) error {
 	}
 	if st.Want < 0 {
 		return errors.New("no option with that value or label")
+	}
+	if st.Cur != st.Want && strings.TrimSpace(st.Label) != "" {
+		if err := focus.Type(r.ctx, r.page, st.Label); err != nil {
+			return fmt.Errorf("couldn't type the option's label: %w", err)
+		}
+		if err := read(); err != nil {
+			return err
+		}
+		if st.Cur == st.Want {
+			r.keys.log(fmt.Sprintf("step %d select %q: <typed %d characters>", n, in.Selector, utf8.RuneCountInString(st.Label)))
+			return nil
+		}
 	}
 	key := focus.ArrowDown
 	if st.Want < st.Cur {
@@ -616,7 +637,7 @@ func (r *runner) keySelect(n int, in Input) error {
 	if st.Cur == st.Want {
 		return nil
 	}
-	reason := fmt.Sprintf("reached; %s didn't select the option", key)
+	reason := fmt.Sprintf("reached; typing its label or %s didn't select the option", key)
 	return &KeyFailure{Kind: "select", Target: in.Selector, Reason: reason}
 }
 

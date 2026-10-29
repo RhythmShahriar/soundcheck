@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -164,7 +165,7 @@ func describe(res Result) string {
 }
 
 // A checkout a keyboard user can finish passes: every field is reached
-// with Tab, the select is set with the arrow keys, the checkbox with
+// with Tab, the select is set by typing its option's label, the checkbox with
 // Space, the button in a shadow root and Place order with Enter. No
 // mouse event is sent and the password typed is in no trace.
 func TestKeyFlowFinishes(t *testing.T) {
@@ -190,7 +191,8 @@ func TestKeyFlowFinishes(t *testing.T) {
 	if typed := fmt.Sprintf(`step 2 fill "#pass": <typed %d characters>`, len(canary)); strings.Contains(trace, canary) || !strings.Contains(trace, typed) {
 		t.Errorf("trace:\n%s", trace)
 	}
-	if !strings.Contains(trace, `step 10 click "#place_order": Enter`) || !strings.Contains(trace, `step 4 check "#terms": Space`) {
+	if !strings.Contains(trace, `step 10 click "#place_order": Enter`) || !strings.Contains(trace, `step 4 check "#terms": Space`) ||
+		!strings.Contains(trace, `step 3 select "#country": <typed 11 characters>`) {
 		t.Errorf("trace:\n%s", trace)
 	}
 }
@@ -231,6 +233,47 @@ func TestKeyFlowStuck(t *testing.T) {
 				t.Error("the canary leaked")
 			}
 		})
+	}
+}
+
+// A select whose keys the page swallows is a key failure on its step:
+// neither typing the label nor the arrows can set it.
+func TestKeyFlowSelectStuck(t *testing.T) {
+	needChrome(t)
+	s := newShop(t, placeButton+`<script>document.getElementById('country').addEventListener('keydown', e => e.preventDefault());</script>`)
+	res, _ := playOn(t, s, "send", keyOptions(s.URL))
+	if len(res.Failures) != 1 {
+		t.Fatalf("failures:\n%s", describe(res))
+	}
+	f := res.Failures[0]
+	if f.Step != 3 || f.Key == nil || f.Key.Kind != "select" || f.Key.Target != "#country" ||
+		f.Key.Reason != "reached; typing its label or ArrowDown didn't select the option" {
+		t.Fatalf("failure: %+v %+v", f, f.Key)
+	}
+	if len(s.placed()) != 0 {
+		t.Errorf("an order was placed: %v", s.placed())
+	}
+}
+
+// Where typing the label lands on an earlier option that starts the same
+// way, the arrows go on to the wanted one. Not on macOS: there the
+// arrows open the option list (and keySelect counts on the label), so
+// this fallback can't move the value.
+func TestKeyFlowSelectArrowsOn(t *testing.T) {
+	needChrome(t)
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS arrows open a select's list instead of moving its value")
+	}
+	s := newShop(t, placeButton+`<script>document.getElementById('country').add(new Option('New Zealand Islands', 'NZI'), 2);</script>`)
+	res, _ := playOn(t, s, "send", keyOptions(s.URL))
+	if len(res.Failures) != 0 {
+		t.Fatalf("failures:\n%s\ntrace:\n%s", describe(res), strings.Join(res.Trace, "\n"))
+	}
+	if orders := s.placed(); len(orders) != 1 || orders[0].Get("country") != "NZ" {
+		t.Errorf("orders: %v", orders)
+	}
+	if trace := strings.Join(res.Trace, "\n"); !strings.Contains(trace, `step 3 select "#country": ArrowDown`) {
+		t.Errorf("trace:\n%s", trace)
 	}
 }
 
