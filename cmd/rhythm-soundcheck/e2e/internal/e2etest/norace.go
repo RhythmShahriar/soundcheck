@@ -3,6 +3,6 @@
 
 //go:build !race
 
-package e2e
+package e2etest
 
 var raceFlag []string

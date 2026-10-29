@@ -104,7 +104,9 @@ func TestSuspect(t *testing.T) {
 // The trace file keeps to 2 MB: a huge walk loses steps from its end
 // and says it is capped; reading one back holds it to the caps.
 func TestTraceCaps(t *testing.T) {
-	long := strings.Repeat("x", 5000)
+	// Longer than any cap, yet short: the trace is masked before it is
+	// cut, which takes a while under the race detector.
+	long := strings.Repeat("x", maxSelectorRunes+100)
 	tr := Trace{Schema: Schema, Page: "/", MainIndex: 1900}
 	for i := range maxSteps {
 		s := stop(i+1, long)

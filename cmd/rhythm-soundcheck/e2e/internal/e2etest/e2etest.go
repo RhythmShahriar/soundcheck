@@ -1,13 +1,18 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package e2e
+// Package e2etest builds rhythm-soundcheck once per test binary and
+// runs it for the end-to-end test packages under e2e: each package has
+// its own test binary and timeout, so none comes near Go's 10 minute
+// default on a slow runner. It holds the helpers those tests share.
+package e2etest
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,18 +29,19 @@ import (
 
 // The exit codes, as the command names them.
 const (
-	exitOK       = cli.ExitOK
-	exitFindings = cli.ExitFindings
-	exitUsage    = cli.ExitUsage
-	exitError    = cli.ExitUnavailable
+	ExitOK       = cli.ExitOK
+	ExitFindings = cli.ExitFindings
+	ExitUsage    = cli.ExitUsage
+	ExitError    = cli.ExitUnavailable
 )
 
 // bin is the rhythm-soundcheck binary TestMain builds for the tests.
 var bin string
 
-// TestMain builds the command once, named as installed and with the
-// version the command's own tests give it. It removes it afterwards.
-func TestMain(m *testing.M) {
+// Main is a test package's TestMain: it builds the command once, named
+// as installed and with the version the command's own tests give it,
+// runs the tests and removes the binary afterwards.
+func Main(m *testing.M) {
 	os.Exit(func() int {
 		dir, err := os.MkdirTemp("", "soundcheck-e2e-")
 		if err != nil {
@@ -76,11 +82,11 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// runCLI runs the binary with args in the current folder and the test's
+// RunCLI runs the binary with args in the current folder and the test's
 // environment, with no update checks and no rhythm CLI around it. It
 // returns the exit code and what it printed, with project paths in /
 // form (see slashes).
-func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
+func RunCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -122,17 +128,18 @@ func slashes(s string) string {
 
 var projectPath = regexp.MustCompile(`(?:\.soundcheck|\bout)(?:\\[\w.~-]+)+`)
 
-func needBrowser(t *testing.T) {
+// NeedBrowser skips the test when no Chrome or Chromium is installed.
+func NeedBrowser(t *testing.T) {
 	t.Helper()
 	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
 		t.Skip("no Chrome or Chromium installed: ", err)
 	}
 }
 
-// readRunJSON reads the run.json of a run or snapshot folder.
-func readRunJSON(t *testing.T, dir string) model.Run {
+// ReadRunJSON reads the run.json of a run or snapshot folder.
+func ReadRunJSON(t *testing.T, dir string) model.Run {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, "run.json"))
+	data, err := os.ReadFile(filepath.Join(dir, "run.json")) //nolint:gosec // a run folder the test made
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,10 +150,10 @@ func readRunJSON(t *testing.T, dir string) model.Run {
 	return r
 }
 
-// compareJSON runs compare --json with args and reads the comparison.
-func compareJSON(t *testing.T, args ...string) (int, *model.Comparison) {
+// CompareJSON runs compare --json with args and reads the comparison.
+func CompareJSON(t *testing.T, args ...string) (int, *model.Comparison) {
 	t.Helper()
-	code, out, errOut := runCLI(t, append([]string{"compare", "--json"}, args...)...)
+	code, out, errOut := RunCLI(t, append([]string{"compare", "--json"}, args...)...)
 	var c model.Comparison
 	if err := json.Unmarshal([]byte(out), &c); err != nil {
 		t.Fatalf("compare: exit %d: %v\n%s\n%s", code, err, out, errOut)
@@ -154,14 +161,37 @@ func compareJSON(t *testing.T, args ...string) (int, *model.Comparison) {
 	return code, &c
 }
 
-// writeConfig writes .soundcheck/config.yaml in the current folder, with
+// WriteConfig writes .soundcheck/config.yaml in the current folder, with
 // an empty flows folder next to it.
-func writeConfig(t *testing.T, body string) {
+func WriteConfig(t *testing.T, body string) {
 	t.Helper()
-	if err := os.MkdirAll(".soundcheck/flows", 0o755); err != nil {
+	if err := os.MkdirAll(".soundcheck/flows", 0o755); err != nil { //nolint:gosec // a project folder in the test's own temporary folder
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(".soundcheck/config.yaml", []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// EAAPage writes a page of the EAA fixture sites: a title, a nav and
+// body, with a label on every field unless body leaves it out.
+func EAAPage(w http.ResponseWriter, title, body string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>%s</title><link rel="icon" href="data:,"></head><body>
+<header><nav aria-label="Main"><a href="/">Home</a> <a href="/checkout/">Checkout</a> <a href="/about/">About</a> <a href="/help/">Help</a></nav></header>
+<main><h1>%s</h1>%s</main></body></html>`, title, title, body)
+}
+
+// EAACommon are the flags the browser tests share: one viewport, no
+// download, a quick rate and plain output.
+var EAACommon = []string{"--no-download", "--viewport", "desktop", "--rate", "50", "--plain"}
+
+// ChangeList shows the changes of c one per line, for a failure message.
+func ChangeList(c *model.Comparison) string {
+	var b strings.Builder
+	for _, ch := range c.Changes {
+		fmt.Fprintf(&b, "\n  %s %s %v", ch.Class, ch.Check, ch.Pages)
+	}
+	return b.String()
 }

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package flow
+package keyflow
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/RhythmShahriar/soundcheck/flow"
 )
 
 // A dry key flow whose Pay button posts to another host from script
@@ -35,12 +37,12 @@ func TestKeyFlowNotesOffHostHold(t *testing.T) {
 				fmt.Fprintf(w, `<html><body><button id="pay" onclick="fetch('%s', {method: 'POST', mode: 'no-cors'})">Pay</button>
 </body></html>`, action)
 			}))
-			f, err := Parse([]byte("name: Pay\nkeyboard: true\nsteps:\n  - click: \"#pay\"\n  - expect: {text: Thank you}\n"))
+			f, err := flow.Parse([]byte("name: Pay\nkeyboard: true\nsteps:\n  - click: \"#pay\"\n  - expect: {text: Thank you}\n"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			page := isolatedTab(t, site.URL+"/")
-			res := Play(context.Background(), page, f, keyOptions(site.URL))
+			res := flow.Play(context.Background(), page, f, keyOptions(site.URL))
 			if hits.Load() != 0 {
 				t.Errorf("the gateway got %d requests", hits.Load())
 			}
@@ -69,12 +71,12 @@ func TestKeyFlowStopsWatching(t *testing.T) {
 <p id="n"></p></body></html>`)
 	}))
 	steps := strings.Repeat("  - click: \"#more\"\n", 3)
-	f, err := Parse([]byte("name: More\nkeyboard: send\nsteps:\n" + steps + "  - expect: {text: +++}\n"))
+	f, err := flow.Parse([]byte("name: More\nkeyboard: send\nsteps:\n" + steps + "  - expect: {text: +++}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := isolatedTab(t, site.URL+"/")
-	if res := Play(context.Background(), page, f, keyOptions(site.URL)); len(res.Failures) != 0 {
+	if res := flow.Play(context.Background(), page, f, keyOptions(site.URL)); len(res.Failures) != 0 {
 		t.Fatalf("failures:\n%s", describe(res))
 	}
 	left, err := page.Eval(`() => Object.keys(window).filter(k => k.startsWith('__soundcheckKey')).length`)

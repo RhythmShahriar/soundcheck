@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package e2e
+package eaa
 
 import (
 	"fmt"

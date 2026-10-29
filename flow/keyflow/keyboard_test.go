@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package flow
+package keyflow
 
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,32 +13,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
+	"github.com/RhythmShahriar/soundcheck/flow"
 	"github.com/go-rod/rod"
-
-	"github.com/RhythmShahriar/soundcheck/browser"
-	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
-
-// listen serves h on a free port of 20360-20379, the ports this
-// package's key flow tests use, so they don't take another suite's.
-func listen(t *testing.T, h http.Handler) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewUnstartedServer(h)
-	for port := 20360; port <= 20379; port++ {
-		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		if err != nil {
-			continue
-		}
-		srv.Listener = l
-		srv.Start()
-		t.Cleanup(srv.Close)
-		return srv
-	}
-	t.Fatal("ports 20360-20379 are all taken")
-	return nil
-}
 
 // shop is a checkout page that counts the orders placed. button is the
 // Place order control, so a variant can make it mouse-only.
@@ -107,28 +84,6 @@ func (s *shop) placed() []url.Values {
 	return append([]url.Values(nil), s.orders...)
 }
 
-func needChrome(t *testing.T) {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("browser test")
-	}
-	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {
-		t.Skip("no Chrome or Chromium installed: ", err)
-	}
-}
-
-// canaryEnv is a variable the flow may read (SOUNDCHECK_*) holding a
-// password assembled at run time, so no literal secret is in the source.
-const canaryEnv = "SOUNDCHECK_KEYS_CANARY"
-
-var canary = "Cn" + "ry-" + strings.Repeat("7", 6) + "-pw"
-
-func keyOptions(base string) Options {
-	u, _ := url.Parse(base)
-	return Options{Base: u, Timeout: testenv.Timeout(3 * time.Second), Fake: Fake{Seed: "k"}, MaxTabs: 12,
-		Env: func(k string) string { return map[string]string{canaryEnv: canary}[k] }}
-}
-
 const checkoutFlow = `name: Checkout by keyboard
 start: /checkout/
 keyboard: %s
@@ -146,22 +101,14 @@ steps:
   - expect: {text: Thank you, url: /order/}
 `
 
-func playOn(t *testing.T, s *shop, mode string, o Options) (Result, *rod.Page) {
+func playOn(t *testing.T, s *shop, mode string, o flow.Options) (flow.Result, *rod.Page) {
 	t.Helper()
-	f, err := Parse([]byte(fmt.Sprintf(checkoutFlow, mode)))
+	f, err := flow.Parse([]byte(fmt.Sprintf(checkoutFlow, mode)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := isolatedTab(t, s.URL+"/")
-	return Play(context.Background(), page, f, o), page
-}
-
-func describe(res Result) string {
-	var out []string
-	for _, f := range res.Failures {
-		out = append(out, fmt.Sprintf("%d %s: %v", f.Step, f.Desc, f.Err))
-	}
-	return strings.Join(out, "\n")
+	return flow.Play(context.Background(), page, f, o), page
 }
 
 // A checkout a keyboard user can finish passes: every field is reached
@@ -294,7 +241,7 @@ func TestKeyFlowDry(t *testing.T) {
 			if len(res.Failures) != 0 {
 				t.Errorf("failures:\n%s", describe(res))
 			}
-			if res.Held == nil || *res.Held != (Held{Step: 10, Method: "POST", Path: "/order/"}) {
+			if res.Held == nil || *res.Held != (flow.Held{Step: 10, Method: "POST", Path: "/order/"}) {
 				t.Errorf("held: %+v", res.Held)
 			}
 			if n := len(s.placed()); n != 0 {
@@ -308,7 +255,7 @@ func TestKeyFlowDry(t *testing.T) {
 func TestPressInMouseFlow(t *testing.T) {
 	needChrome(t)
 	s := newShop(t, placeButton)
-	f, err := Parse([]byte(`name: Keys by mouse
+	f, err := flow.Parse([]byte(`name: Keys by mouse
 start: /checkout/
 steps:
   - press: {key: Tab, on: "#email"}
@@ -324,7 +271,7 @@ steps:
 		t.Fatal(err)
 	}
 	page := isolatedTab(t, s.URL+"/")
-	got := describe(Play(context.Background(), page, f, keyOptions(s.URL)))
+	got := describe(flow.Play(context.Background(), page, f, keyOptions(s.URL)))
 	want := "7 expect focus #email: focus is on #terms, not #email\n" +
 		"8 expect focus within nav: focus isn't inside nav; it is on #terms"
 	if got != want {
@@ -355,14 +302,14 @@ func TestKeyFlowClickTargets(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{$}", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, targetsPage) })
 	srv := listen(t, mux)
-	play := func(steps string) (Result, *rod.Page) {
+	play := func(steps string) (flow.Result, *rod.Page) {
 		t.Helper()
-		f, err := Parse([]byte("name: Targets\nstart: /\nkeyboard: true\nsteps:\n" + steps))
+		f, err := flow.Parse([]byte("name: Targets\nstart: /\nkeyboard: true\nsteps:\n" + steps))
 		if err != nil {
 			t.Fatal(err)
 		}
 		page := isolatedTab(t, srv.URL+"/")
-		return Play(context.Background(), page, f, keyOptions(srv.URL)), page
+		return flow.Play(context.Background(), page, f, keyOptions(srv.URL)), page
 	}
 	checked := func(page *rod.Page, id string) bool {
 		t.Helper()

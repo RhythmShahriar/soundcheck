@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-rod/rod"
-
 	"github.com/RhythmShahriar/soundcheck/browser"
 	"github.com/RhythmShahriar/soundcheck/internal/testenv"
 )
@@ -50,59 +48,6 @@ steps:
 	}
 }
 
-// isolatedTab starts a Chrome of its own for one subtest and opens a tab
-// in it, warmed up on warm (see warmTab). On a Windows runner a subtest
-// whose tab was closed without navigating left the next tab in the same
-// Chrome unable to load its first page, so the subtests don't share a
-// browser.
-func isolatedTab(t *testing.T, warm string) *rod.Page {
-	t.Helper()
-	b, err := browser.Launch(context.Background(), browser.Options{NoDownload: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(b.Close)
-	return warmTab(t, b, warm)
-}
-
-// warmTab opens a tab in b and loads warm in it before the flow runs.
-//
-// The first page a fresh Chrome loads starts its renderer and network
-// stack. On a busy Windows runner that has taken longer than any step
-// timeout, sometimes with no request sent at all. So the flow's own
-// start page failed with "step 0: context deadline exceeded". Here the
-// first load gets a budget of its own. A tab that doesn't load in time
-// is closed and a new one tried, as a stuck first navigation doesn't
-// recover. warm is on the test's own server; the flow's pages are on
-// 127.0.0.1 too, the same site to Chrome, so step 0 still opens a page
-// through Run without the cold start.
-func warmTab(t *testing.T, b *browser.Browser, warm string) *rod.Page {
-	t.Helper()
-	var err error
-	for try := 1; try <= 3; try++ {
-		var tab *rod.Page
-		if tab, err = browser.NewTab(b.Browser); err != nil {
-			continue
-		}
-		start := time.Now()
-		p := tab.Timeout(testenv.Timeout(10 * time.Second))
-		if err = p.Navigate(warm); err == nil {
-			err = p.WaitLoad()
-		}
-		if err == nil {
-			if d := time.Since(start); d > 5*time.Second {
-				t.Logf("the first page took %s to load", d.Round(time.Millisecond))
-			}
-			t.Cleanup(func() { _ = tab.Close() })
-			return tab
-		}
-		t.Logf("warming up the tab, try %d: %v", try, err)
-		_ = tab.Close()
-	}
-	t.Fatalf("Chrome loaded no page: %v", err)
-	return nil
-}
-
 // recorder is a server that logs every request it gets: the attacker's,
 // in the negative fixtures.
 type recorder struct {
@@ -128,8 +73,6 @@ func (r *recorder) requests() []string {
 	defer r.mu.Unlock()
 	return append([]string(nil), r.got...)
 }
-
-func hostOf(raw string) string { u, _ := url.Parse(raw); return u.Host }
 
 func TestRunStaysOnSite(t *testing.T) {
 	if _, _, err := browser.Find(browser.Options{NoDownload: true}); err != nil {

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-package flow
+package keyflow
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/RhythmShahriar/soundcheck/flow"
 )
 
 // autosave sends a draft the second time #terms loses focus: as Tab
@@ -38,7 +40,7 @@ func TestKeyFlowHoldIsTheStepsOwn(t *testing.T) {
 			s := newShop(t, tc.button+autosave)
 			res, _ := playOn(t, s, "true", keyOptions(s.URL))
 			if !tc.fails {
-				if len(res.Failures) != 0 || res.Held == nil || *res.Held != (Held{Step: 10, Method: "POST", Path: "/order/"}) {
+				if len(res.Failures) != 0 || res.Held == nil || *res.Held != (flow.Held{Step: 10, Method: "POST", Path: "/order/"}) {
 					t.Fatalf("failures:\n%s\nheld %+v\ntrace:\n%s", describe(res), res.Held, strings.Join(res.Trace, "\n"))
 				}
 				return
@@ -121,12 +123,12 @@ func TestKeysKeepSecretsOnSite(t *testing.T) {
 <input id="q" name="q"><input id="pass" name="pass" type="password"><button id="go">Go</button>
 </form></body></html>`, action)
 				}))
-				f, err := Parse([]byte("name: Keys\nkeyboard: " + tc.keyboard + "\nsteps:\n" + fill + "  - " + tc.step + "\n"))
+				f, err := flow.Parse([]byte("name: Keys\nkeyboard: " + tc.keyboard + "\nsteps:\n" + fill + "  - " + tc.step + "\n"))
 				if err != nil {
 					t.Fatal(err)
 				}
 				page := isolatedTab(t, site.URL+"/")
-				res := Play(context.Background(), page, f, keyOptions(site.URL))
+				res := flow.Play(context.Background(), page, f, keyOptions(site.URL))
 				if strings.Contains(describe(res)+strings.Join(res.Trace, "\n"), canary) {
 					t.Error("the canary leaked")
 				}
