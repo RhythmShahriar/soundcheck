@@ -19,6 +19,12 @@
 #   tested_by       Soundcheck's own checks that test it. The axe rules
 #                   that test it come from axe_rules.gen.go, by the
 #                   criteria their tags name, so they aren't listed here
+#   only_failures   true when the tests find one kind of failure yet
+#                   can't show there is none: a run that finds no
+#                   failure leaves it to a person, never "no failures
+#                   found" (2.4.1: a broken skip link fails it; a page
+#                   with none needs landmarks or headings a person
+#                   judges)
 #   note            a fixed result the statement prints instead
 
 - id: "1.1.1"
@@ -124,7 +130,7 @@
   principle: Perceivable
   since: "2.0"
   en: "9.1.4.2"
-  coverage: partly
+  coverage: none
 - id: "1.4.3"
   title: "Contrast (Minimum)"
   slug: contrast-minimum
@@ -241,6 +247,7 @@
   en: "9.2.4.1"
   coverage: partly
   tested_by: [keyboard/skip-link-broken]
+  only_failures: true
 - id: "2.4.2"
   title: "Page Titled"
   slug: page-titled

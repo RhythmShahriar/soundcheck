@@ -217,7 +217,7 @@ func TestStatusIsTheOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := render(t, d)
-	want := `[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.1 level AA / EN 301 549 V3.2.1. Soundcheck does not choose this for you. Its tests found failures of 7 of 50 criteria and could not test 25 of them.]`
+	want := `[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.1 level AA / EN 301 549 V3.2.1. Soundcheck does not choose this for you. Its tests found failures of 7 of 50 criteria and could not test 27 of them.]`
 	if !strings.Contains(out["md"], want) {
 		t.Errorf("Markdown lacks the status [TO DO]:\n%s", want)
 	}

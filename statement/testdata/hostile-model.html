@@ -42,7 +42,7 @@ th { background: var(--note); }
 <p>&lt;img src=x onerror=alert(1)&gt; Café 咖啡 wants https://shop.example to be usable by as many people as possible.</p>
 <p>This statement covers the 4 pages Soundcheck checked, listed under &#34;Pages checked&#34;. <mark class="todo">[TO DO: set statement.scope to the pages this statement covers, or check that these are all of them.]</mark></p>
 <h2>How accessible this website is</h2>
-<p><mark class="todo">[TO DO: choose one after your review: &#34;fully compliant&#34;, &#34;partially compliant&#34; or &#34;not compliant&#34; with WCAG 2.1 level AA / EN 301 549 V3.2.1. Soundcheck does not choose this for you. Its tests found failures of 1 of 50 criteria and could not test 25 of them.]</mark></p>
+<p><mark class="todo">[TO DO: choose one after your review: &#34;fully compliant&#34;, &#34;partially compliant&#34; or &#34;not compliant&#34; with WCAG 2.1 level AA / EN 301 549 V3.2.1. Soundcheck does not choose this for you. Its tests found failures of 1 of 50 criteria and could not test 27 of them.]</mark></p>
 <h2>What isn&#39;t accessible yet</h2>
 <h3>Problems found</h3>
 <p>Found by Soundcheck&#39;s tests on 2026-10-26, or by your own review:</p>
@@ -101,7 +101,7 @@ th { background: var(--note); }
 <tr><th scope="row">1.3.4 Orientation</th><td>AA</td><td>9.1.3.4</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">1.3.5 Identify Input Purpose</th><td>AA</td><td>9.1.3.5</td><td>partly: axe autocomplete-valid</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">1.4.1 Use of Color</th><td>A</td><td>9.1.4.1</td><td>partly: axe link-in-text-block</td><td>no failures found by these tests</td></tr>
-<tr><th scope="row">1.4.2 Audio Control</th><td>A</td><td>9.1.4.2</td><td>partly: axe no-autoplay-audio</td><td>no failures found by these tests</td></tr>
+<tr><th scope="row">1.4.2 Audio Control</th><td>A</td><td>9.1.4.2</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">1.4.3 Contrast (Minimum)</th><td>AA</td><td>9.1.4.3</td><td>partly: axe color-contrast</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">1.4.4 Resize Text</th><td>AA</td><td>9.1.4.4</td><td>partly: axe meta-viewport</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">1.4.5 Images of Text</th><td>AA</td><td>9.1.4.5</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
@@ -115,7 +115,7 @@ th { background: var(--note); }
 <tr><th scope="row">2.2.1 Timing Adjustable</th><td>A</td><td>9.2.2.1</td><td>partly: axe meta-refresh</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">2.2.2 Pause, Stop, Hide</th><td>A</td><td>9.2.2.2</td><td>partly: axe blink, marquee</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">2.3.1 Three Flashes or Below Threshold</th><td>A</td><td>9.2.3.1</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
-<tr><th scope="row">2.4.1 Bypass Blocks</th><td>A</td><td>9.2.4.1</td><td>partly: axe bypass; keyboard/skip-link-broken</td><td>no failures found by these tests</td></tr>
+<tr><th scope="row">2.4.1 Bypass Blocks</th><td>A</td><td>9.2.4.1</td><td>partly: keyboard/skip-link-broken; a person checks the rest</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">2.4.2 Page Titled</th><td>A</td><td>9.2.4.2</td><td>partly: axe document-title</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">2.4.3 Focus Order</th><td>A</td><td>9.2.4.3</td><td>partly: keyboard/focus-lost, keyboard/dialog-focus</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">2.4.4 Link Purpose (In Context)</th><td>A</td><td>9.2.4.4</td><td>partly: axe area-alt, link-name</td><td>no failures found by these tests</td></tr>
@@ -137,14 +137,14 @@ th { background: var(--note); }
 <tr><th scope="row">3.3.3 Error Suggestion</th><td>AA</td><td>9.3.3.3</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">3.3.4 Error Prevention (Legal, Financial, Data)</th><td>AA</td><td>9.3.3.4</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 <tr><th scope="row">4.1.1 Parsing</th><td>A</td><td>9.4.1.1</td><td>not tested: W3C now treats it as always met for HTML; the owner decides how to state it</td><td>not tested: W3C now treats it as always met for HTML; the owner decides how to state it</td></tr>
-<tr><th scope="row">4.1.2 Name, Role, Value</th><td>A</td><td>9.4.1.2</td><td>partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled</td><td>no failures found by these tests</td></tr>
+<tr><th scope="row">4.1.2 Name, Role, Value</th><td>A</td><td>9.4.1.2</td><td>partly: axe area-alt, aria-allowed-attr, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, frame-title, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled</td><td>no failures found by these tests</td></tr>
 <tr><th scope="row">4.1.3 Status Messages</th><td>AA</td><td>9.4.1.3</td><td>not tested: needs a person</td><td>not tested: needs a person</td></tr>
 </tbody>
 </table></div>
 <h2>Not tested</h2>
 <ul>
 <li>/[x](javascript:alert(1))/**b**/`c`/&amp;: a11y failed (&lt;img src=x onerror=alert(1)&gt; | broke next line); its criteria count as not tested there.</li>
-<li>25 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 3.2.2, 3.2.3, 3.2.4, 3.3.3, 3.3.4, 4.1.1, 4.1.3.</li>
+<li>27 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.2, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 3.2.2, 3.2.3, 3.2.4, 3.3.3, 3.3.4, 4.1.1, 4.1.3.</li>
 <li>Only Chrome was used. The keyboard walk ran at desktop width.</li>
 <li>No screen reader, voice control or test with disabled users.</li>
 <li>EN 301 549 clauses 5 (generic requirements, such as closed functionality), 6 (two-way voice communication), 7 (video capabilities), 10 (non-web documents), 11 (software) and 12 (documentation and support services) are outside a website check and weren&#39;t tested.</li>

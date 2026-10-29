@@ -384,16 +384,16 @@ Which WCAG A and AA success criteria the tests can find failures of. A criterion
 
 | WCAG | Criteria | Automated | Keyboard | Needs a person only |
 |---|---:|---:|---:|---:|
-| 2.1 | 50 | 22 | 7 | 23 |
-| 2.2 | 55 | 23 | 8 | 26 |
+| 2.1 | 50 | 18 | 7 | 26 |
+| 2.2 | 55 | 19 | 8 | 29 |
 
 <details><summary>Every criterion</summary>
 
 | Criterion | Level | EN 301 549 | WCAG | Automated | Keyboard |
 |---|---|---|---|---|---|
 | 1.1.1 Non-text Content | A | 9.1.1.1 | 2.1, 2.2 | `axe:aria-meter-name`, `axe:aria-progressbar-name`, `axe:image-alt`, `axe:input-image-alt`, `axe:object-alt`, `axe:role-img-alt`, `axe:svg-img-alt` | – |
-| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | 2.1, 2.2 | `axe:audio-caption` | – |
-| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | 2.1, 2.2 | `axe:video-caption` | – |
+| 1.2.1 Audio-only and Video-only (Prerecorded) | A | 9.1.2.1 | 2.1, 2.2 | needs a person | needs a person |
+| 1.2.2 Captions (Prerecorded) | A | 9.1.2.2 | 2.1, 2.2 | needs a person | needs a person |
 | 1.2.3 Audio Description or Media Alternative (Prerecorded) | A | 9.1.2.3 | 2.1, 2.2 | needs a person | needs a person |
 | 1.2.4 Captions (Live) | AA | 9.1.2.4 | 2.1, 2.2 | needs a person | needs a person |
 | 1.2.5 Audio Description (Prerecorded) | AA | 9.1.2.5 | 2.1, 2.2 | needs a person | needs a person |
@@ -403,7 +403,7 @@ Which WCAG A and AA success criteria the tests can find failures of. A criterion
 | 1.3.4 Orientation | AA | 9.1.3.4 | 2.1, 2.2 | needs a person | needs a person |
 | 1.3.5 Identify Input Purpose | AA | 9.1.3.5 | 2.1, 2.2 | `axe:autocomplete-valid` | – |
 | 1.4.1 Use of Color | A | 9.1.4.1 | 2.1, 2.2 | `axe:link-in-text-block` | – |
-| 1.4.2 Audio Control | A | 9.1.4.2 | 2.1, 2.2 | `axe:no-autoplay-audio` | – |
+| 1.4.2 Audio Control | A | 9.1.4.2 | 2.1, 2.2 | needs a person | needs a person |
 | 1.4.3 Contrast (Minimum) | AA | 9.1.4.3 | 2.1, 2.2 | `axe:color-contrast` | – |
 | 1.4.4 Resize Text | AA | 9.1.4.4 | 2.1, 2.2 | `axe:meta-viewport` | – |
 | 1.4.5 Images of Text | AA | 9.1.4.5 | 2.1, 2.2 | needs a person | needs a person |
@@ -417,7 +417,7 @@ Which WCAG A and AA success criteria the tests can find failures of. A criterion
 | 2.2.1 Timing Adjustable | A | 9.2.2.1 | 2.1, 2.2 | `axe:meta-refresh` | – |
 | 2.2.2 Pause, Stop, Hide | A | 9.2.2.2 | 2.1, 2.2 | `axe:blink`, `axe:marquee` | – |
 | 2.3.1 Three Flashes or Below Threshold | A | 9.2.3.1 | 2.1, 2.2 | needs a person | needs a person |
-| 2.4.1 Bypass Blocks | A | 9.2.4.1 | 2.1, 2.2 | `axe:bypass` | `keyboard/skip-link-broken` |
+| 2.4.1 Bypass Blocks | A | 9.2.4.1 | 2.1, 2.2 | – | `keyboard/skip-link-broken` |
 | 2.4.2 Page Titled | A | 9.2.4.2 | 2.1, 2.2 | `axe:document-title` | – |
 | 2.4.3 Focus Order | A | 9.2.4.3 | 2.1, 2.2 | – | `keyboard/focus-lost`, `keyboard/dialog-focus` |
 | 2.4.4 Link Purpose (In Context) | A | 9.2.4.4 | 2.1, 2.2 | `axe:area-alt`, `axe:link-name` | – |
@@ -445,7 +445,7 @@ Which WCAG A and AA success criteria the tests can find failures of. A criterion
 | 3.3.7 Redundant Entry | A | 9.3.3.7 | 2.2 only | needs a person | needs a person |
 | 3.3.8 Accessible Authentication (Minimum) | AA | 9.3.3.8 | 2.2 only | needs a person | needs a person |
 | 4.1.1 Parsing | A | 9.4.1.1 | 2.1 only | needs a person | needs a person |
-| 4.1.2 Name, Role, Value | A | 9.4.1.2 | 2.1, 2.2 | `interact/unlabeled`, `axe:area-alt`, `axe:aria-allowed-attr`, `axe:aria-braille-equivalent`, `axe:aria-command-name`, `axe:aria-conditional-attr`, `axe:aria-deprecated-role`, `axe:aria-hidden-body`, `axe:aria-hidden-focus`, `axe:aria-input-field-name`, `axe:aria-prohibited-attr`, `axe:aria-required-attr`, `axe:aria-roledescription`, `axe:aria-roles`, `axe:aria-tab-name`, `axe:aria-toggle-field-name`, `axe:aria-tooltip-name`, `axe:aria-valid-attr`, `axe:aria-valid-attr-value`, `axe:button-name`, `axe:duplicate-id-aria`, `axe:frame-title`, `axe:frame-title-unique`, `axe:input-button-name`, `axe:input-image-alt`, `axe:label`, `axe:link-name`, `axe:nested-interactive`, `axe:select-name`, `axe:summary-name` | – |
+| 4.1.2 Name, Role, Value | A | 9.4.1.2 | 2.1, 2.2 | `interact/unlabeled`, `axe:area-alt`, `axe:aria-allowed-attr`, `axe:aria-command-name`, `axe:aria-conditional-attr`, `axe:aria-deprecated-role`, `axe:aria-hidden-body`, `axe:aria-hidden-focus`, `axe:aria-input-field-name`, `axe:aria-prohibited-attr`, `axe:aria-required-attr`, `axe:aria-roledescription`, `axe:aria-roles`, `axe:aria-tab-name`, `axe:aria-toggle-field-name`, `axe:aria-tooltip-name`, `axe:aria-valid-attr`, `axe:aria-valid-attr-value`, `axe:button-name`, `axe:frame-title`, `axe:input-button-name`, `axe:input-image-alt`, `axe:label`, `axe:link-name`, `axe:nested-interactive`, `axe:select-name`, `axe:summary-name` | – |
 | 4.1.3 Status Messages | AA | 9.4.1.3 | 2.1, 2.2 | needs a person | needs a person |
 
 </details>

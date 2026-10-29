@@ -85,7 +85,8 @@ type tally struct {
 //
 // A criterion is failed when an issue that maps to it was found, each
 // finding counted once (see FindingKey). It is no failures found when a
-// test of it ran and found none. Any other is not tested: nothing tests
+// test of it ran and found none, unless its tests can't show it has
+// none (OnlyFails). Any other is not tested: nothing tests
 // it, or the modules whose checks test it didn't run. Ignored findings
 // still count against their criteria (ignoring a problem doesn't fix
 // it) but not as open. A finding a comparison kept from the snapshot
@@ -254,7 +255,8 @@ func Summarize(run *model.Run, pages func(func(*model.Page) bool), site []model.
 			s.Criteria.Failed = append(s.Criteria.Failed, f)
 			continue
 		}
-		if c.Coverage == CoveragePartly && slices.ContainsFunc(c.TestedBy, func(test string) bool { return ran(ModuleOf(test)) }) {
+		// An OnlyFails criterion's tests can't show it has none.
+		if c.Coverage == CoveragePartly && !c.OnlyFails && slices.ContainsFunc(c.TestedBy, func(test string) bool { return ran(ModuleOf(test)) }) {
 			s.Criteria.NoFailuresFound = append(s.Criteria.NoFailuresFound, c.ID)
 			continue
 		}

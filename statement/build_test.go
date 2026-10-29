@@ -134,7 +134,7 @@ func TestBuild(t *testing.T) {
 	if r := row(d, "4.1.1"); r.Result != ResultNotTested || r.HowTested() != r.Note || r.Note == "" {
 		t.Errorf("4.1.1: %+v", r)
 	}
-	if d.Failed != 2 || d.NotTested != 25 {
+	if d.Failed != 2 || d.NotTested != 27 {
 		t.Errorf("%d failed, %d not tested", d.Failed, d.NotTested)
 	}
 	if !slices.Equal(d.Checked, []string{"/", "/about/", "/big/", "/legal/", "/shop/"}) || d.PrivatePages != 0 {
@@ -180,7 +180,7 @@ func TestBuildManual(t *testing.T) {
 		t.Errorf("1.4.11: %+v", r)
 	}
 	// The status sentence counts what the tests did.
-	if d.Failed != 1 || d.NotTested != 25 {
+	if d.Failed != 1 || d.NotTested != 27 {
 		t.Errorf("%d failed, %d not tested", d.Failed, d.NotTested)
 	}
 	if !slices.Equal(d.Notes, []string{"Your manual result for 2.4.11 is left out: WCAG 2.1 has no criterion 2.4.11."}) {

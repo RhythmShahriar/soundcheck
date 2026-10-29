@@ -12,7 +12,7 @@
 | 1.3.4 Orientation | AA | 9.1.3.4 | not tested: needs a person |
 | 1.3.5 Identify Input Purpose | AA | 9.1.3.5 | partly: axe autocomplete-valid |
 | 1.4.1 Use of Color | A | 9.1.4.1 | partly: axe link-in-text-block |
-| 1.4.2 Audio Control | A | 9.1.4.2 | partly: axe no-autoplay-audio |
+| 1.4.2 Audio Control | A | 9.1.4.2 | not tested: needs a person |
 | 1.4.3 Contrast (Minimum) | AA | 9.1.4.3 | partly: axe color-contrast |
 | 1.4.4 Resize Text | AA | 9.1.4.4 | partly: axe meta-viewport |
 | 1.4.5 Images of Text | AA | 9.1.4.5 | not tested: needs a person |
@@ -26,7 +26,7 @@
 | 2.2.1 Timing Adjustable | A | 9.2.2.1 | partly: axe meta-refresh |
 | 2.2.2 Pause, Stop, Hide | A | 9.2.2.2 | partly: axe blink, marquee |
 | 2.3.1 Three Flashes or Below Threshold | A | 9.2.3.1 | not tested: needs a person |
-| 2.4.1 Bypass Blocks | A | 9.2.4.1 | partly: axe bypass; keyboard/skip-link-broken |
+| 2.4.1 Bypass Blocks | A | 9.2.4.1 | partly: keyboard/skip-link-broken; a person checks the rest |
 | 2.4.2 Page Titled | A | 9.2.4.2 | partly: axe document-title |
 | 2.4.3 Focus Order | A | 9.2.4.3 | partly: keyboard/focus-lost, keyboard/dialog-focus |
 | 2.4.4 Link Purpose (In Context) | A | 9.2.4.4 | partly: axe area-alt, link-name |
@@ -53,7 +53,7 @@
 | 3.3.4 Error Prevention (Legal, Financial, Data) | AA | 9.3.3.4 | not tested: needs a person |
 | 3.3.7 Redundant Entry | A | 9.3.3.7 | not tested: needs a person |
 | 3.3.8 Accessible Authentication (Minimum) | AA | 9.3.3.8 | not tested: needs a person |
-| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled |
+| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, frame-title, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name; interact/unlabeled |
 | 4.1.3 Status Messages | AA | 9.4.1.3 | not tested: needs a person |
 
-27 of 55 criteria partly tested, 28 need a person.
+26 of 55 criteria partly tested, 29 need a person.

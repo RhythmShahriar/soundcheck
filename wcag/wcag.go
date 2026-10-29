@@ -29,6 +29,10 @@ type Criterion struct {
 	// runs.
 	Coverage string
 	TestedBy []string
+	// OnlyFails is set when the tests find one kind of failure but can't
+	// show the criterion has none: with no failure found it needs a
+	// person, never "no failures found".
+	OnlyFails bool
 	// Note is a fixed result to print instead of the tests' one, such as
 	// why 4.1.1 Parsing isn't tested.
 	Note string
@@ -71,7 +75,8 @@ func Lookup(id string) (Criterion, bool) {
 // HowTested says in words how Soundcheck tests the criterion, for the
 // criteria table: "partly: axe image-alt, role-img-alt; keyboard/trap",
 // "not tested: needs a person" or the criterion's Note. A partly
-// tested criterion whose tests a run left out says they didn't run.
+// tested criterion whose tests a run left out says they didn't run; an
+// OnlyFails one says a person checks the rest.
 func (c Criterion) HowTested() string {
 	if c.Note != "" {
 		return c.Note
@@ -98,18 +103,22 @@ func (c Criterion) HowTested() string {
 		// Its tests are left out of a run that didn't run them.
 		return "not tested: its tests didn't run"
 	}
+	if c.OnlyFails {
+		parts = append(parts, "a person checks the rest")
+	}
 	return "partly: " + strings.Join(parts, "; ")
 }
 
 // SplitNotTested splits a summary's not tested criteria (of a WCAG
 // version) in two: unrun have tests that didn't run or didn't finish
 // in this run (an audit that timed out, say), person have no test at
-// all and need a person. A criterion the version doesn't know is put
-// with person.
+// all or tests that can't show it has no failures (OnlyFails): they
+// need a person. A criterion the version doesn't know is put with
+// person.
 func SplitNotTested(version string, ids []string) (unrun, person []string) {
 	partly := map[string]bool{}
 	for _, c := range tables()[orDefault(version)].criteria {
-		if c.Coverage == CoveragePartly {
+		if c.Coverage == CoveragePartly && !c.OnlyFails {
 			partly[c.ID] = true
 		}
 	}

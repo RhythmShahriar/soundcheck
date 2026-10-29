@@ -30,7 +30,7 @@
   "totals": {
     "criteria": 55,
     "failed": 0,
-    "not_tested": 28
+    "not_tested": 30
   },
   "criteria": [
     {
@@ -265,14 +265,12 @@
       "level": "A",
       "principle": "Perceivable",
       "en301549": "9.1.4.2",
-      "coverage": "partly",
-      "tested_by": [
-        "axe:no-autoplay-audio"
-      ],
-      "how_tested": "partly: axe no-autoplay-audio",
-      "result": "no_failures_found",
-      "tests": "no_failures_found",
-      "text": "no failures found by these tests",
+      "coverage": "none",
+      "tested_by": [],
+      "how_tested": "not tested: needs a person",
+      "result": "not_tested",
+      "tests": "not_tested",
+      "text": "not tested: needs a person",
       "issues": 0,
       "pages": 0,
       "paths": [],
@@ -529,13 +527,12 @@
       "en301549": "9.2.4.1",
       "coverage": "partly",
       "tested_by": [
-        "keyboard/skip-link-broken",
-        "axe:bypass"
+        "keyboard/skip-link-broken"
       ],
-      "how_tested": "partly: axe bypass; keyboard/skip-link-broken",
-      "result": "no_failures_found",
-      "tests": "no_failures_found",
-      "text": "no failures found by these tests",
+      "how_tested": "partly: keyboard/skip-link-broken; a person checks the rest",
+      "result": "not_tested",
+      "tests": "not_tested",
+      "text": "not tested: needs a person",
       "issues": 0,
       "pages": 0,
       "paths": [],
@@ -1023,7 +1020,6 @@
       "tested_by": [
         "axe:area-alt",
         "axe:aria-allowed-attr",
-        "axe:aria-braille-equivalent",
         "axe:aria-command-name",
         "axe:aria-conditional-attr",
         "axe:aria-deprecated-role",
@@ -1040,9 +1036,7 @@
         "axe:aria-valid-attr",
         "axe:aria-valid-attr-value",
         "axe:button-name",
-        "axe:duplicate-id-aria",
         "axe:frame-title",
-        "axe:frame-title-unique",
         "axe:input-button-name",
         "axe:input-image-alt",
         "axe:label",
@@ -1051,7 +1045,7 @@
         "axe:select-name",
         "axe:summary-name"
       ],
-      "how_tested": "partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name",
+      "how_tested": "partly: axe area-alt, aria-allowed-attr, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, frame-title, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name",
       "result": "no_failures_found",
       "tests": "no_failures_found",
       "text": "no failures found by these tests",

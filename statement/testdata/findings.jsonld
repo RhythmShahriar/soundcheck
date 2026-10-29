@@ -646,7 +646,6 @@
     {
       "type": "Assertion",
       "date": "2026-10-26",
-      "mode": "earl:automatic",
       "assertedBy": {
         "id": "https://github.com/RhythmShahriar/soundcheck",
         "type": [
@@ -675,12 +674,12 @@
       "result": {
         "type": "TestResult",
         "date": "2026-10-26",
-        "description": "no failures found by these tests. They can't find every way this criterion fails, so a person decides.",
+        "description": "not tested: needs a person.",
         "outcome": {
-          "id": "earl:cantTell",
+          "id": "earl:untested",
           "type": [
             "OutcomeValue",
-            "CannotTell"
+            "NotTested"
           ]
         }
       }
@@ -1230,7 +1229,6 @@
     {
       "type": "Assertion",
       "date": "2026-10-26",
-      "mode": "earl:semiAuto",
       "assertedBy": {
         "id": "https://github.com/RhythmShahriar/soundcheck",
         "type": [
@@ -1259,12 +1257,12 @@
       "result": {
         "type": "TestResult",
         "date": "2026-10-26",
-        "description": "no failures found by these tests. They can't find every way this criterion fails, so a person decides.",
+        "description": "not tested: needs a person.",
         "outcome": {
-          "id": "earl:cantTell",
+          "id": "earl:untested",
           "type": [
             "OutcomeValue",
-            "CannotTell"
+            "NotTested"
           ]
         }
       }
@@ -2229,7 +2227,7 @@
       "type": "http://www.w3.org/TR/NOTE-datetime",
       "@value": "2026-10-26"
     },
-    "summary": "Soundcheck's tests found failures of 7 of 50 criteria and could not test 25 of them. Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.",
+    "summary": "Soundcheck's tests found failures of 7 of 50 criteria and could not test 27 of them. Automated and keyboard tests find some accessibility problems, not all. This is evidence for your own review, not a statement that the site meets WCAG, EN 301 549 or the European Accessibility Act.",
     "title": "Accessibility evidence for https://shop.example",
     "commissioner": "Example Coffee Ltd",
     "evaluator": "",

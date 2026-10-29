@@ -14,13 +14,14 @@ const AxeVersion = "4.14.0"
 const AxeSHA256 = "20c09fe157a8a34a30e241aaa1fcdade657734f08ab379ecfbeb7d45cc46e878"
 
 // AxeRules is every rule of the vendored axe-core by id, with the WCAG
-// criteria and EN 301 549 clauses its tags name.
+// criteria and EN 301 549 clauses its tags name and whether it is
+// reviewOnFail.
 var AxeRules = map[string]Rule{
 	"accesskeys":                          {Tags: []string{"cat.keyboard", "best-practice"}},
 	"area-alt":                            {WCAG: []string{"2.4.4", "4.1.2"}, EN: []string{"9.2.4.4", "9.4.1.2"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag244", "wcag412", "section508", "section508.22.a", "TTv5", "TT6.a", "EN-301-549", "EN-9.2.4.4", "EN-9.4.1.2", "ACT", "RGAAv4", "RGAA-1.1.2"}},
 	"aria-allowed-attr":                   {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-7.1.1"}},
 	"aria-allowed-role":                   {Tags: []string{"cat.aria", "best-practice"}},
-	"aria-braille-equivalent":             {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2"}},
+	"aria-braille-equivalent":             {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2"}, ReviewOnFail: true},
 	"aria-command-name":                   {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "TTv5", "TT6.a", "EN-301-549", "EN-9.4.1.2", "ACT", "RGAAv4", "RGAA-11.9.1"}},
 	"aria-conditional-attr":               {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-7.1.1"}},
 	"aria-deprecated-role":                {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.aria", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-7.1.1"}},
@@ -48,7 +49,7 @@ var AxeRules = map[string]Rule{
 	"avoid-inline-spacing":                {WCAG: []string{"1.4.12"}, EN: []string{"9.1.4.12"}, Tags: []string{"cat.structure", "wcag21aa", "wcag1412", "EN-301-549", "EN-9.1.4.12", "ACT"}},
 	"blink":                               {WCAG: []string{"2.2.2"}, EN: []string{"9.2.2.2"}, Tags: []string{"cat.time-and-media", "wcag2a", "wcag222", "section508", "section508.22.j", "TTv5", "TT2.b", "EN-301-549", "EN-9.2.2.2", "RGAAv4", "RGAA-13.8.1"}},
 	"button-name":                         {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.name-role-value", "wcag2a", "wcag412", "section508", "section508.22.a", "TTv5", "TT6.a", "EN-301-549", "EN-9.4.1.2", "ACT", "RGAAv4", "RGAA-11.9.1"}},
-	"bypass":                              {WCAG: []string{"2.4.1"}, EN: []string{"9.2.4.1"}, Tags: []string{"cat.keyboard", "wcag2a", "wcag241", "section508", "section508.22.o", "TTv5", "TT9.a", "EN-301-549", "EN-9.2.4.1", "RGAAv4", "RGAA-12.7.1"}},
+	"bypass":                              {WCAG: []string{"2.4.1"}, EN: []string{"9.2.4.1"}, Tags: []string{"cat.keyboard", "wcag2a", "wcag241", "section508", "section508.22.o", "TTv5", "TT9.a", "EN-301-549", "EN-9.2.4.1", "RGAAv4", "RGAA-12.7.1"}, ReviewOnFail: true},
 	"color-contrast":                      {WCAG: []string{"1.4.3"}, EN: []string{"9.1.4.3"}, Tags: []string{"cat.color", "wcag2aa", "wcag143", "TTv5", "TT13.c", "EN-301-549", "EN-9.1.4.3", "ACT", "RGAAv4", "RGAA-3.2.1"}},
 	"color-contrast-enhanced":             {WCAG: []string{"1.4.6"}, Tags: []string{"cat.color", "wcag2aaa", "wcag146", "ACT"}},
 	"css-orientation-lock":                {WCAG: []string{"1.3.4"}, EN: []string{"9.1.3.4"}, Tags: []string{"cat.structure", "wcag134", "wcag21aa", "EN-301-549", "EN-9.1.3.4", "RGAAv4", "RGAA-13.9.1", "experimental"}, Experimental: true},
@@ -57,7 +58,7 @@ var AxeRules = map[string]Rule{
 	"document-title":                      {WCAG: []string{"2.4.2"}, EN: []string{"9.2.4.2"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag242", "TTv5", "TT12.a", "EN-301-549", "EN-9.2.4.2", "ACT", "RGAAv4", "RGAA-8.5.1"}},
 	"duplicate-id":                        {WCAG: []string{"4.1.1"}, Tags: []string{"cat.parsing", "wcag2a-obsolete", "wcag411", "deprecated"}},
 	"duplicate-id-active":                 {WCAG: []string{"4.1.1"}, Tags: []string{"cat.parsing", "wcag2a-obsolete", "wcag411", "deprecated"}},
-	"duplicate-id-aria":                   {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.parsing", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-8.2.1"}},
+	"duplicate-id-aria":                   {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.parsing", "wcag2a", "wcag412", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-8.2.1"}, ReviewOnFail: true},
 	"empty-heading":                       {Tags: []string{"cat.name-role-value", "best-practice"}},
 	"empty-table-header":                  {Tags: []string{"cat.name-role-value", "best-practice"}},
 	"focus-order-semantics":               {Tags: []string{"cat.keyboard", "best-practice", "RGAAv4", "RGAA-12.8.1", "experimental"}, Experimental: true},
@@ -65,7 +66,7 @@ var AxeRules = map[string]Rule{
 	"frame-focusable-content":             {WCAG: []string{"2.1.1"}, EN: []string{"9.2.1.1"}, Tags: []string{"cat.keyboard", "wcag2a", "wcag211", "TTv5", "TT4.a", "EN-301-549", "EN-9.2.1.1", "RGAAv4", "RGAA-7.3.2"}},
 	"frame-tested":                        {Tags: []string{"cat.structure", "best-practice", "review-item"}},
 	"frame-title":                         {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag412", "section508", "section508.22.i", "TTv5", "TT12.d", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-2.1.1"}},
-	"frame-title-unique":                  {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag412", "TTv5", "TT12.d", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-2.2.1"}},
+	"frame-title-unique":                  {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag412", "TTv5", "TT12.d", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-2.2.1"}, ReviewOnFail: true},
 	"heading-order":                       {Tags: []string{"cat.semantics", "best-practice"}},
 	"hidden-content":                      {Tags: []string{"cat.structure", "best-practice", "experimental", "review-item"}, Experimental: true},
 	"html-has-lang":                       {WCAG: []string{"3.1.1"}, EN: []string{"9.3.1.1"}, Tags: []string{"cat.language", "wcag2a", "wcag311", "TTv5", "TT11.a", "EN-301-549", "EN-9.3.1.1", "ACT", "RGAAv4", "RGAA-8.3.1"}},
@@ -98,7 +99,7 @@ var AxeRules = map[string]Rule{
 	"meta-viewport":                       {WCAG: []string{"1.4.4"}, EN: []string{"9.1.4.4"}, Tags: []string{"cat.sensory-and-visual-cues", "wcag2aa", "wcag144", "EN-301-549", "EN-9.1.4.4", "ACT", "RGAAv4", "RGAA-10.4.2"}},
 	"meta-viewport-large":                 {Tags: []string{"cat.sensory-and-visual-cues", "best-practice"}},
 	"nested-interactive":                  {WCAG: []string{"4.1.2"}, EN: []string{"9.4.1.2"}, Tags: []string{"cat.keyboard", "wcag2a", "wcag412", "TTv5", "TT6.a", "EN-301-549", "EN-9.4.1.2", "RGAAv4", "RGAA-7.1.1"}},
-	"no-autoplay-audio":                   {WCAG: []string{"1.4.2"}, EN: []string{"9.1.4.2"}, Tags: []string{"cat.time-and-media", "wcag2a", "wcag142", "TTv5", "TT2.a", "EN-301-549", "EN-9.1.4.2", "ACT", "RGAAv4", "RGAA-4.10.1"}},
+	"no-autoplay-audio":                   {WCAG: []string{"1.4.2"}, EN: []string{"9.1.4.2"}, Tags: []string{"cat.time-and-media", "wcag2a", "wcag142", "TTv5", "TT2.a", "EN-301-549", "EN-9.1.4.2", "ACT", "RGAAv4", "RGAA-4.10.1"}, ReviewOnFail: true},
 	"object-alt":                          {WCAG: []string{"1.1.1"}, EN: []string{"9.1.1.1"}, Tags: []string{"cat.text-alternatives", "wcag2a", "wcag111", "section508", "section508.22.a", "EN-301-549", "EN-9.1.1.1", "RGAAv4", "RGAA-1.1.6"}},
 	"p-as-heading":                        {WCAG: []string{"1.3.1"}, EN: []string{"9.1.3.1"}, Tags: []string{"cat.semantics", "wcag2a", "wcag131", "EN-301-549", "EN-9.1.3.1", "RGAAv4", "RGAA-9.1.3", "experimental"}, Experimental: true},
 	"page-has-heading-one":                {Tags: []string{"cat.semantics", "best-practice"}},

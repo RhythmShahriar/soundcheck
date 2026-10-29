@@ -119,7 +119,7 @@ The end of `rhythm soundcheck demo --eaa --plain`, as it printed on a Linux lapt
   fix: Closing a dialog, menu or disclosure drops focus on the page body. Move focus back to the control that opened it.
 
 Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (1.4.10, 2.1.2,
-2.4.2, 2.4.3 new), 21 had none found by these tests, 25 need a person, 1 page
+2.4.2, 2.4.3 new), 19 had none found by these tests, 27 need a person, 1 page
 not fully tested, open issues 0 to 4
 Something broke - 3 broke, 8 new, 0 changed, 0 slower, 0 fixed - compared with snapshot "working" (just now), 5 pages, 8s
 Automated and keyboard tests find some accessibility problems, not all. This is

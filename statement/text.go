@@ -413,7 +413,7 @@ func notTestedRows(dr *Draft) (unrun, person []string) {
 		if r.Result != ResultNotTested {
 			continue
 		}
-		if r.Note == "" && r.Coverage == wcag.CoveragePartly {
+		if r.Note == "" && r.Coverage == wcag.CoveragePartly && !r.OnlyFails {
 			unrun = append(unrun, r.ID)
 		} else {
 			person = append(person, r.ID)
@@ -444,7 +444,7 @@ func testsText(r Row) string {
 	switch {
 	case r.Note != "":
 		return r.Note
-	case r.Coverage == wcag.CoveragePartly:
+	case r.Coverage == wcag.CoveragePartly && !r.OnlyFails:
 		return "not tested: its tests didn't run"
 	}
 	return "not tested: needs a person"

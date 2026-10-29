@@ -92,6 +92,9 @@ func TestCatalogRows(t *testing.T) {
 				}
 			}
 		}
+		if e.OnlyFails && (e.Coverage != CoveragePartly || len(e.TestedBy) == 0) {
+			t.Errorf("%s: only_failures needs coverage partly and its own tests", e.ID)
+		}
 		for _, check := range e.TestedBy {
 			if strings.HasPrefix(check, "axe:") {
 				t.Errorf("%s: list axe rules in axe_rules.gen.go, not tested_by (%s)", e.ID, check)

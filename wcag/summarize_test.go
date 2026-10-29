@@ -61,7 +61,7 @@ func TestSummarizeClean(t *testing.T) {
 	run := eaaRun()
 	run.KeyFlows = &model.KeyFlows{Run: 1, Skipped: []model.SkippedFlow{{File: "checkout.yaml", Reason: "needs --level flows"}}}
 	s := Summarize(run, each(pages), nil, nil, nil)
-	if len(s.Criteria.Failed) != 0 || len(s.Criteria.NoFailuresFound) != 25 || len(s.Criteria.NotTested) != 25 || s.Open != 0 {
+	if len(s.Criteria.Failed) != 0 || len(s.Criteria.NoFailuresFound) != 23 || len(s.Criteria.NotTested) != 27 || s.Open != 0 {
 		t.Errorf("clean: %d failed, %d no failures, %d not tested, %d open", len(s.Criteria.Failed), len(s.Criteria.NoFailuresFound), len(s.Criteria.NotTested), s.Open)
 	}
 	if !slices.Contains(s.Criteria.NotTested, "4.1.1") || !slices.Contains(s.Criteria.NoFailuresFound, "2.1.2") {
@@ -181,10 +181,58 @@ func TestSummarizeKeyboardSkipped(t *testing.T) {
 				t.Errorf("%s: %s isn't not tested", name, id)
 			}
 		}
-		// 2.1.1 and 2.4.1 have axe rules too.
-		for _, id := range []string{"2.1.1", "2.4.1"} {
-			if !slices.Contains(s.Criteria.NoFailuresFound, id) {
-				t.Errorf("%s: %s isn't no failures found", name, id)
+		// 2.1.1 has axe rules too.
+		if !slices.Contains(s.Criteria.NoFailuresFound, "2.1.1") {
+			t.Errorf("%s: 2.1.1 isn't no failures found", name)
+		}
+		// axe's bypass can't fail: 2.4.1 has only the keyboard test.
+		if !slices.Contains(s.Criteria.NotTested, "2.4.1") {
+			t.Errorf("%s: 2.4.1 isn't not tested", name)
+		}
+	}
+}
+
+// A page with autoplaying audio and no way to skip its links: axe's
+// no-autoplay-audio and bypass can only ask for review, so a run that
+// finds nothing doesn't say 1.4.2 or 2.4.1 has no failures. Both need a
+// person; a broken skip link still fails 2.4.1.
+func TestSummarizeReviewOnly(t *testing.T) {
+	for _, v := range []string{"2.1", "2.2"} {
+		run := eaaRun()
+		run.Options.WCAG = v
+		s := Summarize(run, each([]model.Page{{Path: "/", Audits: ok()}}), nil, nil, nil)
+		for _, id := range []string{"1.4.2", "2.4.1"} {
+			if slices.Contains(s.Criteria.NoFailuresFound, id) || !slices.Contains(s.Criteria.NotTested, id) {
+				t.Errorf("%s: %s reads as no failures found: %+v", v, id, s.Criteria)
+			}
+		}
+		if unrun, person := SplitNotTested(v, s.Criteria.NotTested); slices.Contains(unrun, "2.4.1") || !slices.Contains(person, "2.4.1") || !slices.Contains(person, "1.4.2") {
+			t.Errorf("%s: unrun %v, person %v", v, unrun, person)
+		}
+		broken := []model.Page{{Path: "/", Audits: ok(), Issues: []model.Issue{issue("keyboard/skip-link-broken", "a.skip")}}}
+		s = Summarize(run, each(broken), nil, nil, nil)
+		if got, ok := failed(s, "2.4.1"); !ok || got.Issues != 1 {
+			t.Errorf("%s: 2.4.1: %+v", v, s.Criteria.Failed)
+		}
+	}
+	for _, c := range Criteria("2.1") {
+		switch c.ID {
+		case "1.4.2":
+			if c.Coverage != CoverageNone || c.HowTested() != "not tested: needs a person" {
+				t.Errorf("1.4.2: %+v", c)
+			}
+		case "2.4.1":
+			if !c.OnlyFails || c.HowTested() != "partly: keyboard/skip-link-broken; a person checks the rest" {
+				t.Errorf("2.4.1: %+v, %q", c, c.HowTested())
+			}
+		case "4.1.2":
+			for _, rule := range []string{"duplicate-id-aria", "frame-title-unique", "aria-braille-equivalent"} {
+				if slices.Contains(c.TestedBy, "axe:"+rule) {
+					t.Errorf("4.1.2 is tested by axe %s, which can't fail", rule)
+				}
+			}
+			if !slices.Contains(c.TestedBy, "axe:button-name") {
+				t.Errorf("4.1.2: %v", c.TestedBy)
 			}
 		}
 	}

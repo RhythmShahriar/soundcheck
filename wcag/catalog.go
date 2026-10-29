@@ -32,6 +32,7 @@ type entry struct {
 	EN        string   `yaml:"en"`
 	Coverage  string   `yaml:"coverage"`
 	TestedBy  []string `yaml:"tested_by"`
+	OnlyFails bool     `yaml:"only_failures"`
 	Note      string   `yaml:"note"`
 }
 
@@ -76,7 +77,7 @@ var tables = sync.OnceValue(func() map[string]table {
 				continue
 			}
 			c := Criterion{ID: e.ID, Title: e.Title, Slug: e.Slug, Level: e.Level, Principle: e.Principle,
-				Since: e.Since, EN: e.EN, Note: e.Note, Coverage: CoverageNone}
+				Since: e.Since, EN: e.EN, Note: e.Note, Coverage: CoverageNone, OnlyFails: e.OnlyFails}
 			// coverage: none is a promise that nothing tests the criterion,
 			// so axe rules naming it (4.1.1's obsolete ones) don't count.
 			if e.Coverage == CoveragePartly {

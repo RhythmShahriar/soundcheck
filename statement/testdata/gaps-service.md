@@ -18,11 +18,11 @@ This information covers the 4 pages Soundcheck checked, listed under "Pages chec
 
 ## How the service meets the accessibility requirements
 
-[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 28 of them.]
+[TO DO: choose one after your review: "fully compliant", "partially compliant" or "not compliant" with WCAG 2.2 level AA / EN 301 549 V4.1.1. Soundcheck does not choose this for you. Its tests found failures of 0 of 55 criteria and could not test 30 of them.]
 
 ### Problems found
 
-On 2026-10-26 Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: 28 criteria need a person and some pages weren't fully tested (see "Not tested").
+On 2026-10-26 Soundcheck's tests found no failures on the pages where they finished. That doesn't mean there are none: 30 criteria need a person and some pages weren't fully tested (see "Not tested").
 
 ### Disproportionate burden
 
@@ -80,7 +80,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 1.3.4 Orientation | AA | 9.1.3.4 | not tested: needs a person | not tested: needs a person |
 | 1.3.5 Identify Input Purpose | AA | 9.1.3.5 | partly: axe autocomplete-valid | no failures found by these tests |
 | 1.4.1 Use of Color | A | 9.1.4.1 | partly: axe link-in-text-block | no failures found by these tests |
-| 1.4.2 Audio Control | A | 9.1.4.2 | partly: axe no-autoplay-audio | no failures found by these tests |
+| 1.4.2 Audio Control | A | 9.1.4.2 | not tested: needs a person | not tested: needs a person |
 | 1.4.3 Contrast (Minimum) | AA | 9.1.4.3 | partly: axe color-contrast | no failures found by these tests |
 | 1.4.4 Resize Text | AA | 9.1.4.4 | partly: axe meta-viewport | no failures found by these tests |
 | 1.4.5 Images of Text | AA | 9.1.4.5 | not tested: needs a person | not tested: needs a person |
@@ -94,7 +94,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 2.2.1 Timing Adjustable | A | 9.2.2.1 | partly: axe meta-refresh | no failures found by these tests |
 | 2.2.2 Pause, Stop, Hide | A | 9.2.2.2 | partly: axe blink, marquee | no failures found by these tests |
 | 2.3.1 Three Flashes or Below Threshold | A | 9.2.3.1 | not tested: needs a person | not tested: needs a person |
-| 2.4.1 Bypass Blocks | A | 9.2.4.1 | partly: axe bypass; keyboard/skip-link-broken | no failures found by these tests |
+| 2.4.1 Bypass Blocks | A | 9.2.4.1 | partly: keyboard/skip-link-broken; a person checks the rest | not tested: needs a person |
 | 2.4.2 Page Titled | A | 9.2.4.2 | partly: axe document-title | no failures found by these tests |
 | 2.4.3 Focus Order | A | 9.2.4.3 | partly: keyboard/focus-lost, keyboard/dialog-focus | no failures found by these tests |
 | 2.4.4 Link Purpose (In Context) | A | 9.2.4.4 | partly: axe area-alt, link-name | no failures found by these tests |
@@ -121,7 +121,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 | 3.3.4 Error Prevention (Legal, Financial, Data) | AA | 9.3.3.4 | not tested: needs a person | not tested: needs a person |
 | 3.3.7 Redundant Entry | A | 9.3.3.7 | not tested: needs a person | not tested: needs a person |
 | 3.3.8 Accessible Authentication (Minimum) | AA | 9.3.3.8 | not tested: needs a person | not tested: needs a person |
-| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-braille-equivalent, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, duplicate-id-aria, frame-title, frame-title-unique, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name | no failures found by these tests |
+| 4.1.2 Name, Role, Value | A | 9.4.1.2 | partly: axe area-alt, aria-allowed-attr, aria-command-name, aria-conditional-attr, aria-deprecated-role, aria-hidden-body, aria-hidden-focus, aria-input-field-name, aria-prohibited-attr, aria-required-attr, aria-roledescription, aria-roles, aria-tab-name, aria-toggle-field-name, aria-tooltip-name, aria-valid-attr, aria-valid-attr-value, button-name, frame-title, input-button-name, input-image-alt, label, link-name, nested-interactive, select-name, summary-name | no failures found by these tests |
 | 4.1.3 Status Messages | AA | 9.4.1.3 | not tested: needs a person | not tested: needs a person |
 
 ## Not tested
@@ -130,7 +130,7 @@ We reply within [TO DO: days; or set statement.response\_days] days.
 - /broken/: keyboard was skipped (the page answered 500); its criteria count as not tested there.
 - /catalog/: a11y timed out (axe-core timed out after 45s); its criteria count as not tested there.
 - Content in frames from js.stripe.com wasn't tested.
-- 28 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.
+- 30 criteria need a person: 1.2.1, 1.2.2, 1.2.3, 1.2.4, 1.2.5, 1.3.2, 1.3.3, 1.3.4, 1.4.2, 1.4.5, 1.4.11, 1.4.13, 2.1.4, 2.3.1, 2.4.1, 2.4.5, 2.4.6, 2.5.1, 2.5.2, 2.5.4, 2.5.7, 3.2.2, 3.2.3, 3.2.4, 3.2.6, 3.3.3, 3.3.4, 3.3.7, 3.3.8, 4.1.3.
 - Only Chrome was used. The keyboard walk ran at desktop width.
 - No screen reader, voice control or test with disabled users.
 - EN 301 549 clauses 5 (generic requirements, such as closed functionality), 6 (two-way voice communication), 7 (video capabilities), 10 (non-web documents), 11 (software) and 12 (documentation and support services) are outside a website check and weren't tested.

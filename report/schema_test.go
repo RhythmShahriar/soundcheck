@@ -531,10 +531,10 @@ func TestEAAJSONNotTestedSplit(t *testing.T) {
 		t.Errorf("not_tested = %s, want [1.4.3]", got)
 	}
 	person := crit["needs_person"].([]any)
-	if len(person) != 25 || slices.Contains(person, any("1.4.3")) {
-		t.Errorf("needs_person = %v, want the 25 criteria only a person can judge", person)
+	if len(person) != 26 || slices.Contains(person, any("1.4.3")) {
+		t.Errorf("needs_person = %v, want the 26 criteria only a person can judge", person)
 	}
-	if len(run.EAA.Criteria.NotTested) != 26 {
+	if len(run.EAA.Criteria.NotTested) != 27 {
 		t.Error("JSON changed the summary it wrote")
 	}
 }

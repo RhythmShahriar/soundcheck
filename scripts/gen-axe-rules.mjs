@@ -3,7 +3,8 @@
 
 // Writes wcag/axe_rules.gen.go: every rule of the vendored axe-core
 // (checks/a11y/vendor/axe.min.js) with the WCAG criteria, EN 301 549
-// clauses and tags it carries, plus the SHA-256 of the file. A Go test
+// clauses and tags it carries and whether it is reviewOnFail, plus the
+// SHA-256 of the file. A Go test
 // fails when the vendored file's hash differs, so the table can't drift
 // from the engine after an axe bump.
 //
@@ -55,6 +56,14 @@ const byNumber = (a, b) => {
 };
 const list = (xs) => `[]string{${xs.map((x) => JSON.stringify(x)).join(', ')}}`;
 
+// A reviewOnFail rule turns every failed check into an incomplete
+// result, so it never reports a violation. getRules doesn't say which
+// rules are; the loaded audit does.
+if (!axe._audit || !Array.isArray(axe._audit.rules)) {
+  throw new Error('axe.min.js did not load its rules: no axe._audit.rules');
+}
+const reviewOnFail = new Set(axe._audit.rules.filter((r) => r.reviewOnFail).map((r) => r.id));
+
 const rules = axe.getRules().slice().sort((a, b) => (a.ruleId < b.ruleId ? -1 : 1));
 const lines = rules.map((r) => {
   const tags = [...r.tags];
@@ -65,6 +74,7 @@ const lines = rules.map((r) => {
   if (en.length) fields.push(`EN: ${list(en)}`);
   fields.push(`Tags: ${list(tags)}`);
   if (tags.includes('experimental')) fields.push('Experimental: true');
+  if (reviewOnFail.has(r.ruleId)) fields.push('ReviewOnFail: true');
   return `\t${JSON.stringify(r.ruleId)}: {${fields.join(', ')}},`;
 });
 
@@ -84,7 +94,8 @@ const AxeVersion = ${JSON.stringify(axe.version)}
 const AxeSHA256 = ${JSON.stringify(sha)}
 
 // AxeRules is every rule of the vendored axe-core by id, with the WCAG
-// criteria and EN 301 549 clauses its tags name.
+// criteria and EN 301 549 clauses its tags name and whether it is
+// reviewOnFail.
 var AxeRules = map[string]Rule{
 ${lines.join('\n')}
 }

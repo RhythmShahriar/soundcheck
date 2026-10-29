@@ -200,7 +200,7 @@ func TestEAAPlainLines(t *testing.T) {
 			t.Errorf("plain output lacks %q:\n%s", want, out)
 		}
 	}
-	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures, 20 had none found by these tests, 25 need a person "+
+	if flat := oneLine(out); !strings.Contains(flat, "Accessibility: 5 of 50 WCAG 2.1 A and AA criteria have failures, 19 had none found by these tests, 26 need a person "+
 		`Snapshot "eaa-1" saved; the site already has errors`) {
 		t.Errorf("no counts line before the verdict:\n%s", out)
 	}
@@ -230,7 +230,7 @@ func TestEAACompareLine(t *testing.T) {
 	var b bytes.Buffer
 	NewPretty(&b, io.Discard, PrettyOptions{Plain: true, Accept: "rhythm soundcheck accept"}).Summary(r, "")
 	out := b.String()
-	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new), 21 had none found by these tests, 25 need a person, 1 page not fully tested, open issues 3 to 4 Something broke"
+	want := "Accessibility: 4 of 50 WCAG 2.1 A and AA criteria have failures (2.1.2 new), 20 had none found by these tests, 26 need a person, 1 page not fully tested, open issues 3 to 4 Something broke"
 	if !strings.Contains(oneLine(out), want) {
 		t.Errorf("lacks %q:\n%s", want, out)
 	}
@@ -565,12 +565,12 @@ func TestEAANotTestedSplit(t *testing.T) {
 	e.NotAudited = []model.NotAudited{{Path: "/big/", Module: "a11y", Status: model.AuditTimeout, Reason: "timed out after 45s"}}
 	run.EAA = e
 	line := accessibilityLine(Result{Run: run}, true)
-	if !strings.Contains(line, "· 4 not tested (their tests didn't finish) · 25 need a person") {
+	if !strings.Contains(line, "· 4 not tested (their tests didn't finish) · 26 need a person") {
 		t.Errorf("counts line: %s", line)
 	}
 	var b strings.Builder
 	writeAccessibility(&b, Result{Run: run})
-	if !strings.Contains(b.String(), "4 not tested (their tests didn't finish) · 25 need a person") {
+	if !strings.Contains(b.String(), "4 not tested (their tests didn't finish) · 26 need a person") {
 		t.Errorf("markdown: %s", b.String())
 	}
 	e.Interrupted = true

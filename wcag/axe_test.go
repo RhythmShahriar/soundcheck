@@ -90,8 +90,8 @@ func TestAxeTags(t *testing.T) {
 // video-caption and audio-caption fail only through their "caption"
 // check, which in the vendored axe-core returns false or undefined,
 // never true: they can't report a violation, so they test nothing.
-// After an axe bump that changes this, revisit reviewOnly.
-func TestReviewOnlyRules(t *testing.T) {
+// After an axe bump that changes this, revisit captionOnly.
+func TestCaptionRulesCantFail(t *testing.T) {
 	src, err := os.ReadFile(vendoredAxe)
 	if err != nil {
 		t.Fatal(err)
@@ -128,5 +128,66 @@ func TestReviewOnlyRules(t *testing.T) {
 	}
 	if !CanFail("image-alt") {
 		t.Error("CanFail(image-alt) is false")
+	}
+}
+
+// ruleDef returns the definition of the axe rule id in the vendored
+// source: the text from its {id:"<id>", up to the next {id:", which is
+// the one with tags (a check can share a rule's id).
+func ruleDef(t *testing.T, js, id string) string {
+	t.Helper()
+	var defs []string
+	needle := `{id:"` + id + `",`
+	for at := 0; ; {
+		i := strings.Index(js[at:], needle)
+		if i < 0 {
+			break
+		}
+		start := at + i
+		rest := js[start+len(needle):]
+		end := len(rest)
+		if j := strings.Index(rest, `{id:"`); j >= 0 {
+			end = j
+		}
+		if def := js[start : start+len(needle)+end]; strings.Contains(def, "tags:[") {
+			defs = append(defs, def)
+		}
+		at = start + len(needle)
+	}
+	if len(defs) != 1 {
+		t.Fatalf("%s: %d rule definitions in the vendored axe-core", id, len(defs))
+	}
+	return defs[0]
+}
+
+// A reviewOnFail rule turns every failed check into an incomplete
+// result and a run keeps violations only, so it can't fail: CanFail
+// must say so for each one the vendored axe-core marks, read from its
+// source, not from a list kept by hand.
+func TestReviewOnlyRules(t *testing.T) {
+	src, err := os.ReadFile(vendoredAxe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+	var marked []string
+	for id, r := range AxeRules {
+		review := strings.Contains(ruleDef(t, js, id), "reviewOnFail:!0")
+		if review != r.ReviewOnFail {
+			t.Errorf("%s: reviewOnFail %v in axe, %v in the table", id, review, r.ReviewOnFail)
+		}
+		if review && len(r.WCAG) > 0 {
+			marked = append(marked, id)
+			if CanFail(id) {
+				t.Errorf("CanFail(%s) is true but axe marks it reviewOnFail", id)
+			}
+		}
+	}
+	slices.Sort(marked)
+	if want := []string{"aria-braille-equivalent", "bypass", "duplicate-id-aria", "frame-title-unique", "no-autoplay-audio"}; !slices.Equal(marked, want) {
+		t.Errorf("reviewOnFail WCAG rules %v, want %v", marked, want)
+	}
+	if !CanFail("button-name") || !CanFail("frame-title") {
+		t.Error("a rule that can fail can't")
 	}
 }
