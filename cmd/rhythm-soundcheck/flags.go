@@ -333,6 +333,7 @@ func parse(args []string) (*plan, error) {
 	cfg.Pages.Include = append(cfg.Pages.Include, o.include...)
 	cfg.Pages.Exclude = append(cfg.Pages.Exclude, o.exclude...)
 	cfg.Pages.Extra = append(cfg.Pages.Extra, o.pages...)
+	cfg.Pages.Flag = append(cfg.Pages.Flag, o.pages...)
 	if o.ignoreRobots {
 		cfg.Pages.IgnoreRobots = true
 	}

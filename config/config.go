@@ -108,6 +108,9 @@ type Pages struct {
 	Exclude      []string `yaml:"exclude"`   // skip pages matching these globs
 	IgnoreRobots bool     `yaml:"ignore_robots"`
 	Extra        []string `yaml:"extra"` // paths to always check, e.g. /checkout/
+	// Flag lists the paths of Extra that came from --page, not the file,
+	// so a note about one names the flag.
+	Flag []string `yaml:"-"`
 }
 
 // Visual tunes the screenshot comparison.

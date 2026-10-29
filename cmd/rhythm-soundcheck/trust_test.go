@@ -208,3 +208,20 @@ func TestFlowEnvRefused(t *testing.T) {
 		t.Errorf("the other host was asked: %v", hits)
 	}
 }
+
+// Pages from --page are told apart from the config file's pages: extra:,
+// so a note about one names where it came from.
+func TestPageFlagMarked(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeConfig(t, "pages:\n  extra: [/from-file/]\n")
+	p, err := parse([]string{"a.test", "--page", "/from-flag/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(p.cfg.Pages.Extra, " "); got != "/from-file/ /from-flag/" {
+		t.Errorf("extra %s", got)
+	}
+	if got := strings.Join(p.cfg.Pages.Flag, " "); got != "/from-flag/" {
+		t.Errorf("flag %s", got)
+	}
+}

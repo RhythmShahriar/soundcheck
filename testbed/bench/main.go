@@ -281,8 +281,16 @@ func benchScenario(ctx context.Context, o options, dir string, m *Manifest, s Sc
 		}
 	default:
 		snap := append([]string{"snapshot", url, "--name", "good", "--json", "-o", "good.json", "--config", cfgPath}, args...)
-		if _, _, err := command(ctx, o.timeout, wd, env(s), bin, snap...); err != nil {
+		snap = append(snap, h.snapshotArgs(s.Path)...)
+		out, _, err := command(ctx, o.timeout, wd, env(s), bin, snap...)
+		if err != nil {
 			sc = Result{Outcome: Failed, Detail: "snapshot: " + err.Error()}
+		}
+		if s.Harness.Has("canaries") {
+			// The sweep reads what the terminal showed too.
+			if err := os.WriteFile(filepath.Join(wd, snapshotTerminal), []byte(out), 0o600); err != nil {
+				sc = Result{Outcome: Failed, Detail: "snapshot: " + err.Error()}
+			}
 		}
 	}
 	if sc.Outcome == "" && s.Harness.Has("delete-shots") {

@@ -322,3 +322,58 @@ func TestWithHarnesses(t *testing.T) {
 		}
 	}
 }
+
+// The canaries harness makes both runs print a note about a page they
+// left out: the snapshot a --page with the token canary, the extra
+// compare the start page with the start canary. The sweep reads what
+// they printed.
+func TestLeftOutPages(t *testing.T) {
+	cs, err := newCanaries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &harnessRun{canaries: cs}
+	token, sid := cs[slices.IndexFunc(cs, func(c canary) bool { return c.name == "token" })], cs[len(cs)-1]
+	if got := h.snapshotArgs("/my-account/"); !slices.Equal(got, []string{"--page", "/my-account/?reset_token=" + token.value}) {
+		t.Errorf("snapshot args %q", got)
+	}
+	if got := h.snapshotArgs("/a/?p=1"); got[1] != "/a/?p=1&reset_token="+token.value {
+		t.Errorf("snapshot args %q", got)
+	}
+	args := h.leftOutArgs("cfg.yaml", Scenario{Args: []string{"--eaa"}}, "")
+	if !slices.Equal(args[len(args)-3:], []string{"--exclude", "*" + sid.name + "=*", "--eaa"}) || args[0] != "compare" || slices.Contains(args, sid.value) {
+		t.Errorf("left-out args %q", args)
+	}
+	if (&harnessRun{}).snapshotArgs("/") != nil || (&harnessRun{}).leftOutArgs("c", Scenario{}, "") != nil {
+		t.Error("a scenario without canaries gets flags")
+	}
+
+	snap := "!--page /my-account/?reset_token=••••• matches the default exclude *?*token=*; not checked\n"
+	left := "!page /my-account/?sid=••••• matches the exclude *sid=*; not checked\n"
+	if got := leftOutNotes(snap, true, left); len(got) != 0 {
+		t.Errorf("notes there: %q", got)
+	}
+	if got := leftOutNotes("", false, left); len(got) != 0 {
+		t.Errorf("a fixture snapshot: %q", got)
+	}
+	if got := leftOutNotes("", true, ""); len(got) != 2 {
+		t.Errorf("no notes: %q", got)
+	}
+
+	// A raw value in either terminal is a leak.
+	wd := t.TempDir()
+	for name, body := range map[string]string{
+		snapshotTerminal: "!--page /my-account/?reset_token=" + token.value + " matches the default exclude *?*token=*; not checked\n",
+		leftOutTerminal:  "!page /my-account/?sid=" + sid.value + " matches the exclude *sid=*; not checked\n",
+	} {
+		if err := os.WriteFile(filepath.Join(wd, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := sweepCanaries(wd, cs)
+	slices.Sort(got)
+	want := []string{"canaries: the sid canary is in " + leftOutTerminal, "canaries: the token canary is in " + snapshotTerminal}
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("leaks %q, %v; want %q", got, err, want)
+	}
+}

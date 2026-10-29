@@ -195,13 +195,17 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			return nil, ctx.Err()
 		}
 		for _, p := range cfg.Pages.Extra {
-			addListed(frontier, startURL, p, "config", cfg.Pages.Exclude, log)
+			named := listedConfig
+			if slices.Contains(cfg.Pages.Flag, p) {
+				named = listedFlag
+			}
+			addListed(frontier, startURL, p, named, opts.EAA, cfg.Pages.Exclude, log)
 		}
 	} else {
 		copts.PerGroup, copts.Limit, copts.IgnoreRobots = -1, len(opts.Paths)+1, true
 		frontier = crawl.NewFrontier(base, copts)
 		for _, p := range opts.Paths {
-			addListed(frontier, base, p, "snapshot", cfg.Pages.Exclude, log)
+			addListed(frontier, base, p, listedSnapshot, opts.EAA, cfg.Pages.Exclude, log)
 		}
 	}
 	// Pages a resumed run already finished are kept as they are. Their
@@ -558,14 +562,30 @@ func Revisit(ctx context.Context, opts Options, paths []string) (*model.Run, err
 	return Run(ctx, opts)
 }
 
-// addListed adds a page the user named to f: one from --page (source
-// "config") or a path to re-check ("snapshot"). When f leaves it out, a
-// note says why, shown even without --verbose: a page asked for by name
-// mustn't vanish into the skip counts.
-func addListed(f *crawl.Frontier, start *url.URL, raw, source string, exclude []string, log func(string)) {
-	name := "page"
-	if source == "config" {
-		name = "--page"
+// Where a listed page came from, as addListed names it in its note.
+const (
+	listedFlag     = "--page"      // the --page flag
+	listedConfig   = "pages.extra" // pages: extra: in the config file
+	listedSnapshot = "page"        // a path of the snapshot to re-check
+)
+
+// addListed adds a page the user named to f: one from --page or pages:
+// extra: (named listedFlag or listedConfig, crawl source "config") or a
+// path to re-check (listedSnapshot, source "snapshot"). When f leaves it
+// out, a note says why, shown even without --verbose: a page asked for
+// by name mustn't vanish into the skip counts. The note masks the page
+// as the run's outputs do: every query value of an --eaa run
+// (echolink.RedactPage), else what looks like a credential
+// (echolink.RedactURL). A stored path can hold a session the site put
+// in a link.
+func addListed(f *crawl.Frontier, start *url.URL, raw, named string, eaa bool, exclude []string, log func(string)) {
+	source := "config"
+	if named == listedSnapshot {
+		source = "snapshot"
+	}
+	shown := echolink.RedactURL(raw)
+	if eaa {
+		shown = echolink.RedactPage(raw)
 	}
 	before := f.Skipped()
 	if f.Add(raw, source, 0) {
@@ -573,7 +593,7 @@ func addListed(f *crawl.Frontier, start *url.URL, raw, source string, exclude []
 	}
 	for reason, n := range f.Skipped() {
 		if n > before[reason] {
-			log(fmt.Sprintf("!%s %s %s; not checked", name, raw, dropReason(start, raw, reason, exclude)))
+			log(fmt.Sprintf("!%s %s %s; not checked", named, shown, dropReason(start, raw, reason, exclude)))
 		}
 	}
 }

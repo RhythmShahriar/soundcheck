@@ -87,6 +87,7 @@ func (h *harnessRun) check(ctx context.Context, o options, testbed string, s Sce
 		problems = append(problems, statementHarness(ctx, o, s, wd, bin, cfgPath, h.canaries)...)
 	}
 	if s.Harness.Has("canaries") {
+		problems = append(problems, h.leftOut(ctx, o, s, wd, bin, cfgPath)...)
 		leaks, err := sweepCanaries(wd, h.canaries)
 		if err != nil {
 			problems = append(problems, "canaries: "+err.Error())
@@ -276,6 +277,81 @@ func (h *harnessRun) startURL(u string) string {
 		}
 	}
 	return u
+}
+
+// Terminal files: what the canaries harness's runs printed, kept in the
+// scenario's folder so the sweep reads the terminal too.
+const (
+	snapshotTerminal = "snapshot.terminal.txt"
+	leftOutTerminal  = "left-out.terminal.txt"
+)
+
+// snapshotArgs are the flags the canaries harness adds to a scenario's
+// snapshot: a --page under the scenario's path with the token canary in
+// a reset_token query, which the default exclude *?*token=* drops. The
+// note the run prints about it must mask the value.
+func (h *harnessRun) snapshotArgs(path string) []string {
+	for _, c := range h.canaries {
+		if c.name == "token" {
+			sep := "?"
+			if strings.Contains(path, "?") {
+				sep = "&"
+			}
+			return []string{"--page", path + sep + "reset_token=" + c.value}
+		}
+	}
+	return nil
+}
+
+// leftOutArgs are the flags of the extra compare the canaries harness
+// runs: one that excludes the start page the snapshot stored with the
+// start canary in its query, so the run prints a note about a snapshot
+// page it didn't check. That note must mask the value too.
+func (h *harnessRun) leftOutArgs(cfgPath string, s Scenario, echo string) []string {
+	for _, c := range h.canaries {
+		if c.start {
+			args := []string{"compare", "--against-snapshot", "good", "--json", "-o", "left-out.json", "--config", cfgPath,
+				"--exclude", "*" + c.name + "=*"}
+			return append(args, scenarioArgs(s, echo)...)
+		}
+	}
+	return nil
+}
+
+// leftOut runs the extra compare (leftOutArgs) and keeps what it
+// printed for the sweep. Both terminals must show their note about a
+// page left out: without one the harness tested nothing.
+func (h *harnessRun) leftOut(ctx context.Context, o options, s Scenario, wd, bin, cfgPath string) []string {
+	args := h.leftOutArgs(cfgPath, s, o.echo)
+	if args == nil {
+		return nil
+	}
+	// compare exits non-zero when something broke: only the output
+	// matters here.
+	out, _, _ := command(ctx, o.timeout, wd, env(s), bin, args...)
+	if err := os.WriteFile(filepath.Join(wd, leftOutTerminal), []byte(out), 0o600); err != nil {
+		return []string{"canaries: " + err.Error()}
+	}
+	// A snapshot copied from a fixture printed nothing.
+	snap, err := os.ReadFile(filepath.Join(wd, snapshotTerminal)) //nolint:gosec // our own file
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return []string{"canaries: " + err.Error()}
+	}
+	return leftOutNotes(string(snap), err == nil, out)
+}
+
+// leftOutNotes checks that the snapshot (when one was taken) printed
+// its note about the --page it dropped and the extra compare its note
+// about the snapshot page it excluded.
+func leftOutNotes(snapshot string, took bool, leftOut string) []string {
+	var problems []string
+	if took && (!strings.Contains(snapshot, "--page ") || !strings.Contains(snapshot, "not checked")) {
+		problems = append(problems, "canaries: the snapshot printed no note about the --page it left out")
+	}
+	if !strings.Contains(leftOut, "page ") || !strings.Contains(leftOut, "not checked") {
+		problems = append(problems, "canaries: the compare printed no note about the snapshot page it left out")
+	}
+	return problems
 }
 
 // canaryFile is state/canaries: name=value, one per line.
