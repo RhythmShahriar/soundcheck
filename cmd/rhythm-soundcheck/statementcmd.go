@@ -350,10 +350,12 @@ func statementInput(dir, drawAs string) (statement.Input, error) {
 	}
 	// Accepted problems are listed with the ignored ones. They count as
 	// open as compare counts them: they are part of the snapshot.
-	listed := append(slices.Clone(ignored), acceptedChanges(snapDir, pages, run.Issues)...)
+	// Every date in the draft is written in the zone of its own date.
+	now := time.Now()
+	listed := append(slices.Clone(ignored), acceptedChanges(snapDir, pages, run.Issues, now)...)
 	return statement.Input{Run: run, Pages: pages, Ignored: listed, Unstable: unstable,
 		Summary: wcag.Summarize(run, pages, run.Issues, ignored, unstable),
-		Version: shownVersion(), Now: time.Now(), Insecure: insecureRun(dir), Hide: statementHide()}, nil
+		Version: shownVersion(), Now: now, Insecure: insecureRun(dir), Hide: statementHide()}, nil
 }
 
 // insecureRun reads from a run's evidence pack whether it was made with
@@ -533,8 +535,10 @@ func absPath(path string) string {
 // problem is part of the snapshot's baseline, so the comparison never
 // reports it again, yet it is still there. Accept takes no reason, so
 // none is given; who accepted it isn't named either, as the statement
-// is published. One fixed since isn't listed.
-func acceptedChanges(snapDir string, pages func(func(*model.Page) bool), siteIssues []model.Issue) []model.Change {
+// is published. One fixed since isn't listed. The day it was accepted
+// is written in the zone of now, the draft's own date, so one accepted
+// minutes before the draft never reads as the day before.
+func acceptedChanges(snapDir string, pages func(func(*model.Page) bool), siteIssues []model.Issue, now time.Time) []model.Change {
 	if snapDir == "" {
 		return nil
 	}
@@ -565,7 +569,7 @@ func acceptedChanges(snapDir string, pages func(func(*model.Page) bool), siteIss
 			i = len(out)
 			at[a.ID] = i
 			out = append(out, model.Change{ID: a.ID, Check: a.Check, Title: a.Title,
-				Reason: "accepted into the snapshot on " + a.At.UTC().Format("2006-01-02") + "; no reason given"})
+				Reason: "accepted into the snapshot on " + a.At.In(now.Location()).Format(time.DateOnly) + "; no reason given"})
 		}
 		if a.Page != "" && !slices.Contains(out[i].Pages, a.Page) {
 			out[i].Pages = append(out[i].Pages, a.Page)

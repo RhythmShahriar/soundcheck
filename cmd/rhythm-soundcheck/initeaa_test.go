@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -600,5 +601,30 @@ func TestAcceptRewritesTheStatementDraft(t *testing.T) {
 	}
 	if _, err := os.Stat(draft); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("stale draft kept: %v", err)
+	}
+}
+
+// An acceptance made minutes before the draft, just after local
+// midnight in a zone ahead of UTC, is dated the draft's own day: every
+// date in the draft is in one zone.
+func TestAcceptedDateInDraftZone(t *testing.T) {
+	snap := t.TempDir()
+	at := time.Date(2026, 10, 28, 18, 20, 0, 0, time.UTC)
+	info := store.SnapshotInfo{Schema: model.Schema, Kind: store.KindSnapshot, Accepted: []store.Accepted{
+		{ID: "b1", Check: "keyboard/trap", Title: "Keyboard trap", Page: "/", Who: "me", At: at}}}
+	data, err := json.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(snap, store.SnapshotFile), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pages := func(yield func(*model.Page) bool) {
+		yield(&model.Page{Path: "/", Issues: []model.Issue{{Check: "keyboard/trap", Title: "Keyboard trap"}}})
+	}
+	now := time.Date(2026, 10, 29, 0, 25, 0, 0, time.FixedZone("UTC+6", 6*60*60))
+	got := acceptedChanges(snap, pages, nil, now)
+	if len(got) != 1 || got[0].Reason != "accepted into the snapshot on 2026-10-29; no reason given" {
+		t.Fatalf("accepted = %+v", got)
 	}
 }

@@ -188,14 +188,16 @@ func (s *session) eaaResult(res *report.Result) string {
 		return ""
 	}
 	s.staleNotes(pages, run.Issues)
-	// The draft lists accepted problems with the ignored ones.
+	// The draft lists accepted problems with the ignored ones, dated in
+	// the zone of the draft's own date.
+	now := time.Now()
 	if c := res.Comparison; c != nil && c.Before.Name != "" {
 		if snap, err := s.st.Snapshot(c.Before.Name); err == nil {
-			ignored = append(slices.Clone(ignored), acceptedChanges(snap, pages, run.Issues)...)
+			ignored = append(slices.Clone(ignored), acceptedChanges(snap, pages, run.Issues, now)...)
 		}
 	}
 	path := filepath.Join(res.Dir, eaaDir, draftFile)
-	if err := s.writeDraft(path, pages, run, sum, ignored, unstable); err != nil {
+	if err := s.writeDraft(path, pages, run, sum, ignored, unstable, now); err != nil {
 		fmt.Fprintf(s.stderr, "%s writing %s: %v\n", prefix(), path, err)
 		return ""
 	}
@@ -305,9 +307,9 @@ func (s *session) writeProgress(dir string) {
 
 // writeDraft writes the statement draft to path, with [TO DO]s where
 // statement: in the config file lacks what the draft needs.
-func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change, unstable model.UnstableSet) error {
+func (s *session) writeDraft(path string, pages func(func(*model.Page) bool), run *model.Run, sum model.EAASummary, ignored []model.Change, unstable model.UnstableSet, now time.Time) error {
 	return draftTo(path, s.cfg, statement.Input{Run: run, Pages: pages, Ignored: ignored, Unstable: unstable, Summary: sum,
-		Version: shownVersion(), Now: time.Now(), Insecure: s.o.insecure, Hide: statementHide()})
+		Version: shownVersion(), Now: now, Insecure: s.o.insecure, Hide: statementHide()})
 }
 
 // draftTo writes the Markdown statement draft of in to path in the
