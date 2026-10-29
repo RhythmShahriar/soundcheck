@@ -68,6 +68,35 @@ func TestUnjudged(t *testing.T) {
 	}
 }
 
+// A widget or control issue missing from a page whose widgets weren't
+// tested this time can't be judged there, however clean the walk: the
+// control is still broken, only tested on another page of its group.
+// Other keyboard issues are judged by the walk; a page that reports
+// the issue judges it.
+func TestUnjudgedWidgetsOff(t *testing.T) {
+	page := func(on bool, issues ...model.Issue) *model.Page {
+		return &model.Page{Path: "/", Issues: issues, Audits: map[string]model.Audit{"keyboard": {Status: model.AuditOK}},
+			Keyboard: &model.KeyboardSummary{WidgetsOn: on}}
+	}
+	operable := "keyboard/not-operable|#menu"
+	keys := []string{operable, "keyboard/menu|#nav", "keyboard/dialog-focus|#d", "keyboard/escape|#d", "keyboard/focus-lost|#d", trapKey}
+	if got, want := Unjudged(page(false), keys), keys[:5]; !slices.Equal(got, want) {
+		t.Errorf("widgets not tested: %q, want %q", got, want)
+	}
+	if got := Unjudged(page(true), keys); got != nil {
+		t.Errorf("widgets tested: %q", got)
+	}
+	reported := model.Issue{Check: "keyboard/not-operable", Source: "#menu"}
+	if got := Unjudged(page(false, reported), []string{operable}); got != nil {
+		t.Errorf("a page that reports the issue: %q", got)
+	}
+	noSummary := page(false)
+	noSummary.Keyboard = nil
+	if got := Unjudged(noSummary, keys); got != nil {
+		t.Errorf("a page without a keyboard summary: %q", got)
+	}
+}
+
 // slowTrap is the date picker's trap on a page whose stops each hold it
 // up for 100 ms, so a 1 s walk can't get to the end.
 var slowTrap = datePicker[:len(datePicker)-len(`</main></body></html>`)] + `<script>

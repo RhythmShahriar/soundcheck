@@ -229,7 +229,7 @@ func IssuesWithGaps(before, after *model.Run) (changes, ignored []model.Change, 
 
 func diffIssues(before, after *model.Run) *issueDiff {
 	ran, listed := ranInBoth(before, after), func(m string) bool { return slices.Contains(after.Options.Modules, m) }
-	d := newIssueDiff(rulesOf(before, after, ran))
+	d := newIssueDiff(rulesOf(before, after, ran), keptFrom(before))
 	diffed := diffedIn(before, after)
 	// Every page with a path counts, when a path is there twice.
 	byPath := func(r *model.Run) map[string][]model.Issue {
@@ -243,13 +243,24 @@ func diffIssues(before, after *model.Run) *issueDiff {
 	ba, aa := auditsByPath(before), auditsByPath(after)
 	for path, ai := range a {
 		if bi, ok := b[path]; ok {
-			d.page(path, bi, ai, aa[path], gaps(path, ba[path], aa[path], diffed, listed), d.guard(bi, ba[path], aa[path]))
+			d.page(path, bi, ai, aa[path], keyboardOf(after, path), gaps(path, ba[path], aa[path], diffed, listed, d.kept), d.guard(bi, ba[path], aa[path]))
 		} else {
 			d.newPage(path, aa[path], diffed)
 		}
 	}
 	d.site(before.Issues, after.Issues)
 	return d
+}
+
+// keyboardOf is the keyboard summary of r's first page with path that
+// has one, or nil.
+func keyboardOf(r *model.Run, path string) *model.KeyboardSummary {
+	for i := range r.Pages {
+		if p := &r.Pages[i]; p.Path == path && p.Keyboard != nil {
+			return p.Keyboard
+		}
+	}
+	return nil
 }
 
 // auditsByPath is the audits of r's pages by path (see mergeAudits).
@@ -277,11 +288,22 @@ type issueDiff struct {
 	rules   ruleSets
 	moved   map[string]bool // rules whose NEW changes were put aside as not in the baseline
 	judges  judges          // modules that say which missing issues a page can't judge
+	kept    string          // where kept issues come from, for the notes: see keptFrom
 }
 
-func newIssueDiff(rules ruleSets) *issueDiff {
+func newIssueDiff(rules ruleSets, kept string) *issueDiff {
 	return &issueDiff{groups: map[string]*issueGroup{}, ignored: map[string]*issueGroup{}, notes: map[string]bool{},
-		rules: rules, moved: map[string]bool{}, judges: unjudgers()}
+		rules: rules, moved: map[string]bool{}, judges: unjudgers(), kept: kept}
+}
+
+// keptFrom names the earlier run of a comparison with before, for the
+// notes about pages not checked: the snapshot, or the other site's run
+// of an --against comparison, which has no snapshot (and no name).
+func keptFrom(before *model.Run) string {
+	if before == nil || before.Name == "" {
+		return "the other site's run"
+	}
+	return "the snapshot"
 }
 
 // guard is the a11y guard of a page pair: the snapshot's issues on the
@@ -348,8 +370,8 @@ func addTo(groups map[string]*issueGroup, k, class string, x issueAt) *issueGrou
 // issue with a key is the one reported. The issues of the modules in
 // gaps go aside. So do the a11y changes guard puts aside and the issues
 // missing from the later page that their module can't judge there with
-// its audits (see Unjudger).
-func (d *issueDiff) page(path string, before, after []model.Issue, audits map[string]model.Audit, gaps unaudited, guard *pageGuard) {
+// its audits and its keyboard summary kb (see Unjudger).
+func (d *issueDiff) page(path string, before, after []model.Issue, audits map[string]model.Audit, kb *model.KeyboardSummary, gaps unaudited, guard *pageGuard) {
 	byKey := func(is []model.Issue) map[string]model.Issue {
 		m := make(map[string]model.Issue, len(is))
 		for _, i := range is {
@@ -373,11 +395,12 @@ func (d *issueDiff) page(path string, before, after []model.Issue, audits map[st
 			d.addAside(class, x, gap.reason, gap.note)
 			return
 		}
-		// An issue missing from a walk that stopped at its cap isn't
-		// fixed: the module says the page can't judge it.
+		// An issue missing from a walk that stopped at its cap, or from
+		// a page whose widgets weren't tested, isn't fixed: the module
+		// says the page can't judge it.
 		if class == model.Fixed && d.judges.of(i.Key) != nil &&
-			d.judges.cantJudge(&model.Page{Path: path, Issues: after, Audits: audits}, i.Key) {
-			reason, note := unjudged(path, i.Check, audits)
+			d.judges.cantJudge(&model.Page{Path: path, Issues: after, Audits: audits, Keyboard: kb}, i.Key) {
+			reason, note := unjudged(path, i.Check, audits, d.kept)
 			d.addAside(class, x, reason, note)
 			return
 		}
@@ -391,24 +414,77 @@ func (d *issueDiff) page(path string, before, after []model.Issue, audits map[st
 		}
 		d.add(class, x)
 	}
+	same := movedElements(b, a)
 	if guard.counts() {
 		// The cap guard judges a rule's FIXED changes on the page together.
 		for k, i := range b {
-			if _, ok := a[k]; !ok {
+			if _, ok := a[k]; !ok && !same[k] {
 				guard.count(model.Fixed, i)
 			}
 		}
 	}
 	for k, i := range a {
-		if _, ok := b[k]; !ok {
+		if _, ok := b[k]; !ok && !same[k] {
 			add(appeared(i), i)
 		}
 	}
 	for k, i := range b {
-		if _, ok := a[k]; !ok {
+		if _, ok := a[k]; !ok && !same[k] {
 			add(model.Fixed, i)
 		}
 	}
+}
+
+// movedElements pairs the a11y issues of a page that only the later run
+// has with those only the earlier one has, by rule and element snippet
+// (the first line of the issue's Detail). It returns the keys of both
+// sides of each pair. An a11y issue is keyed by its selector, which can
+// change when nothing about the element did: removing one of two images
+// turns "main > img:nth-of-type(1)" into "main > img". That is the same
+// problem, not one NEW plus one FIXED. Keys pair in sorted order, each
+// once, so with three identical images down to one the other two are
+// still FIXED.
+func movedElements(before, after map[string]model.Issue) map[string]bool {
+	var gone []string
+	for k, i := range before {
+		if _, ok := after[k]; !ok && snippetOf(i) != "" {
+			gone = append(gone, k)
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	slices.Sort(gone)
+	var same map[string]bool
+	for _, k := range sortedKeys(after) {
+		i := after[k]
+		if _, ok := before[k]; ok || snippetOf(i) == "" {
+			continue
+		}
+		for _, g := range gone {
+			if j := before[g]; !same[g] && j.Check == i.Check && snippetOf(j) == snippetOf(i) {
+				if same == nil {
+					same = map[string]bool{}
+				}
+				same[g], same[k] = true, true
+				break
+			}
+		}
+	}
+	return same
+}
+
+// snippetOf is the element snippet an a11y issue's Detail starts with,
+// or "" for an issue of another module or one without a snippet.
+func snippetOf(i model.Issue) string {
+	if _, ok := a11yRule(i.Check); !ok {
+		return ""
+	}
+	first, _, _ := strings.Cut(i.Detail, "\n")
+	if first = strings.TrimSpace(first); !strings.HasPrefix(first, "<") {
+		return ""
+	}
+	return first
 }
 
 // newPage notes the modules whose audit didn't finish on a page only

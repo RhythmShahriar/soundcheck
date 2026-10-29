@@ -550,6 +550,31 @@ func TestNotCheckedWording(t *testing.T) {
 	if !strings.Contains(html.String(), kept) {
 		t.Errorf("comparison report.html lacks %q", kept)
 	}
+	// An --against comparison has no snapshot: the other site's run
+	// keeps the issues.
+	against := eaaComparison()
+	cc := *against.Comparison
+	cc.Before.Name = ""
+	// The comparison's own notes say so too (compare words them).
+	cc.Warnings = nil
+	for _, w := range against.Comparison.Warnings {
+		cc.Warnings = append(cc.Warnings, strings.Replace(w, kept, "kept from the other site's run", 1))
+	}
+	against.Comparison = &cc
+	html.Reset()
+	if err := HTML(&html, against); err != nil {
+		t.Fatal(err)
+	}
+	var md bytes.Buffer
+	if err := Markdown(&md, against); err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{"html": html.String(), "markdown": md.String()} {
+		out = strings.ReplaceAll(out, "&#39;", "'")
+		if strings.Contains(out, kept) || !strings.Contains(out, "kept from the other site's run") {
+			t.Errorf("--against %s words the not-checked pages as a snapshot's", name)
+		}
+	}
 }
 
 // Criteria a test covers that weren't tested because the audit didn't

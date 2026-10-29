@@ -22,6 +22,7 @@
     "cache": {"type": "object", "additionalProperties": {"type": "string"}},
     "echo": {"type": "array", "items": {"$ref": "#/$defs/echoAction"}, "description": "Messages each flow made the site send."},
     "interrupted": {"type": "boolean", "description": "Stopped before it finished; left out when false."},
+    "widget_pages": {"type": "array", "items": {"type": "string"}, "description": "Pages whose widgets and mouse-only controls the keyboard walk tested, one per URL group, sorted. A comparison tests the same pages again."},
     "key_flows": {
       "type": "object",
       "description": "Key flows (run by keyboard only) that ran and that were skipped, when the keyboard module ran.",
@@ -318,7 +319,8 @@
             "evidence": {"type": "string", "description": "The trace file, relative to the run's folder."},
             "crops": {"type": "object", "additionalProperties": {"type": "string"}},
             "widget_kinds": {"type": "array", "items": {"type": "string"}},
-            "ms": {"type": "integer", "minimum": 0}
+            "ms": {"type": "integer", "minimum": 0},
+            "widgets_on": {"type": "boolean", "description": "The walk tested the page's widgets and mouse-only controls (the page its URL group is tested on, or one keyboard.pages names); left out when false."}
           }
         }
       }

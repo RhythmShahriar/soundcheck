@@ -77,8 +77,9 @@ type htmlEAA struct {
 	Version, Counts, Note string
 	NotChecked            []string
 	// Compared marks a comparison, whose unchecked pages keep their
-	// issues from the snapshot.
+	// issues from the earlier run: KeptFrom names it (see keptFrom).
 	Compared   bool
+	KeptFrom   string
 	Principles []htmlPrinciple
 	Keyboard   []htmlKeyboard
 	Criteria   []htmlCriterion
@@ -142,7 +143,7 @@ func (r Result) eaaTab(items []htmlItem, src []eaaSource) *htmlEAA {
 		return nil
 	}
 	version := eaaVersion(e)
-	t := &htmlEAA{Version: version, Note: model.EvidenceNote, Statement: statementCommand, Compared: r.Compared(),
+	t := &htmlEAA{Version: version, Note: model.EvidenceNote, Statement: statementCommand, Compared: r.Compared(), KeptFrom: keptFrom(r),
 		Counts: strings.TrimPrefix(accessibilityLine(r, false), "Accessibility: ")}
 	for _, n := range e.NotAudited {
 		why := n.Reason

@@ -40,7 +40,7 @@ func TestTimedOutAuditFixesNothing(t *testing.T) {
 	label, contrast := a11yIssue("label", "#email"), a11yIssue("color-contrast", "footer a")
 	php := issue("health/php-error", model.Warning, "PHP Warning")
 	opts := model.Options{Modules: []string{"health", "a11y"}}
-	before := &model.Run{Options: opts, Pages: []model.Page{
+	before := &model.Run{Name: "main", Options: opts, Pages: []model.Page{
 		{Path: "/shop/", Issues: []model.Issue{label, contrast, php}, Audits: ok()},
 		{Path: "/", Issues: []model.Issue{label}, Audits: ok()},
 	}}
@@ -90,7 +90,7 @@ func TestFailedKeyboardWalk(t *testing.T) {
 	audits := func(kb model.Audit) map[string]model.Audit {
 		return map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": kb}
 	}
-	before := &model.Run{Options: opts, Pages: []model.Page{{Path: "/", Issues: []model.Issue{lost}, Audits: audits(failed)}}}
+	before := &model.Run{Name: "main", Options: opts, Pages: []model.Page{{Path: "/", Issues: []model.Issue{lost}, Audits: audits(failed)}}}
 	after := &model.Run{Options: opts, Pages: []model.Page{{Path: "/", Issues: []model.Issue{trap, label}, Audits: audits(model.Audit{Status: model.AuditOK})}}}
 	c := both(t, before, after)
 	if len(c.Changes) != 1 || c.Changes[0].Check != "a11y/label" || c.Changes[0].Class != model.New {
@@ -135,7 +135,7 @@ func TestSnapshotWithoutAudits(t *testing.T) {
 // modules (made by hand) is diffed as before audits existed.
 func TestFixedNeedsTheRunsAudit(t *testing.T) {
 	label := a11yIssue("label", "#email")
-	before := &model.Run{Options: model.Options{Modules: []string{"a11y"}}, Pages: []model.Page{{Path: "/", Issues: []model.Issue{label}, Audits: ok()}}}
+	before := &model.Run{Name: "main", Options: model.Options{Modules: []string{"a11y"}}, Pages: []model.Page{{Path: "/", Issues: []model.Issue{label}, Audits: ok()}}}
 	after := &model.Run{Options: model.Options{Modules: []string{"a11y"}}, Pages: []model.Page{{Path: "/", Error: "net::ERR_CONNECTION_RESET"}}}
 	c := both(t, before, after)
 	if len(c.Changes) > 0 || len(c.Ignored) != 1 || c.Ignored[0].Reason != "not checked on this page: a11y skipped" {
@@ -159,7 +159,7 @@ func TestCappedAndOtherModules(t *testing.T) {
 	label := a11yIssue("label", "#email")
 	seo := issue("seo/title", model.Notice, "No title")
 	audits := map[string]model.Audit{"a11y": {Status: model.AuditCapped, Reason: "max_elements"}, "seo": {Status: model.AuditSkipped, Reason: "status 500"}}
-	before := &model.Run{Pages: []model.Page{{Path: "/", Issues: []model.Issue{label, seo}, Audits: ok()}}}
+	before := &model.Run{Name: "main", Pages: []model.Page{{Path: "/", Issues: []model.Issue{label, seo}, Audits: ok()}}}
 	after := &model.Run{Pages: []model.Page{{Path: "/", Audits: audits}}}
 	ch, ignored, notes := IssuesWithGaps(before, after)
 	if len(ch) != 1 || ch[0].Check != "a11y/label" || ch[0].Class != model.Fixed {
@@ -282,7 +282,7 @@ func TestNotCheckedWithoutIssues(t *testing.T) {
 	opts := model.Options{Modules: []string{"a11y", "keyboard"}}
 	done := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditOK}}
 	walk := map[string]model.Audit{"a11y": {Status: model.AuditOK}, "keyboard": {Status: model.AuditTimeout, Reason: "stopped after 60 s"}}
-	before := &model.Run{Options: opts, Pages: []model.Page{{Path: "/big/", Audits: done}, {Path: "/", Audits: done}}}
+	before := &model.Run{Name: "main", Options: opts, Pages: []model.Page{{Path: "/big/", Audits: done}, {Path: "/", Audits: done}}}
 	after := &model.Run{Options: opts, Pages: []model.Page{
 		{Path: "/big/", Issues: []model.Issue{label}, Audits: walk},
 		{Path: "/", Audits: done},
@@ -305,5 +305,61 @@ func TestNotCheckedWithoutIssues(t *testing.T) {
 	}
 	if len(c.Changes) != 1 || c.Changes[0].Check != "a11y/label" {
 		t.Errorf("changes = %+v", c.Changes)
+	}
+}
+
+// An a11y issue whose selector changed while its element didn't (one of
+// two identical images removed, so "main > img:nth-of-type(1)" became
+// "main > img") is the same problem: rule, page and snippet match, so
+// it is neither NEW nor FIXED. The image that went away is FIXED.
+func TestA11yMovedSelector(t *testing.T) {
+	img := func(sel string) model.Issue {
+		i := a11yIssue("image-alt", sel)
+		i.Detail = "<img src=\"/missing.png?***\">\nFix any of the following: Element does not have an alt attribute"
+		return i
+	}
+	other := a11yIssue("label", "#email")
+	other.Detail = "<input id=\"email\">"
+	opts := model.Options{Modules: []string{"a11y"}}
+	run := func(issues ...model.Issue) *model.Run {
+		return &model.Run{Name: "main", Options: opts, Pages: []model.Page{{Path: "/", Issues: issues, Audits: ok()}}}
+	}
+	changes := func(c *model.Comparison) []string {
+		var got []string
+		for _, ch := range c.Changes {
+			got = append(got, ch.Class+" "+ch.Check+" "+ch.Source)
+		}
+		return got
+	}
+	c := both(t, run(img("main > img:nth-of-type(1)"), img("main > img:nth-of-type(2)")), run(img("main > img")))
+	if got, want := changes(c), []string{"fixed a11y/image-alt main > img:nth-of-type(2)"}; !slices.Equal(got, want) {
+		t.Errorf("one of two images removed: %q, want %q", got, want)
+	}
+	if c := both(t, run(img("main > img:nth-of-type(1)")), run(img("main > img"))); len(c.Changes) != 0 {
+		t.Errorf("selector changed alone: %q", changes(c))
+	}
+	// Another rule or another element still counts.
+	c = both(t, run(img("main > img:nth-of-type(1)")), run(other))
+	if got, want := changes(c), []string{"new a11y/label #email", "fixed a11y/image-alt main > img:nth-of-type(1)"}; !slices.Equal(got, want) {
+		t.Errorf("different issues: %q, want %q", got, want)
+	}
+}
+
+// An --against comparison has no snapshot: its not-checked note keeps
+// the issues from the other site's run.
+func TestAgainstNotCheckedNote(t *testing.T) {
+	label := a11yIssue("label", "#email")
+	opts := model.Options{Modules: []string{"a11y"}}
+	before := &model.Run{Options: opts, Pages: []model.Page{{Path: "/gone.html", Issues: []model.Issue{label}, Audits: ok()}}}
+	after := &model.Run{Options: opts, Pages: []model.Page{{Path: "/gone.html", Audits: map[string]model.Audit{"a11y": {Status: model.AuditSkipped, Reason: "status 404"}}}}}
+	c := both(t, before, after)
+	w := "not checked: /gone.html (a11y: status 404); its issues are kept from the other site's run, not counted as fixed"
+	if !slices.Contains(c.Warnings, w) {
+		t.Errorf("warnings = %q", c.Warnings)
+	}
+	before.Name = "main"
+	c = both(t, before, after)
+	if w := strings.Replace(w, "the other site's run", "the snapshot", 1); !slices.Contains(c.Warnings, w) {
+		t.Errorf("with a snapshot: warnings = %q", c.Warnings)
 	}
 }

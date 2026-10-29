@@ -38,6 +38,7 @@ func Masked(r Result) Result {
 	}
 	run.Issues = maskIssues(run.Issues, mask)
 	run.Warnings = maskAll(run.Warnings, mask)
+	run.WidgetPages = maskAll(run.WidgetPages, mask)
 	if run.EAA != nil {
 		run.EAA = maskEAA(run.EAA, mask)
 	}

@@ -91,6 +91,11 @@ type Options struct {
 	EAA bool
 	// Keyboard records the keyboard walk's limits, when it runs.
 	Keyboard *model.KeyboardOptions
+	// WidgetPages are the pages an earlier run tested each URL group's
+	// widgets on (model.Run.WidgetPages): the snapshot's for a compare,
+	// the compared run's for its confirm visits. The keyboard module
+	// tests those groups on the same pages again (see pinner).
+	WidgetPages []string
 
 	// Done resumes an interrupted run: these pages were finished before
 	// and are kept as they are, not visited again. Their links are added
@@ -317,7 +322,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 		}
 	}
 	run.Options.LoggedIn = cc.Login != nil
-	planPages(opts.Modules, opts.Done, pages)
+	planPages(opts.Modules, opts.Done, pages, opts.WidgetPages)
 
 	// Visit pages in parallel tabs; links found while rendering are added
 	// to the queue when discovering.
@@ -439,6 +444,7 @@ func Run(ctx context.Context, opts Options) (*model.Run, error) {
 			storePage(&run.Pages[i])
 		}
 	}
+	run.WidgetPages = widgetPages(run.Pages)
 	run.Duration = float64(time.Since(start).Milliseconds())
 	// A cancel after the last page cut the site-wide checks short (or
 	// skipped them): the run isn't a full result even though every page
@@ -510,12 +516,28 @@ func storedLinks(links []string) []string {
 // without the plan that would be whichever page a tab reached first.
 type planner interface{ Plan(paths []string) }
 
+// pinner is a module that tests each URL group's widgets on one page
+// and wants the pages an earlier run tested them on, so it tests the
+// same ones: the keyboard module.
+type pinner interface{ Pin(paths []string) }
+
 // planPages hands every planner the paths the run plans to visit: the
 // pages a resumed run already finished and the ones still to visit.
 // Pages discovered later aren't in it; the module decides for those.
-func planPages(modules []check.Module, done []*model.Page, pages []crawl.Page) {
+// Every pinner gets the pages an earlier run tested its groups' widgets
+// on (pinned) and the finished pages of a resumed run that did.
+func planPages(modules []check.Module, done []*model.Page, pages []crawl.Page, pinned []string) {
+	pins := slices.Clone(pinned)
+	for _, p := range done {
+		if p.Keyboard != nil && p.Keyboard.WidgetsOn {
+			pins = append(pins, p.Path)
+		}
+	}
 	var paths []string
 	for _, m := range modules {
+		if pn, ok := m.(pinner); ok {
+			pn.Pin(slices.Clone(pins))
+		}
 		pl, ok := m.(planner)
 		if !ok {
 			continue
@@ -531,6 +553,19 @@ func planPages(modules []check.Module, done []*model.Page, pages []crawl.Page) {
 		}
 		pl.Plan(slices.Clone(paths))
 	}
+}
+
+// widgetPages lists, sorted and once each, the pages whose widgets the
+// keyboard walk tested (model.Run.WidgetPages), or nil.
+func widgetPages(pages []model.Page) []string {
+	var out []string
+	for i := range pages {
+		if k := pages[i].Keyboard; k != nil && k.WidgetsOn && !slices.Contains(out, pages[i].Path) {
+			out = append(out, pages[i].Path)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // markSiteIssues marks the page issues the site-wide checks added, those

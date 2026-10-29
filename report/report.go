@@ -41,6 +41,16 @@ type Result struct {
 // Compared reports whether the result is a comparison.
 func (r Result) Compared() bool { return r.Comparison != nil }
 
+// keptFrom names the earlier run of a comparison, which keeps the
+// issues of the pages not checked: the snapshot, or the other site's run
+// of an --against comparison, which has no snapshot (and no name).
+func keptFrom(r Result) string {
+	if r.Comparison != nil && r.Comparison.Before.Name == "" {
+		return "the other site's run"
+	}
+	return "the snapshot"
+}
+
 // Path resolves a file a change refers to, relative to Dir. A result
 // may come from someone else (a CI artifact, a colleague's folder), so a
 // path that leaves Dir is refused. So is a symlink inside it that

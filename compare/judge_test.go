@@ -55,7 +55,7 @@ func TestCappedWalkFixesNothing(t *testing.T) {
 	other := issue("other/thing", model.Warning, "Thing")
 	opts := model.Options{Modules: []string{"judged", "other"}}
 	run := func(status string, issues ...model.Issue) *model.Run {
-		return &model.Run{Options: opts, Pages: []model.Page{{Path: "/form/", Status: 200, Issues: issues,
+		return &model.Run{Name: "main", Options: opts, Pages: []model.Page{{Path: "/form/", Status: 200, Issues: issues,
 			Audits: map[string]model.Audit{"judged": {Status: status, Reason: "stopped at max_tabs 200"}, "other": {Status: status}}}}}
 	}
 	before := run(model.AuditOK, trap, other)

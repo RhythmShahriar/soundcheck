@@ -68,8 +68,10 @@ func (js judges) of(key string) Unjudger {
 
 // unjudged is the reason and note of an issue missing from the later
 // page that its module can't judge there, worded like an unfinished
-// audit's (see gaps).
-func unjudged(path, check string, audits map[string]model.Audit) (reason, note string) {
+// audit's (see gaps). kept names the earlier run (see keptFrom). A walk
+// that finished yet can't judge the issue didn't test the page's widgets
+// and controls: another page of its URL group was the one tested.
+func unjudged(path, check string, audits map[string]model.Audit, kept string) (reason, note string) {
 	mod, _, _ := strings.Cut(check, "/")
 	a, ok := audits[mod]
 	status, why := a.Status, a.Reason
@@ -79,6 +81,10 @@ func unjudged(path, check string, audits map[string]model.Audit) (reason, note s
 	if why == "" {
 		why = statusWord(status)
 	}
-	return fmt.Sprintf("%s: %s %s", model.NotCheckedReason, mod, statusWord(status)),
-		fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed", path, mod, why)
+	word := statusWord(status)
+	if status == model.AuditOK {
+		word, why = "controls tested on another page", "its controls were tested on another page of its URL group"
+	}
+	return fmt.Sprintf("%s: %s %s", model.NotCheckedReason, mod, word),
+		fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from %s, not counted as fixed", path, mod, why, kept)
 }

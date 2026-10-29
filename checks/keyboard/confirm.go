@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/RhythmShahriar/soundcheck/checks/keyboard/ids"
 	"github.com/RhythmShahriar/soundcheck/model"
 )
 
@@ -24,6 +25,12 @@ import (
 // first visit and missing from such a re-walk must stay UNSTABLE and
 // never be counted as FIXED.
 //
+// The widget and control checks (widgetChecks) are tested on one page
+// per URL group (see widgetGroups). A page whose walk didn't test them
+// (model.KeyboardSummary.WidgetsOn unset) can't judge their keys
+// either, however cleanly it was walked: the control is likely still
+// broken there, only not pressed this time.
+//
 // Keys that aren't keyboard ones are never returned, nor is a key the
 // page reports: that issue showed again. A nil page leaves every
 // keyboard key unjudged.
@@ -33,7 +40,7 @@ func Unjudged(p *model.Page, keys []string) []string {
 		if !strings.HasPrefix(k, "keyboard/") || slices.Contains(out, k) {
 			continue
 		}
-		if p != nil && (walkedClean(p) || reports(p, k)) {
+		if p != nil && (reports(p, k) || (walkedClean(p) && widgetsJudged(p, k))) {
 			continue
 		}
 		out = append(out, k)
@@ -48,6 +55,22 @@ func Unjudged(p *model.Page, keys []string) []string {
 //
 // without importing this package.
 func (*Module) Unjudged(p *model.Page, keys []string) []string { return Unjudged(p, keys) }
+
+// widgetChecks are the checks only a page whose widgets and mouse-only
+// controls were tested reports.
+var widgetChecks = []string{ids.NotOperable, ids.Menu, ids.DialogFocus, ids.Escape, ids.FocusLost}
+
+// widgetsJudged reports whether p can judge the issue with key as far as
+// widget testing goes: key isn't a widget check's, or p's widgets were
+// tested. A page without a keyboard summary is judged by its audit
+// alone.
+func widgetsJudged(p *model.Page, key string) bool {
+	check, _, _ := strings.Cut(key, "|")
+	if !slices.Contains(widgetChecks, check) || p.Keyboard == nil {
+		return true
+	}
+	return p.Keyboard.WidgetsOn
+}
 
 // walkedClean reports whether p's keyboard walk ran to its end with
 // nothing capping it.

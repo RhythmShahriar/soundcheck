@@ -405,3 +405,27 @@ func TestWidgetsNeverPressed(t *testing.T) {
 		t.Errorf("widgets: 0 pressed %q", got)
 	}
 }
+
+// A group an earlier run tested on a page (pin) is tested on that page
+// again, even when the plan has a page that comes before it by path: a
+// snapshot started at /?ref=mail tested / there; a comparison that
+// plans / too must not test it on / instead. Groups without a pin keep
+// the plan, then the first page walked.
+func TestWidgetGroupsPinned(t *testing.T) {
+	var g widgetGroups
+	pages := DefaultSettings().Pages
+	New().Pin(nil) // a module with nothing pinned is fine
+	g.plan([]string{"/", "/?ref=mail", "/blog/alpha.html", "/blog/zeta.html", "/shop/a"})
+	g.pin([]string{"/?ref=mail", "/blog/zeta.html", "/blog/zz.html"})
+	for _, c := range []struct {
+		path string
+		want bool
+	}{
+		{"/", false}, {"/?ref=mail", true}, {"/blog/alpha.html", false}, {"/blog/zeta.html", true},
+		{"/shop/b", false}, {"/shop/a", true}, {"/news/a", true}, {"/news/b", false},
+	} {
+		if got := g.claim(c.path, pages); got != c.want {
+			t.Errorf("claim(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}

@@ -269,6 +269,12 @@ type Run struct {
 	// KeyFlows records the key flows (flows run by keyboard only) the run
 	// ran and the ones it skipped, when the keyboard module ran.
 	KeyFlows *KeyFlows `json:"key_flows,omitempty"`
+	// WidgetPages lists, sorted, the pages whose widgets and mouse-only
+	// controls the keyboard walk tested (KeyboardSummary.WidgetsOn): one
+	// page per URL group. A comparison tests the same pages again, so a
+	// control that is broken on every page of a group isn't reported
+	// FIXED on one page and NEW on another.
+	WidgetPages []string `json:"widget_pages,omitempty"`
 
 	// EAA is the accessibility summary of an --eaa run, filled for output
 	// like Summary and not stored in run.json.
@@ -370,6 +376,12 @@ type KeyboardSummary struct {
 	// details, disclosure), sorted.
 	WidgetKinds []string `json:"widget_kinds,omitempty"`
 	MS          int      `json:"ms,omitempty"` // how long the walk took, in milliseconds
+	// WidgetsOn says the walk tested the page's widgets and pressed its
+	// mouse-only controls: the page is the one its URL group is tested
+	// on, or it matches keyboard.pages. A page without it can't tell
+	// whether those controls work, so a comparison doesn't count their
+	// issues missing from it as FIXED.
+	WidgetsOn bool `json:"widgets_on,omitempty"`
 }
 
 // KeyFlows is what became of a run's key flows.

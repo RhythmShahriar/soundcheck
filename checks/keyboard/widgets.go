@@ -55,6 +55,9 @@ type widgetGroups struct {
 	// first is, by URL group, the planned page that comes first by
 	// path (plan); nil until the run's page list is known.
 	first map[string]string
+	// pinned is, by URL group, the page an earlier run tested the
+	// group's widgets on (pin): a comparison tests the same page again.
+	pinned map[string]string
 }
 
 // plan records the run's planned pages, so each URL group's widgets
@@ -73,13 +76,33 @@ func (g *widgetGroups) plan(paths []string) {
 	g.first = first
 }
 
+// pin records the pages an earlier run tested its groups' widgets on
+// (model.Run.WidgetPages), so this run tests each of those groups on
+// the same page. Without it a comparison could test another page of a
+// group than its snapshot did (a fresh snapshot plans only its start
+// pages and takes the first page walked of the groups it finds) and
+// report a control broken on every page FIXED on one and NEW on the
+// other. With two pages of a group the first by path wins.
+func (g *widgetGroups) pin(paths []string) {
+	pinned := map[string]string{}
+	for _, p := range paths {
+		group := urlGroup(p)
+		if f, ok := pinned[group]; !ok || p < f {
+			pinned[group] = p
+		}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.pinned = pinned
+}
+
 // claim reports whether the page's widgets are tested: the page matches
-// keyboard.pages or is the first page of its URL group. With a plan
-// (Module.Plan) that is the group's first planned page by path, so the
-// same page is tested from run to run. A group the plan doesn't have,
-// or a run with no plan, takes the first page walked: pages are walked
-// as the run visits them, several at once, so that is the first to get
-// here.
+// keyboard.pages or is the page its URL group is tested on. That is the
+// page an earlier run tested the group on (pin), else, with a plan
+// (Module.Plan), the group's first planned page by path, so the same
+// page is tested from run to run. A group neither has, or a run with
+// neither, takes the first page walked: pages are walked as the run
+// visits them, several at once, so that is the first to get here.
 func (g *widgetGroups) claim(path string, pages []string) bool {
 	if slices.ContainsFunc(pages, func(p string) bool { return model.Glob(p, path) }) {
 		return true
@@ -87,6 +110,9 @@ func (g *widgetGroups) claim(path string, pages []string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	group := urlGroup(path)
+	if f, ok := g.pinned[group]; ok {
+		return path == f
+	}
 	if f, ok := g.first[group]; ok {
 		return path == f
 	}

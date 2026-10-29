@@ -38,8 +38,9 @@ type auditGap struct {
 // whether the later run names it: a page of that run without an audit
 // (one that failed to load) wasn't audited. A page of the earlier run
 // without one comes from a run made before 1.3 (nothing was recorded
-// then) and counts as audited.
-func gaps(path string, before, after map[string]model.Audit, ran, listed func(string) bool) unaudited {
+// then) and counts as audited. kept names the earlier run in the
+// note (see keptFrom).
+func gaps(path string, before, after map[string]model.Audit, ran, listed func(string) bool, kept string) unaudited {
 	mods := auditModules // most pages: no other module records audits
 	if len(before)+len(after) > 0 {
 		mods = slices.Clone(auditModules)
@@ -80,7 +81,7 @@ func gaps(path string, before, after map[string]model.Audit, ran, listed func(st
 		}
 		out[m] = auditGap{
 			reason: fmt.Sprintf("%s: %s %s", model.NotCheckedReason, m, statusWord(gap.Status)),
-			note:   fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from the snapshot, not counted as fixed", path, m, reason),
+			note:   fmt.Sprintf("not checked: %s (%s: %s); its issues are kept from %s, not counted as fixed", path, m, reason, kept),
 			now:    now,
 		}
 	}

@@ -428,7 +428,7 @@ func writeAccessibility(b *strings.Builder, r Result) {
 		// The status, not the reason, unless Soundcheck wrote it (a
 		// skipped audit): a timeout's reason can quote the page.
 		if r.Compared() {
-			b.WriteString("Not checked, so their issues are kept from the snapshot and not counted as fixed:\n\n")
+			fmt.Fprintf(b, "Not checked, so their issues are kept from %s and not counted as fixed:\n\n", keptFrom(r))
 		} else {
 			b.WriteString("Not checked, so their issues are missing from these results:\n\n")
 		}

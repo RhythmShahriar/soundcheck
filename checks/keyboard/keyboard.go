@@ -130,6 +130,7 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	}
 	sum := summary(t, issues)
 	sum.MS = int(time.Since(start).Milliseconds())
+	sum.WidgetsOn = w.widgetsOn
 	if err := w.save(t); err != nil {
 		cc.Warn(fmt.Sprintf("keyboard: %s: can't save the trace: %v", p.Path, err))
 	} else {
@@ -148,6 +149,14 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 //
 // A run that never calls it keeps the first-walked rule.
 func (m *Module) Plan(paths []string) { m.groups.plan(paths) }
+
+// Pin gives the module the pages an earlier run tested each URL group's
+// widgets on (model.Run.WidgetPages), before the visits start, so this
+// run tests those groups on the same pages; see widgetGroups.pin. The
+// runner calls it through
+//
+//	interface{ Pin(paths []string) }
+func (m *Module) Pin(paths []string) { m.groups.pin(paths) }
 
 // safeWalk runs the walk, turning a panic in it (a probe that broke on
 // a page nobody foresaw) into an error, so the page is recorded as not

@@ -34,7 +34,7 @@ func silentWAV(seconds int) []byte {
 
 // reviewOnlySite serves a page that fails 1.4.2 and 2.4.1 in ways only
 // axe's review-only rules see: 20 seconds of audio that plays on load
-// with no controls, and 30 links with no skip link, landmark or heading
+// with no controls plus 30 links with no skip link, landmark or heading
 // to get past them. Its two frames share a title (axe's review-only
 // frame-title-unique, a 4.1.2 rule).
 func reviewOnlySite(t *testing.T) *httptest.Server {

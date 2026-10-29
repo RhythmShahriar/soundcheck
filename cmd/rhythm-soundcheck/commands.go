@@ -83,6 +83,7 @@ type session struct {
 	discovered     atomic.Int64   // the pages the last check set out to visit, for an interrupted --eaa run
 	chrome         string         // the browser's version, from runner.Hooks.Browser, for the evidence pack
 	compareNotes   []string       // notes about the snapshot for the comparison's warnings
+	widgetPages    []string       // the pages the earlier run tested widgets on, for the next check (runner.Options.WidgetPages)
 }
 
 // columns is the width of the terminal w writes to, for the text the
@@ -412,7 +413,7 @@ func (s *session) options(target string, paths []string, snapshot bool, name, di
 	}
 	return runner.Options{
 		Config: s.cfg, Target: target, Paths: paths, Snapshot: snapshot, Name: name, Dir: dir, Version: shownVersion(),
-		EAA: s.cfg.EAA, WCAG: s.wcag, Keyboard: s.runKeyboard(),
+		EAA: s.cfg.EAA, WCAG: s.wcag, Keyboard: s.runKeyboard(), WidgetPages: s.widgetPages,
 		UserAgent: s.ua, Headers: s.headers, Proxy: s.proxy, Insecure: s.o.insecure, Modules: s.modules(s.cfg), Login: login,
 		Echo: s.echo, Engine: s.engine, FollowHost: s.o.followHost,
 		Browser: browser.Options{Bin: s.bin, NoDownload: s.o.noDownload, NoSandbox: s.o.noSandbox, Proxy: s.o.proxy, Insecure: s.o.insecure,
@@ -1048,6 +1049,11 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 		paths = append(paths, pages.Path(i))
 		known = append(known, model.Page{Path: pages.Path(i)})
 	}
+	// The keyboard module tests each URL group's widgets on the page the
+	// earlier run tested them on. A control broken on every page of a
+	// group is then not FIXED on one page and NEW on another. The confirm
+	// visits below test them on the pages this run did.
+	s.widgetPages = before.WidgetPages
 	after, err := s.check(site, paths, false, "", dir)
 	if err != nil && after == nil {
 		s.discard(dir)
@@ -1061,6 +1067,7 @@ func (s *session) compareWith(before *model.Run, pages compare.PageSource, befor
 		return s.fail(err)
 	}
 	c.Warnings = append(c.Warnings, s.compareNotes...)
+	s.widgetPages = after.WidgetPages
 	s.confirm(c, &model.Run{Pages: known}, site, dir)
 	compare.ApplyIgnore(c, ignoreRules(s.cfg), time.Now())
 	if err := store.SaveComparison(dir, savedComparison(after, c)); err != nil {
