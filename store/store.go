@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
@@ -131,6 +132,12 @@ func Saver(dir string) func(name string, data []byte) error {
 	}
 }
 
+// tmpSeq tells apart the temp files of writes in the same folder at the
+// same clock reading. The clock alone isn't enough: on Windows it ticks
+// every 100ns or slower, so two pages written at once (seo files of a
+// run) could pick the same name and one write would fail.
+var tmpSeq atomic.Uint64
+
 // writeIn writes data to rel inside dir atomically, creating the folders
 // on the way, with the store's modes. It refuses to write through a
 // symlink: a run folder someone else made, or a link planted in
@@ -169,7 +176,7 @@ func writeIn(dir, rel string, data []byte) (err error) {
 			return fmt.Errorf("refusing to write through a symlink: %s", filepath.Join(dir, sub))
 		}
 	}
-	tmp := filepath.Join(filepath.Dir(rel), fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	tmp := filepath.Join(filepath.Dir(rel), fmt.Sprintf(".tmp-%d-%d-%d", os.Getpid(), time.Now().UnixNano(), tmpSeq.Add(1)))
 	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileMode)
 	if err != nil {
 		return err
