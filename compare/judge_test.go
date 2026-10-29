@@ -111,3 +111,20 @@ func TestConfirmCappedRewalk(t *testing.T) {
 		}
 	}
 }
+
+// A control the walk tested but couldn't judge is kept with words that
+// say so; a page whose controls weren't tested keeps its own words.
+func TestUnjudgedWords(t *testing.T) {
+	key := "keyboard/not-operable|#more"
+	audits := map[string]model.Audit{"keyboard": {Status: model.AuditOK}}
+	kb := &model.KeyboardSummary{WidgetsOn: true, Unjudged: []string{key}}
+	reason, note := unjudged("/", "keyboard/not-operable", key, audits, kb, "the snapshot")
+	if reason != "not checked on this page: keyboard control not judged" ||
+		note != "not checked: / (keyboard: the walk couldn't tell whether the control answers Enter or Space); its issues are kept from the snapshot, not counted as fixed" {
+		t.Errorf("undecided: %q, %q", reason, note)
+	}
+	reason, _ = unjudged("/", "keyboard/not-operable", key, audits, &model.KeyboardSummary{}, "the snapshot")
+	if reason != "not checked on this page: keyboard controls tested on another page" {
+		t.Errorf("widgets off: %q", reason)
+	}
+}

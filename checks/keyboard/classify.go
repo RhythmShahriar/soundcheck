@@ -103,6 +103,32 @@ func mouseOnly(t Trace, wcag string) []model.Issue {
 	return out
 }
 
+// unjudged returns the keys, as Classify's issues have them, of the
+// not-operable issues a trace from a page whose widgets were tested
+// can't judge: a focusable control with a mouse listener the walk
+// didn't press (something covered it, keyboard.widgets ran out, it was
+// gone or the page went away first) or one whose keys did nothing and
+// whose click had an effect it couldn't tell from the page's own
+// activity. mouseOnly reports neither, so a comparison mustn't take
+// their absence as fixed.
+func unjudged(t Trace) []string {
+	var out []string
+	for _, c := range t.Listeners {
+		if c.Selector == "" || len(c.Events) == 0 || !c.Focusable || c.Skipped == "looks destructive" {
+			continue
+		}
+		pressed := c.Tested && c.Skipped == ""
+		if pressed && (!noResponse(c.Enter) || !c.Link && !noResponse(c.Space) || c.Click != PressUnknown) {
+			continue
+		}
+		k := model.IssueKey(ids.NotOperable, "", c.Selector)
+		if !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // noResponse is true for a press that did nothing the walk can tie to
 // it: a navigation something else started is no response.
 func noResponse(effect string) bool { return effect == "" || effect == PressUnknown }

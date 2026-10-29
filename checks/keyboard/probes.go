@@ -73,6 +73,7 @@ const startJS = `(() => {
 // won't let be canceled is logged all the same.
 const guardJS = `(() => {
   if (window.__scKbNav) return 'ok';
+  const pressEvents = ` + pressEvents + `;
   const g = window.__scKbNav = {on: false, log: [], els: [], ws: [], pk: [], inFocus: false};
   if (!window.navigation) return 'no navigation API';
   // Set while the page handles a focus event (a window capture listener
@@ -82,19 +83,12 @@ const guardJS = `(() => {
   // The element a key press or click the walk sends is handled on, set
   // while its handlers run: a navigation one of them starts is told
   // from one a timer or another element starts (cand is the mouse-only
-  // control being pressed, see listeners.go).
-  // act is the same element for the DOM changes the press makes
-  // (armMutJS) and is cleared as soon as the event has gone round:
-  // what a timer or the network changes in between is not the press's.
-  g.input = null; g.cand = null; g.act = null;
-  for (const t of ['keydown', 'keypress', 'keyup', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click']) {
-    addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; g.act = e.target; setTimeout(() => { g.input = null; g.act = null; }, 0); }, true);
-    addEventListener(t, e => {
-      if (!e.isTrusted || g.act !== e.target) return;
-      const m = window.__scKbM;
-      if (m && m.o && m.mine()) m.own += m.o.takeRecords().length;
-      g.act = null;
-    });
+  // control being pressed, see listeners.go). act is set by candJS's
+  // listeners on cand itself, only while the event is at cand or inside
+  // it, for the DOM changes the control's own handlers make (armMutJS).
+  g.input = null; g.cand = null; g.act = null; g.candOff = null;
+  for (const t of pressEvents) {
+    addEventListener(t, e => { if (!e.isTrusted) return; g.input = e.target; setTimeout(() => { g.input = null; }, 0); }, true);
   }
   navigation.addEventListener('navigate', e => {
     if (!g.on || e.hashChange || e.navigationType === 'reload' || e.navigationType === 'traverse') return;
@@ -121,9 +115,47 @@ const (
 	guardOff = `(() => { if (window.__scKbNav) window.__scKbNav.on = false; return ''; })()`
 	navLogJS = `(() => JSON.stringify(window.__scKbNav ? window.__scKbNav.log.splice(0) : []))()`
 	// candJS marks the element it is called on as the control being
-	// pressed (guardJS); clearCandJS unmarks it.
-	candJS      = `function () { if (window.__scKbNav) window.__scKbNav.cand = this; return ''; }`
-	clearCandJS = `(() => { if (window.__scKbNav) window.__scKbNav.cand = null; return ''; })()`
+	// pressed (guardJS) and listens on it for the events a press sends:
+	// a capture listener on the control sets act when an event reaches
+	// it and a listener after the control's own clears act again, before
+	// the handlers of the page around it (a document-wide keydown
+	// handler) run. What changes while act is set is the control's own
+	// doing. clearCandJS unmarks it and removes those listeners.
+	candJS = `function () {
+  const g = window.__scKbNav;
+  if (!g) return '';
+  if (g.candOff) g.candOff();
+  const el = this, types = ` + pressEvents + `;
+  const take = () => { const m = window.__scKbM; return m && m.o ? m.o.takeRecords() : []; };
+  const enter = e => {
+    if (!e.isTrusted) return;
+    const m = window.__scKbM;
+    if (m && m.sort) m.sort(take(), false);
+    g.act = el;
+    setTimeout(() => { if (g.act === el) g.act = null; }, 0);
+  };
+  const leave = e => {
+    if (!e.isTrusted || g.act !== el) return;
+    const m = window.__scKbM;
+    if (m && m.o) m.own += take().length;
+    g.act = null;
+  };
+  for (const t of types) { el.addEventListener(t, enter, true); el.addEventListener(t, leave); }
+  g.cand = el;
+  g.candOff = () => {
+    for (const t of types) { el.removeEventListener(t, enter, true); el.removeEventListener(t, leave); }
+    g.candOff = null;
+  };
+  return '';
+}`
+	clearCandJS = `(() => {
+  const g = window.__scKbNav;
+  if (g) { if (g.candOff) g.candOff(); g.cand = null; g.act = null; }
+  return '';
+})()`
+	// pressEvents are the events a key press or a click sends, as a
+	// JavaScript list.
+	pressEvents = `['keydown', 'keypress', 'keyup', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click']`
 	// envLogJS returns and clears the WebSocket hosts the envelope's
 	// policy refused and the passkey requests it refused (envelope.go).
 	envLogJS = `(() => { const g = window.__scKbNav; return JSON.stringify(g ? {ws: g.ws.splice(0), pk: g.pk.splice(0)} : {ws: [], pk: []}); })()`

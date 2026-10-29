@@ -131,6 +131,9 @@ func (m *Module) Live(ctx context.Context, cc *check.Context, tab *rod.Page, p *
 	sum := summary(t, issues)
 	sum.MS = int(time.Since(start).Milliseconds())
 	sum.WidgetsOn = w.widgetsOn
+	if w.widgetsOn {
+		sum.Unjudged = maskKeys(unjudged(*t))
+	}
 	if err := w.save(t); err != nil {
 		cc.Warn(fmt.Sprintf("keyboard: %s: can't save the trace: %v", p.Path, err))
 	} else {
@@ -276,6 +279,20 @@ func maskIssues(in []model.Issue) []model.Issue {
 		}
 		seen[i.Key] = true
 		out = append(out, i)
+	}
+	return out
+}
+
+// maskKeys masks the selectors in keyboard issue keys as maskIssues
+// masks the issues' sources, so the keys match theirs.
+func maskKeys(in []string) []string {
+	var out []string
+	for _, k := range in {
+		check, source, _ := strings.Cut(k, "|")
+		k = model.IssueKey(check, "", pii.Redact(source))
+		if !slices.Contains(out, k) {
+			out = append(out, k)
+		}
 	}
 	return out
 }

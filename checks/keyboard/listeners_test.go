@@ -290,3 +290,172 @@ func TestMouseOnlyBackgroundActivity(t *testing.T) {
 		})
 	}
 }
+
+// The controls the walk couldn't judge are listed, by key: one whose
+// click had an effect it couldn't tell from the page's own activity and
+// one it couldn't press. A control it judged, one it never meant to
+// press and one Tab can't reach are not.
+func TestUnjudgedControls(t *testing.T) {
+	cand := func(sel string, c Candidate) Candidate {
+		c.Selector, c.Events, c.Tag, c.Focusable = sel, []string{"click"}, "div", true
+		return c
+	}
+	tr := Trace{Schema: Schema, MainIndex: -1, Listeners: []Candidate{
+		cand("#unknown", Candidate{Tested: true, Enter: PressUnknown, Space: PressUnknown, Click: PressUnknown}),
+		cand("#quiet-keys", Candidate{Tested: true, Click: PressUnknown}),
+		cand("#covered", Candidate{Tested: true, Skipped: "covered"}),
+		cand("#budget", Candidate{Skipped: "keyboard.widgets reached"}),
+		cand("#left", Candidate{}),
+		cand("#clicked", Candidate{Tested: true, Click: PressDOM}),
+		cand("#dead", Candidate{Tested: true}),
+		cand("#enter", Candidate{Tested: true, Enter: PressDOM}),
+		cand("#space", Candidate{Tested: true, Space: PressDOM, Click: PressUnknown}),
+		cand("#link", Candidate{Tested: true, Link: true, Click: PressUnknown}),
+		cand("#delete", Candidate{Skipped: "looks destructive"}),
+		{Selector: "#far", Events: []string{"click"}, Tag: "div"},
+	}}
+	got := unjudged(tr)
+	want := []string{
+		ids.NotOperable + "|#unknown", ids.NotOperable + "|#quiet-keys", ids.NotOperable + "|#covered",
+		ids.NotOperable + "|#budget", ids.NotOperable + "|#left", ids.NotOperable + "|#link",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("unjudged %q\nwant %q", got, want)
+	}
+	for _, i := range Classify(tr, defaults(), "2.2") {
+		if slices.Contains(got, i.Key) {
+			t.Errorf("%s is reported and unjudged", i.Key)
+		}
+	}
+}
+
+// asyncPage has a control only a click works: its handler asks the
+// server and adds an item when the reply comes. background is the
+// page's own activity, if any.
+func asyncPage(background string) string {
+	return `<!doctype html><html lang="en"><head><title>Async</title></head><body><main>
+<a id="first" href="#top">Top</a>
+<div id="more" tabindex="0" role="button">Load more</div>
+<ul id="list"></ul>
+<p id="clock"></p>
+<script>
+const $ = id => document.getElementById(id);
+$('more').addEventListener('click', () => fetch('/api/more').then(r => r.text()).then(t => {
+  const li = document.createElement('li'); li.textContent = t; $('list').appendChild(li);
+}));
+` + background + `
+</script>
+</main></body></html>`
+}
+
+// A control whose click asks the server and changes the page only when
+// the reply comes can't be judged on a page that also changes by
+// itself: the walk can't tell its click did anything. It isn't
+// reported there, yet its key is listed as unjudged, so a comparison
+// keeps the issue the quiet page reported instead of counting it as
+// fixed.
+func TestMouseOnlyAsyncClickOnBusyPage(t *testing.T) {
+	cases := []struct {
+		name, background string
+		report           bool
+	}{
+		{"quiet", "", true},
+		{"clock", `setInterval(() => { $('clock').textContent = Date.now(); }, 50);`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pg := &pages{html: map[string]string{"/": asyncPage(c.background), "/api/more": "Item"}}
+			srv := serveIn(t, pg, 40400, 40450)
+			ch := launch(t)
+			tab, p := ch.open(srv.URL + "/")
+			cc := withSaver(runContext(t))
+			live(t, New(), cc, tab, p)
+			if a := p.Audits["keyboard"]; a.Status != model.AuditOK {
+				t.Fatalf("audit %+v, warnings %v", a, cc.Run.Warnings)
+			}
+			key := ids.NotOperable + "|#more"
+			data, _ := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+			tr, _ := DecodeTrace(data)
+			if got := reports(p, key); got != c.report {
+				t.Errorf("reported %v, want %v\nlisteners %+v", got, c.report, tr.Listeners)
+			}
+			if p.Keyboard == nil || !p.Keyboard.WidgetsOn {
+				t.Fatalf("summary %+v", p.Keyboard)
+			}
+			if got := slices.Contains(p.Keyboard.Unjudged, key); got == c.report {
+				t.Errorf("unjudged %q\nlisteners %+v", p.Keyboard.Unjudged, tr.Listeners)
+			}
+			if !c.report && !slices.Contains(Unjudged(p, []string{key}), key) {
+				t.Error("the confirm pass would count the issue as fixed")
+			}
+		})
+	}
+}
+
+// markerPage has a control only a click works and a script that
+// listens for keys on the whole page, as focus-visible polyfills and
+// what-input do, plus a control a delegated keydown handler answers.
+func markerPage(script string) string {
+	return `<!doctype html><html lang="en"><head><title>Markers</title>
+<script>` + script + `</script></head><body><main>
+<a id="first" href="#top">Top</a>
+<div id="menu" tabindex="0" role="button">Menu</div>
+<div id="tags" tabindex="0" role="button">Tags</div>
+<div id="ok" tabindex="0" role="button">Show more</div>
+<p id="out"></p>
+<script>
+const $ = id => document.getElementById(id);
+$('menu').addEventListener('click', () => { $('out').textContent = 'Menu open'; });
+$('tags').addEventListener('click', () => { $('out').textContent = 'Tags open'; });
+$('ok').addEventListener('click', () => { $('out').textContent = 'More'; });
+document.addEventListener('keydown', e => { if (e.target.id === 'ok' && e.key === 'Enter') $('out').textContent = 'More'; });
+</script>
+</main></body></html>`
+}
+
+// A DOM change a page-wide key handler makes on every press is no
+// answer from the control the key was pressed on: the mouse-only
+// controls are still reported. A delegated handler that answers Enter
+// for its control still counts.
+func TestMouseOnlyPageWideKeyHandler(t *testing.T) {
+	cases := map[string]string{
+		"class":  `document.addEventListener('keydown', function () { document.documentElement.classList.add('kbd-user'); });`,
+		"window": `addEventListener('keydown', function () { document.documentElement.classList.add('kbd-user'); }, true);`,
+		"what-input": `document.addEventListener('keydown', function () { document.documentElement.setAttribute('data-whatinput', 'keyboard'); });
+document.addEventListener('mousedown', function () { document.documentElement.setAttribute('data-whatinput', 'mouse'); });`,
+		"live region": `document.addEventListener('keydown', function (e) { const s = document.getElementById('said'); if (s) s.textContent = e.key; });`,
+	}
+	for name, script := range cases {
+		t.Run(name, func(t *testing.T) {
+			html := markerPage(script)
+			if name == "live region" {
+				html = strings.Replace(html, `<p id="out"></p>`, `<p id="out"></p><p id="said" aria-live="polite"></p>`, 1)
+			}
+			pg := &pages{html: map[string]string{"/": html}}
+			srv := serveIn(t, pg, 40400, 40450)
+			ch := launch(t)
+			tab, p := ch.open(srv.URL + "/")
+			cc := withSaver(runContext(t))
+			live(t, New(), cc, tab, p)
+			if a := p.Audits["keyboard"]; a.Status != model.AuditOK {
+				t.Fatalf("audit %+v, warnings %v", a, cc.Run.Warnings)
+			}
+			var got []string
+			for _, i := range p.Issues {
+				if i.Check == ids.NotOperable {
+					got = append(got, i.Source)
+				}
+			}
+			data, _ := os.ReadFile(filepath.Join(cc.Dir, "keyboard", p.ID+".json"))
+			tr, _ := DecodeTrace(data)
+			if want := []string{"#menu", "#tags"}; !slices.Equal(got, want) {
+				t.Errorf("not-operable %q, want %q\nlisteners %+v", got, want, tr.Listeners)
+			}
+			for _, c := range tr.Listeners {
+				if c.Selector == "#ok" && c.Enter != PressDOM {
+					t.Errorf("#ok %+v, want Enter to count its delegated answer", c)
+				}
+			}
+		})
+	}
+}

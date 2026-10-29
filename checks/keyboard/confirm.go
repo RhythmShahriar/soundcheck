@@ -25,6 +25,9 @@ import (
 // first visit and missing from such a re-walk must stay UNSTABLE and
 // never be counted as FIXED.
 //
+// A page whose walk tested a control but couldn't judge it (Undecided)
+// can't judge its key either.
+//
 // The widget and control checks (widgetChecks) are tested on one page
 // per URL group (see widgetGroups). A page whose walk didn't test them
 // (model.KeyboardSummary.WidgetsOn unset) can't judge their keys
@@ -40,7 +43,7 @@ func Unjudged(p *model.Page, keys []string) []string {
 		if !strings.HasPrefix(k, "keyboard/") || slices.Contains(out, k) {
 			continue
 		}
-		if p != nil && (reports(p, k) || (walkedClean(p) && widgetsJudged(p, k))) {
+		if p != nil && (reports(p, k) || (walkedClean(p) && widgetsJudged(p, k) && !Undecided(p, k))) {
 			continue
 		}
 		out = append(out, k)
@@ -70,6 +73,14 @@ func widgetsJudged(p *model.Page, key string) bool {
 		return true
 	}
 	return p.Keyboard.WidgetsOn
+}
+
+// Undecided reports whether p's walk tested the control of the keyboard
+// issue with key yet couldn't judge it (model.KeyboardSummary.Unjudged):
+// it couldn't press the control, or couldn't tell the control's answer
+// to a click from the page's own activity.
+func Undecided(p *model.Page, key string) bool {
+	return p != nil && p.Keyboard != nil && slices.Contains(p.Keyboard.Unjudged, key)
 }
 
 // walkedClean reports whether p's keyboard walk ran to its end with

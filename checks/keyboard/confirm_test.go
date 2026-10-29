@@ -144,3 +144,23 @@ func TestConfirmRewalk(t *testing.T) {
 		t.Errorf("re-walk that finds the trap: %s (issues %+v)", got, p.Issues)
 	}
 }
+
+// A control the walk tested yet couldn't judge (its click had an
+// effect the walk couldn't tell from a ticking clock) leaves its key
+// unjudged on a clean walk that tested the page's widgets. Other keys
+// are judged as before.
+func TestUnjudgedUndecided(t *testing.T) {
+	operable := "keyboard/not-operable|#more"
+	p := &model.Page{Path: "/", Audits: map[string]model.Audit{"keyboard": {Status: model.AuditOK}},
+		Keyboard: &model.KeyboardSummary{WidgetsOn: true, Unjudged: []string{operable}}}
+	keys := []string{operable, "keyboard/not-operable|#other", trapKey}
+	if got, want := Unjudged(p, keys), []string{operable}; !slices.Equal(got, want) {
+		t.Errorf("%q, want %q", got, want)
+	}
+	if got := judge(p, operable); got != model.Unstable {
+		t.Errorf("undecided control: %s, want UNSTABLE", got)
+	}
+	if !Undecided(p, operable) || Undecided(p, trapKey) || Undecided(nil, operable) {
+		t.Error("Undecided")
+	}
+}

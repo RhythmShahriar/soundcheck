@@ -6,6 +6,7 @@ package keyboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -85,37 +86,71 @@ const centerJS = `function () {
 }`
 
 // armMutJS starts counting the page's DOM changes from the isolated
-// world: own are the ones made while the page handled a trusted event
-// on the control being pressed (guardJS's act within cand), other the
-// rest (a ticking clock, a carousel, a reply to a poll). readMutJS
-// stops and returns both and whether the address changed.
+// world, in three kinds. own are the changes the pressed control's own
+// handlers make (candJS sets act while they run). foreign are those
+// made while the press is sent (armMutJS until pressEndJS) by any other
+// handler: a document-wide keydown listener that marks the page as used
+// by keyboard, or a delegated one that answers for the control. other
+// are the rest: a ticking clock, a carousel, a reply to a poll. A
+// change made while the press is sent to a node that also changes
+// outside it is the page's background and counts as other. With a
+// baseline set (baseJS), a change the same key pressed on the page body
+// also made is left out altogether: it is the page's answer to any
+// press, not the control's. readMutJS stops and returns the counts and
+// whether the address changed.
 const (
 	armMutJS = `(() => {
   const g = window.__scKbM || (window.__scKbM = {});
   if (g.o) g.o.disconnect();
-  g.own = 0; g.other = 0; g.href = location.href;
-  g.mine = () => {
-    const nav = window.__scKbNav, c = nav && nav.cand, n = nav && nav.act;
-    return !!(c && n && n.nodeType === 1 && (c === n || c.contains(n)));
+  g.own = 0; g.other = 0; g.press = true; g.dur = []; g.bg = new Set(); g.href = location.href;
+  const nav = window.__scKbNav;
+  g.sort = (l, own) => {
+    for (const r of l) {
+      if (own) g.own++;
+      else if (!g.press) { g.other++; g.bg.add(r.target); }
+      else if (g.dur.length < 1000) g.dur.push({t: r.target, k: r.type + ':' + (r.attributeName || '')});
+      else g.other++;
+    }
   };
-  g.o = new MutationObserver(l => { if (g.mine()) g.own += l.length; else g.other += l.length; });
+  g.o = new MutationObserver(l => g.sort(l, !!(nav && nav.act)));
   g.o.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
+  return '';
+})()`
+	pressEndJS = `(() => {
+  const g = window.__scKbM, nav = window.__scKbNav;
+  if (g && g.o) { g.sort(g.o.takeRecords(), !!(nav && nav.act)); g.press = false; }
   return '';
 })()`
 	readMutJS = `(() => {
   const g = window.__scKbM;
-  if (!g || !g.o) return JSON.stringify({own: 0, other: 0, moved: false});
-  g.other += g.o.takeRecords().length;
+  if (!g || !g.o) return JSON.stringify({own: 0, other: 0, foreign: 0, moved: false});
+  g.press = false;
+  g.sort(g.o.takeRecords(), false);
   g.o.disconnect(); g.o = null;
-  return JSON.stringify({own: g.own, other: g.other, moved: location.href !== g.href});
+  const base = g.base || [];
+  let other = g.other, foreign = 0;
+  for (const d of g.dur) {
+    if (base.some(b => b.t === d.t && b.k === d.k)) continue;
+    if (g.bg.has(d.t)) other++; else foreign++;
+  }
+  g.last = g.dur;
+  return JSON.stringify({own: g.own, other, foreign, moved: location.href !== g.href});
 })()`
+	// baseJS keeps the changes the last press made while it was sent as
+	// the baseline later presses are judged against; unbaseJS drops it.
+	baseJS   = `(() => { const g = window.__scKbM; if (g) g.base = g.last || []; return ''; })()`
+	unbaseJS = `(() => { const g = window.__scKbM; if (g) g.base = null; return ''; })()`
+	// bodyFocusJS takes focus off the page's elements, so a key press goes to
+	// the page body.
+	bodyFocusJS = `(() => { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); return ''; })()`
 )
 
 // mutations is what readMutJS returns.
 type mutations struct {
-	Own   int  `json:"own"`
-	Other int  `json:"other"`
-	Moved bool `json:"moved"`
+	Own     int  `json:"own"`
+	Other   int  `json:"other"`
+	Foreign int  `json:"foreign"`
+	Moved   bool `json:"moved"`
 }
 
 type candidateInfo struct {
@@ -248,8 +283,16 @@ func (w *walker) operable(ctx context.Context, id int, c *Candidate) error {
 			c.Skipped = "gone"
 			return nil
 		}
-		eff, err := w.effectOf(ctx, func() error { return focus.Press(ctx, w.tab, k) })
+		press := func() error { return focus.Press(ctx, w.tab, k) }
+		eff, err := w.effectOf(ctx, press, &baseline{
+			press:   press,
+			refocus: func() error { return w.focusNode(ctx, id) },
+		})
 		if err != nil {
+			if errors.Is(err, errGone) {
+				c.Skipped = "gone"
+				return nil
+			}
 			return err
 		}
 		if k == focus.Enter {
@@ -274,7 +317,7 @@ func (w *walker) operable(ctx context.Context, id int, c *Candidate) error {
 		c.Skipped = "covered"
 		return nil
 	}
-	c.Click, err = w.effectOf(ctx, func() error { return w.click(ctx, at.X, at.Y) })
+	c.Click, err = w.effectOf(ctx, func() error { return w.click(ctx, at.X, at.Y) }, nil)
 	return err
 }
 
@@ -296,26 +339,60 @@ func (w *walker) click(ctx context.Context, x, y float64) error {
 	return nil
 }
 
+// baseline is how effectOf tells a key press's answer from the page's
+// answer to any press of that key: press sends the key, refocus puts
+// focus back on the control.
+type baseline struct {
+	press, refocus func() error
+}
+
+// errGone is effectOf's error when the control can't be focused again.
+var errGone = errors.New("the control is gone")
+
 // effectOf runs act and says what it did within widgetWait: started a
 // navigation (navigation), made a request, sent or held (request), or
 // changed the DOM (dom); "" for nothing. Only what the pressed
 // control's own handlers caused counts as such: a navigation they
-// started (candJS) or a DOM change made while the page handled the
-// press on it (armMutJS). A request, a DOM change made later (after a
-// reply or a timer) or a navigation something else started may be the
-// page's own background activity: they count only when the page is
-// quiet for as long again without a press. When it isn't, the effect
-// is unknown. Navigations logged before act are set aside first.
-func (w *walker) effectOf(ctx context.Context, act func() error) (string, error) {
+// started (candJS) or a DOM change they made (armMutJS). A request, a
+// DOM change made later (after a reply or a timer) or a navigation
+// something else started may be the page's own background activity:
+// they count only when the page is quiet for as long again without a
+// press. When it isn't, the effect is unknown. Navigations logged
+// before act are set aside first.
+//
+// A DOM change another handler made while the press was sent (a
+// document-wide keydown listener) is no answer by itself: many pages
+// mark themselves as used by keyboard on any key. With base, the same
+// key is pressed on the page body first and the control is pressed
+// again: what the body press changed too is left out and what is left
+// is the control's answer, made for it by a delegated handler. Without
+// base (a click), the effect is unknown.
+func (w *walker) effectOf(ctx context.Context, act func() error, base *baseline) (string, error) {
 	reqs, navs, own, mut, err := w.window(ctx, act)
 	if err != nil {
 		return "", err
 	}
+	if eff, ok := w.ownEffect(own, mut); ok {
+		return eff, nil
+	}
+	if mut.Foreign > 0 {
+		if base == nil {
+			return PressUnknown, nil
+		}
+		if reqs, navs, own, mut, err = w.again(ctx, act, base); err != nil {
+			return "", err
+		}
+		if w.left() {
+			return PressUnknown, nil
+		}
+		if eff, ok := w.ownEffect(own, mut); ok {
+			return eff, nil
+		}
+		if mut.Foreign > 0 {
+			return PressDOM, nil
+		}
+	}
 	switch {
-	case w.left() || own > 0 || mut.Moved:
-		return PressNavigation, nil
-	case mut.Own > 0:
-		return PressDOM, nil
 	case reqs == 0 && mut.Other == 0 && navs == 0:
 		return "", nil
 	case navs > 0 && reqs == 0 && mut.Other == 0:
@@ -328,7 +405,7 @@ func (w *walker) effectOf(ctx context.Context, act func() error) (string, error)
 		return "", err
 	}
 	switch {
-	case w.left() || qreqs > 0 || qnavs > 0 || quiet.Own+quiet.Other > 0 || quiet.Moved:
+	case w.left() || qreqs > 0 || qnavs > 0 || quiet.Own+quiet.Other+quiet.Foreign > 0 || quiet.Moved:
 		return PressUnknown, nil
 	case reqs > 0:
 		return PressRequest, nil
@@ -336,6 +413,42 @@ func (w *walker) effectOf(ctx context.Context, act func() error) (string, error)
 		return PressDOM, nil
 	}
 	return PressUnknown, nil
+}
+
+// ownEffect says what a press did when its control's own handlers answered
+// it: a navigation or a DOM change.
+func (w *walker) ownEffect(navs int, mut mutations) (string, bool) {
+	switch {
+	case w.left() || navs > 0 || mut.Moved:
+		return PressNavigation, true
+	case mut.Own > 0:
+		return PressDOM, true
+	}
+	return "", false
+}
+
+// again presses base's key on the page body, keeps what that changed
+// as the baseline and runs act on the control once more, judged
+// against it.
+func (w *walker) again(ctx context.Context, act func() error, base *baseline) (reqs, navs, own int, mut mutations, err error) {
+	if _, err = w.reader.Eval(ctx, bodyFocusJS); err != nil {
+		return
+	}
+	if _, _, _, _, err = w.window(ctx, base.press); err != nil {
+		return
+	}
+	if w.left() {
+		return
+	}
+	if _, err = w.reader.Eval(ctx, baseJS); err != nil {
+		return
+	}
+	defer func() { _, _ = w.reader.Eval(ctx, unbaseJS) }()
+	if base.refocus() != nil {
+		err = errGone
+		return
+	}
+	return w.window(ctx, act)
 }
 
 // window runs act and waits widgetWait, then returns the requests the
@@ -353,6 +466,9 @@ func (w *walker) window(ctx context.Context, act func() error) (reqs, navs, own 
 	reqs, navs, own = g.requests, g.navs, g.candNavs
 	g.mu.Unlock()
 	if err = act(); err != nil {
+		return
+	}
+	if _, err = w.reader.Eval(ctx, pressEndJS); err != nil {
 		return
 	}
 	select {

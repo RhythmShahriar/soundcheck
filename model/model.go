@@ -382,6 +382,13 @@ type KeyboardSummary struct {
 	// whether those controls work, so a comparison doesn't count their
 	// issues missing from it as FIXED.
 	WidgetsOn bool `json:"widgets_on,omitempty"`
+	// Unjudged lists the keys of the issues the walk couldn't judge on
+	// a page whose widgets it tested: a focusable control with a mouse
+	// listener it couldn't press, or whose answer to the click it
+	// couldn't tell from the page's own activity (a ticking clock, a
+	// poll). The page doesn't report them, yet a comparison doesn't count
+	// them as FIXED either.
+	Unjudged []string `json:"unjudged,omitempty"`
 }
 
 // KeyFlows is what became of a run's key flows.

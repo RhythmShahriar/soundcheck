@@ -400,7 +400,7 @@ func (d *issueDiff) page(path string, before, after []model.Issue, audits map[st
 		// says the page can't judge it.
 		if class == model.Fixed && d.judges.of(i.Key) != nil &&
 			d.judges.cantJudge(&model.Page{Path: path, Issues: after, Audits: audits, Keyboard: kb}, i.Key) {
-			reason, note := unjudged(path, i.Check, audits, d.kept)
+			reason, note := unjudged(path, i.Check, i.Key, audits, kb, d.kept)
 			d.addAside(class, x, reason, note)
 			return
 		}
