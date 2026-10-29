@@ -72,7 +72,7 @@ func TestTimedOutAuditFixesNothing(t *testing.T) {
 	if !slices.Contains(c.Warnings, w) {
 		t.Errorf("warnings = %q", c.Warnings)
 	}
-	if c.Summary.Fixed != 2 || c.Summary.Ignored != 2 {
+	if c.Summary.Fixed != 2 || c.Summary.Kept != 2 || c.Summary.Ignored != 0 {
 		t.Errorf("summary = %+v", c.Summary)
 	}
 }

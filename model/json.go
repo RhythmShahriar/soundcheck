@@ -33,14 +33,19 @@ const (
 
 // Summary counts a comparison's changes by class, for scripts.
 type Summary struct {
-	Broke    int    `json:"broke"`
-	New      int    `json:"new"`
-	Changed  int    `json:"changed"`
-	Slower   int    `json:"slower"`
-	Fixed    int    `json:"fixed"`
-	Unstable int    `json:"unstable"`
-	Ignored  int    `json:"ignored"`
-	Verdict  string `json:"verdict"` // clean, changed, broke or interrupted
+	Broke    int `json:"broke"`
+	New      int `json:"new"`
+	Changed  int `json:"changed"`
+	Slower   int `json:"slower"`
+	Fixed    int `json:"fixed"`
+	Unstable int `json:"unstable"`
+	// Ignored counts the changes ignore rules, accepts and guards set
+	// aside. Kept counts apart the earlier run's issues kept on pages
+	// this run couldn't check (model.NotCheckedReason): nobody ignored
+	// those.
+	Ignored int    `json:"ignored"`
+	Kept    int    `json:"kept,omitempty"`
+	Verdict string `json:"verdict"` // clean, changed, broke or interrupted
 	// Failed says whether the result fails the build at the --fail-on
 	// threshold. It's only set when there is one.
 	Failed *bool `json:"failed,omitempty"`
@@ -65,11 +70,24 @@ type Group struct {
 	Pages []string `json:"pages"`
 }
 
+// Kept returns the changes of c.Ignored that are kept from the earlier
+// run because their page wasn't checked this time (NotCheckedReason).
+func (c *Comparison) Kept() []Change {
+	var out []Change
+	for _, ch := range c.Ignored {
+		if strings.HasPrefix(ch.Reason, NotCheckedReason) {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
 // Summarize counts the changes and gives the verdict. Failed is left
 // for the caller, which knows the threshold.
 func (c *Comparison) Summarize() Summary {
 	s := Summary{Broke: c.Count(Broke), New: c.Count(New), Changed: c.Count(Changed), Slower: c.Count(Slower),
-		Fixed: c.Count(Fixed), Unstable: c.Count(Unstable), Ignored: len(c.Ignored)}
+		Fixed: c.Count(Fixed), Unstable: c.Count(Unstable), Kept: len(c.Kept())}
+	s.Ignored = len(c.Ignored) - s.Kept
 	switch {
 	case c.Interrupted:
 		s.Verdict = VerdictInterrupted

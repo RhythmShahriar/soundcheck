@@ -788,8 +788,26 @@ func (r Result) stats() string {
 	} else {
 		parts[0] = plural(len(r.Run.Pages), "page", "pages")
 	}
-	if r.Compared() && len(r.Comparison.Ignored) > 0 {
-		parts = append(parts, plural(len(r.Comparison.Ignored), "change ignored", "changes ignored"))
+	if r.Compared() {
+		// Issues kept from the earlier run on pages this run couldn't
+		// check aren't ignored by anyone: they're counted apart.
+		kept := r.Comparison.Kept()
+		if n := len(r.Comparison.Ignored) - len(kept); n > 0 {
+			parts = append(parts, plural(n, "change ignored", "changes ignored"))
+		}
+		if len(kept) > 0 {
+			pages := map[string]bool{}
+			for _, ch := range kept {
+				for _, p := range ch.Pages {
+					pages[p] = true
+				}
+			}
+			where := "page not checked"
+			if len(pages) > 1 {
+				where = "pages not checked"
+			}
+			parts = append(parts, plural(len(kept), "issue kept", "issues kept")+", "+where)
+		}
 	}
 	if r.Run.Options.Echo {
 		parts = append(parts, echoSummary(r.Run))

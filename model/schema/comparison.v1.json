@@ -137,7 +137,8 @@
         "slower": {"type": "integer", "minimum": 0},
         "fixed": {"type": "integer", "minimum": 0},
         "unstable": {"type": "integer", "minimum": 0},
-        "ignored": {"type": "integer", "minimum": 0},
+        "ignored": {"type": "integer", "minimum": 0, "description": "Changes ignore rules, accepts and guards set aside. Issues kept on pages that weren't checked are counted in kept instead."},
+        "kept": {"type": "integer", "minimum": 0, "description": "Issues kept from the earlier run because their page wasn't checked this time. Left out when none."},
         "verdict": {"enum": ["clean", "changed", "broke", "interrupted"], "description": "interrupted when the run was stopped, else broke when anything broke, changed when anything is new, changed or slower, clean otherwise."},
         "failed": {"type": "boolean", "description": "Whether the result fails at the --fail-on threshold. Left out without one."}
       }

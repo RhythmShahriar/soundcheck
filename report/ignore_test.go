@@ -61,3 +61,37 @@ func TestIgnoredInOutput(t *testing.T) {
 		t.Errorf("ignored = %v", doc["ignored"])
 	}
 }
+
+// An issue kept from the snapshot on a page this run couldn't check is
+// nobody's ignore: the summary line counts it apart without calling it
+// ignored; the JSON summary counts it as kept.
+func TestKeptNotIgnored(t *testing.T) {
+	c := sampleComparison("")
+	c.Ignored = []model.Change{{Class: model.Fixed, Check: "a11y/label", Title: "Form field has no label", Pages: []string{"/p"},
+		Reason: model.NotCheckedReason + ": a11y skipped"}}
+	c.Complete()
+	r := Result{Run: sampleRun(), Comparison: c}
+	if s := c.Summary; s.Ignored != 0 || s.Kept != 1 {
+		t.Errorf("summary = %+v, want 0 ignored and 1 kept", s)
+	}
+	var plain bytes.Buffer
+	NewPretty(&plain, &plain, PrettyOptions{Plain: true}).Summary(r, "")
+	if out := plain.String(); strings.Contains(out, "ignored") || !strings.Contains(out, ", 1 issue kept, page not checked, ") {
+		t.Errorf("plain output:\n%s", out)
+	}
+	if valid := validate(loadSchema(t, "comparison.v1.json"), jsonOf(t, r)); len(valid) != 0 {
+		t.Errorf("JSON doesn't match the schema:\n%s", strings.Join(valid, "\n"))
+	}
+
+	// With an ignore rule too, both are counted, each in its words.
+	r = ignoredResult()
+	r.Comparison.Ignored = append(r.Comparison.Ignored, model.Change{Class: model.Fixed, Check: "a11y/label", Pages: []string{"/p"},
+		Reason: model.NotCheckedReason + ": a11y skipped"}, model.Change{Class: model.Fixed, Check: "a11y/alt", Pages: []string{"/q"},
+		Reason: model.NotCheckedReason + ": a11y skipped"})
+	r.Comparison.Complete()
+	plain.Reset()
+	NewPretty(&plain, &plain, PrettyOptions{Plain: true}).Summary(r, "")
+	if out := plain.String(); !strings.Contains(out, ", 2 changes ignored, 2 issues kept, pages not checked, ") {
+		t.Errorf("plain output:\n%s", out)
+	}
+}
