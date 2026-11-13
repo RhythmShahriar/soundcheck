@@ -3,17 +3,17 @@ module github.com/RhythmShahriar/soundcheck
 go 1.27.3
 
 require (
-	github.com/RhythmShahriar/echo v1.0.0
-	github.com/RhythmShahriar/rhythm v0.8.0
+	github.com/RhythmShahriar/echo v1.2.0
+	github.com/RhythmShahriar/rhythm v0.9.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/go-rod/rod v0.116.2
 	github.com/muesli/termenv v0.16.0
-	golang.org/x/image v0.47.0
+	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -45,5 +45,5 @@ require (
 	github.com/ysmood/got v0.40.0 // indirect
 	github.com/ysmood/gson v0.7.3 // indirect
 	github.com/ysmood/leakless v0.9.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
